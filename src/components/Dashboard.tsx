@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, Col, Row, Statistic, Table, Typography, Tag, Progress } from 'antd';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useFunctionalities, useExecutions } from '../hooks';
-import { TestResult, TestStatus } from '../types';
+import { TestResult, TestStatus, ExecutionStatus } from '../types';
 import { 
   CheckCircleFilled, 
   DatabaseFilled, 
@@ -22,9 +22,11 @@ const COLORS = {
   regression: '#3b82f6', // Blue 500
 };
 
-export default function Dashboard() {
-  const { data: functionalities = [] } = useFunctionalities();
-  const { data: executions = [] } = useExecutions();
+export default function Dashboard({ projectId }: { projectId?: string }) {
+  const { data: functionalitiesData } = useFunctionalities(projectId);
+  const { data: executionsData } = useExecutions(projectId);
+  const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
+  const executions = (Array.isArray(executionsData) ? executionsData : []).filter(e => e.status === ExecutionStatus.FINAL);
 
   // Metrics Calculation
   const totalFuncs = functionalities.length;

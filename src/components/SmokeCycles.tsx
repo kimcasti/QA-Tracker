@@ -1,7 +1,7 @@
 import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message } from 'antd';
 import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
-import { useRegressionCycles, useFunctionalities } from '../hooks';
+import { useSmokeCycles, useFunctionalities } from '../hooks';
 import { RegressionCycle, TestResult, TestType, RegressionExecution } from '../types';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import dayjs from 'dayjs';
@@ -9,8 +9,8 @@ import dayjs from 'dayjs';
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 
-export default function RegressionCycles({ projectId }: { projectId?: string }) {
-  const { data: cyclesData, save } = useRegressionCycles(projectId);
+export default function SmokeCycles({ projectId }: { projectId?: string }) {
+  const { data: cyclesData, save } = useSmokeCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -30,7 +30,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         })) + 1 
       : 1;
     
-    // Calculate next Sprint (optional, but good for UX)
+    // Calculate next Sprint
     const nextSprint = cycles.length > 0
       ? Math.max(...cycles.map(c => {
           const match = c.sprint?.match(/\d+/);
@@ -39,7 +39,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       : 25;
 
     form.setFieldsValue({
-      cycleId: `C-${nextNumber.toString().padStart(2, '0')}`,
+      cycleId: `S-${nextNumber.toString().padStart(2, '0')}`,
       sprint: nextSprint,
       date: dayjs(),
       note: ''
@@ -49,7 +49,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
   const handleEdit = (cycle: RegressionCycle) => {
     setEditingCycle(cycle);
-    setSelectedCycle(cycle); // Show the detail view in the background
+    setSelectedCycle(cycle);
     form.setFieldsValue({
       cycleId: cycle.cycleId,
       status: cycle.status,
@@ -59,6 +59,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     });
     setIsModalOpen(true);
   };
+
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [sprintFilter, setSprintFilter] = useState<string | undefined>(undefined);
@@ -84,9 +85,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     }
   }, [currentExecution, evidenceForm]);
 
-  // Filter regression functionalities for new cycles
-  const regressionFuncs = Array.isArray(functionalities) 
-    ? functionalities.filter(f => f?.testTypes?.includes(TestType.REGRESSION))
+  // Filter smoke functionalities for new cycles
+  const smokeFuncs = Array.isArray(functionalities) 
+    ? functionalities.filter(f => f?.testTypes?.includes(TestType.SMOKE))
     : [];
 
   const columns = [
@@ -97,7 +98,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       render: (text: string, record: RegressionCycle) => (
         <Button 
           type="link" 
-          className="p-0 h-auto font-bold text-blue-600"
+          className="p-0 h-auto font-bold text-orange-600"
           onClick={() => setSelectedCycle(record)}
         >
           {text}
@@ -204,10 +205,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           date: values.date.format('YYYY-MM-DD'),
         };
         save(updatedCycle);
-        message.success('Ciclo actualizado correctamente');
+        message.success('Ciclo de Smoke actualizado correctamente');
       } else {
-        // Initialize executions from regression functionalities
-        const initialExecutions: RegressionExecution[] = regressionFuncs.map(f => ({
+        const initialExecutions: RegressionExecution[] = smokeFuncs.map(f => ({
           id: Math.random().toString(36).substr(2, 9),
           functionalityId: f.id,
           module: f.module,
@@ -232,8 +232,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         };
 
         save(newCycle);
-        setSelectedCycle(newCycle); // Open detail view immediately
-        message.success('Ciclo creado correctamente');
+        setSelectedCycle(newCycle);
+        message.success('Ciclo de Smoke creado correctamente');
       }
       
       setIsModalOpen(false);
@@ -350,7 +350,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <div>
                 <div className="flex items-center gap-3">
                   <Tag 
-                    color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'blue'} 
+                    color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'orange'} 
                     className="rounded-full px-3 font-bold uppercase text-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={() => handleEdit(selectedCycle)}
                   >
@@ -381,7 +381,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 type="primary" 
                 icon={<BarChartOutlined />} 
                 size="large" 
-                className="rounded-xl h-11 px-8 shadow-lg shadow-blue-200 font-bold"
+                className="rounded-xl h-11 px-8 shadow-lg shadow-orange-200 font-bold bg-orange-600 border-orange-600 hover:bg-orange-700"
                 onClick={() => handleExecuteAll(selectedCycle)}
               >
                 Execute All
@@ -486,7 +486,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   title: <span className="text-[11px] font-bold text-slate-400 uppercase">ID</span>,
                   dataIndex: 'functionalityId',
                   key: 'id',
-                  render: (id) => <span className="font-bold text-blue-600">{id}</span>
+                  render: (id) => <span className="font-bold text-orange-600">{id}</span>
                 },
                 {
                   title: <span className="text-[11px] font-bold text-slate-400 uppercase">MODULO</span>,
@@ -556,7 +556,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   dataIndex: 'evidence',
                   key: 'evidence',
                   render: (ev, record) => (
-                    <div className="flex items-center gap-2 text-blue-500 cursor-pointer hover:text-blue-700 font-medium">
+                    <div className="flex items-center gap-2 text-orange-500 cursor-pointer hover:text-orange-700 font-medium">
                       {(ev || record.evidenceImage) ? (
                         <div className="flex items-center gap-1" onClick={(e) => {
                           e.stopPropagation();
@@ -585,28 +585,28 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         <div className="space-y-6">
           <div className="flex justify-between items-start">
             <div>
-              <Title level={2} className="!mb-1">Control de Regresión</Title>
-              <Paragraph type="secondary">Gestión y seguimiento de ejecuciones históricas de calidad.</Paragraph>
+              <Title level={2} className="!mb-1">Control de Smoke</Title>
+              <Paragraph type="secondary">Gestión y seguimiento de pruebas críticas de humo.</Paragraph>
             </div>
             <Button 
               type="primary" 
               icon={<PlusOutlined />} 
               size="large" 
-              className="rounded-xl h-12 px-6 shadow-lg shadow-blue-200"
+              className="rounded-xl h-12 px-6 shadow-lg shadow-orange-200 bg-orange-600 border-orange-600 hover:bg-orange-700"
               onClick={handleOpenModal}
             >
-              Nuevo Ciclo de Regresión
+              Nuevo Ciclo de Smoke
             </Button>
           </div>
 
       {latestCycle && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
               <BarChartOutlined className="text-white" />
             </div>
-            <span className="font-bold text-slate-800 text-lg">Última Regresión</span>
-            <Tag color="blue" className="rounded-full px-3 font-bold border-blue-200 bg-blue-50 text-blue-600">
+            <span className="font-bold text-slate-800 text-lg">Último Smoke Test</span>
+            <Tag color="orange" className="rounded-full px-3 font-bold border-orange-200 bg-orange-50 text-orange-600">
               {latestCycle.cycleId} (FINALIZADA)
             </Tag>
           </div>
@@ -619,7 +619,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                     <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tests</Text>
                     <div className="text-3xl font-bold text-slate-800 mt-1">{latestCycle.totalTests}</div>
                   </div>
-                  <Tag color="blue" className="m-0 border-none bg-blue-50 text-blue-600 font-bold rounded-full px-3">Total</Tag>
+                  <Tag color="orange" className="m-0 border-none bg-orange-50 text-orange-600 font-bold rounded-full px-3">Total</Tag>
                 </div>
               </Card>
             </Col>
@@ -669,10 +669,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <div className="flex justify-between items-start">
                   <div>
                     <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Aprobación</Text>
-                    <div className="text-3xl font-bold text-blue-600 mt-1">{latestCycle.approvalRate}%</div>
+                    <div className="text-3xl font-bold text-orange-600 mt-1">{latestCycle.approvalRate}%</div>
                   </div>
-                  <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-                    <BarChartOutlined className="text-blue-600" />
+                  <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
+                    <BarChartOutlined className="text-orange-600" />
                   </div>
                 </div>
               </Card>
@@ -735,7 +735,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
       <Card 
         className="rounded-2xl border-slate-100 shadow-sm"
-        title={<span className="text-slate-800 font-bold">Historial de Ciclos</span>}
+        title={<span className="text-slate-800 font-bold">Historial de Smoke Tests</span>}
       >
         <Table 
           columns={columns} 
@@ -752,7 +752,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       )}
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">{editingCycle ? 'Editar Ciclo de Regresión' : 'Registrar Nuevo Ciclo de Regresión'}</span>}
+        title={<span className="text-lg font-bold text-slate-800">{editingCycle ? 'Editar Ciclo de Smoke' : 'Registrar Nuevo Ciclo de Smoke'}</span>}
         open={isModalOpen}
         onOk={handleSave}
         onCancel={() => {
@@ -769,7 +769,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="cycleId" label={<span className="font-semibold text-slate-600">ID del Ciclo</span>} rules={[{ required: true }]}>
-                <Input placeholder="Ej: C-49" className="h-10 rounded-lg" />
+                <Input placeholder="Ej: S-01" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -796,27 +796,27 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             <Col span={12}>
               <Form.Item label={<span className="font-semibold text-slate-600">Funcionalidades a Incluir</span>}>
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  <span className="text-blue-600 font-bold">{regressionFuncs.length}</span> funcionalidades de tipo <Tag color="blue" className="m-0 ml-1">Regresión</Tag> detectadas.
+                  <span className="text-orange-600 font-bold">{smokeFuncs.length}</span> funcionalidades de tipo <Tag color="orange" className="m-0 ml-1">Smoke</Tag> detectadas.
                 </div>
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="note" label={<span className="font-semibold text-slate-600">Objetivo de la Regresión</span>}>
-            <Input.TextArea rows={3} placeholder="Ej: Asegurar estabilidad de módulos core antes de despliegue..." className="rounded-lg" />
+          <Form.Item name="note" label={<span className="font-semibold text-slate-600">Objetivo del Smoke Test</span>}>
+            <Input.TextArea rows={3} placeholder="Ej: Validar flujos críticos después de despliegue en staging..." className="rounded-lg" />
           </Form.Item>
 
           <div className="mt-4">
             <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">Vista Previa de Funcionalidades</span>
             <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
               <Table 
-                dataSource={regressionFuncs}
+                dataSource={smokeFuncs}
                 rowKey="id"
                 pagination={false}
                 size="small"
                 columns={[
-                  { title: 'ID', dataIndex: 'id', key: 'id', render: (id) => <span className="text-xs font-bold text-blue-600">{id}</span> },
-                  { title: 'Módulo', dataIndex: 'module', key: 'module', render: (m) => <span className="text-xs font-medium">{m}</span> },
+                  { title: 'ID', dataIndex: 'id', key: 'id', render: (id) => <span className="text-xs font-bold text-orange-600">{id}</span> },
+                  { title: 'Módulo', dataIndex: 'module', key: 'module', render: (m) => <span className="text-xs font-bold text-slate-700">{m}</span> },
                   { title: 'Funcionalidad', dataIndex: 'name', key: 'name', render: (n) => <span className="text-xs text-slate-500">{n}</span> },
                 ]}
               />
@@ -825,46 +825,67 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         </Form>
       </Modal>
 
+      {/* Evidence Modal */}
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
+        title={
+          <div className="flex items-center gap-2">
+            <FileTextOutlined className="text-orange-500" />
+            <span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>
+          </div>
+        }
         open={evidenceModalOpen}
-        onCancel={() => {
-          setEvidenceModalOpen(false);
-          setCurrentExecution(null);
-        }}
         onOk={async () => {
-          try {
-            if (!selectedCycle || !currentExecution) {
-              message.error('No se pudo identificar la ejecución actual');
-              return;
-            }
+          if (currentExecution && selectedCycle) {
             const values = await evidenceForm.validateFields();
-            updateExecution(selectedCycle.id, currentExecution.id, {
+            updateExecution(selectedCycle.id, currentExecution.id, { 
               evidence: values.evidence,
               evidenceImage: evidenceImage
             });
+            message.success('Evidencia guardada correctamente');
             setEvidenceModalOpen(false);
             setCurrentExecution(null);
-            message.success('Evidencia guardada correctamente');
-          } catch (error) {
-            console.error('Error saving evidence:', error);
-            message.error('Error al guardar la evidencia. Por favor revisa los campos.');
           }
+        }}
+        onCancel={() => {
+          setEvidenceModalOpen(false);
+          setCurrentExecution(null);
         }}
         width={600}
         centered
         okText="Guardar Evidencia"
         cancelText="Cerrar"
+        className="evidence-modal"
       >
-        <div className="space-y-4 mt-4">
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-            <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Funcionalidad</div>
-            <div className="font-bold text-slate-700">{currentExecution?.functionalityId} - {currentExecution?.functionalityName}</div>
-          </div>
+        <div className="space-y-6 py-4">
+          {currentExecution && (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">ID Test</Text>
+                  <Text strong className="text-orange-600">{currentExecution.functionalityId}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">Módulo</Text>
+                  <Text strong className="text-slate-700">{currentExecution.module}</Text>
+                </Col>
+              </Row>
+              <div className="mt-3">
+                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">Funcionalidad</Text>
+                <Text strong className="text-slate-800">{currentExecution.functionalityName}</Text>
+              </div>
+            </div>
+          )}
 
           <Form form={evidenceForm} layout="vertical">
-            <Form.Item name="evidence" label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}>
-              <Input.TextArea rows={4} placeholder="Describe los hallazgos, errores encontrados o pasos realizados..." className="rounded-lg" />
+            <Form.Item 
+              name="evidence" 
+              label={<span className="font-semibold text-slate-600">Notas / Observaciones</span>}
+            >
+              <Input.TextArea 
+                rows={4} 
+                placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes..." 
+                className="rounded-xl border-slate-200 focus:border-orange-500"
+              />
             </Form.Item>
           </Form>
 
@@ -900,7 +921,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               >
                 <div className="py-4">
                   <p className="ant-upload-drag-icon">
-                    <UploadOutlined className="text-blue-500 text-3xl" />
+                    <UploadOutlined className="text-orange-500 text-3xl" />
                   </p>
                   <p className="ant-upload-text font-medium text-slate-600">Haz clic o arrastra una imagen aquí</p>
                   <p className="ant-upload-hint text-xs text-slate-400">Soporta JPG, PNG. Máximo 1 archivo.</p>

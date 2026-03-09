@@ -10,57 +10,134 @@ import {
   HistoryOutlined,
   ThunderboltOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  LogoutOutlined,
+  BarChartOutlined,
+  ArrowLeftOutlined,
+  ProjectOutlined
 } from '@ant-design/icons';
 import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import FunctionalityList from './components/FunctionalityList';
 import TestExecutionView from './components/TestExecutionView';
 import RegressionCycles from './components/RegressionCycles';
+import SmokeCycles from './components/SmokeCycles';
+import TestPlanView from './components/TestPlanView';
+import Reports from './components/Reports';
+import CoverageMatrix from './components/CoverageMatrix';
+import ProjectManagement from './components/ProjectManagement';
+import EditProject from './components/EditProject';
+import { Project } from './types';
 
 const { Header, Content, Sider } = Layout;
-const { Title, Paragraph } = Typography;
+const { Title, Paragraph, Text } = Typography;
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [view, setView] = useState<'projects' | 'workspace' | 'edit_project'>('projects');
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
+  const [currentWorkspaceView, setCurrentWorkspaceView] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
 
-  const menuItems = [
+  const workspaceMenuItems = [
     { key: 'dashboard', icon: <AppstoreOutlined />, label: 'Dashboard' },
+    { key: 'coverage', icon: <BarChartOutlined />, label: 'Matriz de Cobertura' },
     { key: 'regression_cycles', icon: <HistoryOutlined />, label: 'Control de Regresión' },
+    { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: 'Control de Smoke' },
     { key: 'functionalities', icon: <DatabaseOutlined />, label: 'Funcionalidades' },
     { key: 'testing', icon: <CheckCircleOutlined />, label: 'Ejecución de Pruebas' },
     { key: 'plans', icon: <DatabaseOutlined />, label: 'Planes de Prueba' },
-    { key: 'defects', icon: <ThunderboltOutlined />, label: 'Defectos' },
+    { key: 'reports', icon: <BarChartOutlined />, label: 'Reportes' },
     { key: 'config', icon: <SettingOutlined />, label: 'Configuración' },
   ];
 
-  const renderContent = () => {
-    switch (currentView) {
-      case 'dashboard': return <Dashboard />;
-      case 'regression_cycles': return <RegressionCycles />;
-      case 'functionalities': return <FunctionalityList />;
-      case 'regression': return <FunctionalityList filter="regression" />;
-      case 'smoke': return <FunctionalityList filter="smoke" />;
-      case 'testing': return <TestExecutionView />;
-      case 'plans': return <Card className="rounded-2xl border-slate-100 shadow-sm"><Title level={3}>Planes de Prueba</Title><Paragraph>Próximamente...</Paragraph></Card>;
-      case 'defects': return <Card className="rounded-2xl border-slate-100 shadow-sm"><Title level={3}>Defectos</Title><Paragraph>Próximamente...</Paragraph></Card>;
+  const handleViewDetails = (project: Project) => {
+    setCurrentProject(project);
+    setView('workspace');
+    setCurrentWorkspaceView('dashboard');
+  };
+
+  const handleEditProject = (project: Project) => {
+    setProjectToEdit(project);
+    setView('edit_project');
+  };
+
+  const handleBackToProjects = () => {
+    setView('projects');
+    setCurrentProject(null);
+  };
+
+  const renderWorkspaceContent = () => {
+    if (!currentProject) return null;
+    
+    switch (currentWorkspaceView) {
+      case 'dashboard': return <Dashboard projectId={currentProject.id} />;
+      case 'coverage': return <CoverageMatrix projectId={currentProject.id} />;
+      case 'regression_cycles': return <RegressionCycles projectId={currentProject.id} />;
+      case 'smoke_cycles': return <SmokeCycles projectId={currentProject.id} />;
+      case 'functionalities': return <FunctionalityList projectId={currentProject.id} />;
+      case 'testing': return <TestExecutionView projectId={currentProject.id} />;
+      case 'plans': return <TestPlanView projectId={currentProject.id} />;
+      case 'reports': return <Reports projectId={currentProject.id} />;
       case 'config': return <Card className="rounded-2xl border-slate-100 shadow-sm"><Title level={3}>Configuración</Title><Paragraph>Próximamente...</Paragraph></Card>;
-      default: return <Dashboard />;
+      default: return <Dashboard projectId={currentProject.id} />;
     }
   };
+
+  if (view === 'projects') {
+    return (
+      <Layout className="min-h-screen bg-slate-50">
+        <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-md">
+              <ProjectOutlined className="text-white text-lg" />
+            </div>
+            <div className="font-bold text-slate-800">QA Multi-Project Manager</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <Avatar src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" />
+            <Text strong>Admin User</Text>
+          </div>
+        </Header>
+        <Content>
+          <ProjectManagement onViewDetails={handleViewDetails} onEditProject={handleEditProject} />
+        </Content>
+      </Layout>
+    );
+  }
+
+  if (view === 'edit_project' && projectToEdit) {
+    return (
+      <Layout className="min-h-screen bg-slate-50">
+        <EditProject 
+          project={projectToEdit} 
+          onCancel={() => setView('projects')} 
+          onSave={() => setView('projects')} 
+        />
+      </Layout>
+    );
+  }
 
   return (
     <Layout className="min-h-screen bg-slate-50">
       <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <div className="text-slate-400 font-medium text-sm">QA Enterprise Division</div>
+          <Button 
+            icon={<ArrowLeftOutlined />} 
+            onClick={handleBackToProjects}
+            className="border-none hover:bg-gray-100 rounded-lg"
+          />
+          <div className="h-6 w-[1px] bg-gray-200 mx-2" />
+          <div className="flex flex-col">
+            <Text strong className="leading-none">{currentProject?.name}</Text>
+            <Text type="secondary" className="text-[10px] uppercase tracking-wider">{currentProject?.version}</Text>
+          </div>
         </div>
 
         <div className="flex items-center gap-6">
           <Input 
             prefix={<SearchOutlined className="text-slate-400" />} 
-            placeholder="Buscar métricas..." 
+            placeholder="Buscar en el espacio..." 
             className="w-64 bg-slate-50 border-none rounded-lg h-10"
           />
           <Space size={20}>
@@ -89,8 +166,8 @@ export default function App() {
               </div>
               {!collapsed && (
                 <div className="flex flex-col overflow-hidden">
-                  <span className="font-bold text-slate-800 leading-none truncate">QA Manager</span>
-                  <span className="text-[10px] text-slate-400 font-medium truncate">Admin System</span>
+                  <span className="font-bold text-slate-800 leading-none truncate">QA Workspace</span>
+                  <span className="text-[10px] text-slate-400 font-medium truncate">{currentProject?.name}</span>
                 </div>
               )}
             </div>
@@ -105,31 +182,30 @@ export default function App() {
           <div className="py-2 h-[calc(100%-80px)] flex flex-col justify-between">
             <Menu
               mode="inline"
-              selectedKeys={[currentView]}
-              items={menuItems}
-              onClick={({ key }) => setCurrentView(key)}
+              selectedKeys={[currentWorkspaceView]}
+              items={workspaceMenuItems}
+              onClick={({ key }) => setCurrentWorkspaceView(key)}
               className="bg-transparent border-none executive-menu"
             />
             
             {!collapsed && (
-              <div className="px-4 py-6 border-t border-slate-100 mx-2">
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl">
-                  <Avatar 
-                    src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
-                    className="border-2 border-white shadow-sm"
-                  />
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="text-sm font-bold text-slate-800 truncate">Admin User</span>
-                    <span className="text-[10px] text-slate-500 truncate">admin@company.com</span>
-                  </div>
-                </div>
+              <div className="px-4 py-6 border-t border-slate-100 mx-2 space-y-4">
+                <Button 
+                  type="text" 
+                  danger 
+                  icon={<LogoutOutlined />} 
+                  onClick={handleBackToProjects}
+                  className="w-full flex items-center justify-start h-10 rounded-xl font-medium hover:bg-red-50"
+                >
+                  Salir del Proyecto
+                </Button>
               </div>
             )}
           </div>
         </Sider>
         <Content className="p-8 overflow-auto">
           <div className="max-w-7xl mx-auto">
-            {renderContent()}
+            {renderWorkspaceContent()}
           </div>
         </Content>
       </Layout>

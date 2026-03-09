@@ -7,8 +7,9 @@ import { Functionality, TestStatus, TestType } from '../types';
 import type { InputRef } from 'antd';
 import * as XLSX from 'xlsx';
 
-export default function FunctionalityList({ filter }: { filter?: 'regression' | 'smoke' }) {
-  const { data: allFunctionalities = [], save, delete: deleteFunc, bulkUpdate, bulkAdd } = useFunctionalities();
+export default function FunctionalityList({ filter, projectId }: { filter?: 'regression' | 'smoke', projectId?: string }) {
+  const { data: functionalitiesData, save, delete: deleteFunc, bulkUpdate, bulkAdd } = useFunctionalities(projectId);
+  const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   
   const [moduleFilter, setModuleFilter] = useState<string | null>(null);
   const [testTypeFilter, setTestTypeFilter] = useState<TestType | null>(null);
@@ -273,6 +274,7 @@ export default function FunctionalityList({ filter }: { filter?: 'regression' | 
 
           return {
             id: item.id || `IMP-${Date.now()}-${index}`,
+            projectId: projectId || '',
             module: item.module || 'Importado',
             name: item.name || 'Sin nombre',
             roles: roles.length > 0 ? roles : ['Todos'],

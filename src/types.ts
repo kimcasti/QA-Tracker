@@ -23,8 +23,29 @@ export enum TestResult {
   NOT_EXECUTED = 'No Ejecutado',
 }
 
+export enum ProjectStatus {
+  ACTIVE = 'Active',
+  PAUSED = 'Paused',
+  COMPLETED = 'Completed',
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  status: ProjectStatus;
+  createdAt: string;
+  icon?: string;
+  teamMembers?: string[];
+  purpose?: string;
+  coreRequirements?: string[];
+  businessRules?: string;
+}
+
 export interface Functionality {
   id: string;
+  projectId: string;
   module: string;
   name: string;
   roles: string[];
@@ -35,14 +56,53 @@ export interface Functionality {
   status: TestStatus;
 }
 
+export enum ExecutionStatus {
+  DRAFT = 'Borrador',
+  FINAL = 'Final',
+}
+
+export enum Priority {
+  LOW = 'Bajo',
+  MEDIUM = 'Medio',
+  HIGH = 'Alto',
+}
+
+export enum FunctionalityScope {
+  TOTAL = 'Total',
+  PARTIAL = 'Parcial',
+}
+
+export interface TestPlan {
+  id: string;
+  projectId: string;
+  title: string;
+  scope: FunctionalityScope;
+  impactModules: string[];
+  sprint: string;
+  testType: TestType;
+  priority: Priority;
+  jiraId?: string;
+  description: string;
+  date: string;
+}
+
 export interface TestExecution {
   id: string;
+  projectId: string;
   functionalityId: string;
   testType: TestType;
   executed: boolean;
   result: TestResult;
   executionDate: string;
   notes?: string;
+  evidenceImage?: string;
+  status: ExecutionStatus;
+  scope?: FunctionalityScope;
+  impactModules?: string[];
+  sprint?: string;
+  priority?: Priority;
+  jiraId?: string;
+  description?: string;
 }
 
 export interface DashboardMetrics {
@@ -63,11 +123,13 @@ export interface RegressionExecution {
   executed: boolean;
   date?: string;
   result: TestResult;
-  evidence?: string; // Link or note
+  evidence?: string; // Note
+  evidenceImage?: string; // Base64 image
 }
 
 export interface RegressionCycle {
   id: string;
+  projectId: string;
   cycleId: string;
   date: string;
   totalTests: number;
