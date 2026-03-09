@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { storageService } from './services/storageService';
-import { Functionality, TestExecution, RegressionCycle, TestPlan, Project } from './types';
+import { Functionality, TestExecution, RegressionCycle, TestPlan, Project, TestCase } from './types';
 
 export function useProjects() {
   const queryClient = useQueryClient();
@@ -126,6 +126,27 @@ export function useTestPlans(projectId?: string) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => Promise.resolve(storageService.deleteTestPlan(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_plans', projectId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useTestCases(projectId?: string, functionalityId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['test_cases', projectId, functionalityId],
+    queryFn: () => storageService.getTestCases(projectId, functionalityId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (testCase: TestCase) => Promise.resolve(storageService.saveTestCase(testCase)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_cases', projectId, functionalityId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteTestCase(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_cases', projectId, functionalityId] }),
   });
 
   return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };

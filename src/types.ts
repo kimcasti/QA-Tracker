@@ -54,6 +54,21 @@ export interface Functionality {
   isSmoke: boolean;
   deliveryDate: string;
   status: TestStatus;
+  priority: Priority;
+  riskLevel: RiskLevel;
+}
+
+export interface TestCase {
+  id: string;
+  projectId: string;
+  functionalityId: string;
+  title: string;
+  description: string;
+  preconditions: string;
+  testSteps: string;
+  expectedResult: string;
+  testType: TestType;
+  priority: Priority;
 }
 
 export enum ExecutionStatus {
@@ -62,9 +77,23 @@ export enum ExecutionStatus {
 }
 
 export enum Priority {
-  LOW = 'Bajo',
-  MEDIUM = 'Medio',
+  CRITICAL = 'Crítico',
   HIGH = 'Alto',
+  MEDIUM = 'Medio',
+  LOW = 'Bajo',
+}
+
+export enum RiskLevel {
+  HIGH = 'Alto Riesgo',
+  MEDIUM = 'Riesgo Medio',
+  LOW = 'Bajo Riesgo',
+}
+
+export enum Severity {
+  CRITICAL = 'Crítico',
+  HIGH = 'Alto',
+  MEDIUM = 'Medio',
+  LOW = 'Bajo',
 }
 
 export enum FunctionalityScope {
@@ -90,10 +119,12 @@ export interface TestExecution {
   id: string;
   projectId: string;
   functionalityId: string;
+  testCaseId?: string; // New: Link to test case
   testType: TestType;
   executed: boolean;
   result: TestResult;
   executionDate: string;
+  tester: string; // New: Who executed it
   notes?: string;
   evidenceImage?: string;
   status: ExecutionStatus;
@@ -103,6 +134,9 @@ export interface TestExecution {
   priority?: Priority;
   jiraId?: string;
   description?: string;
+  bugId?: string; // New: Bug tracking
+  bugLink?: string; // New: Bug tracking
+  severity?: Severity; // New: Bug tracking
 }
 
 export interface DashboardMetrics {
@@ -118,13 +152,18 @@ export interface DashboardMetrics {
 export interface RegressionExecution {
   id: string;
   functionalityId: string;
+  testCaseId?: string; // New: Link to test case
   module: string;
   functionalityName: string;
+  testCaseTitle?: string; // New: For display
   executed: boolean;
   date?: string;
   result: TestResult;
   evidence?: string; // Note
   evidenceImage?: string; // Base64 image
+  bugId?: string;
+  bugLink?: string;
+  severity?: Severity;
 }
 
 export interface RegressionCycle {

@@ -1,8 +1,9 @@
-import { Functionality, TestExecution, TestResult, TestStatus, TestType, RegressionCycle, ExecutionStatus, TestPlan, Project, ProjectStatus } from '../types';
+import { Functionality, TestExecution, TestResult, TestStatus, TestType, RegressionCycle, ExecutionStatus, TestPlan, Project, ProjectStatus, Priority, RiskLevel, TestCase } from '../types';
 
 const STORAGE_KEYS = {
   PROJECTS: 'qa_tracker_projects',
   FUNCTIONALITIES: 'qa_tracker_functionalities',
+  TEST_CASES: 'qa_tracker_test_cases',
   EXECUTIONS: 'qa_tracker_executions',
   REGRESSION_CYCLES: 'qa_tracker_regression_cycles',
   SMOKE_CYCLES: 'qa_tracker_smoke_cycles',
@@ -30,15 +31,15 @@ const INITIAL_PROJECTS: Project[] = [
 ];
 
 const INITIAL_FUNCTIONALITIES: Functionality[] = [
-  { id: 'AUTH-01', projectId: 'P1', module: 'Login', name: 'Inicio de sesión', roles: ['Todos'], testTypes: [TestType.REGRESSION, TestType.SMOKE], isRegression: true, isSmoke: true, deliveryDate: '2025-02-02', status: TestStatus.COMPLETED },
-  { id: 'PAT-01', projectId: 'P1', module: 'Pacientes', name: 'Lista de pacientes', roles: ['Todos'], testTypes: [TestType.REGRESSION, TestType.SMOKE], isRegression: true, isSmoke: true, deliveryDate: '2025-02-02', status: TestStatus.COMPLETED },
-  { id: 'CLN-06', projectId: 'P1', module: 'Sección-Clínica', name: 'Agregar Cita', roles: ['Manejador'], testTypes: [TestType.REGRESSION], isRegression: true, isSmoke: false, deliveryDate: '2025-02-20', status: TestStatus.FAILED },
+  { id: 'AUTH-01', projectId: 'P1', module: 'Login', name: 'Inicio de sesión', roles: ['Todos'], testTypes: [TestType.REGRESSION, TestType.SMOKE], isRegression: true, isSmoke: true, deliveryDate: '2025-02-02', status: TestStatus.COMPLETED, priority: Priority.HIGH, riskLevel: RiskLevel.MEDIUM },
+  { id: 'PAT-01', projectId: 'P1', module: 'Pacientes', name: 'Lista de pacientes', roles: ['Todos'], testTypes: [TestType.REGRESSION, TestType.SMOKE], isRegression: true, isSmoke: true, deliveryDate: '2025-02-02', status: TestStatus.COMPLETED, priority: Priority.MEDIUM, riskLevel: RiskLevel.LOW },
+  { id: 'CLN-06', projectId: 'P1', module: 'Sección-Clínica', name: 'Agregar Cita', roles: ['Manejador'], testTypes: [TestType.REGRESSION], isRegression: true, isSmoke: false, deliveryDate: '2025-02-20', status: TestStatus.FAILED, priority: Priority.CRITICAL, riskLevel: RiskLevel.HIGH },
 ];
 
 const INITIAL_EXECUTIONS: TestExecution[] = [
-  { id: '1', projectId: 'P1', functionalityId: 'AUTH-01', testType: TestType.SMOKE, executed: true, result: TestResult.PASSED, executionDate: '2025-02-24', status: ExecutionStatus.FINAL },
-  { id: '2', projectId: 'P1', functionalityId: 'PAT-01', testType: TestType.REGRESSION, executed: true, result: TestResult.PASSED, executionDate: '2025-02-20', status: ExecutionStatus.FINAL },
-  { id: '3', projectId: 'P1', functionalityId: 'CLN-06', testType: TestType.FUNCTIONAL, executed: true, result: TestResult.FAILED, executionDate: '2025-02-20', status: ExecutionStatus.FINAL },
+  { id: '1', projectId: 'P1', functionalityId: 'AUTH-01', testType: TestType.SMOKE, executed: true, result: TestResult.PASSED, executionDate: '2025-02-24', status: ExecutionStatus.FINAL, tester: 'Admin' },
+  { id: '2', projectId: 'P1', functionalityId: 'PAT-01', testType: TestType.REGRESSION, executed: true, result: TestResult.PASSED, executionDate: '2025-02-20', status: ExecutionStatus.FINAL, tester: 'Admin' },
+  { id: '3', projectId: 'P1', functionalityId: 'CLN-06', testType: TestType.FUNCTIONAL, executed: true, result: TestResult.FAILED, executionDate: '2025-02-20', status: ExecutionStatus.FINAL, tester: 'Admin' },
 ];
 
 const INITIAL_REGRESSION_CYCLES: RegressionCycle[] = [
@@ -200,5 +201,33 @@ export const storageService = {
   deleteTestPlan: (id: string) => {
     const plans = storageService.getTestPlans().filter(p => p.id !== id);
     localStorage.setItem(STORAGE_KEYS.TEST_PLANS, JSON.stringify(plans));
+  },
+
+  getTestCases: (projectId?: string, functionalityId?: string): TestCase[] => {
+    const data = localStorage.getItem(STORAGE_KEYS.TEST_CASES);
+    const all = data ? JSON.parse(data) : [];
+    let filtered = all;
+    if (projectId) filtered = filtered.filter((tc: any) => tc.projectId === projectId);
+    if (functionalityId) filtered = filtered.filter((tc: any) => tc.functionalityId === functionalityId);
+    return filtered;
+  },
+
+  saveTestCase: (testCase: TestCase) => {
+    const data = localStorage.getItem(STORAGE_KEYS.TEST_CASES);
+    const testCases = data ? JSON.parse(data) : [];
+    const index = testCases.findIndex((tc: any) => tc.id === testCase.id);
+    if (index > -1) {
+      testCases[index] = testCase;
+    } else {
+      testCases.push(testCase);
+    }
+    localStorage.setItem(STORAGE_KEYS.TEST_CASES, JSON.stringify(testCases));
+  },
+
+  deleteTestCase: (id: string) => {
+    const data = localStorage.getItem(STORAGE_KEYS.TEST_CASES);
+    const testCases = data ? JSON.parse(data) : [];
+    const filtered = testCases.filter((tc: any) => tc.id !== id);
+    localStorage.setItem(STORAGE_KEYS.TEST_CASES, JSON.stringify(filtered));
   },
 };

@@ -1,9 +1,10 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Row, Col, Divider, Typography, Upload, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
-import { Users } from 'lucide-react';
+import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Row, Col, Divider, Typography, Upload, message, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
 import { useFunctionalities } from '../hooks';
-import { Functionality, TestStatus, TestType } from '../types';
+import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
+import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
 import * as XLSX from 'xlsx';
 
@@ -30,6 +31,8 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isTestCaseModalOpen, setIsTestCaseModalOpen] = useState(false);
+  const [selectedFunctionality, setSelectedFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
   const [form] = Form.useForm();
   const [bulkForm] = Form.useForm();
@@ -74,6 +77,44 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">Funcionalidad</span>, 
       dataIndex: 'name', 
       key: 'name' 
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">PRIORIDAD</span>,
+      dataIndex: 'priority',
+      key: 'priority',
+      render: (priority: Priority) => {
+        const colors = {
+          [Priority.CRITICAL]: 'text-magenta-600 bg-magenta-50',
+          [Priority.HIGH]: 'text-red-600 bg-red-50',
+          [Priority.MEDIUM]: 'text-orange-600 bg-orange-50',
+          [Priority.LOW]: 'text-green-600 bg-green-50',
+        };
+        return (
+          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${colors[priority] || 'text-slate-600 bg-slate-50'}`}>
+            {priority}
+          </span>
+        );
+      }
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">RIESGO</span>,
+      dataIndex: 'riskLevel',
+      key: 'riskLevel',
+      render: (risk: RiskLevel) => {
+        const colors = {
+          [RiskLevel.HIGH]: 'text-red-700',
+          [RiskLevel.MEDIUM]: 'text-amber-700',
+          [RiskLevel.LOW]: 'text-emerald-700',
+        };
+        return (
+          <div className="flex items-center gap-1">
+            <ShieldAlert size={14} className={colors[risk] || 'text-slate-400'} />
+            <span className={`text-[12px] font-medium ${colors[risk] || 'text-slate-600'}`}>
+              {risk}
+            </span>
+          </div>
+        );
+      }
     },
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>,
@@ -145,6 +186,16 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       key: 'actions',
       render: (_: any, record: Functionality) => (
         <Space>
+          <Tooltip title="Gestionar Casos de Prueba">
+            <Button 
+              icon={<FileTextOutlined />} 
+              onClick={() => {
+                setSelectedFunctionality(record);
+                setIsTestCaseModalOpen(true);
+              }} 
+              className="rounded-lg text-blue-600 border-blue-100 hover:bg-blue-50" 
+            />
+          </Tooltip>
           <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} className="rounded-lg" />
           <Button icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} className="rounded-lg" />
         </Space>
@@ -282,7 +333,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             isRegression: testTypes.includes(TestType.REGRESSION),
             isSmoke: testTypes.includes(TestType.SMOKE),
             deliveryDate: item.deliveryDate || new Date().toISOString().split('T')[0],
-            status: (item.status as TestStatus) || TestStatus.BACKLOG
+            status: (item.status as TestStatus) || TestStatus.BACKLOG,
+            priority: (item.priority as Priority) || Priority.MEDIUM,
+            riskLevel: (item.riskLevel as RiskLevel) || RiskLevel.LOW,
           };
         });
 
@@ -608,6 +661,27 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
           <Row gutter={20}>
             <Col span={12}>
+              <Form.Item name="priority" label={<span className="font-semibold text-slate-600">Prioridad</span>} rules={[{ required: true }]}>
+                <Select className="h-10 rounded-lg">
+                  {Object.values(Priority).map(p => (
+                    <Select.Option key={p} value={p}>{p}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="riskLevel" label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>} rules={[{ required: true }]}>
+                <Select className="h-10 rounded-lg">
+                  {Object.values(RiskLevel).map(r => (
+                    <Select.Option key={r} value={r}>{r}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={20}>
+            <Col span={12}>
               <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado Actual</span>} rules={[{ required: true }]}>
                 <Select 
                   className="h-10 rounded-lg"
@@ -623,6 +697,26 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           </Row>
         </Form>
       </Modal>
+
+      <Modal
+        title={null}
+        open={isTestCaseModalOpen}
+        onCancel={() => setIsTestCaseModalOpen(false)}
+        footer={null}
+        width={1000}
+        centered
+        destroyOnClose
+      >
+        {selectedFunctionality && (
+          <TestCaseManagement 
+            projectId={projectId || ''} 
+            functionalityId={selectedFunctionality.id} 
+            functionalityName={selectedFunctionality.name}
+            moduleName={selectedFunctionality.module}
+          />
+        )}
+      </Modal>
+
       <Modal
         title={<span className="text-lg font-bold text-slate-800">Edición Masiva ({selectedRowKeys.length} items)</span>}
         open={isBulkModalOpen}

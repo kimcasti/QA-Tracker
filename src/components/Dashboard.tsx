@@ -1,15 +1,18 @@
 import React from 'react';
-import { Card, Col, Row, Statistic, Table, Typography, Tag, Progress } from 'antd';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { useFunctionalities, useExecutions } from '../hooks';
-import { TestResult, TestStatus, ExecutionStatus } from '../types';
+import { Card, Col, Row, Statistic, Table, Typography, Tag, Progress, Space } from 'antd';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { useFunctionalities, useExecutions, useRegressionCycles, useSmokeCycles, useTestCases } from '../hooks';
+import { TestResult, TestStatus, ExecutionStatus, Severity } from '../types';
 import { 
   CheckCircleFilled, 
   DatabaseFilled, 
   CloudFilled, 
   ThunderboltOutlined, 
   HistoryOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  BugOutlined,
+  SafetyCertificateOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -25,11 +28,38 @@ const COLORS = {
 export default function Dashboard({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
+  const { data: regressionCyclesData } = useRegressionCycles(projectId);
+  const { data: smokeCyclesData } = useSmokeCycles(projectId);
+  const { data: testCasesData } = useTestCases(projectId);
+
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = (Array.isArray(executionsData) ? executionsData : []).filter(e => e.status === ExecutionStatus.FINAL);
+  const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
+  const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
+  const testCases = Array.isArray(testCasesData) ? testCasesData : [];
 
   // Metrics Calculation
   const totalFuncs = functionalities.length;
+  
+  // Bug Metrics
+  const allExecutions = [
+    ...regressionCycles.flatMap(c => c.executions || []),
+    ...smokeCycles.flatMap(c => c.executions || [])
+  ];
+  const totalBugs = allExecutions.filter(ex => ex.bugId).length;
+  const criticalBugs = allExecutions.filter(ex => ex.severity === Severity.CRITICAL).length;
+  const bugDetectionRate = allExecutions.length > 0 ? (totalBugs / allExecutions.length) * 100 : 0;
+
+  // Coverage Metrics
+  const funcsWithTestCases = new Set(testCases.map(tc => tc.functionalityId)).size;
+  const testCaseCoverage = totalFuncs > 0 ? (funcsWithTestCases / totalFuncs) * 100 : 0;
+
+  // Stability Metrics
+  const totalRegressionExecutions = regressionCycles.flatMap(c => c.executions || []);
+  const regressionPassedExecs = totalRegressionExecutions.filter(ex => ex.result === TestResult.PASSED).length;
+  const regressionStability = totalRegressionExecutions.length > 0 
+    ? (regressionPassedExecs / totalRegressionExecutions.length) * 100 
+    : 0;
   const completedFuncs = functionalities.filter(f => f.status === TestStatus.COMPLETED).length;
   const inProgressFuncs = functionalities.filter(f => f.status === TestStatus.IN_PROGRESS).length;
   const backlogFuncs = functionalities.filter(f => f.status === TestStatus.BACKLOG).length;
@@ -142,66 +172,73 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-slate-800 font-bold text-lg">
-          <BarChartOutlined className="text-blue-600" />
-          <span>Métricas de Funcionalidades</span>
+          <SafetyCertificateOutlined className="text-emerald-600" />
+          <span>KPIs de Calidad QA</span>
         </div>
         
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
-            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-blue-50/30">
               <div className="flex justify-between items-start">
                 <div>
-                  <Text type="secondary" className="text-xs font-semibold text-slate-400">Completadas</Text>
-                  <div className="text-3xl font-bold mt-1 text-slate-800">{completedFuncs.toLocaleString()}</div>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estabilidad Regresión</Text>
+                  <div className="text-3xl font-bold mt-1 text-blue-600">{regressionStability.toFixed(1)}%</div>
+                  <div className="text-[10px] text-slate-400 mt-1">Tasa de éxito en ciclos</div>
                 </div>
-                <Tag color="blue" className="m-0 border-none bg-blue-50 text-blue-600 font-bold rounded-full px-3">Ref: Baseline</Tag>
+                <div className="p-2 bg-blue-50 rounded-xl">
+                  <HistoryOutlined className="text-blue-500 text-lg" />
+                </div>
               </div>
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-emerald-50/30">
               <div className="flex justify-between items-start">
                 <div>
-                  <Text type="secondary" className="text-xs font-semibold text-slate-400">En desarrollo</Text>
-                  <div className="text-3xl font-bold mt-1 text-slate-800">{inProgressFuncs.toLocaleString()}</div>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cobertura de Casos</Text>
+                  <div className="text-3xl font-bold mt-1 text-emerald-600">{testCaseCoverage.toFixed(1)}%</div>
+                  <div className="text-[10px] text-slate-400 mt-1">{funcsWithTestCases} de {totalFuncs} func.</div>
                 </div>
-                <Tag color="green" className="m-0 border-none bg-emerald-50 text-emerald-500 font-bold rounded-full px-3">
-                  {totalFuncs > 0 ? ((inProgressFuncs/totalFuncs)*100).toFixed(1) : 0}%
-                </Tag>
+                <div className="p-2 bg-emerald-50 rounded-xl">
+                  <FileSearchOutlined className="text-emerald-500 text-lg" />
+                </div>
               </div>
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-rose-50/30">
               <div className="flex justify-between items-start">
                 <div>
-                  <Text type="secondary" className="text-xs font-semibold text-slate-400">Backlog</Text>
-                  <div className="text-3xl font-bold mt-1 text-slate-800">{backlogFuncs.toLocaleString()}</div>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Bugs Detectados</Text>
+                  <div className="text-3xl font-bold mt-1 text-rose-600">{totalBugs}</div>
+                  <div className="text-[10px] text-rose-400 font-medium mt-1">{criticalBugs} Críticos</div>
                 </div>
-                <Tag color="red" className="m-0 border-none bg-rose-50 text-rose-500 font-bold rounded-full px-3">
-                  {totalFuncs > 0 ? ((backlogFuncs/totalFuncs)*100).toFixed(1) : 0}%
-                </Tag>
+                <div className="p-2 bg-rose-50 rounded-xl">
+                  <BugOutlined className="text-rose-500 text-lg" />
+                </div>
               </div>
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-amber-50/30">
               <div className="flex justify-between items-start">
                 <div>
-                  <Text type="secondary" className="text-xs font-semibold text-slate-400">Post MVP</Text>
-                  <div className="text-3xl font-bold mt-1 text-slate-800">{postMvpFuncs.toLocaleString()}</div>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Bug Detection Rate</Text>
+                  <div className="text-3xl font-bold mt-1 text-amber-600">{bugDetectionRate.toFixed(2)}%</div>
+                  <div className="text-[10px] text-slate-400 mt-1">Bugs por cada 100 tests</div>
                 </div>
-                <Tag color="default" className="m-0 border-none bg-slate-50 text-slate-400 font-bold rounded-full px-3">
-                  {totalFuncs > 0 ? ((postMvpFuncs/totalFuncs)*100).toFixed(1) : 0}%
-                </Tag>
+                <div className="p-2 bg-amber-50 rounded-xl">
+                  <BarChartOutlined className="text-amber-500 text-lg" />
+                </div>
               </div>
             </Card>
           </Col>
         </Row>
       </div>
 
-      <Row gutter={[24, 24]}>
-        <Col xs={24} lg={12}>
+      <div className="space-y-4">
+        <Row gutter={[24, 24]}>
+          <Col xs={24} lg={12}>
           <Card className="rounded-2xl shadow-sm border-slate-100 h-full">
             <div className="flex items-center gap-2 mb-6 font-semibold text-slate-800">
               <HistoryOutlined className="text-blue-600" />
@@ -280,9 +317,10 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Card>
         </Col>
       </Row>
+    </div>
 
-      <Row gutter={[24, 24]}>
-        <Col xs={24} md={8}>
+    <Row gutter={[24, 24]}>
+      <Col xs={24} md={8}>
           <Card className="rounded-2xl shadow-sm border-slate-100 h-full text-center">
             <div className="font-semibold text-slate-800 mb-4">Ejecutados vs No Ejecutados</div>
             <div className="relative h-48">

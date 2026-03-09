@@ -1,8 +1,8 @@
-import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message } from 'antd';
-import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message, Divider, Checkbox } from 'antd';
+import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
-import { useRegressionCycles, useFunctionalities } from '../hooks';
-import { RegressionCycle, TestResult, TestType, RegressionExecution } from '../types';
+import { useRegressionCycles, useFunctionalities, useTestCases } from '../hooks';
+import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity } from '../types';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import dayjs from 'dayjs';
 
@@ -12,8 +12,11 @@ const { RangePicker } = DatePicker;
 export default function RegressionCycles({ projectId }: { projectId?: string }) {
   const { data: cyclesData, save } = useRegressionCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
+  const { data: allTestCases } = useTestCases(projectId);
+  
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
+  const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const latestCycle = Array.isArray(cycles) && cycles.length > 0 ? cycles[0] : null;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
@@ -75,7 +78,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   useEffect(() => {
     if (currentExecution) {
       evidenceForm.setFieldsValue({
-        evidence: currentExecution.evidence
+        evidence: currentExecution.evidence,
+        bugId: currentExecution.bugId,
+        bugLink: currentExecution.bugLink,
+        severity: currentExecution.severity
       });
       setEvidenceImage(currentExecution.evidenceImage);
     } else {
@@ -206,18 +212,41 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         save(updatedCycle);
         message.success('Ciclo actualizado correctamente');
       } else {
-        // Initialize executions from regression functionalities
-        const initialExecutions: RegressionExecution[] = regressionFuncs.map(f => ({
-          id: Math.random().toString(36).substr(2, 9),
-          functionalityId: f.id,
-          module: f.module,
-          functionalityName: f.name,
-          executed: false,
-          result: TestResult.NOT_EXECUTED,
-        }));
+        // Initialize executions from regression functionalities and their test cases
+        const initialExecutions: RegressionExecution[] = [];
+        
+        regressionFuncs.forEach(f => {
+          const fTestCases = testCases.filter(tc => tc.functionalityId === f.id && tc.testType === TestType.REGRESSION);
+          
+          if (fTestCases.length > 0) {
+            fTestCases.forEach(tc => {
+              initialExecutions.push({
+                id: Math.random().toString(36).substr(2, 9),
+                functionalityId: f.id,
+                testCaseId: tc.id,
+                testCaseTitle: tc.title,
+                module: f.module,
+                functionalityName: f.name,
+                executed: false,
+                result: TestResult.NOT_EXECUTED,
+              });
+            });
+          } else {
+            // Fallback to functionality if no specific regression test cases
+            initialExecutions.push({
+              id: Math.random().toString(36).substr(2, 9),
+              functionalityId: f.id,
+              module: f.module,
+              functionalityName: f.name,
+              executed: false,
+              result: TestResult.NOT_EXECUTED,
+            });
+          }
+        });
 
         const newCycle: RegressionCycle = {
           id: Date.now().toString(),
+          projectId: projectId || '',
           ...values,
           sprint: values.sprint ? `Sprint ${values.sprint}` : undefined,
           date: values.date.format('YYYY-MM-DD'),
@@ -495,10 +524,20 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   render: (m) => <span className="font-bold text-slate-800">{m}</span>
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">FUNCIONALIDAD</span>,
+                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">FUNCIONALIDAD / CASO</span>,
                   dataIndex: 'functionalityName',
                   key: 'name',
-                  render: (n) => <span className="text-slate-600">{n}</span>
+                  render: (n, record) => (
+                    <div>
+                      <div className="text-slate-800 font-medium">{n}</div>
+                      {record.testCaseId && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Tag color="cyan" className="text-[10px] m-0">{record.testCaseId}</Tag>
+                          <span className="text-[11px] text-slate-500 italic">{record.testCaseTitle}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
                 },
                 {
                   title: <span className="text-[11px] font-bold text-slate-400 uppercase">EJECUTADO</span>,
@@ -525,30 +564,37 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   dataIndex: 'result',
                   key: 'result',
                   render: (result, record) => (
-                    <Select
-                      value={result}
-                      onChange={(val) => updateExecution(selectedCycle.id, record.id, { result: val, executed: val !== TestResult.NOT_EXECUTED })}
-                      className="w-32"
-                      bordered={false}
-                      dropdownStyle={{ borderRadius: '12px' }}
-                      options={Object.values(TestResult).map(r => ({
-                        label: (
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${
-                              r === TestResult.PASSED ? 'bg-emerald-500' : 
-                              r === TestResult.FAILED ? 'bg-red-500' : 
-                              r === TestResult.BLOCKED ? 'bg-amber-500' : 'bg-slate-300'
-                            }`} />
-                            <span className={
-                              r === TestResult.PASSED ? 'text-emerald-600' : 
-                              r === TestResult.FAILED ? 'text-red-600' : 
-                              r === TestResult.BLOCKED ? 'text-amber-600' : 'text-slate-400'
-                            }>{r}</span>
-                          </div>
-                        ),
-                        value: r
-                      }))}
-                    />
+                    <div className="flex flex-col gap-1">
+                      <Select
+                        value={result}
+                        onChange={(val) => updateExecution(selectedCycle.id, record.id, { result: val, executed: val !== TestResult.NOT_EXECUTED })}
+                        className="w-32"
+                        bordered={false}
+                        dropdownStyle={{ borderRadius: '12px' }}
+                        options={Object.values(TestResult).map(r => ({
+                          label: (
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${
+                                r === TestResult.PASSED ? 'bg-emerald-500' : 
+                                r === TestResult.FAILED ? 'bg-red-500' : 
+                                r === TestResult.BLOCKED ? 'bg-amber-500' : 'bg-slate-300'
+                              }`} />
+                              <span className={
+                                r === TestResult.PASSED ? 'text-emerald-600' : 
+                                r === TestResult.FAILED ? 'text-red-600' : 
+                                r === TestResult.BLOCKED ? 'text-amber-600' : 'text-slate-400'
+                              }>{r}</span>
+                            </div>
+                          ),
+                          value: r
+                        }))}
+                      />
+                      {record.bugId && (
+                        <Tag color="magenta" icon={<BugOutlined />} className="text-[10px] m-0 w-fit">
+                          {record.bugId}
+                        </Tag>
+                      )}
+                    </div>
                   )
                 },
                 {
@@ -841,7 +887,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             const values = await evidenceForm.validateFields();
             updateExecution(selectedCycle.id, currentExecution.id, {
               evidence: values.evidence,
-              evidenceImage: evidenceImage
+              evidenceImage: evidenceImage,
+              bugId: values.bugId,
+              bugLink: values.bugLink,
+              severity: values.severity
             });
             setEvidenceModalOpen(false);
             setCurrentExecution(null);
@@ -866,48 +915,75 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             <Form.Item name="evidence" label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}>
               <Input.TextArea rows={4} placeholder="Describe los hallazgos, errores encontrados o pasos realizados..." className="rounded-lg" />
             </Form.Item>
-          </Form>
 
-          <div>
-            <span className="font-semibold text-slate-600 block mb-2">Captura de Pantalla / Evidencia Visual</span>
-            {evidenceImage ? (
-              <div className="relative group rounded-xl overflow-hidden border border-slate-200">
-                <img src={evidenceImage} alt="Evidencia" className="w-full h-auto max-h-64 object-contain bg-slate-100" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                  <Button 
-                    danger 
-                    icon={<DeleteOutlined />} 
-                    onClick={() => setEvidenceImage(undefined)}
-                    className="rounded-lg"
+            <Divider orientation="left" className="!m-0 !mb-4">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reporte de Bug</span>
+            </Divider>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="bugId" label="Bug ID (Jira/GitHub)">
+                  <Input placeholder="Ej: BUG-123" className="rounded-lg" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="severity" label="Severidad">
+                  <Select placeholder="Selecciona severidad" className="rounded-lg">
+                    {Object.values(Severity).map(s => (
+                      <Select.Option key={s} value={s}>{s}</Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="bugLink" label="Link al Bug">
+                  <Input placeholder="https://..." className="rounded-lg" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item label={<span className="font-semibold text-slate-600">Evidencia Visual (Imagen)</span>}>
+              <div className="mt-2">
+                {evidenceImage ? (
+                  <div className="relative group rounded-xl overflow-hidden border border-slate-200">
+                    <img src={evidenceImage} alt="Evidencia" className="w-full h-auto max-h-64 object-contain bg-slate-100" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                      <Button 
+                        danger 
+                        icon={<DeleteOutlined />} 
+                        onClick={() => setEvidenceImage(undefined)}
+                        className="rounded-lg"
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Upload.Dragger
+                    maxCount={1}
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        setEvidenceImage(e.target?.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                      return false;
+                    }}
+                    className="rounded-xl"
                   >
-                    Eliminar
-                  </Button>
-                </div>
+                    <div className="py-4">
+                      <p className="ant-upload-drag-icon">
+                        <UploadOutlined className="text-blue-500 text-3xl" />
+                      </p>
+                      <p className="ant-upload-text font-medium text-slate-600">Haz clic o arrastra una imagen aquí</p>
+                      <p className="ant-upload-hint text-xs text-slate-400">Soporta JPG, PNG. Máximo 1 archivo.</p>
+                    </div>
+                  </Upload.Dragger>
+                )}
               </div>
-            ) : (
-              <Upload.Dragger
-                maxCount={1}
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  const reader = new FileReader();
-                  reader.onload = (e) => {
-                    setEvidenceImage(e.target?.result as string);
-                  };
-                  reader.readAsDataURL(file);
-                  return false;
-                }}
-                className="rounded-xl"
-              >
-                <div className="py-4">
-                  <p className="ant-upload-drag-icon">
-                    <UploadOutlined className="text-blue-500 text-3xl" />
-                  </p>
-                  <p className="ant-upload-text font-medium text-slate-600">Haz clic o arrastra una imagen aquí</p>
-                  <p className="ant-upload-hint text-xs text-slate-400">Soporta JPG, PNG. Máximo 1 archivo.</p>
-                </div>
-              </Upload.Dragger>
-            )}
-          </div>
+            </Form.Item>
+          </Form>
         </div>
       </Modal>
     </>

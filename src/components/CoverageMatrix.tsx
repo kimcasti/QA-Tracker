@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Table, Typography, Tag, Progress, Row, Col, Input, Select, Space, Button, Tooltip } from 'antd';
+import { Card, Table, Typography, Tag, Progress, Row, Col, Input, Select, Space, Button, Tooltip, Badge } from 'antd';
 import { 
   SearchOutlined, 
   FilterOutlined, 
@@ -8,19 +8,28 @@ import {
   ClockCircleOutlined,
   InfoCircleOutlined,
   ExportOutlined,
-  TableOutlined
+  TableOutlined,
+  BugOutlined,
+  FileSearchOutlined,
+  AlertOutlined
 } from '@ant-design/icons';
-import { useFunctionalities, useExecutions } from '../hooks';
-import { TestResult, TestType } from '../types';
+import { useFunctionalities, useExecutions, useTestCases, useRegressionCycles, useSmokeCycles } from '../hooks';
+import { TestResult, TestType, Priority, RiskLevel } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
 
 export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
+  const { data: testCasesData } = useTestCases(projectId);
+  const { data: regressionCyclesData } = useRegressionCycles(projectId);
+  const { data: smokeCyclesData } = useSmokeCycles(projectId);
   
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = Array.isArray(executionsData) ? executionsData : [];
+  const testCases = Array.isArray(testCasesData) ? testCasesData : [];
+  const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
+  const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
 
   const [searchText, setSearchText] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string | undefined>(undefined);
@@ -70,6 +79,72 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       )
     },
     {
+      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Prioridad / Riesgo</span>,
+      key: 'priority_risk',
+      width: 160,
+      render: (_: any, record: any) => (
+        <div className="flex flex-col gap-1">
+          <Tag color={
+            record.priority === Priority.CRITICAL ? 'red' :
+            record.priority === Priority.HIGH ? 'orange' :
+            record.priority === Priority.MEDIUM ? 'blue' : 'default'
+          } className="m-0 text-[10px] font-bold uppercase w-fit">
+            P: {record.priority}
+          </Tag>
+          <Tag color={
+            record.riskLevel === RiskLevel.HIGH ? 'volcano' :
+            record.riskLevel === RiskLevel.MEDIUM ? 'gold' : 'lime'
+          } className="m-0 text-[10px] font-bold uppercase w-fit">
+            R: {record.riskLevel}
+          </Tag>
+        </div>
+      )
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Casos</span>,
+      key: 'test_cases',
+      width: 100,
+      render: (_: any, record: any) => {
+        const count = testCases.filter(tc => tc.functionalityId === record.id).length;
+        return (
+          <div className="flex items-center gap-2">
+            <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
+              <FileSearchOutlined className={count > 0 ? 'text-emerald-500' : 'text-slate-300'} />
+            </Badge>
+            <span className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {count}
+            </span>
+          </div>
+        );
+      }
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Trazabilidad Bugs</span>,
+      key: 'bugs',
+      width: 120,
+      render: (_: any, record: any) => {
+        const allExecs = [
+          ...regressionCycles.flatMap(c => c.executions || []),
+          ...smokeCycles.flatMap(c => c.executions || [])
+        ];
+        const bugs = allExecs.filter(ex => ex.functionalityId === record.id && ex.bugId);
+        
+        if (bugs.length === 0) return <span className="text-slate-300 text-xs">-</span>;
+
+        return (
+          <Space size={[0, 4]} wrap>
+            {bugs.map((b, idx) => (
+              <Tooltip key={idx} title={`${b.severity}: ${b.bugLink || 'Sin link'}`}>
+                <Tag color="magenta" icon={<BugOutlined />} className="m-0 text-[10px] cursor-help">
+                  {b.bugId}
+                </Tag>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      }
+    },
+    {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Estado QA</span>,
       key: 'status',
       width: 150,
@@ -116,8 +191,8 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   ];
 
   const totalFuncs = functionalities.length;
-  const coveredFuncs = executions.filter(e => e.executed).length;
-  const coveragePercent = totalFuncs > 0 ? Math.round((coveredFuncs / totalFuncs) * 100) : 0;
+  const coveredWithCases = functionalities.filter(f => testCases.some(tc => tc.functionalityId === f.id)).length;
+  const coveragePercent = totalFuncs > 0 ? Math.round((coveredWithCases / totalFuncs) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -149,12 +224,12 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
-                <CheckCircleOutlined className="text-emerald-500 text-xl" />
+                <FileSearchOutlined className="text-emerald-500 text-xl" />
               </div>
               <div>
-                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Cobertura Actual</Text>
+                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Cobertura de Casos</Text>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-emerald-600 leading-none">{coveredFuncs}</span>
+                  <span className="text-2xl font-bold text-emerald-600 leading-none">{coveredWithCases}</span>
                   <span className="text-xs text-emerald-500 font-bold">({coveragePercent}%)</span>
                 </div>
               </div>
@@ -164,12 +239,14 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
         <Col span={8}>
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center">
-                <InfoCircleOutlined className="text-slate-400 text-xl" />
+              <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center">
+                <BugOutlined className="text-rose-500 text-xl" />
               </div>
               <div>
-                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Pendientes de Test</Text>
-                <div className="text-2xl font-bold text-slate-400 leading-none mt-1">{totalFuncs - coveredFuncs}</div>
+                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Bugs Activos</Text>
+                <div className="text-2xl font-bold text-rose-600 leading-none mt-1">
+                  {[...regressionCycles, ...smokeCycles].reduce((acc, c) => acc + c.executions.filter(ex => ex.bugId).length, 0)}
+                </div>
               </div>
             </div>
           </Card>

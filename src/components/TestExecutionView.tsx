@@ -1,8 +1,8 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, DatePicker, Row, Col, Upload, message, Tooltip } from 'antd';
-import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, UploadOutlined, DeleteOutlined, FileImageOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons';
+import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, DatePicker, Row, Col, Upload, message, Tooltip, Divider } from 'antd';
+import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, UploadOutlined, DeleteOutlined, FileImageOutlined, EyeOutlined, EditOutlined, BugOutlined, UserOutlined } from '@ant-design/icons';
 import React, { useState, useEffect } from 'react';
-import { useFunctionalities, useExecutions } from '../hooks';
-import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope } from '../types';
+import { useFunctionalities, useExecutions, useTestCases } from '../hooks';
+import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity } from '../types';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -10,9 +10,11 @@ const { Text } = Typography;
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData, save } = useExecutions(projectId);
+  const { data: allTestCases } = useTestCases(projectId);
   
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = Array.isArray(executionsData) ? executionsData : [];
+  const testCases = Array.isArray(allTestCases) ? allTestCases : [];
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -67,6 +69,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           executionDate: date,
           executed: data.result !== TestResult.NOT_EXECUTED,
           status,
+          tester: 'QA Engineer',
           scope: values.scope,
           impactModules: values.impactModules,
           sprint: values.sprint,
@@ -123,16 +126,23 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">Funcionalidad</span>,
+      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">Funcionalidad / Caso</span>,
       dataIndex: 'functionalityId',
       key: 'functionalityId',
-      render: (id: string) => {
+      render: (id: string, record: TestExecution) => {
         const func = functionalities.find(f => f.id === id);
+        const tc = testCases.find(t => t.id === record.testCaseId);
         return (
           <div>
             <Text strong>{id}</Text>
             <br />
             <Text type="secondary" className="text-xs">{func?.name || 'Desconocida'}</Text>
+            {tc && (
+              <div className="mt-1 flex items-center gap-1">
+                <Tag color="cyan" className="text-[10px] m-0">{tc.id}</Tag>
+                <Text className="text-[11px] italic">{tc.title}</Text>
+              </div>
+            )}
           </div>
         );
       },
@@ -153,11 +163,18 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         if (result === TestResult.FAILED) { color = 'error'; icon = <CloseCircleOutlined />; }
         if (result === TestResult.BLOCKED) { color = 'warning'; }
         return (
-          <Space>
-            <Tag color={color} icon={icon}>{result}</Tag>
-            <Tag color={record.status === ExecutionStatus.FINAL ? 'blue' : 'orange'} className="text-[10px] uppercase font-bold">
-              {record.status}
-            </Tag>
+          <Space direction="vertical" size={0}>
+            <Space>
+              <Tag color={color} icon={icon}>{result}</Tag>
+              <Tag color={record.status === ExecutionStatus.FINAL ? 'blue' : 'orange'} className="text-[10px] uppercase font-bold">
+                {record.status}
+              </Tag>
+            </Space>
+            {record.bugId && (
+              <Tag color="magenta" icon={<BugOutlined />} className="mt-1 text-[10px]">
+                {record.bugId}
+              </Tag>
+            )}
           </Space>
         );
       },
@@ -392,8 +409,60 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </Col>
             </Row>
 
+            <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
+              <Input prefix={<UserOutlined />} placeholder="Nombre del tester" />
+            </Form.Item>
+
+            <Form.Item name="testCaseId" label="Caso de Prueba">
+              <Select 
+                allowClear 
+                placeholder="Selecciona un caso de prueba (opcional)"
+                options={testCases
+                  .filter(tc => tc.functionalityId === editingExecution.functionalityId)
+                  .map(tc => ({ label: `${tc.id} - ${tc.title}`, value: tc.id }))
+                }
+              />
+            </Form.Item>
+
             <Form.Item name="result" label="Resultado" rules={[{ required: true }]}>
               <Select options={Object.values(TestResult).map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+
+            <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.result !== currentValues.result}>
+              {({ getFieldValue }) => {
+                const result = getFieldValue('result');
+                if (result === TestResult.FAILED || result === TestResult.BLOCKED) {
+                  return (
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-4">
+                      <Title level={5} className="text-red-800 mb-3 flex items-center gap-2">
+                        <BugOutlined /> Información del Bug
+                      </Title>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name="bugId" label="Bug ID">
+                            <Input placeholder="Ej: BUG-001" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="severity" label="Severidad">
+                            <Select placeholder="Selecciona severidad">
+                              {Object.values(Severity).map(s => (
+                                <Select.Option key={s} value={s}>{s}</Select.Option>
+                              ))}
+                            </Select>
+                          </Form.Item>
+                        </Col>
+                        <Col span={24}>
+                          <Form.Item name="bugLink" label="Link al Bug">
+                            <Input placeholder="https://jira.com/browse/BUG-001" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </div>
+                  );
+                }
+                return null;
+              }}
             </Form.Item>
 
             <Row gutter={16}>
@@ -529,13 +598,44 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Resultado</div>
-              <Tag 
-                color={viewingExecution.result === TestResult.PASSED ? 'success' : viewingExecution.result === TestResult.FAILED ? 'error' : 'warning'}
-                className="font-bold"
-              >
-                {viewingExecution.result}
-              </Tag>
+              <Space>
+                <Tag 
+                  color={viewingExecution.result === TestResult.PASSED ? 'success' : viewingExecution.result === TestResult.FAILED ? 'error' : 'warning'}
+                  className="font-bold"
+                >
+                  {viewingExecution.result}
+                </Tag>
+                {viewingExecution.tester && (
+                  <Tag icon={<UserOutlined />} className="bg-slate-50 border-slate-200">
+                    Tester: {viewingExecution.tester}
+                  </Tag>
+                )}
+              </Space>
             </div>
+
+            {viewingExecution.bugId && (
+              <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                <div className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">Información del Bug</div>
+                <div className="flex flex-wrap gap-4">
+                  <div>
+                    <div className="text-xs text-red-600 font-semibold">Bug ID</div>
+                    <div className="text-slate-800 font-bold">{viewingExecution.bugId}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-red-600 font-semibold">Severidad</div>
+                    <Tag color="red" className="m-0">{viewingExecution.severity}</Tag>
+                  </div>
+                  {viewingExecution.bugLink && (
+                    <div>
+                      <div className="text-xs text-red-600 font-semibold">Link</div>
+                      <a href={viewingExecution.bugLink} target="_blank" rel="noreferrer" className="text-blue-600 underline text-xs">
+                        Ver en Jira/Herramienta
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Notas / Observaciones</div>
