@@ -1,4 +1,4 @@
-import { Layout, Menu, Input, Badge, Avatar, Space, Button, Card, Typography } from 'antd';
+import { Layout, Menu, Input, Badge, Avatar, Space, Button, Card, Typography, Divider } from 'antd';
 import { 
   DashboardOutlined, 
   DatabaseOutlined, 
@@ -14,7 +14,9 @@ import {
   LogoutOutlined,
   BarChartOutlined,
   ArrowLeftOutlined,
-  ProjectOutlined
+  ProjectOutlined,
+  InfoCircleOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import { useState } from 'react';
 import Dashboard from './components/Dashboard';
@@ -27,32 +29,40 @@ import Reports from './components/Reports';
 import CoverageMatrix from './components/CoverageMatrix';
 import ProjectManagement from './components/ProjectManagement';
 import EditProject from './components/EditProject';
+import Settings from './components/Settings';
+import AboutView from './components/AboutView';
 import { Project } from './types';
+
+import { useProjects } from './hooks';
 
 const { Header, Content, Sider } = Layout;
 const { Title, Paragraph, Text } = Typography;
 
 export default function App() {
+  const { data: projects = [] } = useProjects();
   const [view, setView] = useState<'projects' | 'workspace' | 'edit_project'>('projects');
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
   const [currentWorkspaceView, setCurrentWorkspaceView] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
 
+  const currentProject = projects.find(p => p.id === selectedProjectId) || null;
+
   const workspaceMenuItems = [
     { key: 'dashboard', icon: <AppstoreOutlined />, label: 'Dashboard' },
-    { key: 'coverage', icon: <BarChartOutlined />, label: 'Matriz de Cobertura' },
-    { key: 'regression_cycles', icon: <HistoryOutlined />, label: 'Control de Regresión' },
-    { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: 'Control de Smoke' },
     { key: 'functionalities', icon: <DatabaseOutlined />, label: 'Funcionalidades' },
     { key: 'testing', icon: <CheckCircleOutlined />, label: 'Ejecución de Pruebas' },
-    { key: 'plans', icon: <DatabaseOutlined />, label: 'Planes de Prueba' },
+    { key: 'plans', icon: <CalendarOutlined />, label: 'Planes de Prueba' },
+    { key: 'regression_cycles', icon: <HistoryOutlined />, label: 'Control de Regresión' },
+    { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: 'Control de Smoke' },
     { key: 'reports', icon: <BarChartOutlined />, label: 'Reportes' },
+    { key: 'coverage', icon: <DatabaseOutlined />, label: 'Matriz de cobertura' },
     { key: 'config', icon: <SettingOutlined />, label: 'Configuración' },
+    { key: 'about', icon: <InfoCircleOutlined />, label: 'Acerca de' },
   ];
 
   const handleViewDetails = (project: Project) => {
-    setCurrentProject(project);
+    setSelectedProjectId(project.id);
     setView('workspace');
     setCurrentWorkspaceView('dashboard');
   };
@@ -64,7 +74,7 @@ export default function App() {
 
   const handleBackToProjects = () => {
     setView('projects');
-    setCurrentProject(null);
+    setSelectedProjectId(null);
   };
 
   const renderWorkspaceContent = () => {
@@ -79,7 +89,8 @@ export default function App() {
       case 'testing': return <TestExecutionView projectId={currentProject.id} />;
       case 'plans': return <TestPlanView projectId={currentProject.id} />;
       case 'reports': return <Reports projectId={currentProject.id} />;
-      case 'config': return <Card className="rounded-2xl border-slate-100 shadow-sm"><Title level={3}>Configuración</Title><Paragraph>Próximamente...</Paragraph></Card>;
+      case 'config': return <Settings projectId={currentProject.id} />;
+      case 'about': return <AboutView project={currentProject} />;
       default: return <Dashboard projectId={currentProject.id} />;
     }
   };
@@ -128,9 +139,18 @@ export default function App() {
             className="border-none hover:bg-gray-100 rounded-lg"
           />
           <div className="h-6 w-[1px] bg-gray-200 mx-2" />
-          <div className="flex flex-col">
-            <Text strong className="leading-none">{currentProject?.name}</Text>
-            <Text type="secondary" className="text-[10px] uppercase tracking-wider">{currentProject?.version}</Text>
+          <div className="flex items-center gap-3">
+            {currentProject?.logo ? (
+              <Avatar src={currentProject.logo} className="border border-slate-100" />
+            ) : (
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm">
+                <ProjectOutlined className="text-white text-sm" />
+              </div>
+            )}
+            <div className="flex flex-col">
+              <Text strong className="leading-none">{currentProject?.organizationName || currentProject?.name}</Text>
+              <Text type="secondary" className="text-[10px] uppercase tracking-wider">{currentProject?.version}</Text>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { storageService } from './services/storageService';
-import { Functionality, TestExecution, RegressionCycle, TestPlan, Project, TestCase } from './types';
+import { Functionality, TestExecution, RegressionCycle, TestPlan, Project, TestCase, Sprint, Role, Module, TestRun, MeetingNote } from './types';
 
 export function useProjects() {
   const queryClient = useQueryClient();
@@ -11,13 +11,50 @@ export function useProjects() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (project: Project) => Promise.resolve(storageService.saveProject(project)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    mutationFn: async (project: Project) => {
+      storageService.saveProject(project);
+      return project;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => Promise.resolve(storageService.deleteProject(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    mutationFn: async (id: string) => {
+      storageService.deleteProject(id);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  return { 
+    ...query, 
+    save: saveMutation.mutateAsync, 
+    delete: deleteMutation.mutateAsync,
+    isSaving: saveMutation.isPending,
+    isDeleting: deleteMutation.isPending
+  };
+}
+
+export function useMeetingNotes(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['meeting_notes', projectId],
+    queryFn: () => storageService.getMeetingNotes(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (note: MeetingNote) => Promise.resolve(storageService.saveMeetingNote(note)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meeting_notes', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteMeetingNote(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meeting_notes', projectId] }),
   });
 
   return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
@@ -147,6 +184,90 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => Promise.resolve(storageService.deleteTestCase(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_cases', projectId, functionalityId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useSprints(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['sprints', projectId],
+    queryFn: () => storageService.getSprints(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (sprint: Sprint) => Promise.resolve(storageService.saveSprint(sprint)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteSprint(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useRoles(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['roles', projectId],
+    queryFn: () => storageService.getRoles(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (role: Role) => Promise.resolve(storageService.saveRole(role)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteRole(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles', projectId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useModules(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['modules', projectId],
+    queryFn: () => storageService.getModules(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (module: Module) => Promise.resolve(storageService.saveModule(module)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['modules', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteModule(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['modules', projectId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useTestRuns(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['test_runs', projectId],
+    queryFn: () => storageService.getTestRuns(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (run: TestRun) => Promise.resolve(storageService.saveTestRun(run)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_runs', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => Promise.resolve(storageService.deleteTestRun(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_runs', projectId] }),
   });
 
   return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };

@@ -13,6 +13,7 @@ export enum TestStatus {
   FAILED = 'Fallido',
   IN_PROGRESS = 'En desarrollo',
   BACKLOG = 'Backlog',
+  MVP = 'MVP',
   POST_MVP = 'Post MVP',
 }
 
@@ -32,11 +33,13 @@ export enum ProjectStatus {
 export interface Project {
   id: string;
   name: string;
+  organizationName?: string;
   description: string;
   version: string;
   status: ProjectStatus;
   createdAt: string;
   icon?: string;
+  logo?: string; // Base64 image
   teamMembers?: string[];
   purpose?: string;
   coreRequirements?: string[];
@@ -56,6 +59,7 @@ export interface Functionality {
   status: TestStatus;
   priority: Priority;
   riskLevel: RiskLevel;
+  sprint?: string;
 }
 
 export interface TestCase {
@@ -119,12 +123,12 @@ export interface TestExecution {
   id: string;
   projectId: string;
   functionalityId: string;
-  testCaseId?: string; // New: Link to test case
+  testCaseId?: string;
   testType: TestType;
   executed: boolean;
   result: TestResult;
   executionDate: string;
-  tester: string; // New: Who executed it
+  tester: string;
   notes?: string;
   evidenceImage?: string;
   status: ExecutionStatus;
@@ -134,9 +138,37 @@ export interface TestExecution {
   priority?: Priority;
   jiraId?: string;
   description?: string;
-  bugId?: string; // New: Bug tracking
-  bugLink?: string; // New: Bug tracking
-  severity?: Severity; // New: Bug tracking
+  bugId?: string;
+  bugLink?: string;
+  severity?: Severity;
+}
+
+export interface TestRunResult {
+  id: string;
+  functionalityId: string;
+  testCaseId: string;
+  result: TestResult;
+  notes?: string;
+  evidenceImage?: string;
+  bugId?: string;
+  bugLink?: string;
+  severity?: Severity;
+}
+
+export interface TestRun {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  executionDate: string;
+  status: ExecutionStatus;
+  testType: TestType;
+  sprint: string;
+  priority: Priority;
+  tester: string;
+  selectedModules: string[];
+  selectedFunctionalities: string[]; // IDs
+  results: TestRunResult[];
 }
 
 export interface DashboardMetrics {
@@ -176,9 +208,47 @@ export interface RegressionCycle {
   failed: number;
   blocked: number;
   pending: number;
-  approvalRate: number;
+  passRate: number;
   note: string;
   status: 'FINALIZADA' | 'EN_PROGRESO';
   sprint?: string;
+  type?: 'REGRESSION' | 'SMOKE';
   executions: RegressionExecution[];
+}
+
+export interface Sprint {
+  id: string;
+  projectId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: 'Planeado' | 'En Progreso' | 'Completado';
+  objective: string;
+}
+
+export interface Role {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+}
+
+export interface Module {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+}
+
+export interface MeetingNote {
+  id: string;
+  projectId: string;
+  date: string;
+  time: string;
+  participants: string;
+  notes: string;
+  aiSummary?: string;
+  aiDecisions?: string;
+  aiActions?: string;
+  aiNextSteps?: string;
 }

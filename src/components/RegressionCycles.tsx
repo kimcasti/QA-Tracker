@@ -1,7 +1,7 @@
 import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message, Divider, Checkbox } from 'antd';
 import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
-import { useRegressionCycles, useFunctionalities, useTestCases } from '../hooks';
+import { useRegressionCycles, useFunctionalities, useTestCases, useSprints } from '../hooks';
 import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity } from '../types';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import dayjs from 'dayjs';
@@ -13,6 +13,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const { data: cyclesData, save } = useRegressionCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
+  const { data: sprintsData = [] } = useSprints(projectId);
   
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -73,6 +74,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const [currentExecution, setCurrentExecution] = useState<RegressionExecution | null>(null);
   const [evidenceForm] = Form.useForm();
   const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
+
+  const isReadOnly = selectedCycle?.status === 'FINALIZADA';
 
   // Sync form values when currentExecution changes
   useEffect(() => {
@@ -159,8 +162,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     },
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">% APROB.</span>,
-      dataIndex: 'approvalRate',
-      key: 'approvalRate',
+      dataIndex: 'passRate',
+      key: 'passRate',
       render: (rate: number) => (
         <div className="flex items-center gap-3 min-w-[120px]">
           <Progress 
@@ -209,6 +212,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           sprint: values.sprint ? `Sprint ${values.sprint}` : undefined,
           date: values.date.format('YYYY-MM-DD'),
         };
+        console.log('Payload - Update Regression Cycle:', updatedCycle);
         save(updatedCycle);
         message.success('Ciclo actualizado correctamente');
       } else {
@@ -229,6 +233,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 functionalityName: f.name,
                 executed: false,
                 result: TestResult.NOT_EXECUTED,
+                date: undefined,
               });
             });
           } else {
@@ -255,11 +260,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           failed: 0,
           blocked: 0,
           pending: initialExecutions.length,
-          approvalRate: 0,
+          passRate: 0,
           status: values.status || 'EN_PROGRESO',
           executions: initialExecutions,
         };
 
+        console.log('Payload - Create Regression Cycle:', newCycle);
         save(newCycle);
         setSelectedCycle(newCycle); // Open detail view immediately
         message.success('Ciclo creado correctamente');
@@ -295,7 +301,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       failed,
       blocked,
       pending,
-      approvalRate: rate,
+      passRate: rate,
       status: pending === 0 ? 'FINALIZADA' : 'EN_PROGRESO'
     };
 
@@ -320,7 +326,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       failed: 0,
       blocked: 0,
       pending: 0,
-      approvalRate: 100,
+      passRate: 100,
       status: 'FINALIZADA'
     };
 
@@ -380,8 +386,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <div className="flex items-center gap-3">
                   <Tag 
                     color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'blue'} 
-                    className="rounded-full px-3 font-bold uppercase text-[10px] cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => handleEdit(selectedCycle)}
+                    className={`rounded-full px-3 font-bold uppercase text-[10px] ${!isReadOnly ? 'cursor-pointer hover:opacity-80' : ''} transition-opacity`}
+                    onClick={!isReadOnly ? () => handleEdit(selectedCycle) : undefined}
                   >
                     {selectedCycle.status === 'FINALIZADA' ? 'Finalizada' : 'En Progreso'}
                   </Tag>
@@ -392,13 +398,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               </div>
             </div>
             <Space size="middle">
-              <Button 
-                icon={<SettingOutlined />} 
-                onClick={() => handleEdit(selectedCycle)}
-                className="rounded-xl h-11 px-4 border-slate-200 text-slate-600 font-semibold"
-              >
-                Editar Info
-              </Button>
+              {!isReadOnly && (
+                <Button 
+                  icon={<SettingOutlined />} 
+                  onClick={() => handleEdit(selectedCycle)}
+                  className="rounded-xl h-11 px-4 border-slate-200 text-slate-600 font-semibold"
+                >
+                  Editar Info
+                </Button>
+              )}
               <Button 
                 icon={<FileTextOutlined />} 
                 className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
@@ -406,15 +414,17 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               >
                 Export Report
               </Button>
-              <Button 
-                type="primary" 
-                icon={<BarChartOutlined />} 
-                size="large" 
-                className="rounded-xl h-11 px-8 shadow-lg shadow-blue-200 font-bold"
-                onClick={() => handleExecuteAll(selectedCycle)}
-              >
-                Execute All
-              </Button>
+              {!isReadOnly && (
+                <Button 
+                  type="primary" 
+                  icon={<BarChartOutlined />} 
+                  size="large" 
+                  className="rounded-xl h-11 px-8 shadow-lg shadow-blue-200 font-bold"
+                  onClick={() => handleExecuteAll(selectedCycle)}
+                >
+                  Execute All
+                </Button>
+              )}
             </Space>
           </div>
 
@@ -546,8 +556,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   align: 'center',
                   render: (executed, record) => (
                     <div 
-                      className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-colors ${executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
-                      onClick={() => updateExecution(selectedCycle.id, record.id, { executed: !executed, result: !executed ? TestResult.PASSED : TestResult.NOT_EXECUTED })}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center ${!isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
+                      onClick={!isReadOnly ? () => updateExecution(selectedCycle.id, record.id, { executed: !executed, result: !executed ? TestResult.PASSED : TestResult.NOT_EXECUTED }) : undefined}
                     >
                       <CheckCircleOutlined />
                     </div>
@@ -570,6 +580,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                         onChange={(val) => updateExecution(selectedCycle.id, record.id, { result: val, executed: val !== TestResult.NOT_EXECUTED })}
                         className="w-32"
                         bordered={false}
+                        disabled={isReadOnly}
                         dropdownStyle={{ borderRadius: '12px' }}
                         options={Object.values(TestResult).map(r => ({
                           label: (
@@ -715,7 +726,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <div className="flex justify-between items-start">
                   <div>
                     <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Aprobación</Text>
-                    <div className="text-3xl font-bold text-blue-600 mt-1">{latestCycle.approvalRate}%</div>
+                    <div className="text-3xl font-bold text-blue-600 mt-1">{latestCycle.passRate}%</div>
                   </div>
                   <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
                     <BarChartOutlined className="text-blue-600" />
@@ -748,7 +759,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 allowClear
                 value={sprintFilter}
                 onChange={setSprintFilter}
-                options={sprintOptions}
+                options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
               />
             </div>
           </Col>
@@ -835,8 +846,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="sprint" label={<span className="font-semibold text-slate-600">Sprint (Número)</span>}>
-                <Input placeholder="Ej: 25" className="h-10 rounded-lg" type="number" />
+              <Form.Item name="sprint" label={<span className="font-semibold text-slate-600">Sprint</span>}>
+                <Select 
+                  placeholder="Selecciona Sprint" 
+                  className="h-10 rounded-lg"
+                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -885,13 +900,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               return;
             }
             const values = await evidenceForm.validateFields();
-            updateExecution(selectedCycle.id, currentExecution.id, {
+            const evidencePayload = {
               evidence: values.evidence,
               evidenceImage: evidenceImage,
               bugId: values.bugId,
               bugLink: values.bugLink,
               severity: values.severity
-            });
+            };
+            console.log('Payload - Save Evidence:', { executionId: currentExecution.id, ...evidencePayload });
+            updateExecution(selectedCycle.id, currentExecution.id, evidencePayload);
             setEvidenceModalOpen(false);
             setCurrentExecution(null);
             message.success('Evidencia guardada correctamente');
@@ -904,6 +921,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         centered
         okText="Guardar Evidencia"
         cancelText="Cerrar"
+        footer={isReadOnly ? [
+          <Button key="close" onClick={() => setEvidenceModalOpen(false)}>Cerrar</Button>
+        ] : undefined}
       >
         <div className="space-y-4 mt-4">
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
@@ -913,7 +933,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
           <Form form={evidenceForm} layout="vertical">
             <Form.Item name="evidence" label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}>
-              <Input.TextArea rows={4} placeholder="Describe los hallazgos, errores encontrados o pasos realizados..." className="rounded-lg" />
+              <Input.TextArea rows={4} placeholder="Describe los hallazgos, errores encontrados o pasos realizados..." className="rounded-lg" disabled={isReadOnly} />
             </Form.Item>
 
             <Divider orientation="left" className="!m-0 !mb-4">
@@ -923,12 +943,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item name="bugId" label="Bug ID (Jira/GitHub)">
-                  <Input placeholder="Ej: BUG-123" className="rounded-lg" />
+                  <Input placeholder="Ej: BUG-123" className="rounded-lg" disabled={isReadOnly} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item name="severity" label="Severidad">
-                  <Select placeholder="Selecciona severidad" className="rounded-lg">
+                  <Select placeholder="Selecciona severidad" className="rounded-lg" disabled={isReadOnly}>
                     {Object.values(Severity).map(s => (
                       <Select.Option key={s} value={s}>{s}</Select.Option>
                     ))}
@@ -937,7 +957,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               </Col>
               <Col span={24}>
                 <Form.Item name="bugLink" label="Link al Bug">
-                  <Input placeholder="https://..." className="rounded-lg" />
+                  <Input placeholder="https://..." className="rounded-lg" disabled={isReadOnly} />
                 </Form.Item>
               </Col>
             </Row>
@@ -947,21 +967,24 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 {evidenceImage ? (
                   <div className="relative group rounded-xl overflow-hidden border border-slate-200">
                     <img src={evidenceImage} alt="Evidencia" className="w-full h-auto max-h-64 object-contain bg-slate-100" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                      <Button 
-                        danger 
-                        icon={<DeleteOutlined />} 
-                        onClick={() => setEvidenceImage(undefined)}
-                        className="rounded-lg"
-                      >
-                        Eliminar
-                      </Button>
-                    </div>
+                    {!isReadOnly && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                        <Button 
+                          danger 
+                          icon={<DeleteOutlined />} 
+                          onClick={() => setEvidenceImage(undefined)}
+                          className="rounded-lg"
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Upload.Dragger
                     maxCount={1}
                     showUploadList={false}
+                    disabled={isReadOnly}
                     beforeUpload={(file) => {
                       const reader = new FileReader();
                       reader.onload = (e) => {

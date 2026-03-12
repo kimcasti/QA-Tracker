@@ -2,7 +2,7 @@ import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Row, Col, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
-import { useFunctionalities } from '../hooks';
+import { useFunctionalities, useModules, useRoles, useSprints } from '../hooks';
 import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
@@ -10,6 +10,10 @@ import * as XLSX from 'xlsx';
 
 export default function FunctionalityList({ filter, projectId }: { filter?: 'regression' | 'smoke', projectId?: string }) {
   const { data: functionalitiesData, save, delete: deleteFunc, bulkUpdate, bulkAdd } = useFunctionalities(projectId);
+  const { data: modulesData = [] } = useModules(projectId);
+  const { data: rolesData = [] } = useRoles(projectId);
+  const { data: sprintsData = [] } = useSprints(projectId);
+  
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   
   const [moduleFilter, setModuleFilter] = useState<string | null>(null);
@@ -26,8 +30,6 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
     
     return matchesBaseFilter && matchesModule && matchesTestType && matchesStatus;
   });
-
-  const modules = Array.from(new Set(allFunctionalities.map(f => f?.module).filter(Boolean))).sort();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -170,6 +172,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
           [TestStatus.IN_PROGRESS]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
           [TestStatus.COMPLETED]: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+          [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
           [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
         }[status] || { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
 
@@ -228,13 +231,16 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       const isRegression = values.testTypes?.includes(TestType.REGRESSION) || false;
       const isSmoke = values.testTypes?.includes(TestType.SMOKE) || false;
 
-      save({ 
+      const payload = { 
         ...editingFunc, 
         ...values,
         id: finalId,
         isRegression,
-        isSmoke
-      });
+        isSmoke,
+        projectId: projectId || ''
+      };
+      console.log('Payload - Save Functionality:', payload);
+      save(payload);
       setIsModalOpen(false);
       form.resetFields();
       setEditingFunc(null);
@@ -257,6 +263,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       if (values.status) updates.status = values.status;
 
       if (Object.keys(updates).length > 0) {
+        console.log('Payload - Bulk Update Functionalities:', { ids: selectedRowKeys, updates });
         await bulkUpdate({ ids: selectedRowKeys as string[], updates });
         setIsBulkModalOpen(false);
         setSelectedRowKeys([]);
@@ -429,6 +436,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   const completedFuncs = allFunctionalities.filter(f => f.status === TestStatus.COMPLETED).length;
   const inProgressFuncs = allFunctionalities.filter(f => f.status === TestStatus.IN_PROGRESS).length;
   const backlogFuncs = allFunctionalities.filter(f => f.status === TestStatus.BACKLOG).length;
+  const mvpFuncs = allFunctionalities.filter(f => f.status === TestStatus.MVP).length;
 
   return (
     <div className="space-y-6 pb-10">
@@ -461,7 +469,11 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             onClick={() => {
               setEditingFunc(null);
               form.resetFields();
-              form.setFieldsValue({ status: TestStatus.BACKLOG });
+              form.setFieldsValue({ 
+                status: TestStatus.BACKLOG,
+                priority: Priority.MEDIUM,
+                riskLevel: RiskLevel.MEDIUM
+              });
               setIsModalOpen(true);
             }}
             className="rounded-lg h-10 px-6"
@@ -473,28 +485,34 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
       {/* Metrics Cards */}
       <Row gutter={[20, 20]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
             <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</Text>
             <div className="text-3xl font-bold mt-1 text-slate-800">{totalFuncs}</div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
             <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Completadas</Text>
             <div className="text-3xl font-bold mt-1 text-emerald-600">{completedFuncs}</div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
             <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">En Desarrollo</Text>
             <div className="text-3xl font-bold mt-1 text-blue-600">{inProgressFuncs}</div>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
             <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Backlog</Text>
-            <div className="text-3xl font-bold mt-1 text-amber-600">{backlogFuncs}</div>
+            <div className="text-3xl font-bold mt-1 text-slate-500">{backlogFuncs}</div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={5}>
+          <Card className="rounded-2xl shadow-sm border-slate-100">
+            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">MVP</Text>
+            <div className="text-3xl font-bold mt-1 text-amber-600">{mvpFuncs}</div>
           </Card>
         </Col>
       </Row>
@@ -510,7 +528,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               allowClear
               onChange={setModuleFilter}
               value={moduleFilter}
-              options={modules.map(m => ({ label: m, value: m }))}
+              options={modulesData.map(m => ({ label: m.name, value: m.name }))}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -598,16 +616,25 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           layout="vertical" 
           className="mt-4"
           onValuesChange={handleValuesChange}
+          initialValues={{ 
+            status: TestStatus.BACKLOG, 
+            priority: Priority.MEDIUM, 
+            riskLevel: RiskLevel.MEDIUM 
+          }}
         >
           <Row gutter={20}>
             <Col span={10}>
               <Form.Item name="id" label={<span className="font-semibold text-slate-600">ID de Funcionalidad</span>} rules={[{ required: true }]}>
-                <Input placeholder="Ej: AUTH-01" disabled={!!editingFunc} className="h-10 rounded-lg" />
+                <Input placeholder="Ej: AUTH-01" disabled className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={14}>
               <Form.Item name="module" label={<span className="font-semibold text-slate-600">Módulo</span>} rules={[{ required: true }]}>
-                <Input placeholder="Ej: Login / Pacientes" className="h-10 rounded-lg" />
+                <Select 
+                  placeholder="Selecciona un módulo" 
+                  className="h-10 rounded-lg"
+                  options={modulesData.map(m => ({ label: m.name, value: m.name }))}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -619,34 +646,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           <Form.Item name="roles" label={<span className="font-semibold text-slate-600">Roles Autorizados</span>} rules={[{ required: true }]}>
             <Select
               mode="multiple"
-              placeholder="Selecciona o agrega roles"
+              placeholder="Selecciona roles"
               className="executive-select"
-              dropdownRender={(menu) => (
-                <div className="p-1">
-                  {menu}
-                  <Divider className="my-2" />
-                  <div className="flex gap-2 p-1">
-                    <Input
-                      placeholder="Nuevo rol..."
-                      ref={inputRef}
-                      value={name}
-                      onChange={onNameChange}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="rounded-lg h-9"
-                    />
-                    <Button 
-                      type="primary" 
-                      size="small"
-                      icon={<PlusOutlined />} 
-                      onClick={addItem}
-                      className="rounded-lg h-9 px-4 flex items-center"
-                    >
-                      Agregar
-                    </Button>
-                  </div>
-                </div>
-              )}
-              options={items.map((item) => ({ label: item, value: item }))}
+              options={rolesData.map((item) => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>
 
@@ -682,6 +684,15 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
           <Row gutter={20}>
             <Col span={12}>
+              <Form.Item name="sprint" label={<span className="font-semibold text-slate-600">Sprint</span>} rules={[{ required: true }]}>
+                <Select 
+                  placeholder="Selecciona un sprint" 
+                  className="h-10 rounded-lg"
+                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
               <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado Actual</span>} rules={[{ required: true }]}>
                 <Select 
                   className="h-10 rounded-lg"
@@ -689,12 +700,11 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="deliveryDate" label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>} rules={[{ required: true }]}>
-                <Input type="date" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
           </Row>
+
+          <Form.Item name="deliveryDate" label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>} rules={[{ required: true }]}>
+            <Input type="date" className="h-10 rounded-lg" />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -737,7 +747,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               mode="multiple"
               placeholder="Cambiar roles para todos..."
               className="executive-select"
-              options={items.map((item) => ({ label: item, value: item }))}
+              options={rolesData.map((item) => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>
 

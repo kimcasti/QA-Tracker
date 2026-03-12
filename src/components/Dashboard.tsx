@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, Col, Row, Statistic, Table, Typography, Tag, Progress, Space } from 'antd';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { useFunctionalities, useExecutions, useRegressionCycles, useSmokeCycles, useTestCases } from '../hooks';
-import { TestResult, TestStatus, ExecutionStatus, Severity } from '../types';
+import { TestResult, TestStatus, ExecutionStatus, Severity, TestType } from '../types';
 import { 
   CheckCircleFilled, 
   DatabaseFilled, 
@@ -63,8 +63,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const completedFuncs = functionalities.filter(f => f.status === TestStatus.COMPLETED).length;
   const inProgressFuncs = functionalities.filter(f => f.status === TestStatus.IN_PROGRESS).length;
   const backlogFuncs = functionalities.filter(f => f.status === TestStatus.BACKLOG).length;
+  const mvpFuncs = functionalities.filter(f => f.status === TestStatus.MVP).length;
   const postMvpFuncs = functionalities.filter(f => f.status === TestStatus.POST_MVP).length;
   const failedFuncs = functionalities.filter(f => f.status === TestStatus.FAILED).length;
+  const totalTests = testCases.length;
+  const automatedTests = testCases.filter(tc => tc.testType === TestType.SANITY).length; // Using SANITY as a proxy for automated if not defined
+  const automationCoverage = totalTests > 0 ? Math.round((automatedTests / totalTests) * 100) : 0;
 
   // Regression Stats
   const regressionFuncs = functionalities.filter(f => f.isRegression);
@@ -139,7 +143,10 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         let color = 'processing';
         if (status === TestStatus.COMPLETED) color = 'success';
         if (status === TestStatus.FAILED) color = 'error';
-        if (status === TestStatus.BACKLOG) color = 'warning';
+        if (status === TestStatus.IN_PROGRESS) color = 'purple';
+        if (status === TestStatus.BACKLOG) color = 'blue';
+        if (status === TestStatus.MVP) color = 'orange';
+        if (status === TestStatus.POST_MVP) color = 'default';
         return <Tag color={color} className="rounded-full px-3">{status}</Tag>;
       }
     },
@@ -160,7 +167,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     period: `Sprint ${24 + i}`,
     name: f.name,
     status: f.status,
-    quality: f.status === TestStatus.COMPLETED ? 100 : f.status === TestStatus.FAILED ? 0 : 50
+    quality: f.status === TestStatus.COMPLETED ? 100 : 50
   }));
 
   return (
@@ -220,17 +227,71 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-amber-50/30">
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow bg-gradient-to-br from-white to-purple-50/30">
               <div className="flex justify-between items-start">
                 <div>
-                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Bug Detection Rate</Text>
-                  <div className="text-3xl font-bold mt-1 text-amber-600">{bugDetectionRate.toFixed(2)}%</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Bugs por cada 100 tests</div>
+                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Automatización</Text>
+                  <div className="text-3xl font-bold mt-1 text-purple-600">{automationCoverage}%</div>
+                  <div className="text-[10px] text-slate-400 mt-1">{automatedTests} de {totalTests} casos</div>
                 </div>
-                <div className="p-2 bg-amber-50 rounded-xl">
-                  <BarChartOutlined className="text-amber-500 text-lg" />
+                <div className="p-2 bg-purple-50 rounded-xl">
+                  <ThunderboltOutlined className="text-purple-500 text-lg" />
                 </div>
               </div>
+            </Card>
+          </Col>
+        </Row>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-slate-800 font-bold text-lg">
+          <BarChartOutlined className="text-blue-600" />
+          <span>Estatus de Desarrollo</span>
+        </div>
+        
+        <Row gutter={[20, 20]}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+              <Statistic 
+                title={<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Backlog</span>}
+                value={backlogFuncs}
+                valueStyle={{ color: '#64748b', fontWeight: 'bold' }}
+                prefix={<DatabaseFilled className="text-slate-400 mr-2" />}
+              />
+              <Progress percent={totalFuncs > 0 ? (backlogFuncs / totalFuncs) * 100 : 0} showInfo={false} strokeColor="#94a3b8" size="small" />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+              <Statistic 
+                title={<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">En Desarrollo</span>}
+                value={inProgressFuncs}
+                valueStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
+                prefix={<ThunderboltOutlined className="text-blue-500 mr-2" />}
+              />
+              <Progress percent={totalFuncs > 0 ? (inProgressFuncs / totalFuncs) * 100 : 0} showInfo={false} strokeColor="#3b82f6" size="small" />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+              <Statistic 
+                title={<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Completadas</span>}
+                value={completedFuncs}
+                valueStyle={{ color: '#10b981', fontWeight: 'bold' }}
+                prefix={<CheckCircleFilled className="text-emerald-500 mr-2" />}
+              />
+              <Progress percent={totalFuncs > 0 ? (completedFuncs / totalFuncs) * 100 : 0} showInfo={false} strokeColor="#10b981" size="small" />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 hover:shadow-md transition-shadow">
+              <Statistic 
+                title={<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">MVP</span>}
+                value={mvpFuncs}
+                valueStyle={{ color: '#f59e0b', fontWeight: 'bold' }}
+                prefix={<SafetyCertificateOutlined className="text-amber-500 mr-2" />}
+              />
+              <Progress percent={totalFuncs > 0 ? (mvpFuncs / totalFuncs) * 100 : 0} showInfo={false} strokeColor="#f59e0b" size="small" />
             </Card>
           </Col>
         </Row>

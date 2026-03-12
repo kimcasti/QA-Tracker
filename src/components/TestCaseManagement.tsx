@@ -70,6 +70,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       functionalityId,
     };
 
+    console.log('Payload - Save Test Case:', newTestCase);
     save(newTestCase, {
       onSuccess: () => {
         message.success(editingTestCase ? 'Caso de prueba actualizado' : 'Caso de prueba creado');

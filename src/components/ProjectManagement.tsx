@@ -8,11 +8,14 @@ import {
   RocketOutlined, 
   ProjectOutlined,
   TeamOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  ArrowRightOutlined,
+  MoreOutlined
 } from '@ant-design/icons';
 import { useProjects } from '../hooks';
 import { Project, ProjectStatus } from '../types';
 import dayjs from 'dayjs';
+import { Dropdown, MenuProps } from 'antd';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -36,7 +39,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onViewDetails, on
     return matchesSearch && matchesStatus;
   });
 
-  const handleCreateProject = (values: any) => {
+  const handleCreateProject = async (values: any) => {
     const newProject: Project = {
       id: `P${Date.now()}`,
       name: values.name,
@@ -50,10 +53,26 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onViewDetails, on
       coreRequirements: [],
       businessRules: ''
     };
-    saveProject(newProject);
-    message.success('Proyecto creado con éxito');
-    setIsModalVisible(false);
-    form.resetFields();
+    
+    console.log('Payload - Create Project:', newProject);
+    try {
+      await saveProject(newProject);
+      message.success('Proyecto creado con éxito');
+      setIsModalVisible(false);
+      form.resetFields();
+    } catch (error) {
+      console.error('Error creating project:', error);
+      message.error('Error al crear el proyecto');
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const getStatusColor = (status: ProjectStatus) => {
@@ -83,82 +102,87 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onViewDetails, on
         </Button>
       </div>
 
-      <div className="flex gap-4 mb-8 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="flex gap-4 mb-8 bg-white p-2 rounded-xl shadow-sm border border-gray-100">
         <Input 
-          placeholder="Buscar proyectos..." 
+          placeholder="Buscar proyectos por nombre o descripción..." 
           prefix={<SearchOutlined className="text-gray-400" />} 
-          className="max-w-md h-10 rounded-lg"
+          variant="borderless"
+          className="flex-1 h-10"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
         />
-        <Select 
-          defaultValue="All" 
-          className="w-48 h-10"
-          onChange={value => setStatusFilter(value)}
-        >
-          <Option value="All">Todos los Estados</Option>
-          <Option value={ProjectStatus.ACTIVE}>Activos</Option>
-          <Option value={ProjectStatus.PAUSED}>Pausados</Option>
-          <Option value={ProjectStatus.COMPLETED}>Completados</Option>
-        </Select>
       </div>
 
       {filteredProjects.length > 0 ? (
         <Row gutter={[24, 24]}>
-          {filteredProjects.map(project => (
-            <Col xs={24} sm={12} lg={8} key={project.id}>
-              <Card 
-                hoverable 
-                className="rounded-2xl overflow-hidden border-none shadow-sm hover:shadow-xl transition-all duration-300"
-                bodyStyle={{ padding: '24px' }}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
-                    <ProjectOutlined className="text-2xl text-emerald-600" />
+          {filteredProjects.map(project => {
+            const items: MenuProps['items'] = [
+              {
+                key: 'edit',
+                label: 'Editar Proyecto',
+                icon: <EditOutlined />,
+                onClick: (e) => {
+                  e.domEvent.stopPropagation();
+                  onEditProject(project);
+                }
+              }
+            ];
+
+            return (
+              <Col xs={24} sm={12} lg={8} key={project.id}>
+                <Card 
+                  hoverable 
+                  onClick={() => onViewDetails(project)}
+                  className="rounded-xl overflow-hidden border-none shadow-sm hover:shadow-lg transition-all duration-300 group"
+                  bodyStyle={{ padding: '24px' }}
+                >
+                  <div className="flex justify-between items-start mb-6">
+                    {project.logo ? (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden shadow-sm border border-gray-100">
+                        <img src={project.logo} alt={project.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 bg-yellow-400 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                        {getInitials(project.organizationName || project.name)}
+                      </div>
+                    )}
+                    <Dropdown menu={{ items }} trigger={['click']}>
+                      <Button 
+                        type="text" 
+                        icon={<MoreOutlined className="text-gray-400" />} 
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:bg-gray-100 rounded-full"
+                      />
+                    </Dropdown>
                   </div>
-                  <Tag color={getStatusColor(project.status)} className="rounded-full px-3 border-none">
-                    {project.status}
-                  </Tag>
-                </div>
 
-                <Title level={4} className="mb-1">{project.name}</Title>
-                <Text type="secondary" className="block mb-4 text-xs">Versión: {project.version}</Text>
-                
-                <Paragraph ellipsis={{ rows: 2 }} className="text-gray-500 mb-6 h-12">
-                  {project.description}
-                </Paragraph>
+                  <Title level={4} className="mb-2 group-hover:text-emerald-600 transition-colors">
+                    {project.organizationName || project.name}
+                  </Title>
+                  
+                  <Paragraph ellipsis={{ rows: 2 }} className="text-gray-400 mb-8 text-sm h-10">
+                    {project.description}
+                  </Paragraph>
 
-                <div className="flex items-center gap-4 mb-6 text-gray-400 text-xs">
-                  <span className="flex items-center gap-1">
-                    <CalendarOutlined /> {project.createdAt}
-                  </span>
-                  {project.teamMembers && (
-                    <span className="flex items-center gap-1">
-                      <TeamOutlined /> {project.teamMembers.length} Miembros
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Button 
-                    icon={<EditOutlined />} 
-                    onClick={() => onEditProject(project)}
-                    className="rounded-lg border-gray-200 hover:border-emerald-500 hover:text-emerald-600"
-                  >
-                    Editar
-                  </Button>
-                  <Button 
-                    type="primary" 
-                    icon={<EyeOutlined />} 
-                    onClick={() => onViewDetails(project)}
-                    className="rounded-lg bg-gray-900 hover:bg-black border-none"
-                  >
-                    Ver Detalles
-                  </Button>
-                </div>
-              </Card>
-            </Col>
-          ))}
+                  <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-50">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 text-gray-300 text-xs">
+                        <CalendarOutlined />
+                        <span>{dayjs(project.createdAt).format('D MMM YYYY')}</span>
+                      </div>
+                      <Tag className="m-0 rounded-md bg-gray-50 border-gray-100 text-gray-500 font-medium text-[10px] px-2">
+                        {project.version}
+                      </Tag>
+                    </div>
+                    
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${project.status === ProjectStatus.ACTIVE ? 'bg-emerald-500 text-white' : 'bg-gray-50 text-gray-300'}`}>
+                      <ArrowRightOutlined className="text-xs" />
+                    </div>
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
       ) : (
         <Empty 

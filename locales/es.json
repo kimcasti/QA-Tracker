@@ -1,0 +1,73 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "functionalities": "Funcionalidades",
+    "test_execution": "Ejecución de Pruebas",
+    "test_plans": "Planes de Prueba",
+    "regression_cycles": "Ciclos de Regresión",
+    "smoke_control": "Control de Smoke",
+    "reports": "Reportes",
+    "configuration": "Configuración",
+    "about": "Acerca de"
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "actions": "Acciones",
+    "status": "Estado",
+    "priority": "Prioridad",
+    "module": "Módulo",
+    "new_functionality": "Nueva Funcionalidad",
+    "name": "Nombre",
+    "description": "Descripción",
+    "overview": "Vista General",
+    "purpose": "Propósito",
+    "requirements": "Requerimientos",
+    "business_rules": "Reglas de Negocio",
+    "meeting_notes": "Minutas / Notas",
+    "sprints": "Sprints",
+    "progress_report": "Reporte de Progreso",
+    "automation": "Automatización",
+    "manual": "Manual",
+    "automated": "Automatizado",
+    "execution_type": "Tipo de Ejecución",
+    "import": "Importar",
+    "export": "Exportar"
+  },
+  "projects": {
+    "title": "Gestión de Proyectos",
+    "subtitle": "Administra tus espacios de trabajo de QA de forma independiente.",
+    "new_project": "Nuevo Proyecto",
+    "search": "Buscar proyectos...",
+    "version": "Versión",
+    "created_at": "Creado el"
+  },
+  "org": {
+    "details": "Detalles de la Organización",
+    "logo": "Logo",
+    "improve_ai": "Mejorar con IA",
+    "new_note": "Nueva Minuta",
+    "note_title": "Título de la Nota",
+    "content": "Contenido"
+  },
+  "sprints": {
+    "title": "Gestión de Sprints",
+    "new_sprint": "Nuevo Sprint",
+    "goals": "Objetivos",
+    "start_date": "Fecha Inicio",
+    "end_date": "Fecha Fin",
+    "active": "Activo",
+    "closed": "Cerrado",
+    "legacy": "Legacy / Pre-QA"
+  },
+  "reports": {
+    "project_progress": "Reporte de Progreso del Proyecto",
+    "export_excel": "Exportar a Excel",
+    "export_word": "Exportar a Word",
+    "qa_coverage": "Cobertura QA",
+    "risk_indicators": "Indicadores de Riesgo"
+  }
+}

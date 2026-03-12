@@ -50,15 +50,21 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
     });
   }, [project, form]);
 
-  const handleSave = (values: any) => {
+  const handleSave = async (values: any) => {
     const updatedProject: Project = {
       ...project,
       ...values,
       coreRequirements: requirements
     };
-    saveProject(updatedProject);
-    message.success('Cambios guardados con éxito');
-    onSave();
+    console.log('Payload - Update Project:', updatedProject);
+    try {
+      await saveProject(updatedProject);
+      message.success('Cambios guardados con éxito');
+      onSave();
+    } catch (error) {
+      console.error('Error saving project:', error);
+      message.error('Error al guardar los cambios');
+    }
   };
 
   const addRequirement = () => {

@@ -1,7 +1,7 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Typography, DatePicker, Row, Col, message, Tooltip, Calendar } from 'antd';
+import { Button, Card, Form, Input, Modal, Select, Space, Typography, DatePicker, Row, Col, message, Tooltip, Calendar, Tag } from 'antd';
 import { PlusOutlined, CalendarOutlined, DeleteOutlined } from '@ant-design/icons';
 import React, { useState } from 'react';
-import { useFunctionalities, useTestPlans } from '../hooks';
+import { useFunctionalities, useTestPlans, useModules, useSprints } from '../hooks';
 import { TestType, Priority, FunctionalityScope, TestPlan } from '../types';
 import dayjs from 'dayjs';
 
@@ -10,6 +10,8 @@ const { Title, Text } = Typography;
 export default function TestPlanView({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: plansData, save: savePlan, delete: deletePlan } = useTestPlans(projectId);
+  const { data: modulesData = [] } = useModules(projectId);
+  const { data: sprintsData = [] } = useSprints(projectId);
   
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const plans = Array.isArray(plansData) ? plansData : [];
@@ -17,17 +19,16 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planForm] = Form.useForm();
 
-  // Get unique modules
-  const modules = Array.from(new Set(functionalities.map(f => f.module)));
-
   const handleSavePlan = async () => {
     try {
       const values = await planForm.validateFields();
       const newPlan: TestPlan = {
         id: `plan-${Date.now()}`,
+        projectId: projectId || '',
         ...values,
         date: values.date.format('YYYY-MM-DD'),
       };
+      console.log('Payload - Create Test Plan:', newPlan);
       savePlan(newPlan);
       message.success('Prueba planificada correctamente');
       setIsPlanModalOpen(false);
@@ -183,7 +184,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
                 <Select 
                   mode="multiple" 
                   placeholder="Selecciona módulos" 
-                  options={modules.map(m => ({ label: m, value: m }))} 
+                  options={modulesData.map(m => ({ label: m.name, value: m.name }))} 
                   className="rounded-lg"
                 />
               </Form.Item>
@@ -193,7 +194,11 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="sprint" label="Número de Sprint" rules={[{ required: true }]}>
-                <Input placeholder="Ej: 24" className="h-10 rounded-lg" />
+                <Select 
+                  placeholder="Selecciona el Sprint" 
+                  className="h-10 rounded-lg"
+                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -221,5 +226,4 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
   );
 }
 
-// Re-importing Tag because it was used in dateCellRender
-import { Tag } from 'antd';
+// End of file

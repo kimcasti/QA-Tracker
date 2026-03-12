@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Table, Typography, Tag, Progress, Row, Col, Input, Select, Space, Button, Tooltip, Badge } from 'antd';
+import { Card, Table, Typography, Tag, Progress, Row, Col, Input, Select, Space, Button, Tooltip, Badge, Dropdown } from 'antd';
 import { 
   SearchOutlined, 
   FilterOutlined, 
@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { useFunctionalities, useExecutions, useTestCases, useRegressionCycles, useSmokeCycles } from '../hooks';
 import { TestResult, TestType, Priority, RiskLevel } from '../types';
+import * as XLSX from 'xlsx';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -194,6 +195,57 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const coveredWithCases = functionalities.filter(f => testCases.some(tc => tc.functionalityId === f.id)).length;
   const coveragePercent = totalFuncs > 0 ? Math.round((coveredWithCases / totalFuncs) * 100) : 0;
 
+  const exportMatrix = (format: 'xlsx' | 'csv') => {
+    const data = filteredData.map(f => {
+      const tcCount = testCases.filter(tc => tc.functionalityId === f.id).length;
+      const exec = executions.find(e => e.functionalityId === f.id);
+      const coverage = exec?.executed ? '100%' : '0%';
+      
+      const allExecs = [
+        ...regressionCycles.flatMap(c => c.executions || []),
+        ...smokeCycles.flatMap(c => c.executions || [])
+      ];
+      const bugs = allExecs
+        .filter(ex => ex.functionalityId === f.id && ex.bugId)
+        .map(b => b.bugId)
+        .join(', ');
+
+      return {
+        'Módulo': f.module,
+        'Funcionalidad': f.name,
+        'Casos de Prueba': tcCount,
+        'Porcentaje de Cobertura': coverage,
+        'Bugs Vinculados': bugs || 'Ninguno'
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Matriz de Cobertura");
+    
+    if (format === 'xlsx') {
+      XLSX.writeFile(wb, `Matriz_Cobertura_${projectId || 'QA'}.xlsx`);
+    } else {
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Matriz_Cobertura_${projectId || 'QA'}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const exportMenu = {
+    items: [
+      { key: 'xlsx', label: 'Exportar Excel (.xlsx)', onClick: () => exportMatrix('xlsx') },
+      { key: 'csv', label: 'Exportar CSV (.csv)', onClick: () => exportMatrix('csv') },
+    ]
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
@@ -201,9 +253,11 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
           <Title level={2} className="!mb-1">Matriz de Cobertura</Title>
           <Paragraph type="secondary">Visualización detallada de la trazabilidad y estado de pruebas por funcionalidad.</Paragraph>
         </div>
-        <Button icon={<ExportOutlined />} className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold">
-          Exportar Matriz
-        </Button>
+        <Dropdown menu={exportMenu} trigger={['click']}>
+          <Button icon={<ExportOutlined />} className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold">
+            Exportar Matriz
+          </Button>
+        </Dropdown>
       </div>
 
       <Row gutter={20}>

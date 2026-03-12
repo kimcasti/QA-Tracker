@@ -1,0 +1,73 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "functionalities": "Functionalities",
+    "test_execution": "Test Execution",
+    "test_plans": "Test Plans",
+    "regression_cycles": "Regression Cycles",
+    "smoke_control": "Smoke Control",
+    "reports": "Reports",
+    "configuration": "Configuration",
+    "about": "About"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "actions": "Actions",
+    "status": "Status",
+    "priority": "Priority",
+    "module": "Module",
+    "new_functionality": "New Functionality",
+    "name": "Name",
+    "description": "Description",
+    "overview": "Overview",
+    "purpose": "Purpose",
+    "requirements": "Requirements",
+    "business_rules": "Business Rules",
+    "meeting_notes": "Meeting Notes",
+    "sprints": "Sprints",
+    "progress_report": "Progress Report",
+    "automation": "Automation",
+    "manual": "Manual",
+    "automated": "Automated",
+    "execution_type": "Execution Type",
+    "import": "Import",
+    "export": "Export"
+  },
+  "projects": {
+    "title": "Project Management",
+    "subtitle": "Manage your QA workspaces independently.",
+    "new_project": "New Project",
+    "search": "Search projects...",
+    "version": "Version",
+    "created_at": "Created At"
+  },
+  "org": {
+    "details": "Organization Details",
+    "logo": "Logo",
+    "improve_ai": "Improve with AI",
+    "new_note": "New Note",
+    "note_title": "Note Title",
+    "content": "Content"
+  },
+  "sprints": {
+    "title": "Sprint Management",
+    "new_sprint": "New Sprint",
+    "goals": "Goals",
+    "start_date": "Start Date",
+    "end_date": "End Date",
+    "active": "Active",
+    "closed": "Closed",
+    "legacy": "Legacy / Pre-QA"
+  },
+  "reports": {
+    "project_progress": "Project Progress Report",
+    "export_excel": "Export to Excel",
+    "export_word": "Export to Word",
+    "qa_coverage": "QA Coverage",
+    "risk_indicators": "Risk Indicators"
+  }
+}
