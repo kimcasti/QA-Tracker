@@ -40,7 +40,6 @@ import {
   AlertOutlined
 } from '@ant-design/icons';
 import { 
-  useProjects, 
   useRegressionCycles, 
   useSmokeCycles, 
   useFunctionalities, 
@@ -474,32 +473,30 @@ const ProjectStatusReport: React.FC<{ projectId: string, sprint: string | null }
 };
 
 // --- Main Reports Component ---
-export default function Reports({ projectId: initialProjectId }: { projectId?: string | null }) {
-  const { data: projects = [] } = useProjects();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId || null);
+export default function Reports({ projectId }: { projectId: string }) {
   const [selectedVariant, setSelectedVariant] = useState<ReportVariant>('QA_STATUS_SUMMARY');
   const [selectedSprint, setSelectedSprint] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
 
-  const { data: regressionCycles = [] } = useRegressionCycles(selectedProjectId || '');
-  const { data: smokeCycles = [] } = useSmokeCycles(selectedProjectId || '');
-  const { data: sprints = [] } = useSprints(selectedProjectId || '');
+  const { data: regressionCycles = [] } = useRegressionCycles(projectId);
+  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
+  const { data: sprints = [] } = useSprints(projectId);
   
   const allCycles = useMemo(() => [...regressionCycles, ...smokeCycles], [regressionCycles, smokeCycles]);
   
+  const normalizeSprintKey = (value?: string | null) =>
+    (value || '').trim().toLowerCase().replace(/^sprint\s*/i, '');
+
   const filteredCycles = useMemo(() => {
     if (!selectedSprint) return allCycles;
-    return allCycles.filter(c => c.sprint === selectedSprint);
+    const selectedKey = normalizeSprintKey(selectedSprint);
+    return allCycles.filter(c => normalizeSprintKey(c.sprint) === selectedKey);
   }, [allCycles, selectedSprint]);
 
   const selectedCycle = useMemo(() => allCycles.find(c => c.id === selectedCycleId) || null, [allCycles, selectedCycleId]);
 
   const handleGenerate = () => {
-    if (!selectedProjectId) {
-      message.warning('Por favor seleccione un proyecto');
-      return;
-    }
     if (selectedVariant === 'QA_STATUS_SUMMARY' && !selectedCycleId) {
       message.warning('Por favor seleccione un ciclo para este tipo de reporte');
       return;
@@ -516,7 +513,7 @@ export default function Reports({ projectId: initialProjectId }: { projectId?: s
     }
   };
 
-  if (view === 'REPORT' && selectedProjectId) {
+  if (view === 'REPORT') {
     return (
       <div className="max-w-6xl mx-auto space-y-6 pb-12">
         <div className="flex items-center justify-between">
@@ -541,9 +538,9 @@ export default function Reports({ projectId: initialProjectId }: { projectId?: s
           </Space>
         </div>
 
-        {selectedVariant === 'QA_STATUS_SUMMARY' && <QAStatusSummary projectId={selectedProjectId} cycle={selectedCycle} />}
-        {selectedVariant === 'QA_PROGRESS_REPORT' && <QAProgressReport projectId={selectedProjectId} sprint={selectedSprint} />}
-        {selectedVariant === 'PROJECT_STATUS_REPORT' && <ProjectStatusReport projectId={selectedProjectId} sprint={selectedSprint} />}
+        {selectedVariant === 'QA_STATUS_SUMMARY' && <QAStatusSummary projectId={projectId} cycle={selectedCycle} />}
+        {selectedVariant === 'QA_PROGRESS_REPORT' && <QAProgressReport projectId={projectId} sprint={selectedSprint} />}
+        {selectedVariant === 'PROJECT_STATUS_REPORT' && <ProjectStatusReport projectId={projectId} sprint={selectedSprint} />}
       </div>
     );
   }
@@ -595,23 +592,7 @@ export default function Reports({ projectId: initialProjectId }: { projectId?: s
         </div>
         <div className="p-8">
           <Row gutter={24}>
-            <Col span={8}>
-              <div className="space-y-2">
-                <Text strong className="text-xs uppercase tracking-wider text-slate-500">Seleccionar Proyecto</Text>
-                <Select 
-                  className="w-full h-12 rounded-xl"
-                  placeholder="Elija un proyecto..."
-                  value={selectedProjectId}
-                  onChange={(val) => {
-                    setSelectedProjectId(val);
-                    setSelectedSprint(null);
-                    setSelectedCycleId(null);
-                  }}
-                  options={projects.map(p => ({ label: p.organizationName || p.name, value: p.id }))}
-                />
-              </div>
-            </Col>
-            <Col span={selectedVariant === 'QA_STATUS_SUMMARY' ? 8 : 16}>
+            <Col span={selectedVariant === 'QA_STATUS_SUMMARY' ? 12 : 24}>
               <div className="space-y-2">
                 <Text strong className="text-xs uppercase tracking-wider text-slate-500">Seleccionar Sprint</Text>
                 <Select 
@@ -623,13 +604,12 @@ export default function Reports({ projectId: initialProjectId }: { projectId?: s
                     setSelectedCycleId(null);
                   }}
                   allowClear
-                  disabled={!selectedProjectId}
                   options={sprints.map(s => ({ label: s.name, value: s.name }))}
                 />
               </div>
             </Col>
             {selectedVariant === 'QA_STATUS_SUMMARY' && (
-              <Col span={8}>
+              <Col span={12}>
                 <div className="space-y-2">
                   <Text strong className="text-xs uppercase tracking-wider text-slate-500">Seleccionar Ciclo</Text>
                   <Select 
@@ -637,9 +617,8 @@ export default function Reports({ projectId: initialProjectId }: { projectId?: s
                     placeholder="Elija un ciclo de prueba..."
                     value={selectedCycleId}
                     onChange={setSelectedCycleId}
-                    disabled={!selectedProjectId}
                     options={filteredCycles.map(c => ({ 
-                      label: `${c.cycleId} - ${c.type} (${dayjs(c.date).format('DD/MM/YYYY')})`, 
+                      label: `${c.cycleId} - ${c.type || (c.cycleId?.startsWith('S-') ? 'SMOKE' : 'REGRESSION')} (${dayjs(c.date).format('DD/MM/YYYY')})`, 
                       value: c.id 
                     }))}
                   />

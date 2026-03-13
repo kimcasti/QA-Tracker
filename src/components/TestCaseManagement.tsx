@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Space, Tag, Typography, Card, message, Popconfirm, Spin } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, ThunderboltOutlined, KeyOutlined } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTestCases } from '../hooks';
-import { generateTestCasesWithAI } from '../services/geminiService';
+import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -21,8 +21,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
   const [form] = Form.useForm();
+  const [isApiKeyModalVisible, setIsApiKeyModalVisible] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
 
-  const handleGenerateAI = async () => {
+  const runGenerateAI = async () => {
     setIsGenerating(true);
     try {
       const generated = await generateTestCasesWithAI(functionalityName, moduleName);
@@ -40,10 +42,43 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       message.success(`Se generaron ${generated.length} casos de prueba con IA`);
     } catch (error) {
       console.error('AI Generation error:', error);
-      message.error('Error al generar casos con IA. Revisa tu API Key.');
+      const msg = (error instanceof Error ? error.message : (error as any)?.message) || '';
+      const anyErr: any = error as any;
+      const nestedMessage = (anyErr?.error?.message || anyErr?.message || '').toString();
+      const reason = anyErr?.error?.details?.[0]?.reason || anyErr?.details?.[0]?.reason;
+      const isLeakedKey =
+        msg === 'GEMINI_API_KEY_LEAKED' ||
+        /reported as leaked/i.test(nestedMessage);
+      const isInvalidKey =
+        msg === 'GEMINI_API_KEY_INVALID' ||
+        isLeakedKey ||
+        reason === 'API_KEY_INVALID' ||
+        /api key not valid/i.test(nestedMessage);
+      if (msg === 'GEMINI_API_KEY_MISSING') {
+        message.warning('Configura tu API Key de Gemini para usar la generación con IA.');
+        setIsApiKeyModalVisible(true);
+      } else if (isInvalidKey) {
+        localStorage.removeItem('GEMINI_API_KEY');
+        message.error(
+          isLeakedKey
+            ? 'API Key comprometida (reportada como filtrada). Genera una nueva API Key.'
+            : 'API Key inválida. Ingresa una API Key válida de Gemini.'
+        );
+        setIsApiKeyModalVisible(true);
+      } else {
+        message.error('Error al generar casos con IA. Revisa tu API Key.');
+      }
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleGenerateAI = async () => {
+    if (!getGeminiApiKey()) {
+      setIsApiKeyModalVisible(true);
+      return;
+    }
+    await runGenerateAI();
   };
 
   const showModal = (testCase?: TestCase) => {
@@ -164,6 +199,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       }
       extra={
         <Space>
+          <Button
+            icon={<KeyOutlined />}
+            onClick={() => setIsApiKeyModalVisible(true)}
+            className="rounded-lg"
+          >
+            API Key
+          </Button>
           <Button 
             icon={<ThunderboltOutlined />} 
             onClick={handleGenerateAI}
@@ -307,6 +349,38 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Configurar Gemini API Key"
+        open={isApiKeyModalVisible}
+        onCancel={() => setIsApiKeyModalVisible(false)}
+        zIndex={2000}
+        maskClosable={false}
+        okText="Guardar"
+        cancelText="Cancelar"
+        onOk={async () => {
+          const trimmed = apiKeyInput.trim();
+            if (!trimmed) {
+              message.warning('Ingresa una API Key válida');
+              return;
+            }
+          localStorage.setItem('GEMINI_API_KEY', trimmed);
+          setIsApiKeyModalVisible(false);
+          setApiKeyInput('');
+          await runGenerateAI();
+        }}
+      >
+        <div className="space-y-2">
+          <Text type="secondary">
+            Esta llave se guardará en tu navegador (localStorage) para habilitar la generación de casos con IA.
+          </Text>
+          <Input.Password
+            placeholder="AIza..."
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+          />
+        </div>
       </Modal>
     </Card>
   );

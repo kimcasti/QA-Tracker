@@ -448,7 +448,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         </div>
         <Space>
           <Button 
-            icon={<DownloadOutlined />} 
+            icon={<UploadOutlined />} 
             onClick={handleExport}
             className="rounded-lg h-10"
           >
@@ -459,7 +459,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             showUploadList={false}
             accept=".xlsx,.xls,.txt"
           >
-            <Button icon={<UploadOutlined />} className="rounded-lg h-10">
+            <Button icon={<DownloadOutlined />} className="rounded-lg h-10">
               Importar
             </Button>
           </Upload>

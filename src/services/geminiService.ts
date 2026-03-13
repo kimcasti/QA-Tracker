@@ -1,8 +1,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const GEMINI_KEY_STORAGE = "GEMINI_API_KEY";
+
+export const getGeminiApiKey = () => {
+  const envKey = (process.env.GEMINI_API_KEY || "").toString().trim();
+  const storedKey =
+    typeof window !== "undefined" ? (localStorage.getItem(GEMINI_KEY_STORAGE) || "").trim() : "";
+  // Prefer user-provided key so it can override a baked-in env key.
+  return storedKey || envKey;
+};
 
 export const generateTestCasesWithAI = async (functionalityName: string, moduleName: string) => {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY_MISSING");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-3-flash-preview";
   
   const prompt = `Genera 3 casos de prueba detallados para la funcionalidad "${functionalityName}" del módulo "${moduleName}". 
@@ -22,7 +36,7 @@ export const generateTestCasesWithAI = async (functionalityName: string, moduleN
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -49,7 +63,88 @@ export const generateTestCasesWithAI = async (functionalityName: string, moduleN
     
     return JSON.parse(text);
   } catch (error) {
+    // Normalize common SDK error shapes to stable error codes for the UI.
+    const raw: any = (error as any)?.error ?? error;
+    const reason = raw?.details?.[0]?.reason;
+    const message = (raw?.message || raw?.error?.message || (error as any)?.message || "").toString();
+
+    if (reason === "API_KEY_INVALID" || /api key not valid/i.test(message)) {
+      throw new Error("GEMINI_API_KEY_INVALID");
+    }
+
+    if (/reported as leaked/i.test(message)) {
+      throw new Error("GEMINI_API_KEY_LEAKED");
+    }
+
     console.error("Error generating test cases:", error);
+    throw error;
+  }
+};
+
+export const improveMeetingNotesWithAI = async (notes: string) => {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY_MISSING");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const model = "gemini-3-flash-preview";
+
+  const prompt = `Reorganiza las siguientes notas de reunión en un formato estructurado con las siguientes secciones:
+  1. Resumen de la reunión
+  2. Decisiones
+  3. Acciones a realizar
+  4. Próximos pasos
+
+  Notas:
+  ${notes}
+
+  Responde ÚNICAMENTE con un objeto JSON que tenga las llaves: summary, decisions, actions, nextSteps.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            summary: { type: Type.STRING },
+            decisions: { type: Type.STRING },
+            actions: { type: Type.STRING },
+            nextSteps: { type: Type.STRING }
+          },
+          required: ["summary", "decisions", "actions", "nextSteps"]
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No se recibió respuesta de la IA");
+
+    const result = JSON.parse(text);
+    return {
+      summary: result?.summary || "",
+      decisions: result?.decisions || "",
+      actions: result?.actions || "",
+      nextSteps: result?.nextSteps || ""
+    };
+  } catch (error) {
+    // Keep the same normalized error codes used by the UI.
+    const raw: any = (error as any)?.error ?? error;
+    const reason = raw?.details?.[0]?.reason;
+    const message = (raw?.message || raw?.error?.message || (error as any)?.message || "").toString();
+
+    if (reason === "API_KEY_INVALID" || /api key not valid/i.test(message)) {
+      throw new Error("GEMINI_API_KEY_INVALID");
+    }
+
+    if (/reported as leaked/i.test(message)) {
+      throw new Error("GEMINI_API_KEY_LEAKED");
+    }
+
+    console.error("Error improving meeting notes:", error);
     throw error;
   }
 };

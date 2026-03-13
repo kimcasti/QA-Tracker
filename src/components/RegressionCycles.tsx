@@ -1,8 +1,8 @@
 import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message, Divider, Checkbox } from 'antd';
-import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined, RollbackOutlined, UserOutlined } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
 import { useRegressionCycles, useFunctionalities, useTestCases, useSprints } from '../hooks';
-import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity } from '../types';
+import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity, Environment } from '../types';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import dayjs from 'dayjs';
 
@@ -26,6 +26,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
   const handleOpenModal = () => {
     setEditingCycle(null);
+    form.resetFields();
     // Calculate next Cycle ID
     const nextNumber = cycles.length > 0 
       ? Math.max(...cycles.map(c => {
@@ -33,20 +34,16 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           return match ? parseInt(match[0], 10) : 0;
         })) + 1 
       : 1;
-    
-    // Calculate next Sprint (optional, but good for UX)
-    const nextSprint = cycles.length > 0
-      ? Math.max(...cycles.map(c => {
-          const match = c.sprint?.match(/\d+/);
-          return match ? parseInt(match[0], 10) : 0;
-        }))
-      : 25;
 
     form.setFieldsValue({
       cycleId: `C-${nextNumber.toString().padStart(2, '0')}`,
-      sprint: nextSprint,
+      sprint: undefined,
+      status: 'EN_PROGRESO',
       date: dayjs(),
-      note: ''
+      note: '',
+      tester: '',
+      environment: undefined,
+      buildVersion: ''
     });
     setIsModalOpen(true);
   };
@@ -59,7 +56,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       status: cycle.status,
       sprint: cycle.sprint?.match(/\d+/)?.[0] || '',
       date: dayjs(cycle.date),
-      note: cycle.note
+      note: cycle.note,
+      tester: cycle.tester || '',
+      environment: cycle.environment,
+      buildVersion: cycle.buildVersion || ''
     });
     setIsModalOpen(true);
   };
@@ -252,6 +252,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         const newCycle: RegressionCycle = {
           id: Date.now().toString(),
           projectId: projectId || '',
+          type: 'REGRESSION',
           ...values,
           sprint: values.sprint ? `Sprint ${values.sprint}` : undefined,
           date: values.date.format('YYYY-MM-DD'),
@@ -302,7 +303,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       blocked,
       pending,
       passRate: rate,
-      status: pending === 0 ? 'FINALIZADA' : 'EN_PROGRESO'
+      // Keep status manual; do not auto-finalize when pending reaches 0.
+      status: cycle.status || 'EN_PROGRESO'
     };
 
     save(updatedCycle);
@@ -327,11 +329,39 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       blocked: 0,
       pending: 0,
       passRate: 100,
+      // Keep status manual; user must finalize explicitly.
+      status: cycle.status || 'EN_PROGRESO'
+    };
+
+    save(updatedCycle);
+    setSelectedCycle(updatedCycle);
+  };
+
+  const handleFinalizeCycle = (cycle: RegressionCycle) => {
+    if (cycle.pending > 0) {
+      message.warning('AÃºn hay casos pendientes por ejecutar');
+      return;
+    }
+
+    const updatedCycle: RegressionCycle = {
+      ...cycle,
       status: 'FINALIZADA'
     };
 
     save(updatedCycle);
     setSelectedCycle(updatedCycle);
+    message.success('Ciclo finalizado correctamente');
+  };
+
+  const handleReopenCycle = (cycle: RegressionCycle) => {
+    const updatedCycle: RegressionCycle = {
+      ...cycle,
+      status: 'EN_PROGRESO'
+    };
+
+    save(updatedCycle);
+    setSelectedCycle(updatedCycle);
+    message.success('Ciclo reabierto (EN PROGRESO)');
   };
 
   const filteredCycles = (Array.isArray(cycles) ? cycles : []).filter(c => {
@@ -392,12 +422,24 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                     {selectedCycle.status === 'FINALIZADA' ? 'Finalizada' : 'En Progreso'}
                   </Tag>
                   <span className="text-slate-400 text-sm">• {selectedCycle.sprint || 'Sin Sprint'}</span>
+                  {selectedCycle.tester && <span className="text-slate-400 text-sm">• {selectedCycle.tester}</span>}
+                  {selectedCycle.environment && <span className="text-slate-400 text-sm">• {selectedCycle.environment}</span>}
+                  {selectedCycle.buildVersion && <span className="text-slate-400 text-sm">• Build {selectedCycle.buildVersion}</span>}
                 </div>
                 <Title level={2} className="!m-0 uppercase tracking-tight">{selectedCycle.cycleId}</Title>
                 <Paragraph type="secondary" className="!m-0">{selectedCycle.note}</Paragraph>
               </div>
             </div>
             <Space size="middle">
+              {isReadOnly && (
+                <Button
+                  icon={<RollbackOutlined />}
+                  onClick={() => handleReopenCycle(selectedCycle)}
+                  className="rounded-xl h-11 px-4 border-slate-200 text-slate-600 font-semibold"
+                >
+                  Reabrir Ciclo
+                </Button>
+              )}
               {!isReadOnly && (
                 <Button 
                   icon={<SettingOutlined />} 
@@ -414,6 +456,22 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               >
                 Export Report
               </Button>
+              {!isReadOnly && (
+                <Tooltip title={selectedCycle.pending > 0 ? 'Ejecute todos los casos antes de finalizar' : ''}>
+                  <span>
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      size="large"
+                      disabled={selectedCycle.pending > 0}
+                      className="rounded-xl h-11 px-8 bg-emerald-600 hover:bg-emerald-700 border-none shadow-lg shadow-emerald-200 font-bold"
+                      onClick={() => handleFinalizeCycle(selectedCycle)}
+                    >
+                      Finalizar Ciclo
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {!isReadOnly && (
                 <Button 
                   type="primary" 
@@ -600,11 +658,32 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                           value: r
                         }))}
                       />
-                      {record.bugId && (
-                        <Tag color="magenta" icon={<BugOutlined />} className="text-[10px] m-0 w-fit">
-                          {record.bugId}
-                        </Tag>
-                      )}
+                      {(() => {
+                        const raw = (record.bugLink || record.bugId || '').trim();
+                        if (!raw) return null;
+
+                        const isUrl = /^https?:\/\//i.test(raw) || /^www\./i.test(raw);
+                        const href = isUrl ? (raw.startsWith('http') ? raw : `https://${raw}`) : null;
+                        const label = (record.bugId || raw).trim();
+
+                        return (
+                          <Tag color="magenta" icon={<BugOutlined />} className="text-[10px] m-0 w-fit">
+                            {href ? (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-inherit underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {label}
+                              </a>
+                            ) : (
+                              label
+                            )}
+                          </Tag>
+                        );
+                      })()}
                     </div>
                   )
                 },
@@ -859,6 +938,32 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                   <span className="text-blue-600 font-bold">{regressionFuncs.length}</span> funcionalidades de tipo <Tag color="blue" className="m-0 ml-1">Regresión</Tag> detectadas.
                 </div>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="tester" label={<span className="font-semibold text-slate-600">Tester</span>} rules={[{ required: true }]}>
+                <Input placeholder="Ej: QA Engineer" className="h-10 rounded-lg" prefix={<UserOutlined />} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="environment" label={<span className="font-semibold text-slate-600">Environment</span>} rules={[{ required: true }]}>
+                <Select
+                  placeholder="Selecciona Environment"
+                  className="h-10 rounded-lg"
+                  options={[
+                    { label: Environment.TEST, value: Environment.TEST },
+                    { label: Environment.LOCAL, value: Environment.LOCAL },
+                    { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="buildVersion" label={<span className="font-semibold text-slate-600">Build version</span>}>
+                <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>

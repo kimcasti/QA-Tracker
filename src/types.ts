@@ -105,6 +105,12 @@ export enum FunctionalityScope {
   PARTIAL = 'Parcial',
 }
 
+export enum Environment {
+  TEST = 'Test',
+  LOCAL = 'Local',
+  PRODUCTION = 'Producción',
+}
+
 export interface TestPlan {
   id: string;
   projectId: string;
@@ -166,6 +172,8 @@ export interface TestRun {
   sprint: string;
   priority: Priority;
   tester: string;
+  buildVersion?: string;
+  environment?: Environment;
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];
@@ -213,6 +221,9 @@ export interface RegressionCycle {
   status: 'FINALIZADA' | 'EN_PROGRESO';
   sprint?: string;
   type?: 'REGRESSION' | 'SMOKE';
+  tester?: string;
+  buildVersion?: string;
+  environment?: Environment;
   executions: RegressionExecution[];
 }
 

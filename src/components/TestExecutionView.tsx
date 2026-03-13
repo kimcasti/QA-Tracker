@@ -2,7 +2,7 @@ import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, UploadOutlined, DeleteOutlined, FileImageOutlined, EyeOutlined, EditOutlined, BugOutlined, UserOutlined, ArrowLeftOutlined, SaveOutlined, ExportOutlined, SearchOutlined, BarChartOutlined, ArrowDownOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFunctionalities, useExecutions, useTestCases, useModules, useSprints, useTestRuns } from '../hooks';
-import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity, TestRun, TestRunResult } from '../types';
+import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity, TestRun, TestRunResult, Environment } from '../types';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
@@ -32,16 +32,22 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [filterOnlyFailed, setFilterOnlyFailed] = useState(false);
 
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
-  const [currentEvidenceRecord, setCurrentEvidenceRecord] = useState<TestRunResult | null>(null);
+  const [currentEvidenceTestCaseId, setCurrentEvidenceTestCaseId] = useState<string | null>(null);
+
+  // Always read the latest record from state, so evidence edits reflect immediately.
+  const currentEvidenceRecord = useMemo(() => {
+    if (!currentEvidenceTestCaseId) return null;
+    return executionResults.find(r => r.testCaseId === currentEvidenceTestCaseId) || null;
+  }, [currentEvidenceTestCaseId, executionResults]);
 
   const openEvidenceModal = (record: TestRunResult) => {
-    setCurrentEvidenceRecord(record);
+    setCurrentEvidenceTestCaseId(record.testCaseId);
     setIsEvidenceModalOpen(true);
   };
 
   const handleSaveEvidence = () => {
     setIsEvidenceModalOpen(false);
-    setCurrentEvidenceRecord(null);
+    setCurrentEvidenceTestCaseId(null);
   };
 
   const availableFunctionalities = useMemo(() => {
@@ -70,13 +76,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         id: `TR-${Date.now()}`,
         projectId: projectId || '',
         title: values.title,
-        description: values.description,
+        description: values.description || '',
         executionDate: values.executionDate.format('YYYY-MM-DD'),
         status: ExecutionStatus.DRAFT,
         testType: values.testType,
         sprint: values.sprint,
         priority: values.priority,
-        tester: 'QA Engineer',
+        tester: values.tester,
+        buildVersion: values.buildVersion,
+        environment: values.environment,
         selectedModules,
         selectedFunctionalities: selectedFuncIds,
         results: []
@@ -145,6 +153,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           'Módulo': func?.module,
           'Funcionalidad': func?.name,
           'Título Caso': tc?.title,
+          'Tester': activeTestRun.tester || '',
+          'Build Version': activeTestRun.buildVersion || '',
+          'Environment': activeTestRun.environment || '',
           'Resultado': r.result,
           'Bug ID': r.bugId || 'N/A',
           'Severidad': r.severity || 'N/A',
@@ -188,6 +199,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID / TÍTULO</span>,
       key: 'title',
+      width: 300,
       render: (_: any, record: TestRun) => (
         <div>
           <Text strong className="text-slate-700">{record.id}</Text>
@@ -200,23 +212,44 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">FECHA</span>,
       dataIndex: 'executionDate',
       key: 'executionDate',
+      width: 140,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">TIPO DE TEST</span>,
       dataIndex: 'testType',
       key: 'testType',
+      width: 140,
       render: (type: string) => <Tag className="m-0 text-[10px] font-semibold uppercase bg-slate-100 border-slate-200 text-slate-600">{type}</Tag>
     },
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">SPRINT</span>,
       dataIndex: 'sprint',
       key: 'sprint',
+      width: 140,
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">TESTER</span>,
+      dataIndex: 'tester',
+      key: 'tester',
+      width: 160,
+      ellipsis: true,
+      render: (tester: string | undefined) => tester || '—',
+    },
+    {
+      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ENVIRONMENT</span>,
+      dataIndex: 'environment',
+      key: 'environment',
+      width: 160,
+      render: (env: Environment | undefined) => (
+        env ? <Tag className="m-0 text-[10px] font-semibold bg-slate-100 border-slate-200 text-slate-600">{env}</Tag> : '—'
+      ),
     },
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ESTADO</span>,
       dataIndex: 'status',
       key: 'status',
+      width: 120,
       render: (status: ExecutionStatus) => (
         <Tag color={status === ExecutionStatus.FINAL ? 'blue' : 'orange'} className="rounded-full px-3 font-bold uppercase text-[10px]">
           {status}
@@ -226,6 +259,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">PROGRESO</span>,
       key: 'progress',
+      width: 200,
       render: (_: any, record: TestRun) => {
         const total = record.results.length;
         const executed = record.results.filter(r => r.result !== TestResult.NOT_EXECUTED).length;
@@ -246,6 +280,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ACCIONES</span>,
       key: 'actions',
+      width: 160,
       render: (_: any, record: TestRun) => (
         <Space>
           <Button 
@@ -299,7 +334,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 {isReadOnly && <Tag color="success" className="m-0 font-bold uppercase text-[10px] px-2 py-0.5 rounded-sm">FINALIZADA</Tag>}
                 <Title level={3} className="m-0 text-slate-800">{activeTestRun.title}</Title>
               </div>
-              <Text type="secondary" className="text-xs text-slate-400">{activeTestRun.id} • {activeTestRun.sprint || 'Sin Sprint'}</Text>
+              <Text type="secondary" className="text-xs text-slate-400">
+                {activeTestRun.id} • {activeTestRun.sprint || 'Sin Sprint'} • {activeTestRun.tester || 'Sin Tester'}
+                {activeTestRun.environment ? ` • ${activeTestRun.environment}` : ''}
+                {activeTestRun.buildVersion ? ` • Build ${activeTestRun.buildVersion}` : ''}
+              </Text>
             </div>
           </Space>
           <Space>
@@ -431,11 +470,28 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 key: 'executed',
                 width: '10%',
                 align: 'center',
-                render: (_, record) => (
-                  record.result !== TestResult.NOT_EXECUTED ? 
-                  <CheckCircleOutlined className="text-emerald-500 text-lg" /> : 
-                  <ClockCircleOutlined className="text-slate-300 text-lg" />
-                )
+                render: (_, record) => {
+                  const executed = record.result !== TestResult.NOT_EXECUTED;
+
+                  return (
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                        !isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'
+                      } transition-colors ${
+                        executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'
+                      }`}
+                      onClick={!isReadOnly ? () => {
+                        updateResult(
+                          record.testCaseId,
+                          'result',
+                          executed ? TestResult.NOT_EXECUTED : TestResult.PASSED
+                        );
+                      } : undefined}
+                    >
+                      {executed ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+                    </div>
+                  );
+                }
               },
               {
                 title: <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">FECHA</span>,
@@ -527,11 +583,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         <Modal
           title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
           open={isEvidenceModalOpen}
-          onCancel={() => setIsEvidenceModalOpen(false)}
+          onCancel={() => {
+            setIsEvidenceModalOpen(false);
+            setCurrentEvidenceTestCaseId(null);
+          }}
           width={520}
           centered
           footer={[
-            <Button key="close" onClick={() => setIsEvidenceModalOpen(false)} className="rounded-lg">Cerrar</Button>,
+            <Button key="close" onClick={() => {
+              setIsEvidenceModalOpen(false);
+              setCurrentEvidenceTestCaseId(null);
+            }} className="rounded-lg">Cerrar</Button>,
             !isReadOnly && <Button key="save" type="primary" onClick={handleSaveEvidence} className="rounded-lg bg-blue-600">Guardar Evidencia</Button>
           ]}
         >
@@ -694,6 +756,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           dataSource={filteredRuns} 
           rowKey="id" 
           className="executive-table"
+          scroll={{ x: 'max-content' }}
         />
       </Card>
 
@@ -737,6 +800,29 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <Col span={12}>
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
                 <Select options={Object.values(Priority).map(v => ({ label: v, value: v }))} className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
+                <Input placeholder="Ej: QA Engineer" className="h-10 rounded-lg" prefix={<UserOutlined />} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
+                <Select
+                  placeholder="Selecciona el Environment"
+                  className="h-10 rounded-lg"
+                  options={[
+                    { label: Environment.TEST, value: Environment.TEST },
+                    { label: Environment.LOCAL, value: Environment.LOCAL },
+                    { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="buildVersion" label="Build version">
+                <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>

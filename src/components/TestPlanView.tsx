@@ -17,22 +17,50 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
   const plans = Array.isArray(plansData) ? plansData : [];
 
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<TestPlan | null>(null);
   const [planForm] = Form.useForm();
+
+  const closePlanModal = () => {
+    setIsPlanModalOpen(false);
+    setEditingPlan(null);
+    planForm.resetFields();
+  };
+
+  const openNewPlanModal = () => {
+    setEditingPlan(null);
+    setIsPlanModalOpen(true);
+    planForm.resetFields();
+    planForm.setFieldsValue({
+      scope: FunctionalityScope.TOTAL,
+      priority: Priority.MEDIUM,
+      testType: TestType.REGRESSION,
+      date: dayjs(),
+    });
+  };
+
+  const openEditPlanModal = (plan: TestPlan) => {
+    setEditingPlan(plan);
+    setIsPlanModalOpen(true);
+    planForm.resetFields();
+    planForm.setFieldsValue({
+      ...plan,
+      date: dayjs(plan.date),
+    });
+  };
 
   const handleSavePlan = async () => {
     try {
       const values = await planForm.validateFields();
-      const newPlan: TestPlan = {
-        id: `plan-${Date.now()}`,
-        projectId: projectId || '',
+      const payload: TestPlan = {
+        id: editingPlan?.id || `plan-${Date.now()}`,
+        projectId: editingPlan?.projectId || projectId || '',
         ...values,
         date: values.date.format('YYYY-MM-DD'),
       };
-      console.log('Payload - Create Test Plan:', newPlan);
-      savePlan(newPlan);
-      message.success('Prueba planificada correctamente');
-      setIsPlanModalOpen(false);
-      planForm.resetFields();
+      console.log('Payload - Save Test Plan:', payload);
+      savePlan(payload);
+      message.success(editingPlan ? 'Planificación actualizada' : 'Prueba planificada correctamente');
+      closePlanModal();
     } catch (error) {
       console.error('Plan save failed:', error);
     }
@@ -50,60 +78,9 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
                   ${item.priority === Priority.HIGH ? 'bg-rose-50 text-rose-600 border-rose-100' : 
                     item.priority === Priority.MEDIUM ? 'bg-amber-50 text-amber-600 border-amber-100' : 
                     'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
-                onClick={() => {
-                  Modal.info({
-                    title: 'Detalle de Planificación',
-                    content: (
-                      <div className="space-y-4 mt-4">
-                        <div className="flex justify-between">
-                          <Tag color="blue">{item.testType}</Tag>
-                          <Tag color={item.priority === Priority.HIGH ? 'red' : item.priority === Priority.MEDIUM ? 'orange' : 'green'}>{item.priority}</Tag>
-                        </div>
-                        <div>
-                          <Text strong className="block">Título:</Text>
-                          <Text>{item.title}</Text>
-                        </div>
-                        <div>
-                          <Text strong className="block">Alcance:</Text>
-                          <Text>{item.scope}</Text>
-                        </div>
-                        <div>
-                          <Text strong className="block">Módulos de Impacto:</Text>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {item.impactModules.map(m => <Tag key={m} className="m-0 text-[10px]">{m}</Tag>)}
-                          </div>
-                        </div>
-                        <div>
-                          <Text strong className="block">Sprint:</Text>
-                          <Text>{item.sprint}</Text>
-                        </div>
-                        {item.jiraId && (
-                          <div>
-                            <Text strong className="block">Jira ID:</Text>
-                            <Text className="text-blue-600">{item.jiraId}</Text>
-                          </div>
-                        )}
-                        <div>
-                          <Text strong className="block">Descripción:</Text>
-                          <Text className="italic text-slate-500">{item.description}</Text>
-                        </div>
-                        <Button 
-                          danger 
-                          size="small" 
-                          icon={<DeleteOutlined />} 
-                          onClick={() => {
-                            deletePlan(item.id);
-                            Modal.destroyAll();
-                            message.success('Planificación eliminada');
-                          }}
-                        >
-                          Eliminar Planificación
-                        </Button>
-                      </div>
-                    ),
-                    width: 400,
-                    centered: true
-                  });
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditPlanModal(item);
                 }}
               >
                 {item.title}
@@ -125,7 +102,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => setIsPlanModalOpen(true)}
+          onClick={openNewPlanModal}
           className="rounded-lg h-10 px-6 bg-indigo-600 hover:bg-indigo-700"
         >
           Planificar Prueba
@@ -150,16 +127,46 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
       </Card>
 
       <Modal
-        title={<span className="text-xl font-bold text-slate-800">Planificar Nueva Prueba</span>}
+        title={<span className="text-xl font-bold text-slate-800">{editingPlan ? 'Editar Planificación' : 'Planificar Nueva Prueba'}</span>}
         open={isPlanModalOpen}
-        onCancel={() => setIsPlanModalOpen(false)}
-        onOk={handleSavePlan}
-        okText="Planificar"
-        cancelText="Cancelar"
+        onCancel={closePlanModal}
         width={700}
         centered
+        footer={[
+          <Button key="cancel" onClick={closePlanModal}>
+            Cancelar
+          </Button>,
+          editingPlan ? (
+            <Button
+              key="delete"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => {
+                if (!editingPlan) return;
+                Modal.confirm({
+                  title: '¿Eliminar planificación?',
+                  content: 'Esta acción no se puede deshacer.',
+                  okText: 'Eliminar',
+                  okButtonProps: { danger: true },
+                  cancelText: 'Cancelar',
+                  centered: true,
+                  onOk: async () => {
+                    deletePlan(editingPlan.id);
+                    message.success('Planificación eliminada');
+                    closePlanModal();
+                  },
+                });
+              }}
+            >
+              Eliminar
+            </Button>
+          ) : null,
+          <Button key="ok" type="primary" onClick={handleSavePlan}>
+            {editingPlan ? 'Guardar Cambios' : 'Planificar'}
+          </Button>,
+        ]}
       >
-        <Form form={planForm} layout="vertical" className="mt-4" initialValues={{ scope: FunctionalityScope.TOTAL, priority: Priority.MEDIUM, testType: TestType.REGRESSION, date: dayjs() }}>
+        <Form form={planForm} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col span={16}>
               <Form.Item name="title" label="Título de la Planificación" rules={[{ required: true }]}>

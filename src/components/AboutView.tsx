@@ -12,10 +12,12 @@ import {
   BulbOutlined,
   SafetyOutlined,
   CheckCircleOutlined,
-  MessageOutlined
+  MessageOutlined,
+  KeyOutlined
 } from '@ant-design/icons';
 import { Project, MeetingNote } from '../types';
 import { useProjects, useMeetingNotes } from '../hooks';
+import { getGeminiApiKey } from '../services/geminiService';
 import { GoogleGenAI } from "@google/genai";
 
 const { Title, Text, Paragraph } = Typography;
@@ -29,6 +31,8 @@ export default function AboutView({ project }: { project: Project }) {
   const [isViewNoteModalOpen, setIsViewNoteModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
   const [isImproving, setIsImproving] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
   
   const [projectForm] = Form.useForm();
   const [noteForm] = Form.useForm();
@@ -97,9 +101,14 @@ export default function AboutView({ project }: { project: Project }) {
       return;
     }
 
+    if (!getGeminiApiKey()) {
+      setIsApiKeyModalOpen(true);
+      return;
+    }
+
     setIsImproving(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() || '' });
       const prompt = `Reorganiza las siguientes notas de reunión en un formato estructurado con las siguientes secciones:
       1. Resumen de la reunión
       2. Decisiones
@@ -142,7 +151,30 @@ export default function AboutView({ project }: { project: Project }) {
       message.success('Notas mejoradas con IA');
     } catch (error) {
       console.error('AI Improvement failed:', error);
-      message.error('Error al mejorar las notas con IA');
+      const anyErr: any = error as any;
+      const msg = (error instanceof Error ? error.message : anyErr?.message) || '';
+      const nestedMessage = (anyErr?.error?.message || anyErr?.message || '').toString();
+      const reason = anyErr?.error?.details?.[0]?.reason || anyErr?.details?.[0]?.reason;
+      const isLeakedKey = /reported as leaked/i.test(nestedMessage);
+      const isInvalidKey =
+        reason === 'API_KEY_INVALID' ||
+        /api key not valid/i.test(nestedMessage) ||
+        isLeakedKey;
+
+      if (msg === 'GEMINI_API_KEY_MISSING') {
+        message.warning('Configura tu API Key de Gemini para usar la mejora con IA.');
+        setIsApiKeyModalOpen(true);
+      } else if (isInvalidKey) {
+        localStorage.removeItem('GEMINI_API_KEY');
+        message.error(
+          isLeakedKey
+            ? 'API Key comprometida (reportada como filtrada). Genera una nueva API Key.'
+            : 'API Key inválida. Ingresa una API Key válida de Gemini.'
+        );
+        setIsApiKeyModalOpen(true);
+      } else {
+        message.error('Error al mejorar las notas con IA');
+      }
     } finally {
       setIsImproving(false);
     }
@@ -390,7 +422,16 @@ export default function AboutView({ project }: { project: Project }) {
             label={
               <div className="flex justify-between items-center w-full">
                 <span className="font-semibold text-slate-600">Notas de la Reunión</span>
-                <Button 
+                <Space size={8}>
+                  <Button
+                    size="small"
+                    icon={<KeyOutlined />}
+                    onClick={() => setIsApiKeyModalOpen(true)}
+                    className="rounded-full text-[10px] font-bold h-7"
+                  >
+                    API Key
+                  </Button>
+                  <Button 
                   type="primary" 
                   size="small" 
                   icon={<RobotOutlined />} 
@@ -400,6 +441,7 @@ export default function AboutView({ project }: { project: Project }) {
                 >
                   Mejorar con IA
                 </Button>
+                </Space>
               </div>
             } 
             rules={[{ required: true }]}
@@ -425,6 +467,42 @@ export default function AboutView({ project }: { project: Project }) {
             </div>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title="Configurar Gemini API Key"
+        open={isApiKeyModalOpen}
+        onCancel={() => setIsApiKeyModalOpen(false)}
+        okText="Guardar"
+        cancelText="Cancelar"
+        zIndex={2100}
+        maskClosable={false}
+        onOk={async () => {
+          const trimmed = apiKeyInput.trim();
+          if (!trimmed) {
+            message.warning('Ingresa una API Key válida');
+            return;
+          }
+          localStorage.setItem('GEMINI_API_KEY', trimmed);
+          setIsApiKeyModalOpen(false);
+          setApiKeyInput('');
+
+          const currentNotes = noteForm.getFieldValue('notes');
+          if (currentNotes) {
+            await handleImproveWithAI();
+          }
+        }}
+      >
+        <div className="space-y-2">
+          <Text type="secondary">
+            Esta llave se guardará en tu navegador (localStorage) para habilitar la mejora con IA.
+          </Text>
+          <Input.Password
+            placeholder="AIza..."
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+          />
+        </div>
       </Modal>
 
       {/* View Note Modal */}

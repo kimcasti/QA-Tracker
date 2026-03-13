@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Col, Row, Statistic, Table, Typography, Tag, Progress, Space } from 'antd';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
-import { useFunctionalities, useExecutions, useRegressionCycles, useSmokeCycles, useTestCases } from '../hooks';
+import { useFunctionalities, useExecutions, useRegressionCycles, useSmokeCycles, useTestCases, useSprints } from '../hooks';
 import { TestResult, TestStatus, ExecutionStatus, Severity, TestType } from '../types';
 import { 
   CheckCircleFilled, 
@@ -14,6 +14,7 @@ import {
   SafetyCertificateOutlined,
   FileSearchOutlined
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -31,12 +32,14 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const { data: regressionCyclesData } = useRegressionCycles(projectId);
   const { data: smokeCyclesData } = useSmokeCycles(projectId);
   const { data: testCasesData } = useTestCases(projectId);
+  const { data: sprintsData = [] } = useSprints(projectId);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = (Array.isArray(executionsData) ? executionsData : []).filter(e => e.status === ExecutionStatus.FINAL);
   const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
   const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
+  const sprints = Array.isArray(sprintsData) ? sprintsData : [];
 
   // Metrics Calculation
   const totalFuncs = functionalities.length;
@@ -162,13 +165,38 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     },
   ];
 
-  const tableData = functionalities.slice(0, 5).map((f, i) => ({
-    key: f.id,
-    period: `Sprint ${24 + i}`,
-    name: f.name,
-    status: f.status,
-    quality: f.status === TestStatus.COMPLETED ? 100 : 50
-  }));
+  const sprintByName = new Map(sprints.map(s => [s.name, s]));
+
+  const tableData = functionalities
+    // "Entregadas" debe reflejar entregas reales.
+    .filter(f => f.status === TestStatus.COMPLETED)
+    // Si hay fechas de sprint definidas, validar que la entrega cae dentro del periodo.
+    .filter(f => {
+      const sprint = f.sprint ? sprintByName.get(f.sprint) : undefined;
+      if (!sprint) return true;
+
+      const delivery = dayjs(f.deliveryDate);
+      const start = dayjs(sprint.startDate);
+      const end = dayjs(sprint.endDate);
+      if (!delivery.isValid() || !start.isValid() || !end.isValid()) return true;
+      return delivery.isAfter(start.subtract(1, 'day')) && delivery.isBefore(end.add(1, 'day'));
+    })
+    .sort((a, b) => dayjs(b.deliveryDate).valueOf() - dayjs(a.deliveryDate).valueOf())
+    .slice(0, 5)
+    .map((f) => {
+      const sprint = f.sprint ? sprintByName.get(f.sprint) : undefined;
+      const sprintPeriod = sprint && dayjs(sprint.startDate).isValid() && dayjs(sprint.endDate).isValid()
+        ? `${sprint.name} (${dayjs(sprint.startDate).format('DD/MM/YYYY')} - ${dayjs(sprint.endDate).format('DD/MM/YYYY')})`
+        : (f.sprint || 'Sin Sprint');
+
+      return {
+        key: f.id,
+        period: sprintPeriod,
+        name: f.name,
+        status: f.status,
+        quality: 100
+      };
+    });
 
   return (
     <div className="space-y-8 pb-10">
