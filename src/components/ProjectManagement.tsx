@@ -30,6 +30,7 @@ import {
   TrophyFilled,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { appBranding } from '../assets/branding';
 import { useProjects } from '../hooks';
 import { Project, ProjectStatus } from '../types';
 import { qaBrand, qaPalette, softSurface } from '../theme/palette';
@@ -396,12 +397,9 @@ export default function ProjectManagement({
                             <Avatar
                               size={56}
                               shape="square"
-                              style={{
-                                background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
-                                color: '#FFFFFF',
-                                fontWeight: 700,
-                                borderRadius: 18,
-                              }}
+                              src={appBranding.logoUrl}
+                              className="border border-slate-100"
+                              style={{ borderRadius: 18 }}
                             >
                               {getInitials(workspaceName)}
                             </Avatar>

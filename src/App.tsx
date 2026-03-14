@@ -13,7 +13,6 @@ import {
   LogoutOutlined,
   BarChartOutlined,
   ArrowLeftOutlined,
-  ProjectOutlined,
   InfoCircleOutlined,
   CalendarOutlined,
   ApartmentOutlined,
@@ -39,6 +38,7 @@ import type { Project } from './types';
 import { useProjects } from './hooks';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
+import { appBranding } from './assets/branding';
 import { qaBrand } from './theme/palette';
 
 const { Header, Content, Sider } = Layout;
@@ -211,6 +211,26 @@ export default function App() {
     setSelectedProjectId(parsedRoute.projectId);
   }, [parsedRoute, selectedProjectId]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const title = qaBrand.name;
+    document.title = title;
+
+    const ensureLink = (rel: string) => {
+      let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = rel;
+        document.head.appendChild(link);
+      }
+      return link;
+    };
+
+    ensureLink('icon').href = appBranding.faviconUrl;
+    ensureLink('apple-touch-icon').href = appBranding.appleTouchIconUrl;
+  }, []);
+
   const workspaceMenuItems = useMemo(
     () => [
       { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
@@ -256,9 +276,11 @@ export default function App() {
     <Layout className="min-h-screen bg-slate-50">
       <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-md">
-            <ProjectOutlined className="text-white text-lg" />
-          </div>
+          <img
+            src={appBranding.logoUrl}
+            alt={qaBrand.name}
+            className="h-10 w-10 rounded-xl object-cover shadow-md"
+          />
           <div className="flex flex-col leading-none">
             <span className="font-bold text-slate-800">{qaBrand.name}</span>
             <span className="text-[11px] text-slate-500">{qaBrand.tagline}</span>
@@ -352,9 +374,11 @@ export default function App() {
                 {routedProject.logo ? (
                   <Avatar src={routedProject.logo} className="border border-slate-100" />
                 ) : (
-                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm">
-                    <ProjectOutlined className="text-white text-sm" />
-                  </div>
+                  <Avatar
+                    src={appBranding.logoUrl}
+                    className="border border-slate-100"
+                    shape="square"
+                  />
                 )}
                 <div className="flex flex-col">
                   <Text strong className="leading-none">
@@ -395,9 +419,11 @@ export default function App() {
             >
               <div className={`px-4 py-6 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-3`}>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 min-w-[32px] bg-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                    <CheckCircleOutlined className="text-white text-lg" />
-                  </div>
+                  <img
+                    src={appBranding.logoUrl}
+                    alt={qaBrand.workspaceLabel}
+                    className="h-8 w-8 min-w-[32px] rounded-lg object-cover shadow-md"
+                  />
                   {!collapsed && (
                     <div className="flex flex-col overflow-hidden">
                       <span className="font-bold text-slate-800 leading-none truncate">{qaBrand.workspaceLabel}</span>

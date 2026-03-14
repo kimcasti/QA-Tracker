@@ -38,6 +38,7 @@ import {
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { GoogleGenAI } from '@google/genai';
+import { appBranding } from '../assets/branding';
 import { getGeminiApiKey } from '../services/geminiService';
 import { useMeetingNotes, useProjects } from '../hooks';
 import { MeetingNote, Project } from '../types';
@@ -426,11 +427,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                     <Avatar
                       size={96}
                       shape="square"
-                      src={project.logo}
+                      src={project.logo || appBranding.logoUrl}
                       className="border border-slate-100 shadow-lg"
                       style={{
                         borderRadius: 26,
-                        background: project.logo
+                        background: project.logo || appBranding.logoUrl
                           ? undefined
                           : `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
                         color: '#fff',
@@ -438,7 +439,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                         fontSize: 28,
                       }}
                     >
-                      {!project.logo && getInitials(project.organizationName || project.name)}
+                      {!project.logo && !appBranding.logoUrl && getInitials(project.organizationName || project.name)}
                     </Avatar>
                     <Upload
                       showUploadList={false}

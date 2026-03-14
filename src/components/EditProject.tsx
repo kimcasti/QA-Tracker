@@ -15,13 +15,13 @@ import {
   Breadcrumb
 } from 'antd';
 import { 
-  ProjectOutlined, 
   SaveOutlined, 
   CloseOutlined, 
   PlusOutlined, 
   DeleteOutlined,
   ArrowLeftOutlined
 } from '@ant-design/icons';
+import { appBranding } from '../assets/branding';
 import { Project, ProjectStatus } from '../types';
 import { useProjects } from '../hooks';
 
@@ -101,9 +101,11 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
         {/* GENERAL INFORMATION */}
         <Card className="rounded-2xl shadow-sm border-none overflow-hidden">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
-              <ProjectOutlined className="text-xl text-emerald-600" />
-            </div>
+            <img
+              src={appBranding.logoUrl}
+              alt="QA Tracker"
+              className="h-10 w-10 rounded-xl object-cover shadow-sm"
+            />
             <Title level={4} className="m-0">INFORMACIÓN GENERAL</Title>
           </div>
 
