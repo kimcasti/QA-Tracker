@@ -1,13 +1,16 @@
 import { Button, Card, Form, Input, Modal, Select, Space, Typography, DatePicker, Row, Col, message, Tooltip, Calendar, Tag } from 'antd';
 import { PlusOutlined, CalendarOutlined, DeleteOutlined } from '@ant-design/icons';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFunctionalities, useTestPlans, useModules, useSprints } from '../hooks';
 import { TestType, Priority, FunctionalityScope, TestPlan } from '../types';
+import { labelPriority } from '../i18n/labels';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
 export default function TestPlanView({ projectId }: { projectId?: string }) {
+  const { t } = useTranslation();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: plansData, save: savePlan, delete: deletePlan } = useTestPlans(projectId);
   const { data: modulesData = [] } = useModules(projectId);
@@ -215,7 +218,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
             </Col>
             <Col span={8}>
               <Form.Item name="priority" label="Nivel de Prioridad" rules={[{ required: true }]}>
-                <Select options={Object.values(Priority).map(v => ({ label: v, value: v }))} className="h-10 rounded-lg" />
+                <Select options={Object.values(Priority).map(v => ({ label: labelPriority(v, t), value: v }))} className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>

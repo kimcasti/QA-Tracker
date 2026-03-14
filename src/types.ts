@@ -60,6 +60,7 @@ export interface Functionality {
   priority: Priority;
   riskLevel: RiskLevel;
   sprint?: string;
+  storyId?: string;
 }
 
 export interface TestCase {

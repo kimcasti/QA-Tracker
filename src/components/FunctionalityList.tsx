@@ -2,13 +2,16 @@ import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Row, Col, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFunctionalities, useModules, useRoles, useSprints } from '../hooks';
 import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
+import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
 import * as XLSX from 'xlsx';
 
 export default function FunctionalityList({ filter, projectId }: { filter?: 'regression' | 'smoke', projectId?: string }) {
+  const { t } = useTranslation();
   const { data: functionalitiesData, save, delete: deleteFunc, bulkUpdate, bulkAdd } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
@@ -550,7 +553,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               allowClear
               onChange={setStatusFilter}
               value={statusFilter}
-              options={Object.values(TestStatus).map(s => ({ label: s, value: s }))}
+              options={Object.values(TestStatus).map(s => ({ label: labelTestStatus(s, t), value: s }))}
             />
           </div>
           <Button 
@@ -666,7 +669,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               <Form.Item name="priority" label={<span className="font-semibold text-slate-600">Prioridad</span>} rules={[{ required: true }]}>
                 <Select className="h-10 rounded-lg">
                   {Object.values(Priority).map(p => (
-                    <Select.Option key={p} value={p}>{p}</Select.Option>
+                    <Select.Option key={p} value={p}>{labelPriority(p, t)}</Select.Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -675,7 +678,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               <Form.Item name="riskLevel" label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>} rules={[{ required: true }]}>
                 <Select className="h-10 rounded-lg">
                   {Object.values(RiskLevel).map(r => (
-                    <Select.Option key={r} value={r}>{r}</Select.Option>
+                    <Select.Option key={r} value={r}>{labelRisk(r, t)}</Select.Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -696,7 +699,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
               <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado Actual</span>} rules={[{ required: true }]}>
                 <Select 
                   className="h-10 rounded-lg"
-                  options={Object.values(TestStatus).map(v => ({ label: v, value: v }))} 
+                  options={Object.values(TestStatus).map(v => ({ label: labelTestStatus(v, t), value: v }))} 
                 />
               </Form.Item>
             </Col>
@@ -764,7 +767,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             <Select 
               placeholder="Cambiar estado para todos..."
               className="h-10 rounded-lg"
-              options={Object.values(TestStatus).map(v => ({ label: v, value: v }))} 
+              options={Object.values(TestStatus).map(v => ({ label: labelTestStatus(v, t), value: v }))} 
             />
           </Form.Item>
         </Form>

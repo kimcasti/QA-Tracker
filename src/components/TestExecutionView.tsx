@@ -1,13 +1,16 @@
 import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, DatePicker, Row, Col, Upload, message, Tooltip, Divider, Checkbox, List, Image } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, UploadOutlined, DeleteOutlined, FileImageOutlined, EyeOutlined, EditOutlined, BugOutlined, UserOutlined, ArrowLeftOutlined, SaveOutlined, ExportOutlined, SearchOutlined, BarChartOutlined, ArrowDownOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFunctionalities, useExecutions, useTestCases, useModules, useSprints, useTestRuns } from '../hooks';
 import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity, TestRun, TestRunResult, Environment } from '../types';
+import { labelEnvironment, labelExecutionStatus, labelPriority, labelTestResult } from '../i18n/labels';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
+  const { t } = useTranslation();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: testRunsData, save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId);
   const { data: allTestCases } = useTestCases(projectId);
@@ -525,7 +528,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                               r === TestResult.FAILED ? 'bg-rose-500' : 
                               r === TestResult.BLOCKED ? 'bg-amber-500' : 'bg-slate-300'
                             }`} />
-                            <span className="text-xs">{r}</span>
+                            <span className="text-xs">{labelTestResult(r, t)}</span>
                           </Space>
                         ), 
                         value: r 
@@ -734,7 +737,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               className="w-40 h-10"
               allowClear
               onChange={setStatusFilter}
-              options={Object.values(ExecutionStatus).map(s => ({ label: s, value: s }))}
+              options={Object.values(ExecutionStatus).map(s => ({ label: labelExecutionStatus(s, t), value: s }))}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -799,7 +802,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
             <Col span={12}>
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
-                <Select options={Object.values(Priority).map(v => ({ label: v, value: v }))} className="h-10 rounded-lg" />
+                <Select options={Object.values(Priority).map(v => ({ label: labelPriority(v, t), value: v }))} className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={12}>

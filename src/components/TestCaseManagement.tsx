@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Space, Tag, Typography, Card, message, Popconfirm, Spin } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, ThunderboltOutlined, KeyOutlined } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
+import { useTranslation } from 'react-i18next';
+import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../hooks';
 import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
 
@@ -16,6 +18,7 @@ interface TestCaseManagementProps {
 }
 
 const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, functionalityId, functionalityName, moduleName }) => {
+  const { t } = useTranslation();
   const { data: testCases, isLoading, save, delete: deleteTestCase } = useTestCases(projectId, functionalityId);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -300,7 +303,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
             >
               <Select>
                 {Object.values(Priority).map(p => (
-                  <Select.Option key={p} value={p}>{p}</Select.Option>
+                  <Select.Option key={p} value={p}>{labelPriority(p, t)}</Select.Option>
                 ))}
               </Select>
             </Form.Item>

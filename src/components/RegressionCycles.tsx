@@ -1,8 +1,10 @@
 import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message, Divider, Checkbox } from 'antd';
 import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined, RollbackOutlined, UserOutlined } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRegressionCycles, useFunctionalities, useTestCases, useSprints } from '../hooks';
 import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity, Environment } from '../types';
+import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import dayjs from 'dayjs';
 
@@ -10,6 +12,7 @@ const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function RegressionCycles({ projectId }: { projectId?: string }) {
+  const { t } = useTranslation();
   const { data: cyclesData, save } = useRegressionCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
@@ -652,7 +655,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                                 r === TestResult.PASSED ? 'text-emerald-600' : 
                                 r === TestResult.FAILED ? 'text-red-600' : 
                                 r === TestResult.BLOCKED ? 'text-amber-600' : 'text-slate-400'
-                              }>{r}</span>
+                              }>{labelTestResult(r, t)}</span>
                             </div>
                           ),
                           value: r
