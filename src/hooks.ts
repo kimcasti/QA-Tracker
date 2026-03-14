@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { storageService } from './services/storageService';
-import { Functionality, TestExecution, RegressionCycle, TestPlan, Project, TestCase, Sprint, Role, Module, TestRun, MeetingNote } from './types';
+import { Functionality, TestExecution, RegressionCycle, TestPlan, Project, TestCase, Sprint, Role, Module, TestRun, MeetingNote, QABug } from './types';
 
 export function useProjects() {
   const queryClient = useQueryClient();
@@ -268,6 +268,27 @@ export function useTestRuns(projectId?: string) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => Promise.resolve(storageService.deleteTestRun(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test_runs', projectId] }),
+  });
+
+  return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };
+}
+
+export function useBugs(projectId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['bugs', projectId],
+    queryFn: () => storageService.getBugs(projectId),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (bug: QABug) => Promise.resolve(storageService.saveBug(bug)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bugs', projectId] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (internalBugId: string) => Promise.resolve(storageService.deleteBug(internalBugId)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bugs', projectId] }),
   });
 
   return { ...query, save: saveMutation.mutate, delete: deleteMutation.mutate };

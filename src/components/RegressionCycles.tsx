@@ -3,9 +3,10 @@ import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, Cl
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRegressionCycles, useFunctionalities, useTestCases, useSprints } from '../hooks';
-import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity, Environment } from '../types';
+import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity, Environment, BugOrigin } from '../types';
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
+import { syncBugReport } from '../services/bugTrackerService';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -85,6 +86,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     if (currentExecution) {
       evidenceForm.setFieldsValue({
         evidence: currentExecution.evidence,
+        bugTitle: currentExecution.bugTitle,
         bugId: currentExecution.bugId,
         bugLink: currentExecution.bugLink,
         severity: currentExecution.severity
@@ -1008,15 +1010,47 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               return;
             }
             const values = await evidenceForm.validateFields();
+            if (currentExecution.result === TestResult.FAILED && !values.bugTitle?.trim()) {
+              message.error('El titulo del bug es obligatorio para pruebas fallidas.');
+              return;
+            }
+
             const evidencePayload = {
               evidence: values.evidence,
               evidenceImage: evidenceImage,
+              bugTitle: values.bugTitle,
               bugId: values.bugId,
               bugLink: values.bugLink,
               severity: values.severity
             };
+
+            let linkedBugId = currentExecution.linkedBugId;
+            if (currentExecution.result === TestResult.FAILED) {
+              const syncedBug = syncBugReport({
+                linkedBugId: currentExecution.linkedBugId,
+                externalBugId: values.bugId,
+                title: values.bugTitle,
+                description: values.evidence,
+                severity: values.severity,
+                bugLink: values.bugLink,
+                evidenceImage,
+                origin: BugOrigin.REGRESSION_CYCLE,
+                projectId: selectedCycle.projectId,
+                functionalityId: currentExecution.functionalityId,
+                functionalityName: currentExecution.functionalityName,
+                module: currentExecution.module,
+                sprint: selectedCycle.sprint,
+                cycleId: selectedCycle.cycleId,
+                reportedBy: selectedCycle.tester,
+                testCaseId: currentExecution.testCaseId,
+                testCaseTitle: currentExecution.testCaseTitle,
+                executionId: currentExecution.id,
+              });
+              linkedBugId = syncedBug?.internalBugId;
+            }
+
             console.log('Payload - Save Evidence:', { executionId: currentExecution.id, ...evidencePayload });
-            updateExecution(selectedCycle.id, currentExecution.id, evidencePayload);
+            updateExecution(selectedCycle.id, currentExecution.id, { ...evidencePayload, linkedBugId });
             setEvidenceModalOpen(false);
             setCurrentExecution(null);
             message.success('Evidencia guardada correctamente');
@@ -1044,9 +1078,13 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <Input.TextArea rows={4} placeholder="Describe los hallazgos, errores encontrados o pasos realizados..." className="rounded-lg" disabled={isReadOnly} />
             </Form.Item>
 
-            <Divider orientation="left" className="!m-0 !mb-4">
+            <Divider titlePlacement="left" className="!m-0 !mb-4">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reporte de Bug</span>
             </Divider>
+
+            <Form.Item name="bugTitle" label="Titulo del bug">
+              <Input placeholder="Resume el error detectado" className="rounded-lg" disabled={isReadOnly} />
+            </Form.Item>
 
             <Row gutter={16}>
               <Col span={12}>
@@ -1069,6 +1107,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 </Form.Item>
               </Col>
             </Row>
+
+            <Text type="secondary" className="text-[11px] block -mt-2 mb-3">
+              Al guardar una prueba fallida, este bug tambien se registrara automaticamente en el Historial de Bugs con estado Pendiente.
+            </Text>
 
             <Form.Item label={<span className="font-semibold text-slate-600">Evidencia Visual (Imagen)</span>}>
               <div className="mt-2">

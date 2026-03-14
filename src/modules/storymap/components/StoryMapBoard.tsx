@@ -4,6 +4,7 @@ import { createSwapy, type SlotItemMapArray, type Swapy } from 'swapy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
+import { qaPalette, softSurface } from '../../../theme/palette';
 import type { StoryMapRoleNode } from '../types';
 import { taskOrderService } from '../services/taskOrderService';
 import { StoryColumn } from './StoryColumn';
@@ -14,12 +15,12 @@ const { Text } = Typography;
 const EMPTY_PREFIX = '__EMPTY__:'; // __EMPTY__:storyId
 
 const EPIC_ACCENT_CLASSES = [
-  'border-l-orange-200',
-  'border-l-orange-300',
-  'border-l-orange-200',
-  'border-l-amber-200',
-  'border-l-amber-300',
-  'border-l-amber-200',
+  'qa-story-accent',
+  'qa-story-accent',
+  'qa-story-accent',
+  'qa-story-accent',
+  'qa-story-accent',
+  'qa-story-accent',
 ];
 
 function hashStringToUint(value: string) {
@@ -266,7 +267,8 @@ export default function StoryMapBoard({
         <Card
           key={role.id}
           bordered={false}
-          className="rounded-2xl shadow-sm border-l-4 border-l-sky-300"
+          className="rounded-2xl qa-surface-card border-l-4"
+          style={{ borderLeftColor: qaPalette.primary }}
           styles={{
             header: { padding: '10px 14px' },
             body: { padding: 14 },
@@ -276,7 +278,7 @@ export default function StoryMapBoard({
               <Tag color="blue" className="m-0 text-[10px] font-black uppercase">
                 {t('storymap.role')}
               </Tag>
-              <UserOutlined className="text-sky-600" />
+              <UserOutlined style={{ color: qaPalette.primary }} />
               <span className="font-black text-slate-800 truncate" title={role.name}>
                 {role.name}
               </span>
@@ -299,7 +301,8 @@ export default function StoryMapBoard({
                 key={epic.id}
                 size="small"
                 bordered={false}
-                className={`rounded-2xl bg-slate-50 shadow-none border-l-4 ${epicAccentClass(epic.id)}`}
+                className={`rounded-2xl qa-story-surface shadow-none border-l-4 ${epicAccentClass(epic.id)}`}
+                style={{ background: `linear-gradient(180deg, ${qaPalette.storyMapCard} 0%, ${softSurface(qaPalette.storyMapBorder)} 100%)` }}
                 styles={{
                   header: { padding: '8px 12px' },
                   body: { padding: 12 },
@@ -309,7 +312,7 @@ export default function StoryMapBoard({
                     <Tag color="orange" className="m-0 text-[10px] font-black uppercase">
                       {t('storymap.epic')}
                     </Tag>
-                    <RocketOutlined className="text-amber-600" />
+                    <RocketOutlined style={{ color: qaPalette.storyMapBorder }} />
                     <span className="font-bold text-slate-800 truncate" title={epic.name}>
                       {epic.name}
                     </span>

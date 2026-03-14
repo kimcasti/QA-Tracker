@@ -6,6 +6,8 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import 'dayjs/locale/en';
 import i18n, { type AppLanguage, LS_LANG_KEY } from './i18n';
+import { antdTheme } from '../theme/antdTheme';
+import { applyQaCssVariables } from '../theme/palette';
 
 type LanguageContextValue = {
   language: AppLanguage;
@@ -19,14 +21,6 @@ export function useAppLanguage() {
   if (!ctx) throw new Error('useAppLanguage must be used within <LanguageProvider>');
   return ctx;
 }
-
-const baseTheme: ThemeConfig = {
-  algorithm: theme.defaultAlgorithm,
-  token: {
-    colorPrimary: '#1677ff',
-    borderRadius: 8,
-  },
-};
 
 function readInitialLanguage(): AppLanguage {
   const saved = localStorage.getItem(LS_LANG_KEY) as AppLanguage | null;
@@ -44,7 +38,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     dayjs.locale(language === 'es' ? 'es' : 'en');
   }, [language]);
 
+  useEffect(() => {
+    applyQaCssVariables();
+  }, []);
+
   const locale = useMemo(() => (language === 'es' ? esES : enUS), [language]);
+  const mergedTheme = useMemo<ThemeConfig>(() => ({
+    ...antdTheme,
+    algorithm: theme.defaultAlgorithm,
+  }), []);
 
   const value = useMemo<LanguageContextValue>(() => ({
     language,
@@ -53,10 +55,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   return (
     <LanguageContext.Provider value={value}>
-      <ConfigProvider theme={baseTheme} locale={locale}>
+      <ConfigProvider theme={mergedTheme} locale={locale}>
         {children}
       </ConfigProvider>
     </LanguageContext.Provider>
   );
 }
-

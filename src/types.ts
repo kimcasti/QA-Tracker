@@ -106,6 +106,19 @@ export enum FunctionalityScope {
   PARTIAL = 'Parcial',
 }
 
+export enum BugOrigin {
+  GENERAL_EXECUTION = 'General Execution',
+  REGRESSION_CYCLE = 'Regression Cycle',
+  SMOKE_CYCLE = 'Smoke Cycle',
+}
+
+export enum BugStatus {
+  PENDING = 'Pendiente',
+  IN_PROGRESS = 'En curso',
+  QA = 'QA',
+  RESOLVED = 'Resuelto',
+}
+
 export enum Environment {
   TEST = 'Test',
   LOCAL = 'Local',
@@ -146,8 +159,10 @@ export interface TestExecution {
   jiraId?: string;
   description?: string;
   bugId?: string;
+  bugTitle?: string;
   bugLink?: string;
   severity?: Severity;
+  linkedBugId?: string;
 }
 
 export interface TestRunResult {
@@ -158,8 +173,10 @@ export interface TestRunResult {
   notes?: string;
   evidenceImage?: string;
   bugId?: string;
+  bugTitle?: string;
   bugLink?: string;
   severity?: Severity;
+  linkedBugId?: string;
 }
 
 export interface TestRun {
@@ -203,8 +220,10 @@ export interface RegressionExecution {
   evidence?: string; // Note
   evidenceImage?: string; // Base64 image
   bugId?: string;
+  bugTitle?: string;
   bugLink?: string;
   severity?: Severity;
+  linkedBugId?: string;
 }
 
 export interface RegressionCycle {
@@ -263,4 +282,30 @@ export interface MeetingNote {
   aiDecisions?: string;
   aiActions?: string;
   aiNextSteps?: string;
+}
+
+export interface QABug {
+  internalBugId: string;
+  externalBugId?: string;
+  title: string;
+  description?: string;
+  severity?: Severity;
+  bugLink?: string;
+  evidenceImage?: string;
+  origin: BugOrigin;
+  projectId: string;
+  functionalityId: string;
+  functionalityName: string;
+  module: string;
+  sprint?: string;
+  cycleId?: string;
+  detectedAt: string;
+  reportedBy?: string;
+  status: BugStatus;
+  testCaseId?: string;
+  testCaseTitle?: string;
+  testRunId?: string;
+  executionId?: string;
+  linkedSourceId?: string;
+  updatedAt?: string;
 }

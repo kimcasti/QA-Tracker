@@ -1,10 +1,12 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, DatePicker, Row, Col, Upload, message, Tooltip, Divider, Checkbox, List, Image } from 'antd';
+import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, DatePicker, Row, Col, Upload, message, Tooltip, Divider, Checkbox, List, Image, Tabs } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, UploadOutlined, DeleteOutlined, FileImageOutlined, EyeOutlined, EditOutlined, BugOutlined, UserOutlined, ArrowLeftOutlined, SaveOutlined, ExportOutlined, SearchOutlined, BarChartOutlined, ArrowDownOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities, useExecutions, useTestCases, useModules, useSprints, useTestRuns } from '../hooks';
-import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity, TestRun, TestRunResult, Environment } from '../types';
+import { TestExecution, TestResult, TestType, ExecutionStatus, Priority, FunctionalityScope, Severity, TestRun, TestRunResult, Environment, BugOrigin } from '../types';
 import { labelEnvironment, labelExecutionStatus, labelPriority, labelTestResult } from '../i18n/labels';
+import { syncBugReport } from '../services/bugTrackerService';
+import BugHistoryView from './BugHistoryView';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
@@ -43,14 +45,59 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return executionResults.find(r => r.testCaseId === currentEvidenceTestCaseId) || null;
   }, [currentEvidenceTestCaseId, executionResults]);
 
+  const activeEvidenceTestCase = useMemo(() => {
+    if (!currentEvidenceRecord) return null;
+    return testCases.find(tc => tc.id === currentEvidenceRecord.testCaseId) || null;
+  }, [currentEvidenceRecord, testCases]);
+
+  const activeEvidenceFunctionality = useMemo(() => {
+    if (!currentEvidenceRecord) return null;
+    return functionalities.find(func => func.id === currentEvidenceRecord.functionalityId) || null;
+  }, [currentEvidenceRecord, functionalities]);
+
   const openEvidenceModal = (record: TestRunResult) => {
     setCurrentEvidenceTestCaseId(record.testCaseId);
     setIsEvidenceModalOpen(true);
   };
 
   const handleSaveEvidence = () => {
+    if (!currentEvidenceRecord) return;
+
+    if (currentEvidenceRecord.result === TestResult.FAILED && !currentEvidenceRecord.bugTitle?.trim()) {
+      message.error('El titulo del bug es obligatorio para pruebas fallidas.');
+      return;
+    }
+
+    if (currentEvidenceRecord.result === TestResult.FAILED && activeTestRun && activeEvidenceFunctionality) {
+      const syncedBug = syncBugReport({
+        linkedBugId: currentEvidenceRecord.linkedBugId,
+        externalBugId: currentEvidenceRecord.bugId,
+        title: currentEvidenceRecord.bugTitle,
+        description: currentEvidenceRecord.notes,
+        severity: currentEvidenceRecord.severity,
+        bugLink: currentEvidenceRecord.bugLink,
+        evidenceImage: currentEvidenceRecord.evidenceImage,
+        origin: BugOrigin.GENERAL_EXECUTION,
+        projectId: activeTestRun.projectId,
+        functionalityId: activeEvidenceFunctionality.id,
+        functionalityName: activeEvidenceFunctionality.name,
+        module: activeEvidenceFunctionality.module,
+        sprint: activeTestRun.sprint,
+        reportedBy: activeTestRun.tester,
+        testCaseId: currentEvidenceRecord.testCaseId,
+        testCaseTitle: activeEvidenceTestCase?.title,
+        testRunId: activeTestRun.id,
+        executionId: currentEvidenceRecord.id,
+      });
+
+      if (syncedBug) {
+        updateResult(currentEvidenceRecord.testCaseId, 'linkedBugId', syncedBug.internalBugId);
+      }
+    }
+
     setIsEvidenceModalOpen(false);
     setCurrentEvidenceTestCaseId(null);
+    message.success('Evidencia guardada correctamente');
   };
 
   const availableFunctionalities = useMemo(() => {
@@ -605,7 +652,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <Text type="secondary" className="text-[10px] font-bold uppercase tracking-widest block mb-1">Funcionalidad</Text>
                 <Text strong className="text-slate-800">
-                  {testCases.find(tc => tc.id === currentEvidenceRecord.testCaseId)?.id} - {testCases.find(tc => tc.id === currentEvidenceRecord.testCaseId)?.title}
+                  {activeEvidenceTestCase?.id} - {activeEvidenceTestCase?.title}
                 </Text>
               </div>
 
@@ -622,6 +669,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </div>
 
               <Divider className="m-0"><Text type="secondary" className="text-[10px] font-bold uppercase tracking-widest">Reporte de Bug</Text></Divider>
+
+              <div>
+                <Text className="text-xs font-semibold text-slate-600 block mb-1.5">Titulo del Bug</Text>
+                <Input
+                  placeholder="Resume el error detectado"
+                  value={currentEvidenceRecord.bugTitle}
+                  disabled={isReadOnly}
+                  onChange={(e) => updateResult(currentEvidenceRecord.testCaseId, 'bugTitle', e.target.value)}
+                  className="rounded-lg border-slate-200"
+                />
+              </div>
 
               <Row gutter={16}>
                 <Col span={12}>
@@ -657,6 +715,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   className="rounded-lg border-slate-200"
                 />
               </div>
+
+              <Text type="secondary" className="text-[11px] block -mt-2">
+                Al registrar un bug desde una prueba fallida, se creara o actualizara automaticamente en el Historial de Bugs con estado inicial Pendiente.
+              </Text>
 
               <div>
                 <Text className="text-sm font-semibold text-slate-700 block mb-2">Evidencia Visual (Imagen)</Text>
@@ -728,40 +790,58 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </Button>
       </div>
 
-      <Card className="rounded-2xl shadow-sm border-slate-100">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado</span>
-            <Select
-              placeholder="Todos"
-              className="w-40 h-10"
-              allowClear
-              onChange={setStatusFilter}
-              options={Object.values(ExecutionStatus).map(s => ({ label: labelExecutionStatus(s, t), value: s }))}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sprint</span>
-            <Select
-              placeholder="Todos"
-              className="w-40 h-10"
-              allowClear
-              onChange={setSprintFilter}
-              options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-            />
-          </div>
-        </div>
-      </Card>
+      <Tabs
+        defaultActiveKey="executions"
+        items={[
+          {
+            key: 'executions',
+            label: 'Historial de Ejecuciones',
+            children: (
+              <div className="space-y-6">
+                <Card className="rounded-2xl shadow-sm border-slate-100">
+                  <div className="flex flex-wrap gap-4 items-end">
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado</span>
+                      <Select
+                        placeholder="Todos"
+                        className="w-40 h-10"
+                        allowClear
+                        onChange={setStatusFilter}
+                        options={Object.values(ExecutionStatus).map(s => ({ label: labelExecutionStatus(s, t), value: s }))}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sprint</span>
+                      <Select
+                        placeholder="Todos"
+                        className="w-40 h-10"
+                        allowClear
+                        onChange={setSprintFilter}
+                        options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                      />
+                    </div>
+                  </div>
+                </Card>
 
-      <Card className="rounded-2xl shadow-sm border-slate-100" title={<span className="text-slate-800 font-bold">Historial de Ejecuciones</span>}>
-        <Table 
-          columns={columns} 
-          dataSource={filteredRuns} 
-          rowKey="id" 
-          className="executive-table"
-          scroll={{ x: 'max-content' }}
-        />
-      </Card>
+                <Card className="rounded-2xl shadow-sm border-slate-100" title={<span className="text-slate-800 font-bold">Historial de Ejecuciones</span>}>
+                  <Table
+                    columns={columns}
+                    dataSource={filteredRuns}
+                    rowKey="id"
+                    className="executive-table"
+                    scroll={{ x: 'max-content' }}
+                  />
+                </Card>
+              </div>
+            ),
+          },
+          {
+            key: 'bugs',
+            label: 'Historial de Bugs',
+            children: <BugHistoryView projectId={projectId} />,
+          },
+        ]}
+      />
 
       <Modal
         title={<span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>}

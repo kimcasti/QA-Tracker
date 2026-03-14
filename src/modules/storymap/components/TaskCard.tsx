@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useTestCases, useTestRuns } from '../../../hooks';
 import { ExecutionStatus, TestResult, type Functionality, TestStatus } from '../../../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../../../i18n/labels';
+import { qaPalette } from '../../../theme/palette';
+import { functionalityStatusColors, softTagStyle } from '../../../theme/statusStyles';
 
 const { Text } = Typography;
 
@@ -43,19 +45,19 @@ export function TaskCard({
     const s = status as unknown as string;
     switch (s) {
       case TestStatus.BACKLOG:
-        return { bg: 'bg-slate-200', text: 'text-slate-700' };
+        return softTagStyle(functionalityStatusColors[TestStatus.BACKLOG]);
       case TestStatus.MVP:
-        return { bg: 'bg-indigo-200', text: 'text-indigo-900' };
+        return softTagStyle(functionalityStatusColors[TestStatus.MVP]);
       case TestStatus.POST_MVP:
-        return { bg: 'bg-purple-200', text: 'text-purple-800' };
+        return softTagStyle(functionalityStatusColors[TestStatus.POST_MVP]);
       case TestStatus.IN_PROGRESS:
-        return { bg: 'bg-yellow-200', text: 'text-yellow-900' };
+        return softTagStyle(functionalityStatusColors[TestStatus.IN_PROGRESS]);
       case TestStatus.COMPLETED:
-        return { bg: 'bg-emerald-200', text: 'text-emerald-900' };
+        return softTagStyle(functionalityStatusColors[TestStatus.COMPLETED]);
       case TestStatus.FAILED:
-        return { bg: 'bg-rose-200', text: 'text-rose-900' };
+        return softTagStyle(functionalityStatusColors[TestStatus.FAILED]);
       default:
-        return { bg: 'bg-slate-200', text: 'text-slate-700' };
+        return softTagStyle(functionalityStatusColors[TestStatus.BACKLOG]);
     }
   }, [status]);
 
@@ -88,7 +90,7 @@ export function TaskCard({
   }, [functionalityId, testCases, testRuns]);
 
   return (
-    <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 shadow-sm hover:shadow transition-shadow">
+    <div className="rounded-xl qa-story-surface px-3 py-2 shadow-sm hover:shadow transition-shadow">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div data-swapy-handle className="cursor-grab text-slate-400 hover:text-slate-600">
@@ -106,7 +108,7 @@ export function TaskCard({
                 </div>
               </div>
               {status && (
-                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black ${statusStyle.bg} ${statusStyle.text}`}>
+                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black" style={statusStyle}>
                   {labelTestStatus(status, t)}
                 </span>
               )}
@@ -128,7 +130,7 @@ export function TaskCard({
             {totalTests > 0 && (
               <div className="mt-2 text-[11px] text-slate-600 font-semibold">
                 <span>{t('functionality.tests')}: {totalTests} | </span>
-                <span className="text-rose-600 inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1" style={{ color: qaPalette.functionalityStatus.failed }}>
                   <CloseCircleFilled />
                   <span>{failedTests}</span>
                 </span>

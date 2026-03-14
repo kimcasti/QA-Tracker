@@ -1,4 +1,4 @@
-import { Functionality, TestExecution, TestResult, TestStatus, TestType, RegressionCycle, ExecutionStatus, TestPlan, Project, ProjectStatus, Priority, RiskLevel, TestCase } from '../types';
+import { Functionality, TestExecution, TestResult, TestStatus, TestType, RegressionCycle, ExecutionStatus, TestPlan, Project, ProjectStatus, Priority, RiskLevel, TestCase, QABug } from '../types';
 
 const STORAGE_KEYS = {
   PROJECTS: 'qa_tracker_projects',
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   MODULES: 'qa_tracker_modules',
   TEST_RUNS: 'qa_tracker_test_runs',
   MEETING_NOTES: 'qa_tracker_meeting_notes',
+  BUGS: 'qa_bugs',
 };
 
 // Initial Mock Data if empty
@@ -344,5 +345,27 @@ export const storageService = {
   deleteMeetingNote: (id: string) => {
     const notes = storageService.getMeetingNotes().filter(n => n.id !== id);
     localStorage.setItem(STORAGE_KEYS.MEETING_NOTES, JSON.stringify(notes));
+  },
+
+  getBugs: (projectId?: string): QABug[] => {
+    const data = localStorage.getItem(STORAGE_KEYS.BUGS);
+    const all = data ? JSON.parse(data) : [];
+    return projectId ? all.filter((bug: QABug) => bug.projectId === projectId) : all;
+  },
+
+  saveBug: (bug: QABug) => {
+    const bugs = storageService.getBugs();
+    const index = bugs.findIndex(item => item.internalBugId === bug.internalBugId);
+    if (index > -1) {
+      bugs[index] = bug;
+    } else {
+      bugs.push(bug);
+    }
+    localStorage.setItem(STORAGE_KEYS.BUGS, JSON.stringify(bugs));
+  },
+
+  deleteBug: (internalBugId: string) => {
+    const bugs = storageService.getBugs().filter(bug => bug.internalBugId !== internalBugId);
+    localStorage.setItem(STORAGE_KEYS.BUGS, JSON.stringify(bugs));
   },
 };

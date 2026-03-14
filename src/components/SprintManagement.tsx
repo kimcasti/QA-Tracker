@@ -159,7 +159,7 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
         </Button>
       </div>
 
-      <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden" bodyStyle={{ padding: 0 }}>
+      <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden" styles={{ body: { padding: 0 } }}>
         <Table 
           columns={columns} 
           dataSource={sprints} 

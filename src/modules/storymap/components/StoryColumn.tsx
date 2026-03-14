@@ -3,6 +3,7 @@ import { BookOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
+import { qaPalette } from '../../../theme/palette';
 
 const { Text } = Typography;
 
@@ -37,7 +38,7 @@ export function StoryColumn({
     <Card
       size="small"
       bordered={false}
-      className="rounded-xl bg-white border border-slate-100 border-l-4 border-l-emerald-300"
+      className="rounded-xl qa-story-surface qa-story-accent"
       styles={{
         header: { padding: '8px 12px' },
         body: { padding: 12 },
@@ -47,7 +48,7 @@ export function StoryColumn({
           <Tag color="green" className="m-0 text-[10px] font-black uppercase">
             {t('storymap.story')}
           </Tag>
-          <BookOutlined className="text-emerald-600" />
+          <BookOutlined style={{ color: qaPalette.storyMapBorder }} />
           <span className="font-bold text-slate-800 truncate" title={storyName}>
             {storyName}
           </span>
