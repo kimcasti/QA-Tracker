@@ -1,9 +1,55 @@
-import { Button, Card, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Table, Tag, Typography, Tooltip, Upload, message, Divider, Checkbox } from 'antd';
-import { PlusOutlined, SearchOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, EyeOutlined, FileTextOutlined, ArrowLeftOutlined, SettingOutlined, UploadOutlined, DeleteOutlined, BugOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Progress,
+  Row,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  Tooltip,
+  Upload,
+  message,
+  Divider,
+  Checkbox,
+} from 'antd';
+import {
+  PlusOutlined,
+  SearchOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ClockCircleOutlined,
+  EyeOutlined,
+  FileTextOutlined,
+  ArrowLeftOutlined,
+  SettingOutlined,
+  UploadOutlined,
+  DeleteOutlined,
+  BugOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSmokeCycles, useFunctionalities, useTestCases, useSprints } from '../hooks';
-import { RegressionCycle, TestResult, TestType, RegressionExecution, Severity, Environment, BugOrigin } from '../types';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import {
+  RegressionCycle,
+  TestResult,
+  TestType,
+  RegressionExecution,
+  Severity,
+  Environment,
+  BugOrigin,
+} from '../types';
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import { syncBugReport } from '../services/bugTrackerService';
@@ -18,7 +64,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
-  
+
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
@@ -32,12 +78,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     setEditingCycle(null);
     form.resetFields();
     // Calculate next Cycle ID
-    const nextNumber = cycles.length > 0 
-      ? Math.max(...cycles.map(c => {
-          const match = c.cycleId?.match(/\d+/);
-          return match ? parseInt(match[0], 10) : 0;
-        })) + 1 
-      : 1;
+    const nextNumber =
+      cycles.length > 0
+        ? Math.max(
+            ...cycles.map(c => {
+              const match = c.cycleId?.match(/\d+/);
+              return match ? parseInt(match[0], 10) : 0;
+            }),
+          ) + 1
+        : 1;
 
     form.setFieldsValue({
       cycleId: `S-${nextNumber.toString().padStart(2, '0')}`,
@@ -47,7 +96,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       note: '',
       tester: '',
       environment: undefined,
-      buildVersion: ''
+      buildVersion: '',
     });
     setIsModalOpen(true);
   };
@@ -63,7 +112,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       note: cycle.note,
       tester: cycle.tester || '',
       environment: cycle.environment,
-      buildVersion: cycle.buildVersion || ''
+      buildVersion: cycle.buildVersion || '',
     });
     setIsModalOpen(true);
   };
@@ -73,7 +122,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [sprintFilter, setSprintFilter] = useState<string | undefined>(undefined);
   const [detailSearch, setDetailSearch] = useState('');
   const [detailFilter, setDetailFilter] = useState<'ALL' | 'FAILED'>('ALL');
-  
+
   // Evidence Modal State
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [currentExecution, setCurrentExecution] = useState<RegressionExecution | null>(null);
@@ -90,7 +139,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         bugTitle: currentExecution.bugTitle,
         bugId: currentExecution.bugId,
         bugLink: currentExecution.bugLink,
-        severity: currentExecution.severity
+        severity: currentExecution.severity,
       });
       setEvidenceImage(currentExecution.evidenceImage);
     } else {
@@ -100,18 +149,20 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   }, [currentExecution, evidenceForm]);
 
   // Filter smoke functionalities for new cycles
-  const smokeFuncs = Array.isArray(functionalities) 
+  const smokeFuncs = Array.isArray(functionalities)
     ? functionalities.filter(f => f?.testTypes?.includes(TestType.SMOKE))
     : [];
 
   const columns = [
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">CICLO</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">CICLO</span>
+      ),
       dataIndex: 'cycleId',
       key: 'cycleId',
       render: (text: string, record: RegressionCycle) => (
-        <Button 
-          type="link" 
+        <Button
+          type="link"
           className="p-0 h-auto font-bold text-orange-600"
           onClick={() => setSelectedCycle(record)}
         >
@@ -120,7 +171,9 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">FECHA</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">FECHA</span>
+      ),
       dataIndex: 'date',
       key: 'date',
       render: (date: string) => (
@@ -131,13 +184,21 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">TOTAL TEST</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          TOTAL TEST
+        </span>
+      ),
       dataIndex: 'totalTests',
       key: 'totalTests',
       render: (val: number) => <Text strong>{val}</Text>,
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">APROBADOS</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          APROBADOS
+        </span>
+      ),
       dataIndex: 'passed',
       key: 'passed',
       render: (val: number) => (
@@ -147,7 +208,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">FALLIDOS</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          FALLIDOS
+        </span>
+      ),
       dataIndex: 'failed',
       key: 'failed',
       render: (val: number) => (
@@ -157,7 +222,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">PENDIENTES</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          PENDIENTES
+        </span>
+      ),
       dataIndex: 'pending',
       key: 'pending',
       render: (val: number) => (
@@ -167,15 +236,19 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">% APROB.</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          % APROB.
+        </span>
+      ),
       dataIndex: 'passRate',
       key: 'passRate',
       render: (rate: number) => (
         <div className="flex items-center gap-3 min-w-[120px]">
-          <Progress 
-            percent={rate} 
-            size="small" 
-            showInfo={false} 
+          <Progress
+            percent={rate}
+            size="small"
+            showInfo={false}
             strokeColor={rate >= 85 ? '#10b981' : rate >= 70 ? '#f59e0b' : '#ef4444'}
             trailColor="#f1f5f9"
           />
@@ -184,19 +257,23 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ACCIONES</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          ACCIONES
+        </span>
+      ),
       key: 'actions',
       render: (_: any, record: RegressionCycle) => (
         <Space>
-          <Button 
-            icon={<EyeOutlined />} 
+          <Button
+            icon={<EyeOutlined />}
             onClick={() => setSelectedCycle(record)}
             className="rounded-lg border-slate-200 text-slate-600"
           >
             Ver Detalle
           </Button>
-          <Button 
-            icon={<SettingOutlined />} 
+          <Button
+            icon={<SettingOutlined />}
             onClick={() => handleEdit(record)}
             className="rounded-lg border-slate-200 text-slate-600"
           >
@@ -210,7 +287,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      
+
       if (editingCycle) {
         const updatedCycle: RegressionCycle = {
           ...editingCycle,
@@ -219,15 +296,18 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           date: values.date.format('YYYY-MM-DD'),
         };
         console.log('Payload - Update Smoke Cycle:', updatedCycle);
-        save(updatedCycle);
+        const savedCycle = await save(updatedCycle);
+        setSelectedCycle(savedCycle);
         message.success('Ciclo de Smoke actualizado correctamente');
       } else {
         // Initialize executions from smoke functionalities and their test cases
         const initialExecutions: RegressionExecution[] = [];
-        
+
         smokeFuncs.forEach(f => {
-          const fTestCases = testCases.filter(tc => tc.functionalityId === f.id && tc.testType === TestType.SMOKE);
-          
+          const fTestCases = testCases.filter(
+            tc => tc.functionalityId === f.id && tc.testType === TestType.SMOKE,
+          );
+
           if (fTestCases.length > 0) {
             fTestCases.forEach(tc => {
               initialExecutions.push({
@@ -272,11 +352,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         };
 
         console.log('Payload - Create Smoke Cycle:', newCycle);
-        save(newCycle);
-        setSelectedCycle(newCycle);
+        const savedCycle = await save(newCycle);
+        setSelectedCycle(savedCycle);
         message.success('Ciclo de Smoke creado correctamente');
       }
-      
+
       setIsModalOpen(false);
       setEditingCycle(null);
       form.resetFields();
@@ -285,12 +365,18 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     }
   };
 
-  const updateExecution = (cycleId: string, executionId: string, updates: Partial<RegressionExecution>) => {
+  const updateExecution = async (
+    cycleId: string,
+    executionId: string,
+    updates: Partial<RegressionExecution>,
+  ) => {
     const cycle = cycles.find(c => c.id === cycleId);
     if (!cycle) return;
 
-    const updatedExecutions = cycle.executions.map(ex => 
-      ex.id === executionId ? { ...ex, ...updates, date: updates.executed ? dayjs().format('YYYY-MM-DD') : ex.date } : ex
+    const updatedExecutions = cycle.executions.map(ex =>
+      ex.id === executionId
+        ? { ...ex, ...updates, date: updates.executed ? dayjs().format('YYYY-MM-DD') : ex.date }
+        : ex,
     );
 
     const passed = updatedExecutions.filter(ex => ex.result === TestResult.PASSED).length;
@@ -309,21 +395,21 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       pending,
       passRate: rate,
       // Keep status manual; do not auto-finalize when pending reaches 0.
-      status: cycle.status || 'EN_PROGRESO'
+      status: cycle.status || 'EN_PROGRESO',
     };
 
-    save(updatedCycle);
+    const savedCycle = await save(updatedCycle);
     if (selectedCycle?.id === cycleId) {
-      setSelectedCycle(updatedCycle);
+      setSelectedCycle(savedCycle);
     }
   };
 
-  const handleExecuteAll = (cycle: RegressionCycle) => {
+  const handleExecuteAll = async (cycle: RegressionCycle) => {
     const updatedExecutions = cycle.executions.map(ex => ({
       ...ex,
       executed: true,
       result: TestResult.PASSED,
-      date: dayjs().format('YYYY-MM-DD')
+      date: dayjs().format('YYYY-MM-DD'),
     }));
 
     const updatedCycle: RegressionCycle = {
@@ -335,14 +421,14 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       pending: 0,
       passRate: 100,
       // Keep status manual; user must finalize explicitly.
-      status: cycle.status || 'EN_PROGRESO'
+      status: cycle.status || 'EN_PROGRESO',
     };
 
-    save(updatedCycle);
-    setSelectedCycle(updatedCycle);
+    const savedCycle = await save(updatedCycle);
+    setSelectedCycle(savedCycle);
   };
 
-  const handleFinalizeCycle = (cycle: RegressionCycle) => {
+  const handleFinalizeCycle = async (cycle: RegressionCycle) => {
     if (cycle.pending > 0) {
       message.warning('AÃºn hay casos pendientes por ejecutar');
       return;
@@ -350,27 +436,30 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
     const updatedCycle: RegressionCycle = {
       ...cycle,
-      status: 'FINALIZADA'
+      status: 'FINALIZADA',
     };
 
-    save(updatedCycle);
-    setSelectedCycle(updatedCycle);
+    const savedCycle = await save(updatedCycle);
+    setSelectedCycle(savedCycle);
     message.success('Ciclo finalizado correctamente');
   };
 
   const filteredCycles = (Array.isArray(cycles) ? cycles : []).filter(c => {
     if (!c) return false;
-    const matchesSearch = 
+    const matchesSearch =
       (c.cycleId || '').toLowerCase().includes(searchText.toLowerCase()) ||
       (c.note || '').toLowerCase().includes(searchText.toLowerCase());
-    
+
     const matchesSprint = !sprintFilter || c.sprint === sprintFilter;
-    
-    const matchesDate = !dateRange || !dateRange[0] || !dateRange[1] || (
-      c.date && dayjs(c.date).isValid() &&
-      dayjs(c.date).isAfter(dateRange[0].subtract(1, 'day')) && 
-      dayjs(c.date).isBefore(dateRange[1].add(1, 'day'))
-    );
+
+    const matchesDate =
+      !dateRange ||
+      !dateRange[0] ||
+      !dateRange[1] ||
+      (c.date &&
+        dayjs(c.date).isValid() &&
+        dayjs(c.date).isAfter(dateRange[0].subtract(1, 'day')) &&
+        dayjs(c.date).isBefore(dateRange[1].add(1, 'day')));
 
     return matchesSearch && matchesSprint && matchesDate;
   });
@@ -385,11 +474,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
   const filteredExecutions = (selectedCycle?.executions || []).filter(ex => {
     if (!ex) return false;
-    const matchesSearch = 
+    const matchesSearch =
       (ex.functionalityId || '').toLowerCase().includes(detailSearch.toLowerCase()) ||
       (ex.module || '').toLowerCase().includes(detailSearch.toLowerCase()) ||
       (ex.functionalityName || '').toLowerCase().includes(detailSearch.toLowerCase());
-    
+
     const matchesFilter = detailFilter === 'ALL' || ex.result === TestResult.FAILED;
 
     return matchesSearch && matchesFilter;
@@ -401,48 +490,66 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <Button 
-                icon={<ArrowLeftOutlined />} 
+              <Button
+                icon={<ArrowLeftOutlined />}
                 onClick={() => setSelectedCycle(null)}
                 className="rounded-xl h-10 w-10 flex items-center justify-center border-slate-200"
               />
               <div>
                 <div className="flex items-center gap-3">
-                  <Tag 
-                    color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'orange'} 
+                  <Tag
+                    color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'orange'}
                     className={`rounded-full px-3 font-bold uppercase text-[10px] ${!isReadOnly ? 'cursor-pointer hover:opacity-80' : ''} transition-opacity`}
                     onClick={!isReadOnly ? () => handleEdit(selectedCycle) : undefined}
                   >
                     {selectedCycle.status === 'FINALIZADA' ? 'Finalizada' : 'En Progreso'}
                   </Tag>
-                  <span className="text-slate-400 text-sm">• {selectedCycle.sprint || 'Sin Sprint'}</span>
-                  {selectedCycle.tester && <span className="text-slate-400 text-sm">• {selectedCycle.tester}</span>}
-                  {selectedCycle.environment && <span className="text-slate-400 text-sm">• {selectedCycle.environment}</span>}
-                  {selectedCycle.buildVersion && <span className="text-slate-400 text-sm">• Build {selectedCycle.buildVersion}</span>}
+                  <span className="text-slate-400 text-sm">
+                    • {selectedCycle.sprint || 'Sin Sprint'}
+                  </span>
+                  {selectedCycle.tester && (
+                    <span className="text-slate-400 text-sm">• {selectedCycle.tester}</span>
+                  )}
+                  {selectedCycle.environment && (
+                    <span className="text-slate-400 text-sm">• {selectedCycle.environment}</span>
+                  )}
+                  {selectedCycle.buildVersion && (
+                    <span className="text-slate-400 text-sm">
+                      • Build {selectedCycle.buildVersion}
+                    </span>
+                  )}
                 </div>
-                <Title level={2} className="!m-0 uppercase tracking-tight">{selectedCycle.cycleId}</Title>
-                <Paragraph type="secondary" className="!m-0">{selectedCycle.note}</Paragraph>
+                <Title level={2} className="!m-0 uppercase tracking-tight">
+                  {selectedCycle.cycleId}
+                </Title>
+                <Paragraph type="secondary" className="!m-0">
+                  {selectedCycle.note}
+                </Paragraph>
               </div>
             </div>
             <Space size="middle">
               {!isReadOnly && (
-                <Button 
-                  icon={<SettingOutlined />} 
+                <Button
+                  icon={<SettingOutlined />}
                   onClick={() => handleEdit(selectedCycle)}
                   className="rounded-xl h-11 px-4 border-slate-200 text-slate-600 font-semibold"
                 >
                   Editar Info
                 </Button>
               )}
-              <Button 
-                icon={<FileTextOutlined />} 
+              <Button
+                icon={<FileTextOutlined />}
                 className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
                 onClick={() => exportCycleToCSV(selectedCycle)}
               >
                 Export Report
               </Button>
               {!isReadOnly && (
-                <Tooltip title={selectedCycle.pending > 0 ? 'Ejecute todos los casos antes de finalizar' : ''}>
+                <Tooltip
+                  title={
+                    selectedCycle.pending > 0 ? 'Ejecute todos los casos antes de finalizar' : ''
+                  }
+                >
                   <span>
                     <Button
                       type="primary"
@@ -450,7 +557,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                       size="large"
                       disabled={selectedCycle.pending > 0}
                       className="rounded-xl h-11 px-8 bg-emerald-600 hover:bg-emerald-700 border-none shadow-lg shadow-emerald-200 font-bold"
-                      onClick={() => handleFinalizeCycle(selectedCycle)}
+                  onClick={() => void handleFinalizeCycle(selectedCycle)}
                     >
                       Finalizar Ciclo
                     </Button>
@@ -458,12 +565,12 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 </Tooltip>
               )}
               {!isReadOnly && (
-                <Button 
-                  type="primary" 
-                  icon={<BarChartOutlined />} 
-                  size="large" 
+                <Button
+                  type="primary"
+                  icon={<BarChartOutlined />}
+                  size="large"
                   className="rounded-xl h-11 px-8 shadow-lg shadow-orange-200 font-bold bg-orange-600 border-orange-600 hover:bg-orange-700"
-                  onClick={() => handleExecuteAll(selectedCycle)}
+                  onClick={() => void handleExecuteAll(selectedCycle)}
                 >
                   Execute All
                 </Button>
@@ -479,8 +586,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     <BarChartOutlined className="text-slate-400 text-xl" />
                   </div>
                   <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Total Tests</Text>
-                    <div className="text-2xl font-bold text-slate-800 leading-none mt-1">{selectedCycle.totalTests}</div>
+                    <Text
+                      type="secondary"
+                      className="text-[11px] font-bold uppercase tracking-wider"
+                    >
+                      Total Tests
+                    </Text>
+                    <div className="text-2xl font-bold text-slate-800 leading-none mt-1">
+                      {selectedCycle.totalTests}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -492,10 +606,23 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     <CheckCircleOutlined className="text-emerald-500 text-xl" />
                   </div>
                   <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Approved</Text>
+                    <Text
+                      type="secondary"
+                      className="text-[11px] font-bold uppercase tracking-wider"
+                    >
+                      Approved
+                    </Text>
                     <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-2xl font-bold text-emerald-600 leading-none">{selectedCycle.passed}</span>
-                      <span className="text-xs text-emerald-500 font-bold">({selectedCycle.totalTests > 0 ? Math.round((selectedCycle.passed / selectedCycle.totalTests) * 100) : 0}%)</span>
+                      <span className="text-2xl font-bold text-emerald-600 leading-none">
+                        {selectedCycle.passed}
+                      </span>
+                      <span className="text-xs text-emerald-500 font-bold">
+                        (
+                        {selectedCycle.totalTests > 0
+                          ? Math.round((selectedCycle.passed / selectedCycle.totalTests) * 100)
+                          : 0}
+                        %)
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -508,8 +635,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     <CloseCircleOutlined className="text-red-500 text-xl" />
                   </div>
                   <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Failed</Text>
-                    <div className="text-2xl font-bold text-red-600 leading-none mt-1">{selectedCycle.failed}</div>
+                    <Text
+                      type="secondary"
+                      className="text-[11px] font-bold uppercase tracking-wider"
+                    >
+                      Failed
+                    </Text>
+                    <div className="text-2xl font-bold text-red-600 leading-none mt-1">
+                      {selectedCycle.failed}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -521,8 +655,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     <ClockCircleOutlined className="text-amber-500 text-xl" />
                   </div>
                   <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Pending</Text>
-                    <div className="text-2xl font-bold text-amber-600 leading-none mt-1">{selectedCycle.pending}</div>
+                    <Text
+                      type="secondary"
+                      className="text-[11px] font-bold uppercase tracking-wider"
+                    >
+                      Pending
+                    </Text>
+                    <div className="text-2xl font-bold text-amber-600 leading-none mt-1">
+                      {selectedCycle.pending}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -532,24 +673,24 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-4 flex-1 max-w-md">
-                <Input 
-                  prefix={<SearchOutlined className="text-slate-400" />} 
-                  placeholder="Search by ID, Module or Functionality..." 
+                <Input
+                  prefix={<SearchOutlined className="text-slate-400" />}
+                  placeholder="Search by ID, Module or Functionality..."
                   className="h-11 rounded-xl bg-slate-50 border-none"
                   value={detailSearch}
                   onChange={e => setDetailSearch(e.target.value)}
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  type={detailFilter === 'ALL' ? 'primary' : 'default'} 
+                <Button
+                  type={detailFilter === 'ALL' ? 'primary' : 'default'}
                   className="rounded-lg h-9"
                   onClick={() => setDetailFilter('ALL')}
                 >
                   All
                 </Button>
-                <Button 
-                  type={detailFilter === 'FAILED' ? 'primary' : 'default'} 
+                <Button
+                  type={detailFilter === 'FAILED' ? 'primary' : 'default'}
                   className="rounded-lg h-9"
                   onClick={() => setDetailFilter('FAILED')}
                 >
@@ -558,7 +699,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </div>
             </div>
 
-            <Table 
+            <Table
               dataSource={filteredExecutions}
               rowKey="id"
               pagination={false}
@@ -568,16 +709,22 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   title: <span className="text-[11px] font-bold text-slate-400 uppercase">ID</span>,
                   dataIndex: 'functionalityId',
                   key: 'id',
-                  render: (id) => <span className="font-bold text-orange-600">{id}</span>
+                  render: id => <span className="font-bold text-orange-600">{id}</span>,
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">MODULO</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">MODULO</span>
+                  ),
                   dataIndex: 'module',
                   key: 'module',
-                  render: (m) => <span className="font-bold text-slate-800">{m}</span>
+                  render: m => <span className="font-bold text-slate-800">{m}</span>,
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">FUNCIONALIDAD / CASO</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">
+                      FUNCIONALIDAD / CASO
+                    </span>
+                  ),
                   dataIndex: 'functionalityName',
                   key: 'name',
                   render: (n, record) => (
@@ -585,42 +732,73 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                       <div className="text-slate-800 font-medium">{n}</div>
                       {record.testCaseId && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <Tag color="cyan" className="text-[10px] m-0">{record.testCaseId}</Tag>
-                          <span className="text-[11px] text-slate-500 italic">{record.testCaseTitle}</span>
+                          <Tag color="cyan" className="text-[10px] m-0">
+                            {record.testCaseId}
+                          </Tag>
+                          <span className="text-[11px] text-slate-500 italic">
+                            {record.testCaseTitle}
+                          </span>
                         </div>
                       )}
                     </div>
-                  )
+                  ),
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">EJECUTADO</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">
+                      EJECUTADO
+                    </span>
+                  ),
                   dataIndex: 'executed',
                   key: 'executed',
                   align: 'center',
                   render: (executed, record) => (
-                    <div 
+                    <div
                       className={`w-6 h-6 rounded-full flex items-center justify-center ${!isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
-                      onClick={!isReadOnly ? () => updateExecution(selectedCycle.id, record.id, { executed: !executed, result: !executed ? TestResult.PASSED : TestResult.NOT_EXECUTED }) : undefined}
+                      onClick={
+                        !isReadOnly
+                          ? () =>
+                              updateExecution(selectedCycle.id, record.id, {
+                                executed: !executed,
+                                result: !executed ? TestResult.PASSED : TestResult.NOT_EXECUTED,
+                              })
+                          : undefined
+                      }
                     >
                       <CheckCircleOutlined />
                     </div>
-                  )
+                  ),
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">FECHA</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">FECHA</span>
+                  ),
                   dataIndex: 'date',
                   key: 'date',
-                  render: (d) => <span className="text-slate-400">{d ? dayjs(d).format('DD MMM, YYYY') : '—'}</span>
+                  render: d => (
+                    <span className="text-slate-400">
+                      {d ? dayjs(d).format('DD MMM, YYYY') : '—'}
+                    </span>
+                  ),
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">RESULTADO</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">
+                      RESULTADO
+                    </span>
+                  ),
                   dataIndex: 'result',
                   key: 'result',
                   render: (result, record) => (
                     <div className="flex flex-col gap-1">
                       <Select
                         value={result}
-                        onChange={(val) => updateExecution(selectedCycle.id, record.id, { result: val, executed: val !== TestResult.NOT_EXECUTED })}
+                        onChange={val =>
+                          updateExecution(selectedCycle.id, record.id, {
+                            result: val,
+                            executed: val !== TestResult.NOT_EXECUTED,
+                          })
+                        }
                         className="w-32"
                         bordered={false}
                         disabled={isReadOnly}
@@ -628,19 +806,33 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                         options={Object.values(TestResult).map(r => ({
                           label: (
                             <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                r === TestResult.PASSED ? 'bg-emerald-500' : 
-                                r === TestResult.FAILED ? 'bg-red-500' : 
-                                r === TestResult.BLOCKED ? 'bg-amber-500' : 'bg-slate-300'
-                              }`} />
-                              <span className={
-                                r === TestResult.PASSED ? 'text-emerald-600' : 
-                                r === TestResult.FAILED ? 'text-red-600' : 
-                                r === TestResult.BLOCKED ? 'text-amber-600' : 'text-slate-400'
-                              }>{labelTestResult(r, t)}</span>
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  r === TestResult.PASSED
+                                    ? 'bg-emerald-500'
+                                    : r === TestResult.FAILED
+                                      ? 'bg-red-500'
+                                      : r === TestResult.BLOCKED
+                                        ? 'bg-amber-500'
+                                        : 'bg-slate-300'
+                                }`}
+                              />
+                              <span
+                                className={
+                                  r === TestResult.PASSED
+                                    ? 'text-emerald-600'
+                                    : r === TestResult.FAILED
+                                      ? 'text-red-600'
+                                      : r === TestResult.BLOCKED
+                                        ? 'text-amber-600'
+                                        : 'text-slate-400'
+                                }
+                              >
+                                {labelTestResult(r, t)}
+                              </span>
                             </div>
                           ),
-                          value: r
+                          value: r,
                         }))}
                       />
                       {(() => {
@@ -648,18 +840,26 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                         if (!raw) return null;
 
                         const isUrl = /^https?:\/\//i.test(raw) || /^www\./i.test(raw);
-                        const href = isUrl ? (raw.startsWith('http') ? raw : `https://${raw}`) : null;
+                        const href = isUrl
+                          ? raw.startsWith('http')
+                            ? raw
+                            : `https://${raw}`
+                          : null;
                         const label = (record.bugId || raw).trim();
 
                         return (
-                          <Tag color="magenta" icon={<BugOutlined />} className="text-[10px] m-0 w-fit">
+                          <Tag
+                            color="magenta"
+                            icon={<BugOutlined />}
+                            className="text-[10px] m-0 w-fit"
+                          >
                             {href ? (
                               <a
                                 href={href}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-inherit underline"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={e => e.stopPropagation()}
                               >
                                 {label}
                               </a>
@@ -670,34 +870,44 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                         );
                       })()}
                     </div>
-                  )
+                  ),
                 },
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">EVIDENCIA</span>,
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">
+                      EVIDENCIA
+                    </span>
+                  ),
                   dataIndex: 'evidence',
                   key: 'evidence',
                   render: (ev, record) => (
                     <div className="flex items-center gap-2 text-orange-500 cursor-pointer hover:text-orange-700 font-medium">
-                      {(ev || record.evidenceImage) ? (
-                        <div className="flex items-center gap-1" onClick={(e) => {
-                          e.stopPropagation();
-                          setCurrentExecution(record);
-                          setEvidenceModalOpen(true);
-                        }}>
+                      {ev || record.evidenceImage ? (
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setCurrentExecution(record);
+                            setEvidenceModalOpen(true);
+                          }}
+                        >
                           <EyeOutlined /> <span>View</span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 text-slate-400" onClick={(e) => {
-                          e.stopPropagation();
-                          setCurrentExecution(record);
-                          setEvidenceModalOpen(true);
-                        }}>
+                        <div
+                          className="flex items-center gap-1 text-slate-400"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setCurrentExecution(record);
+                            setEvidenceModalOpen(true);
+                          }}
+                        >
                           <PlusOutlined /> <span>Note</span>
                         </div>
                       )}
                     </div>
-                  )
-                }
+                  ),
+                },
               ]}
             />
           </Card>
@@ -706,13 +916,17 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         <div className="space-y-6">
           <div className="flex justify-between items-start">
             <div>
-              <Title level={2} className="!mb-1">Control de Smoke</Title>
-              <Paragraph type="secondary">Gestión y seguimiento de pruebas críticas de humo.</Paragraph>
+              <Title level={2} className="!mb-1">
+                Control de Smoke
+              </Title>
+              <Paragraph type="secondary">
+                Gestión y seguimiento de pruebas críticas de humo.
+              </Paragraph>
             </div>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
-              size="large" 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              size="large"
               className="rounded-xl h-12 px-6 shadow-lg shadow-orange-200 bg-orange-600 border-orange-600 hover:bg-orange-700"
               onClick={handleOpenModal}
             >
@@ -720,160 +934,232 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             </Button>
           </div>
 
-      {latestCycle && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
-              <BarChartOutlined className="text-white" />
-            </div>
-            <span className="font-bold text-slate-800 text-lg">Último Smoke Test</span>
-            <Tag color="orange" className="rounded-full px-3 font-bold border-orange-200 bg-orange-50 text-orange-600">
-              {latestCycle.cycleId} (FINALIZADA)
-            </Tag>
-          </div>
-
-          <Row gutter={16}>
-            <Col span={5}>
-              <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tests</Text>
-                    <div className="text-3xl font-bold text-slate-800 mt-1">{latestCycle.totalTests}</div>
-                  </div>
-                  <Tag color="orange" className="m-0 border-none bg-orange-50 text-orange-600 font-bold rounded-full px-3">Total</Tag>
+          {latestCycle && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
+                  <BarChartOutlined className="text-white" />
                 </div>
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Aprobados</Text>
-                    <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-3xl font-bold text-emerald-600">{latestCycle.passed}</span>
+                <span className="font-bold text-slate-800 text-lg">Último Smoke Test</span>
+                <Tag
+                  color="orange"
+                  className="rounded-full px-3 font-bold border-orange-200 bg-orange-50 text-orange-600"
+                >
+                  {latestCycle.cycleId} (FINALIZADA)
+                </Tag>
+              </div>
+
+              <Row gutter={16}>
+                <Col span={5}>
+                  <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Text
+                          type="secondary"
+                          className="text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                        >
+                          Total Tests
+                        </Text>
+                        <div className="text-3xl font-bold text-slate-800 mt-1">
+                          {latestCycle.totalTests}
+                        </div>
+                      </div>
+                      <Tag
+                        color="orange"
+                        className="m-0 border-none bg-orange-50 text-orange-600 font-bold rounded-full px-3"
+                      >
+                        Total
+                      </Tag>
                     </div>
-                  </div>
-                  <Tag color="green" className="m-0 border-none bg-emerald-50 text-emerald-500 font-bold rounded-full px-3">
-                    {latestCycle.totalTests > 0 ? Math.round((latestCycle.passed / latestCycle.totalTests) * 100) : 0}%
-                  </Tag>
-                </div>
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fallidos</Text>
-                    <div className="text-3xl font-bold text-red-600 mt-1">{latestCycle.failed}</div>
-                  </div>
-                  <Tag color="red" className="m-0 border-none bg-rose-50 text-rose-500 font-bold rounded-full px-3">
-                    {latestCycle.totalTests > 0 ? Math.round((latestCycle.failed / latestCycle.totalTests) * 100) : 0}%
-                  </Tag>
-                </div>
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bloqueados</Text>
-                    <div className="text-3xl font-bold text-amber-600 mt-1">{latestCycle.blocked || 0}</div>
-                  </div>
-                  <Tag color="orange" className="m-0 border-none bg-amber-50 text-amber-500 font-bold rounded-full px-3">
-                    {latestCycle.totalTests > 0 ? Math.round(((latestCycle.blocked || 0) / latestCycle.totalTests) * 100) : 0}%
-                  </Tag>
-                </div>
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Aprobación</Text>
-                    <div className="text-3xl font-bold text-orange-600 mt-1">{latestCycle.passRate}%</div>
-                  </div>
-                  <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
-                    <BarChartOutlined className="text-orange-600" />
-                  </div>
-                </div>
-              </Card>
-            </Col>
-          </Row>
-        </div>
-      )}
+                  </Card>
+                </Col>
+                <Col span={5}>
+                  <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Text
+                          type="secondary"
+                          className="text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                        >
+                          Aprobados
+                        </Text>
+                        <div className="flex items-baseline gap-2 mt-1">
+                          <span className="text-3xl font-bold text-emerald-600">
+                            {latestCycle.passed}
+                          </span>
+                        </div>
+                      </div>
+                      <Tag
+                        color="green"
+                        className="m-0 border-none bg-emerald-50 text-emerald-500 font-bold rounded-full px-3"
+                      >
+                        {latestCycle.totalTests > 0
+                          ? Math.round((latestCycle.passed / latestCycle.totalTests) * 100)
+                          : 0}
+                        %
+                      </Tag>
+                    </div>
+                  </Card>
+                </Col>
+                <Col span={5}>
+                  <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Text
+                          type="secondary"
+                          className="text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                        >
+                          Fallidos
+                        </Text>
+                        <div className="text-3xl font-bold text-red-600 mt-1">
+                          {latestCycle.failed}
+                        </div>
+                      </div>
+                      <Tag
+                        color="red"
+                        className="m-0 border-none bg-rose-50 text-rose-500 font-bold rounded-full px-3"
+                      >
+                        {latestCycle.totalTests > 0
+                          ? Math.round((latestCycle.failed / latestCycle.totalTests) * 100)
+                          : 0}
+                        %
+                      </Tag>
+                    </div>
+                  </Card>
+                </Col>
+                <Col span={5}>
+                  <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Text
+                          type="secondary"
+                          className="text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                        >
+                          Bloqueados
+                        </Text>
+                        <div className="text-3xl font-bold text-amber-600 mt-1">
+                          {latestCycle.blocked || 0}
+                        </div>
+                      </div>
+                      <Tag
+                        color="orange"
+                        className="m-0 border-none bg-amber-50 text-amber-500 font-bold rounded-full px-3"
+                      >
+                        {latestCycle.totalTests > 0
+                          ? Math.round(((latestCycle.blocked || 0) / latestCycle.totalTests) * 100)
+                          : 0}
+                        %
+                      </Tag>
+                    </div>
+                  </Card>
+                </Col>
+                <Col span={4}>
+                  <Card className="rounded-2xl border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Text
+                          type="secondary"
+                          className="text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                        >
+                          Aprobación
+                        </Text>
+                        <div className="text-3xl font-bold text-orange-600 mt-1">
+                          {latestCycle.passRate}%
+                        </div>
+                      </div>
+                      <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
+                        <BarChartOutlined className="text-orange-600" />
+                      </div>
+                    </div>
+                  </Card>
+                </Col>
+              </Row>
+            </div>
+          )}
 
-      <Card className="rounded-2xl border-slate-100 shadow-sm">
-        <Row gutter={16} align="bottom">
-          <Col span={8}>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rango de Fecha</span>
-              <RangePicker 
-                className="w-full h-10 rounded-lg" 
-                value={dateRange}
-                onChange={val => setDateRange(val as any)}
-              />
-            </div>
-          </Col>
-          <Col span={6}>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sprint</span>
-              <Select 
-                placeholder="Todos los Sprints" 
-                className="w-full h-10 rounded-lg" 
-                allowClear
-                value={sprintFilter}
-                onChange={setSprintFilter}
-                options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-              />
-            </div>
-          </Col>
-          <Col span={6}>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Buscar Ciclo</span>
-              <Input 
-                prefix={<SearchOutlined className="text-slate-400" />} 
-                placeholder="ID del ciclo..." 
-                className="h-10 rounded-lg"
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-              />
-            </div>
-          </Col>
-          <Col span={4}>
-            <Button 
-              className="h-10 w-full rounded-lg text-slate-500"
-              onClick={() => {
-                setSearchText('');
-                setDateRange(null);
-                setSprintFilter(undefined);
+          <Card className="rounded-2xl border-slate-100 shadow-sm">
+            <Row gutter={16} align="bottom">
+              <Col span={8}>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Rango de Fecha
+                  </span>
+                  <RangePicker
+                    className="w-full h-10 rounded-lg"
+                    value={dateRange}
+                    onChange={val => setDateRange(val as any)}
+                  />
+                </div>
+              </Col>
+              <Col span={6}>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Sprint
+                  </span>
+                  <Select
+                    placeholder="Todos los Sprints"
+                    className="w-full h-10 rounded-lg"
+                    allowClear
+                    value={sprintFilter}
+                    onChange={setSprintFilter}
+                    options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                  />
+                </div>
+              </Col>
+              <Col span={6}>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Buscar Ciclo
+                  </span>
+                  <Input
+                    prefix={<SearchOutlined className="text-slate-400" />}
+                    placeholder="ID del ciclo..."
+                    className="h-10 rounded-lg"
+                    value={searchText}
+                    onChange={e => setSearchText(e.target.value)}
+                  />
+                </div>
+              </Col>
+              <Col span={4}>
+                <Button
+                  className="h-10 w-full rounded-lg text-slate-500"
+                  onClick={() => {
+                    setSearchText('');
+                    setDateRange(null);
+                    setSprintFilter(undefined);
+                  }}
+                >
+                  Limpiar
+                </Button>
+              </Col>
+            </Row>
+          </Card>
+
+          <Card
+            className="rounded-2xl border-slate-100 shadow-sm"
+            title={<span className="text-slate-800 font-bold">Historial de Smoke Tests</span>}
+          >
+            <Table
+              columns={columns}
+              dataSource={filteredCycles}
+              rowKey="id"
+              pagination={{
+                pageSize: 5,
+                showTotal: (total, range) =>
+                  `Mostrando ${range[0]}-${range[1]} de ${total} registros`,
               }}
-            >
-              Limpiar
-            </Button>
-          </Col>
-        </Row>
-      </Card>
-
-      <Card 
-        className="rounded-2xl border-slate-100 shadow-sm"
-        title={<span className="text-slate-800 font-bold">Historial de Smoke Tests</span>}
-      >
-        <Table 
-          columns={columns} 
-          dataSource={filteredCycles} 
-          rowKey="id"
-          pagination={{ 
-            pageSize: 5,
-            showTotal: (total, range) => `Mostrando ${range[0]}-${range[1]} de ${total} registros`
-          }}
-          className="executive-table"
-        />
-      </Card>
+              className="executive-table"
+            />
+          </Card>
         </div>
       )}
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">{editingCycle ? 'Editar Ciclo de Smoke' : 'Registrar Nuevo Ciclo de Smoke'}</span>}
+        title={
+          <span className="text-lg font-bold text-slate-800">
+            {editingCycle ? 'Editar Ciclo de Smoke' : 'Registrar Nuevo Ciclo de Smoke'}
+          </span>
+        }
         open={isModalOpen}
         onOk={handleSave}
         onCancel={() => {
@@ -886,15 +1172,28 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         cancelText="Cancelar"
         className="executive-modal"
       >
-        <Form form={form} layout="vertical" className="mt-4" initialValues={{ date: dayjs(), status: 'EN_PROGRESO' }}>
+        <Form
+          form={form}
+          layout="vertical"
+          className="mt-4"
+          initialValues={{ date: dayjs(), status: 'EN_PROGRESO' }}
+        >
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="cycleId" label={<span className="font-semibold text-slate-600">ID del Ciclo</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="cycleId"
+                label={<span className="font-semibold text-slate-600">ID del Ciclo</span>}
+                rules={[{ required: true }]}
+              >
                 <Input placeholder="Ej: S-01" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="status"
+                label={<span className="font-semibold text-slate-600">Estado</span>}
+                rules={[{ required: true }]}
+              >
                 <Select className="h-10 rounded-lg">
                   <Select.Option value="EN_PROGRESO">EN PROGRESO</Select.Option>
                   <Select.Option value="FINALIZADA">FINALIZADA</Select.Option>
@@ -902,26 +1201,42 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="date" label={<span className="font-semibold text-slate-600">Fecha de Inicio</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="date"
+                label={<span className="font-semibold text-slate-600">Fecha de Inicio</span>}
+                rules={[{ required: true }]}
+              >
                 <DatePicker className="w-full h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>
-          
+
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="sprint" label={<span className="font-semibold text-slate-600">Sprint</span>}>
-                <Select 
-                  placeholder="Selecciona Sprint" 
+              <Form.Item
+                name="sprint"
+                label={<span className="font-semibold text-slate-600">Sprint</span>}
+              >
+                <Select
+                  placeholder="Selecciona Sprint"
                   className="h-10 rounded-lg"
                   options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label={<span className="font-semibold text-slate-600">Funcionalidades a Incluir</span>}>
+              <Form.Item
+                label={
+                  <span className="font-semibold text-slate-600">Funcionalidades a Incluir</span>
+                }
+              >
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  <span className="text-orange-600 font-bold">{smokeFuncs.length}</span> funcionalidades de tipo <Tag color="orange" className="m-0 ml-1">Smoke</Tag> detectadas.
+                  <span className="text-orange-600 font-bold">{smokeFuncs.length}</span>{' '}
+                  funcionalidades de tipo{' '}
+                  <Tag color="orange" className="m-0 ml-1">
+                    Smoke
+                  </Tag>{' '}
+                  detectadas.
                 </div>
               </Form.Item>
             </Col>
@@ -929,12 +1244,24 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="tester" label={<span className="font-semibold text-slate-600">Tester</span>} rules={[{ required: true }]}>
-                <Input placeholder="Ej: QA Engineer" className="h-10 rounded-lg" prefix={<UserOutlined />} />
+              <Form.Item
+                name="tester"
+                label={<span className="font-semibold text-slate-600">Tester</span>}
+                rules={[{ required: true }]}
+              >
+                <Input
+                  placeholder="Ej: QA Engineer"
+                  className="h-10 rounded-lg"
+                  prefix={<UserOutlined />}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="environment" label={<span className="font-semibold text-slate-600">Environment</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="environment"
+                label={<span className="font-semibold text-slate-600">Environment</span>}
+                rules={[{ required: true }]}
+              >
                 <Select
                   placeholder="Selecciona Environment"
                   className="h-10 rounded-lg"
@@ -947,28 +1274,55 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="buildVersion" label={<span className="font-semibold text-slate-600">Build version</span>}>
+              <Form.Item
+                name="buildVersion"
+                label={<span className="font-semibold text-slate-600">Build version</span>}
+              >
                 <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="note" label={<span className="font-semibold text-slate-600">Objetivo del Smoke Test</span>}>
-            <Input.TextArea rows={3} placeholder="Ej: Validar flujos críticos después de despliegue en staging..." className="rounded-lg" />
+          <Form.Item
+            name="note"
+            label={<span className="font-semibold text-slate-600">Objetivo del Smoke Test</span>}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder="Ej: Validar flujos críticos después de despliegue en staging..."
+              className="rounded-lg"
+            />
           </Form.Item>
 
           <div className="mt-4">
-            <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">Vista Previa de Funcionalidades</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
+              Vista Previa de Funcionalidades
+            </span>
             <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
-              <Table 
+              <Table
                 dataSource={smokeFuncs}
                 rowKey="id"
                 pagination={false}
                 size="small"
                 columns={[
-                  { title: 'ID', dataIndex: 'id', key: 'id', render: (id) => <span className="text-xs font-bold text-orange-600">{id}</span> },
-                  { title: 'Módulo', dataIndex: 'module', key: 'module', render: (m) => <span className="text-xs font-bold text-slate-700">{m}</span> },
-                  { title: 'Funcionalidad', dataIndex: 'name', key: 'name', render: (n) => <span className="text-xs text-slate-500">{n}</span> },
+                  {
+                    title: 'ID',
+                    dataIndex: 'id',
+                    key: 'id',
+                    render: id => <span className="text-xs font-bold text-orange-600">{id}</span>,
+                  },
+                  {
+                    title: 'Módulo',
+                    dataIndex: 'module',
+                    key: 'module',
+                    render: m => <span className="text-xs font-bold text-slate-700">{m}</span>,
+                  },
+                  {
+                    title: 'Funcionalidad',
+                    dataIndex: 'name',
+                    key: 'name',
+                    render: n => <span className="text-xs text-slate-500">{n}</span>,
+                  },
                 ]}
               />
             </div>
@@ -993,18 +1347,18 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               return;
             }
 
-            const evidencePayload = { 
+            const evidencePayload = {
               evidence: values.evidence,
               evidenceImage: evidenceImage,
               bugTitle: values.bugTitle,
               bugId: values.bugId,
               bugLink: values.bugLink,
-              severity: values.severity
+              severity: values.severity,
             };
 
             let linkedBugId = currentExecution.linkedBugId;
             if (currentExecution.result === TestResult.FAILED) {
-              const syncedBug = syncBugReport({
+              const syncedBug = await syncBugReport({
                 linkedBugId: currentExecution.linkedBugId,
                 externalBugId: values.bugId,
                 title: values.bugTitle,
@@ -1027,8 +1381,14 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               linkedBugId = syncedBug?.internalBugId;
             }
 
-            console.log('Payload - Save Smoke Evidence:', { executionId: currentExecution.id, ...evidencePayload });
-            updateExecution(selectedCycle.id, currentExecution.id, { ...evidencePayload, linkedBugId });
+            console.log('Payload - Save Smoke Evidence:', {
+              executionId: currentExecution.id,
+              ...evidencePayload,
+            });
+            await updateExecution(selectedCycle.id, currentExecution.id, {
+              ...evidencePayload,
+              linkedBugId,
+            });
             message.success('Evidencia guardada correctamente');
             setEvidenceModalOpen(false);
             setCurrentExecution(null);
@@ -1042,9 +1402,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         centered
         okText="Guardar Evidencia"
         cancelText="Cerrar"
-        footer={isReadOnly ? [
-          <Button key="close" onClick={() => setEvidenceModalOpen(false)}>Cerrar</Button>
-        ] : undefined}
+        footer={
+          isReadOnly
+            ? [
+                <Button key="close" onClick={() => setEvidenceModalOpen(false)}>
+                  Cerrar
+                </Button>,
+              ]
+            : undefined
+        }
         className="evidence-modal"
       >
         <div className="space-y-6 py-4">
@@ -1052,40 +1418,67 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
               <Row gutter={16}>
                 <Col span={12}>
-                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">ID Test</Text>
-                  <Text strong className="text-orange-600">{currentExecution.functionalityId}</Text>
+                  <Text
+                    type="secondary"
+                    className="text-[10px] font-bold uppercase tracking-wider block"
+                  >
+                    ID Test
+                  </Text>
+                  <Text strong className="text-orange-600">
+                    {currentExecution.functionalityId}
+                  </Text>
                 </Col>
                 <Col span={12}>
-                  <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">Módulo</Text>
-                  <Text strong className="text-slate-700">{currentExecution.module}</Text>
+                  <Text
+                    type="secondary"
+                    className="text-[10px] font-bold uppercase tracking-wider block"
+                  >
+                    Módulo
+                  </Text>
+                  <Text strong className="text-slate-700">
+                    {currentExecution.module}
+                  </Text>
                 </Col>
               </Row>
               <div className="mt-3">
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider block">Funcionalidad</Text>
-                <Text strong className="text-slate-800">{currentExecution.functionalityName}</Text>
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider block"
+                >
+                  Funcionalidad
+                </Text>
+                <Text strong className="text-slate-800">
+                  {currentExecution.functionalityName}
+                </Text>
               </div>
             </div>
           )}
 
           <Form form={evidenceForm} layout="vertical">
-            <Form.Item 
-              name="evidence" 
+            <Form.Item
+              name="evidence"
               label={<span className="font-semibold text-slate-600">Notas / Observaciones</span>}
             >
-              <Input.TextArea 
-                rows={4} 
-                placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes..." 
+              <Input.TextArea
+                rows={4}
+                placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes..."
                 className="rounded-xl border-slate-200 focus:border-orange-500"
                 disabled={isReadOnly}
               />
             </Form.Item>
 
             <Divider titlePlacement="left" className="!m-0 !mb-4">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reporte de Bug</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                Reporte de Bug
+              </span>
             </Divider>
 
             <Form.Item name="bugTitle" label="Titulo del bug">
-              <Input placeholder="Resume el error detectado" className="rounded-lg" disabled={isReadOnly} />
+              <Input
+                placeholder="Resume el error detectado"
+                className="rounded-lg"
+                disabled={isReadOnly}
+              />
             </Form.Item>
 
             <Row gutter={16}>
@@ -1096,9 +1489,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </Col>
               <Col span={12}>
                 <Form.Item name="severity" label="Severidad">
-                  <Select placeholder="Selecciona severidad" className="rounded-lg" disabled={isReadOnly}>
+                  <Select
+                    placeholder="Selecciona severidad"
+                    className="rounded-lg"
+                    disabled={isReadOnly}
+                  >
                     {Object.values(Severity).map(s => (
-                      <Select.Option key={s} value={s}>{s}</Select.Option>
+                      <Select.Option key={s} value={s}>
+                        {s}
+                      </Select.Option>
                     ))}
                   </Select>
                 </Form.Item>
@@ -1111,19 +1510,28 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             </Row>
 
             <Text type="secondary" className="text-[11px] block -mt-2 mb-3">
-              Al guardar una prueba fallida, este bug tambien se registrara automaticamente en el Historial de Bugs con estado Pendiente.
+              Al guardar una prueba fallida, este bug tambien se registrara automaticamente en el
+              Historial de Bugs con estado Pendiente.
             </Text>
 
-            <Form.Item label={<span className="font-semibold text-slate-600">Evidencia Visual (Imagen)</span>}>
+            <Form.Item
+              label={
+                <span className="font-semibold text-slate-600">Evidencia Visual (Imagen)</span>
+              }
+            >
               <div className="mt-2">
                 {evidenceImage ? (
                   <div className="relative group rounded-xl overflow-hidden border border-slate-200">
-                    <img src={evidenceImage} alt="Evidencia" className="w-full h-auto max-h-64 object-contain bg-slate-100" />
+                    <img
+                      src={evidenceImage}
+                      alt="Evidencia"
+                      className="w-full h-auto max-h-64 object-contain bg-slate-100"
+                    />
                     {!isReadOnly && (
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                        <Button 
-                          danger 
-                          icon={<DeleteOutlined />} 
+                        <Button
+                          danger
+                          icon={<DeleteOutlined />}
                           onClick={() => setEvidenceImage(undefined)}
                           className="rounded-lg"
                         >
@@ -1137,9 +1545,9 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     maxCount={1}
                     showUploadList={false}
                     disabled={isReadOnly}
-                    beforeUpload={(file) => {
+                    beforeUpload={file => {
                       const reader = new FileReader();
-                      reader.onload = (e) => {
+                      reader.onload = e => {
                         setEvidenceImage(e.target?.result as string);
                       };
                       reader.readAsDataURL(file);
@@ -1151,8 +1559,12 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                       <p className="ant-upload-drag-icon">
                         <UploadOutlined className="text-orange-500 text-3xl" />
                       </p>
-                      <p className="ant-upload-text font-medium text-slate-600">Haz clic o arrastra una imagen aquí</p>
-                      <p className="ant-upload-hint text-xs text-slate-400">Soporta JPG, PNG. Máximo 1 archivo.</p>
+                      <p className="ant-upload-text font-medium text-slate-600">
+                        Haz clic o arrastra una imagen aquí
+                      </p>
+                      <p className="ant-upload-hint text-xs text-slate-400">
+                        Soporta JPG, PNG. Máximo 1 archivo.
+                      </p>
                     </div>
                   </Upload.Dragger>
                 )}

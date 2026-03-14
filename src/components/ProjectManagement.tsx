@@ -31,7 +31,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { appBranding } from '../assets/branding';
-import { useProjects } from '../hooks';
+import { useProjects } from '../modules/projects/hooks/useProjects';
 import { Project, ProjectStatus } from '../types';
 import { qaBrand, qaPalette, softSurface } from '../theme/palette';
 
@@ -77,10 +77,7 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function openProjectFromKeyboard(
-  event: React.KeyboardEvent<HTMLDivElement>,
-  onOpen: () => void
-) {
+function openProjectFromKeyboard(event: React.KeyboardEvent<HTMLDivElement>, onOpen: () => void) {
   if (event.key !== 'Enter' && event.key !== ' ') return;
   event.preventDefault();
   onOpen();
@@ -96,11 +93,16 @@ export default function ProjectManagement({
   const [statusFilter, setStatusFilter] = useState<ProjectFilter>(ALL_PROJECTS_FILTER);
 
   const projectMetrics = useMemo(() => {
-    const activeProjects = projects.filter(project => project.status === ProjectStatus.ACTIVE).length;
-    const completedProjects = projects.filter(project => project.status === ProjectStatus.COMPLETED).length;
+    const activeProjects = projects.filter(
+      project => project.status === ProjectStatus.ACTIVE,
+    ).length;
+    const completedProjects = projects.filter(
+      project => project.status === ProjectStatus.COMPLETED,
+    ).length;
     const distinctMembers = new Set(projects.flatMap(project => project.teamMembers || [])).size;
-    const latestProject = [...projects]
-      .sort((left, right) => dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf())[0];
+    const latestProject = [...projects].sort(
+      (left, right) => dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf(),
+    )[0];
 
     return {
       totalProjects: projects.length,
@@ -123,8 +125,7 @@ export default function ProjectManagement({
         project.description.toLowerCase().includes(normalizedSearch) ||
         project.version.toLowerCase().includes(normalizedSearch);
 
-      const matchesStatus =
-        statusFilter === ALL_PROJECTS_FILTER || project.status === statusFilter;
+      const matchesStatus = statusFilter === ALL_PROJECTS_FILTER || project.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
@@ -195,12 +196,15 @@ export default function ProjectManagement({
                   </Tag>
                 </Space>
 
-                <Title level={1} className="!mb-3 !text-3xl !font-bold !text-slate-900 sm:!text-5xl">
+                <Title
+                  level={1}
+                  className="!mb-3 !text-3xl !font-bold !text-slate-900 sm:!text-5xl"
+                >
                   Gestion de proyectos QA con identidad consistente y acceso claro.
                 </Title>
                 <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
-                  Administra cada workspace con un layout mas solido, cards clicables de punta
-                  a punta y un flujo de alta de proyecto construido con Ant Design.
+                  Administra cada workspace con un layout mas solido, cards clicables de punta a
+                  punta y un flujo de alta de proyecto construido con Ant Design.
                 </Paragraph>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -236,7 +240,11 @@ export default function ProjectManagement({
                       style={{ backgroundColor: qaPalette.card }}
                     >
                       <Statistic
-                        title={<span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Workspaces</span>}
+                        title={
+                          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                            Workspaces
+                          </span>
+                        }
                         value={projectMetrics.totalProjects}
                         prefix={<AppstoreOutlined style={{ color: qaPalette.primary }} />}
                         styles={{ content: { color: qaPalette.primary, fontWeight: 700 } }}
@@ -254,9 +262,17 @@ export default function ProjectManagement({
                       style={{ backgroundColor: qaPalette.card }}
                     >
                       <Statistic
-                        title={<span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Colaboradores</span>}
+                        title={
+                          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                            Colaboradores
+                          </span>
+                        }
                         value={projectMetrics.distinctMembers}
-                        prefix={<TeamOutlined style={{ color: qaPalette.functionalityStatus.completed }} />}
+                        prefix={
+                          <TeamOutlined
+                            style={{ color: qaPalette.functionalityStatus.completed }}
+                          />
+                        }
                         styles={{
                           content: {
                             color: qaPalette.functionalityStatus.completed,
@@ -284,7 +300,9 @@ export default function ProjectManagement({
                             Ultimo workspace
                           </Text>
                           <Title level={4} className="!mb-1 !mt-2 !text-slate-900">
-                            {featuredProject?.organizationName || featuredProject?.name || 'Sin proyectos'}
+                            {featuredProject?.organizationName ||
+                              featuredProject?.name ||
+                              'Sin proyectos'}
                           </Title>
                           <Text className="text-slate-500">
                             {featuredProject
@@ -323,8 +341,8 @@ export default function ProjectManagement({
                 Portafolio de proyectos
               </Title>
               <Text className="text-slate-500">
-                {filteredProjects.length} resultados visibles dentro de {projectMetrics.totalProjects}{' '}
-                workspaces.
+                {filteredProjects.length} resultados visibles dentro de{' '}
+                {projectMetrics.totalProjects} workspaces.
               </Text>
             </div>
 
@@ -374,7 +392,9 @@ export default function ProjectManagement({
                     role="button"
                     tabIndex={0}
                     onClick={() => onViewDetails(project)}
-                    onKeyDown={event => openProjectFromKeyboard(event, () => onViewDetails(project))}
+                    onKeyDown={event =>
+                      openProjectFromKeyboard(event, () => onViewDetails(project))
+                    }
                     className="outline-none"
                     aria-label={`Abrir proyecto ${workspaceName}`}
                   >

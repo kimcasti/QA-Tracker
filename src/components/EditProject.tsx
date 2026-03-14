@@ -1,29 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Card, 
-  Button, 
-  Input, 
-  Select, 
-  Form, 
-  message, 
-  Row, 
-  Col, 
-  Typography, 
-  Space, 
-  List, 
+import {
+  Card,
+  Button,
+  Input,
+  Select,
+  Form,
+  message,
+  Row,
+  Col,
+  Typography,
+  Space,
+  List,
   Divider,
-  Breadcrumb
+  Breadcrumb,
 } from 'antd';
-import { 
-  SaveOutlined, 
-  CloseOutlined, 
-  PlusOutlined, 
+import {
+  SaveOutlined,
+  CloseOutlined,
+  PlusOutlined,
   DeleteOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { appBranding } from '../assets/branding';
+import { useProjects } from '../modules/projects/hooks/useProjects';
 import { Project, ProjectStatus } from '../types';
-import { useProjects } from '../hooks';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -46,7 +46,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
       version: project.version,
       status: project.status,
       purpose: project.purpose,
-      businessRules: project.businessRules
+      businessRules: project.businessRules,
     });
   }, [project, form]);
 
@@ -54,7 +54,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
     const updatedProject: Project = {
       ...project,
       ...values,
-      coreRequirements: requirements
+      coreRequirements: requirements,
     };
     console.log('Payload - Update Project:', updatedProject);
     try {
@@ -81,23 +81,22 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8 flex items-center gap-4">
-        <Button 
-          icon={<ArrowLeftOutlined />} 
-          onClick={onCancel} 
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={onCancel}
           className="rounded-lg border-none hover:bg-gray-100"
         />
         <div>
-          <Title level={2} className="m-0">Editar Proyecto</Title>
-          <Text type="secondary">Actualiza la información general y el propósito del proyecto.</Text>
+          <Title level={2} className="m-0">
+            Editar Proyecto
+          </Title>
+          <Text type="secondary">
+            Actualiza la información general y el propósito del proyecto.
+          </Text>
         </div>
       </div>
 
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleSave}
-        className="space-y-8"
-      >
+      <Form form={form} layout="vertical" onFinish={handleSave} className="space-y-8">
         {/* GENERAL INFORMATION */}
         <Card className="rounded-2xl shadow-sm border-none overflow-hidden">
           <div className="flex items-center gap-4 mb-6">
@@ -106,23 +105,25 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
               alt="QA Tracker"
               className="h-10 w-10 rounded-xl object-cover shadow-sm"
             />
-            <Title level={4} className="m-0">INFORMACIÓN GENERAL</Title>
+            <Title level={4} className="m-0">
+              INFORMACIÓN GENERAL
+            </Title>
           </div>
 
           <Row gutter={24}>
             <Col span={12}>
-              <Form.Item 
-                name="name" 
-                label="Nombre del Proyecto" 
+              <Form.Item
+                name="name"
+                label="Nombre del Proyecto"
                 rules={[{ required: true, message: 'El nombre es requerido' }]}
               >
                 <Input placeholder="Nombre del proyecto" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item 
-                name="version" 
-                label="Versión" 
+              <Form.Item
+                name="version"
+                label="Versión"
                 rules={[{ required: true, message: 'La versión es requerida' }]}
               >
                 <Input placeholder="v1.0.0" className="h-10 rounded-lg" />
@@ -142,11 +143,13 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
 
         {/* PROJECT PURPOSE */}
         <Card className="rounded-2xl shadow-sm border-none overflow-hidden">
-          <Title level={4} className="mb-6">PROPÓSITO DEL PROYECTO</Title>
+          <Title level={4} className="mb-6">
+            PROPÓSITO DEL PROYECTO
+          </Title>
           <Form.Item name="purpose" label="Objetivo del Proyecto">
-            <Input.TextArea 
-              rows={4} 
-              placeholder="Describe el objetivo principal y el alcance del proyecto..." 
+            <Input.TextArea
+              rows={4}
+              placeholder="Describe el objetivo principal y el alcance del proyecto..."
               className="rounded-xl p-4"
             />
           </Form.Item>
@@ -154,18 +157,20 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
 
         {/* CORE REQUIREMENTS */}
         <Card className="rounded-2xl shadow-sm border-none overflow-hidden">
-          <Title level={4} className="mb-6">REQUISITOS CLAVE (CORE REQUIREMENTS)</Title>
+          <Title level={4} className="mb-6">
+            REQUISITOS CLAVE (CORE REQUIREMENTS)
+          </Title>
           <div className="flex gap-3 mb-6">
-            <Input 
-              placeholder="Ej. Autenticación Biométrica" 
+            <Input
+              placeholder="Ej. Autenticación Biométrica"
               value={newRequirement}
               onChange={e => setNewRequirement(e.target.value)}
               onPressEnter={addRequirement}
               className="h-10 rounded-lg"
             />
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={addRequirement}
               className="h-10 rounded-lg bg-emerald-600 border-none"
             >
@@ -176,14 +181,12 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
           <List
             dataSource={requirements}
             renderItem={(item, index) => (
-              <List.Item
-                className="bg-gray-50 rounded-xl mb-2 px-4 border-none flex justify-between items-center"
-              >
+              <List.Item className="bg-gray-50 rounded-xl mb-2 px-4 border-none flex justify-between items-center">
                 <Text>{item}</Text>
-                <Button 
-                  type="text" 
-                  danger 
-                  icon={<DeleteOutlined />} 
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
                   onClick={() => removeRequirement(index)}
                   className="hover:bg-red-50 rounded-lg"
                 />
@@ -194,11 +197,13 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
 
         {/* BUSINESS RULES */}
         <Card className="rounded-2xl shadow-sm border-none overflow-hidden">
-          <Title level={4} className="mb-6">REGLAS DE NEGOCIO</Title>
+          <Title level={4} className="mb-6">
+            REGLAS DE NEGOCIO
+          </Title>
           <Form.Item name="businessRules" label="Reglas Importantes">
-            <Input.TextArea 
-              rows={6} 
-              placeholder="Define las reglas de negocio críticas para el QA..." 
+            <Input.TextArea
+              rows={6}
+              placeholder="Define las reglas de negocio críticas para el QA..."
               className="rounded-xl p-4 font-mono text-sm"
             />
           </Form.Item>
@@ -206,17 +211,13 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
 
         {/* ACTIONS */}
         <div className="flex justify-end gap-4 pb-12">
-          <Button 
-            size="large" 
-            onClick={onCancel} 
-            className="rounded-xl h-12 px-8 border-gray-200"
-          >
+          <Button size="large" onClick={onCancel} className="rounded-xl h-12 px-8 border-gray-200">
             Cancelar
           </Button>
-          <Button 
-            type="primary" 
-            size="large" 
-            htmlType="submit" 
+          <Button
+            type="primary"
+            size="large"
+            htmlType="submit"
             icon={<SaveOutlined />}
             className="rounded-xl h-12 px-8 bg-emerald-600 hover:bg-emerald-700 border-none shadow-md"
           >

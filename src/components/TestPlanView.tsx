@@ -1,8 +1,27 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Typography, DatePicker, Row, Col, message, Tooltip, Calendar, Tag } from 'antd';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Typography,
+  DatePicker,
+  Row,
+  Col,
+  message,
+  Tooltip,
+  Calendar,
+  Tag,
+} from 'antd';
 import { PlusOutlined, CalendarOutlined, DeleteOutlined } from '@ant-design/icons';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFunctionalities, useTestPlans, useModules, useSprints } from '../hooks';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useModules } from '../modules/settings/hooks/useModules';
+import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useTestPlans } from '../modules/test-plans/hooks/useTestPlans';
 import { TestType, Priority, FunctionalityScope, TestPlan } from '../types';
 import { labelPriority } from '../i18n/labels';
 import dayjs from 'dayjs';
@@ -15,7 +34,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
   const { data: plansData, save: savePlan, delete: deletePlan } = useTestPlans(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
-  
+
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const plans = Array.isArray(plansData) ? plansData : [];
 
@@ -61,8 +80,10 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         date: values.date.format('YYYY-MM-DD'),
       };
       console.log('Payload - Save Test Plan:', payload);
-      savePlan(payload);
-      message.success(editingPlan ? 'Planificación actualizada' : 'Prueba planificada correctamente');
+      await savePlan(payload);
+      message.success(
+        editingPlan ? 'Planificación actualizada' : 'Prueba planificada correctamente',
+      );
       closePlanModal();
     } catch (error) {
       console.error('Plan save failed:', error);
@@ -76,12 +97,16 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         {listData.map(item => (
           <li key={item.id} className="mb-1">
             <Tooltip title={`${item.title} - ${item.priority}`}>
-              <div 
+              <div
                 className={`text-[10px] px-1.5 py-0.5 rounded border truncate cursor-pointer
-                  ${item.priority === Priority.HIGH ? 'bg-rose-50 text-rose-600 border-rose-100' : 
-                    item.priority === Priority.MEDIUM ? 'bg-amber-50 text-amber-600 border-amber-100' : 
-                    'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
-                onClick={(e) => {
+                  ${
+                    item.priority === Priority.HIGH
+                      ? 'bg-rose-50 text-rose-600 border-rose-100'
+                      : item.priority === Priority.MEDIUM
+                        ? 'bg-amber-50 text-amber-600 border-amber-100'
+                        : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                  }`}
+                onClick={e => {
                   e.stopPropagation();
                   openEditPlanModal(item);
                 }}
@@ -99,8 +124,12 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
     <div className="space-y-6 pb-10">
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
-          <Title level={2} className="m-0 font-bold text-slate-800">Planes de Prueba</Title>
-          <Text type="secondary" className="text-slate-500">Planifica y gestiona el calendario de pruebas para los próximos sprints.</Text>
+          <Title level={2} className="m-0 font-bold text-slate-800">
+            Planes de Prueba
+          </Title>
+          <Text type="secondary" className="text-slate-500">
+            Planifica y gestiona el calendario de pruebas para los próximos sprints.
+          </Text>
         </div>
         <Button
           type="primary"
@@ -116,21 +145,26 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         <div className="p-6 bg-white border-b border-slate-100">
           <div className="flex justify-between items-center">
             <div>
-              <Title level={4} className="m-0">Calendario de Planificación</Title>
-              <Text type="secondary">Visualiza y gestiona las pruebas programadas para el mes.</Text>
+              <Title level={4} className="m-0">
+                Calendario de Planificación
+              </Title>
+              <Text type="secondary">
+                Visualiza y gestiona las pruebas programadas para el mes.
+              </Text>
             </div>
           </div>
         </div>
         <div className="p-4">
-          <Calendar 
-            cellRender={(date) => dateCellRender(date)} 
-            className="test-calendar"
-          />
+          <Calendar cellRender={date => dateCellRender(date)} className="test-calendar" />
         </div>
       </Card>
 
       <Modal
-        title={<span className="text-xl font-bold text-slate-800">{editingPlan ? 'Editar Planificación' : 'Planificar Nueva Prueba'}</span>}
+        title={
+          <span className="text-xl font-bold text-slate-800">
+            {editingPlan ? 'Editar Planificación' : 'Planificar Nueva Prueba'}
+          </span>
+        }
         open={isPlanModalOpen}
         onCancel={closePlanModal}
         width={700}
@@ -154,7 +188,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
                   cancelText: 'Cancelar',
                   centered: true,
                   onOk: async () => {
-                    deletePlan(editingPlan.id);
+                    await deletePlan(editingPlan.id);
                     message.success('Planificación eliminada');
                     closePlanModal();
                   },
@@ -172,7 +206,11 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         <Form form={planForm} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col span={16}>
-              <Form.Item name="title" label="Título de la Planificación" rules={[{ required: true }]}>
+              <Form.Item
+                name="title"
+                label="Título de la Planificación"
+                rules={[{ required: true }]}
+              >
                 <Input placeholder="Ej: Smoke Test - Login UI" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
@@ -186,15 +224,22 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="scope" label="Alcance Funcionalidad" rules={[{ required: true }]}>
-                <Select options={Object.values(FunctionalityScope).map(v => ({ label: v, value: v }))} className="h-10 rounded-lg" />
+                <Select
+                  options={Object.values(FunctionalityScope).map(v => ({ label: v, value: v }))}
+                  className="h-10 rounded-lg"
+                />
               </Form.Item>
             </Col>
             <Col span={16}>
-              <Form.Item name="impactModules" label="Módulos de Impacto" rules={[{ required: true }]}>
-                <Select 
-                  mode="multiple" 
-                  placeholder="Selecciona módulos" 
-                  options={modulesData.map(m => ({ label: m.name, value: m.name }))} 
+              <Form.Item
+                name="impactModules"
+                label="Módulos de Impacto"
+                rules={[{ required: true }]}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder="Selecciona módulos"
+                  options={modulesData.map(m => ({ label: m.name, value: m.name }))}
                   className="rounded-lg"
                 />
               </Form.Item>
@@ -204,8 +249,8 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="sprint" label="Número de Sprint" rules={[{ required: true }]}>
-                <Select 
-                  placeholder="Selecciona el Sprint" 
+                <Select
+                  placeholder="Selecciona el Sprint"
                   className="h-10 rounded-lg"
                   options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
                 />
@@ -213,12 +258,21 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
             </Col>
             <Col span={8}>
               <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
-                <Select options={Object.values(TestType).map(v => ({ label: v, value: v }))} className="h-10 rounded-lg" />
+                <Select
+                  options={Object.values(TestType).map(v => ({ label: v, value: v }))}
+                  className="h-10 rounded-lg"
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name="priority" label="Nivel de Prioridad" rules={[{ required: true }]}>
-                <Select options={Object.values(Priority).map(v => ({ label: labelPriority(v, t), value: v }))} className="h-10 rounded-lg" />
+                <Select
+                  options={Object.values(Priority).map(v => ({
+                    label: labelPriority(v, t),
+                    value: v,
+                  }))}
+                  className="h-10 rounded-lg"
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -228,7 +282,11 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           </Form.Item>
 
           <Form.Item name="description" label="Descripción" rules={[{ required: true }]}>
-            <Input.TextArea rows={3} placeholder="Detalles adicionales de la planificación..." className="rounded-lg" />
+            <Input.TextArea
+              rows={3}
+              placeholder="Detalles adicionales de la planificación..."
+              className="rounded-lg"
+            />
           </Form.Item>
         </Form>
       </Modal>

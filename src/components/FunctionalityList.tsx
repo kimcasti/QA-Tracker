@@ -1,36 +1,76 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Row, Col, Divider, Typography, Upload, message, Tooltip } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Row,
+  Col,
+  Divider,
+  Typography,
+  Upload,
+  message,
+  Tooltip,
+} from 'antd';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
+} from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFunctionalities, useModules, useRoles, useSprints } from '../hooks';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useModules } from '../modules/settings/hooks/useModules';
+import { useRoles } from '../modules/settings/hooks/useRoles';
+import { useSprints } from '../modules/settings/hooks/useSprints';
 import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
 import * as XLSX from 'xlsx';
 
-export default function FunctionalityList({ filter, projectId }: { filter?: 'regression' | 'smoke', projectId?: string }) {
+export default function FunctionalityList({
+  filter,
+  projectId,
+}: {
+  filter?: 'regression' | 'smoke';
+  projectId?: string;
+}) {
   const { t } = useTranslation();
-  const { data: functionalitiesData, save, delete: deleteFunc, bulkUpdate, bulkAdd } = useFunctionalities(projectId);
+  const {
+    data: functionalitiesData,
+    save,
+    delete: deleteFunc,
+    bulkUpdate,
+    bulkAdd,
+  } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
-  
+
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
-  
+
   const [moduleFilter, setModuleFilter] = useState<string | null>(null);
   const [testTypeFilter, setTestTypeFilter] = useState<TestType | null>(null);
   const [statusFilter, setStatusFilter] = useState<TestStatus | null>(null);
 
   const functionalities = allFunctionalities.filter(f => {
     if (!f) return false;
-    
+
     const matchesBaseFilter = !filter || (filter === 'regression' ? f.isRegression : f.isSmoke);
     const matchesModule = !moduleFilter || f.module === moduleFilter;
-    const matchesTestType = !testTypeFilter || (Array.isArray(f.testTypes) && f.testTypes.includes(testTypeFilter));
+    const matchesTestType =
+      !testTypeFilter || (Array.isArray(f.testTypes) && f.testTypes.includes(testTypeFilter));
     const matchesStatus = !statusFilter || f.status === statusFilter;
-    
+
     return matchesBaseFilter && matchesModule && matchesTestType && matchesStatus;
   });
 
@@ -45,7 +85,13 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   // Dynamic Roles State
-  const [items, setItems] = useState(['Administrador', 'Usuario', 'Todos', 'Manejador de Seguimiento', 'Coordinador de Citas']);
+  const [items, setItems] = useState([
+    'Administrador',
+    'Usuario',
+    'Todos',
+    'Manejador de Seguimiento',
+    'Coordinador de Citas',
+  ]);
   const [name, setName] = useState('');
   const inputRef = useRef<InputRef>(null);
 
@@ -68,23 +114,37 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   };
 
   const columns = [
-    { 
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>, 
-      dataIndex: 'id', 
-      key: 'id' 
-    },
-    { 
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">Módulo</span>, 
-      dataIndex: 'module', 
-      key: 'module' 
-    },
-    { 
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">Funcionalidad</span>, 
-      dataIndex: 'name', 
-      key: 'name' 
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>
+      ),
+      dataIndex: 'id',
+      key: 'id',
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">PRIORIDAD</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          Módulo
+        </span>
+      ),
+      dataIndex: 'module',
+      key: 'module',
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          Funcionalidad
+        </span>
+      ),
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          PRIORIDAD
+        </span>
+      ),
       dataIndex: 'priority',
       key: 'priority',
       render: (priority: Priority) => {
@@ -95,14 +155,20 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           [Priority.LOW]: 'text-green-600 bg-green-50',
         };
         return (
-          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${colors[priority] || 'text-slate-600 bg-slate-50'}`}>
+          <span
+            className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${colors[priority] || 'text-slate-600 bg-slate-50'}`}
+          >
             {priority}
           </span>
         );
-      }
+      },
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">RIESGO</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          RIESGO
+        </span>
+      ),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
       render: (risk: RiskLevel) => {
@@ -119,27 +185,31 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             </span>
           </div>
         );
-      }
+      },
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>
+      ),
       dataIndex: 'roles',
       key: 'roles',
       render: (roles: string[]) => (
         <div className="flex items-center gap-2 text-slate-600">
           <Users size={16} className="text-slate-400" />
-          <span className="text-sm font-medium">
-            {roles?.join(', ') || 'N/A'}
-          </span>
+          <span className="text-sm font-medium">{roles?.join(', ') || 'N/A'}</span>
         </div>
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">PRUEBAS APLICADAS</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          PRUEBAS APLICADAS
+        </span>
+      ),
       dataIndex: 'testTypes',
       key: 'testTypes',
       render: (types: TestType[]) => {
-        const typeColors: Record<string, { bg: string, text: string }> = {
+        const typeColors: Record<string, { bg: string; text: string }> = {
           [TestType.INTEGRATION]: { bg: 'bg-slate-100', text: 'text-blue-600' },
           [TestType.FUNCTIONAL]: { bg: 'bg-cyan-50', text: 'text-cyan-700' },
           [TestType.SANITY]: { bg: 'bg-slate-50', text: 'text-slate-700' },
@@ -154,8 +224,8 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             {types?.map(type => {
               const config = typeColors[type] || { bg: 'bg-gray-100', text: 'text-gray-600' };
               return (
-                <span 
-                  key={type} 
+                <span
+                  key={type}
                   className={`px-2 py-0.5 rounded-md text-[12px] font-medium ${config.bg} ${config.text} border border-transparent`}
                 >
                   {type}
@@ -167,20 +237,34 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       },
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ESTADO DESARR.</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          ESTADO DESARR.
+        </span>
+      ),
       dataIndex: 'status',
       key: 'status',
       render: (status: TestStatus) => {
         const config = {
           [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
-          [TestStatus.IN_PROGRESS]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
-          [TestStatus.COMPLETED]: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+          [TestStatus.IN_PROGRESS]: {
+            bg: 'bg-blue-100',
+            text: 'text-blue-700',
+            dot: 'bg-blue-500',
+          },
+          [TestStatus.COMPLETED]: {
+            bg: 'bg-emerald-100',
+            text: 'text-emerald-700',
+            dot: 'bg-emerald-500',
+          },
           [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
           [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
         }[status] || { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
 
         return (
-          <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} text-xs font-bold`}>
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} text-xs font-bold`}
+          >
             <span className={`w-2 h-2 rounded-full ${config.dot}`} />
             {status}
           </div>
@@ -188,22 +272,35 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       },
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ACCIONES</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          ACCIONES
+        </span>
+      ),
       key: 'actions',
       render: (_: any, record: Functionality) => (
         <Space>
           <Tooltip title="Gestionar Casos de Prueba">
-            <Button 
-              icon={<FileTextOutlined />} 
+            <Button
+              icon={<FileTextOutlined />}
               onClick={() => {
                 setSelectedFunctionality(record);
                 setIsTestCaseModalOpen(true);
-              }} 
-              className="rounded-lg text-blue-600 border-blue-100 hover:bg-blue-50" 
+              }}
+              className="rounded-lg text-blue-600 border-blue-100 hover:bg-blue-50"
             />
           </Tooltip>
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} className="rounded-lg" />
-          <Button icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} className="rounded-lg" />
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+            className="rounded-lg"
+          />
+          <Button
+            icon={<DeleteOutlined />}
+            danger
+            onClick={() => handleDelete(record.id)}
+            className="rounded-lg"
+          />
         </Space>
       ),
     },
@@ -227,20 +324,20 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      
+
       // Ensure ID is generated if empty (though it's required and auto-filled)
       const finalId = values.id || generateId(values.module);
 
       const isRegression = values.testTypes?.includes(TestType.REGRESSION) || false;
       const isSmoke = values.testTypes?.includes(TestType.SMOKE) || false;
 
-      const payload = { 
-        ...editingFunc, 
+      const payload = {
+        ...editingFunc,
         ...values,
         id: finalId,
         isRegression,
         isSmoke,
-        projectId: projectId || ''
+        projectId: projectId || '',
       };
       console.log('Payload - Save Functionality:', payload);
       save(payload);
@@ -256,7 +353,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
     try {
       const values = await bulkForm.validateFields();
       const updates: Partial<Functionality> = {};
-      
+
       if (values.roles) updates.roles = values.roles;
       if (values.testTypes) {
         updates.testTypes = values.testTypes;
@@ -291,7 +388,7 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const isTxt = file.name.endsWith('.txt');
 
-    reader.onload = async (e) => {
+    reader.onload = async e => {
       try {
         let importedData: any[] = [];
 
@@ -310,12 +407,15 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             // Try CSV parsing
             const lines = text.split('\n');
             const headers = lines[0].split(',').map(h => h.trim());
-            importedData = lines.slice(1).filter(l => l.trim()).map(line => {
-              const values = line.split(',').map(v => v.trim());
-              const obj: any = {};
-              headers.forEach((h, i) => obj[h] = values[i]);
-              return obj;
-            });
+            importedData = lines
+              .slice(1)
+              .filter(l => l.trim())
+              .map(line => {
+                const values = line.split(',').map(v => v.trim());
+                const obj: any = {};
+                headers.forEach((h, i) => (obj[h] = values[i]));
+                return obj;
+              });
           }
         }
 
@@ -325,10 +425,10 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         }
 
         const formattedFuncs: Functionality[] = importedData.map((item, index) => {
-          const testTypes = Array.isArray(item.testTypes) 
-            ? item.testTypes 
+          const testTypes = Array.isArray(item.testTypes)
+            ? item.testTypes
             : (item.testTypes?.split(',') || []).map((t: string) => t.trim() as TestType);
-          
+
           const roles = Array.isArray(item.roles)
             ? item.roles
             : (item.roles?.split(',') || []).map((r: string) => r.trim());
@@ -384,15 +484,15 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         Regresión: f.isRegression ? 'Sí' : 'No',
         Smoke: f.isSmoke ? 'Sí' : 'No',
         'Fecha Entrega': f.deliveryDate || '',
-        Estado: f.status || ''
+        Estado: f.status || '',
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Funcionalidades');
-      
+
       const fileName = `Funcionalidades_${filter || 'Todas'}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
+
       // Use writeFile but wrap in try-catch specifically
       try {
         XLSX.writeFile(workbook, fileName);
@@ -419,8 +519,14 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   const generateId = (moduleName: string) => {
     if (!moduleName) return '';
     // Clean module name to create a prefix (first 4 chars, uppercase, no spaces)
-    const prefix = moduleName.trim().substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const count = allFunctionalities.filter(f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase()).length;
+    const prefix = moduleName
+      .trim()
+      .substring(0, 4)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    const count = allFunctionalities.filter(
+      f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase(),
+    ).length;
     return `${prefix}-${(count + 1).toString().padStart(2, '0')}`;
   };
 
@@ -437,7 +543,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
   // Metrics Calculation
   const totalFuncs = allFunctionalities.length;
   const completedFuncs = allFunctionalities.filter(f => f.status === TestStatus.COMPLETED).length;
-  const inProgressFuncs = allFunctionalities.filter(f => f.status === TestStatus.IN_PROGRESS).length;
+  const inProgressFuncs = allFunctionalities.filter(
+    f => f.status === TestStatus.IN_PROGRESS,
+  ).length;
   const backlogFuncs = allFunctionalities.filter(f => f.status === TestStatus.BACKLOG).length;
   const mvpFuncs = allFunctionalities.filter(f => f.status === TestStatus.MVP).length;
 
@@ -446,22 +554,18 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       {/* Header Pattern */}
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
-          <Title level={2} className="m-0 font-bold text-slate-800">Gestión de Funcionalidades</Title>
-          <Text type="secondary" className="text-slate-500">Administra el inventario de funcionalidades y su estado de desarrollo.</Text>
+          <Title level={2} className="m-0 font-bold text-slate-800">
+            Gestión de Funcionalidades
+          </Title>
+          <Text type="secondary" className="text-slate-500">
+            Administra el inventario de funcionalidades y su estado de desarrollo.
+          </Text>
         </div>
         <Space>
-          <Button 
-            icon={<UploadOutlined />} 
-            onClick={handleExport}
-            className="rounded-lg h-10"
-          >
+          <Button icon={<UploadOutlined />} onClick={handleExport} className="rounded-lg h-10">
             Exportar
           </Button>
-          <Upload 
-            beforeUpload={handleImport} 
-            showUploadList={false}
-            accept=".xlsx,.xls,.txt"
-          >
+          <Upload beforeUpload={handleImport} showUploadList={false} accept=".xlsx,.xls,.txt">
             <Button icon={<DownloadOutlined />} className="rounded-lg h-10">
               Importar
             </Button>
@@ -472,10 +576,10 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             onClick={() => {
               setEditingFunc(null);
               form.resetFields();
-              form.setFieldsValue({ 
+              form.setFieldsValue({
                 status: TestStatus.BACKLOG,
                 priority: Priority.MEDIUM,
-                riskLevel: RiskLevel.MEDIUM
+                riskLevel: RiskLevel.MEDIUM,
               });
               setIsModalOpen(true);
             }}
@@ -490,31 +594,56 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       <Row gutter={[20, 20]}>
         <Col xs={24} sm={12} lg={4}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</Text>
+            <Text
+              type="secondary"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Total
+            </Text>
             <div className="text-3xl font-bold mt-1 text-slate-800">{totalFuncs}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Completadas</Text>
+            <Text
+              type="secondary"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Completadas
+            </Text>
             <div className="text-3xl font-bold mt-1 text-emerald-600">{completedFuncs}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">En Desarrollo</Text>
+            <Text
+              type="secondary"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              En Desarrollo
+            </Text>
             <div className="text-3xl font-bold mt-1 text-blue-600">{inProgressFuncs}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Backlog</Text>
+            <Text
+              type="secondary"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Backlog
+            </Text>
             <div className="text-3xl font-bold mt-1 text-slate-500">{backlogFuncs}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={5}>
           <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text type="secondary" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">MVP</Text>
+            <Text
+              type="secondary"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              MVP
+            </Text>
             <div className="text-3xl font-bold mt-1 text-amber-600">{mvpFuncs}</div>
           </Card>
         </Col>
@@ -524,7 +653,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       <Card className="rounded-2xl shadow-sm border-slate-100">
         <div className="flex flex-wrap gap-4 items-end">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtrar por Módulo</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Filtrar por Módulo
+            </span>
             <Select
               placeholder="Todos los módulos"
               className="w-48 h-10"
@@ -535,7 +666,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo de Prueba</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Tipo de Prueba
+            </span>
             <Select
               placeholder="Todos los tipos"
               className="w-48 h-10"
@@ -546,17 +679,22 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Estado
+            </span>
             <Select
               placeholder="Todos los estados"
               className="w-48 h-10"
               allowClear
               onChange={setStatusFilter}
               value={statusFilter}
-              options={Object.values(TestStatus).map(s => ({ label: labelTestStatus(s, t), value: s }))}
+              options={Object.values(TestStatus).map(s => ({
+                label: labelTestStatus(s, t),
+                value: s,
+              }))}
             />
           </div>
-          <Button 
+          <Button
             onClick={() => {
               setModuleFilter(null);
               setTestTypeFilter(null);
@@ -576,7 +714,10 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           <div className="flex items-center gap-3">
             <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
             {selectedRowKeys.length > 0 && (
-              <Tag color="blue" className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold">
+              <Tag
+                color="blue"
+                className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold"
+              >
                 {selectedRowKeys.length} seleccionadas
               </Tag>
             )}
@@ -593,18 +734,22 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
           )
         }
       >
-        <Table 
+        <Table
           rowSelection={rowSelection}
-          columns={columns} 
-          dataSource={functionalities} 
-          rowKey="id" 
+          columns={columns}
+          dataSource={functionalities}
+          rowKey="id"
           className="executive-table"
           pagination={{ pageSize: 10 }}
         />
       </Card>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">{editingFunc ? 'Editar Funcionalidad' : 'Nueva Funcionalidad'}</span>}
+        title={
+          <span className="text-lg font-bold text-slate-800">
+            {editingFunc ? 'Editar Funcionalidad' : 'Nueva Funcionalidad'}
+          </span>
+        }
         open={isModalOpen}
         onOk={handleSave}
         onCancel={() => setIsModalOpen(false)}
@@ -614,48 +759,68 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         cancelText="Cancelar"
         className="executive-modal"
       >
-        <Form 
-          form={form} 
-          layout="vertical" 
+        <Form
+          form={form}
+          layout="vertical"
           className="mt-4"
           onValuesChange={handleValuesChange}
-          initialValues={{ 
-            status: TestStatus.BACKLOG, 
-            priority: Priority.MEDIUM, 
-            riskLevel: RiskLevel.MEDIUM 
+          initialValues={{
+            status: TestStatus.BACKLOG,
+            priority: Priority.MEDIUM,
+            riskLevel: RiskLevel.MEDIUM,
           }}
         >
           <Row gutter={20}>
             <Col span={10}>
-              <Form.Item name="id" label={<span className="font-semibold text-slate-600">ID de Funcionalidad</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="id"
+                label={<span className="font-semibold text-slate-600">ID de Funcionalidad</span>}
+                rules={[{ required: true }]}
+              >
                 <Input placeholder="Ej: AUTH-01" disabled className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
             <Col span={14}>
-              <Form.Item name="module" label={<span className="font-semibold text-slate-600">Módulo</span>} rules={[{ required: true }]}>
-                <Select 
-                  placeholder="Selecciona un módulo" 
+              <Form.Item
+                name="module"
+                label={<span className="font-semibold text-slate-600">Módulo</span>}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  placeholder="Selecciona un módulo"
                   className="h-10 rounded-lg"
                   options={modulesData.map(m => ({ label: m.name, value: m.name }))}
                 />
               </Form.Item>
             </Col>
           </Row>
-          
-          <Form.Item name="name" label={<span className="font-semibold text-slate-600">Nombre de la Funcionalidad</span>} rules={[{ required: true }]}>
+
+          <Form.Item
+            name="name"
+            label={<span className="font-semibold text-slate-600">Nombre de la Funcionalidad</span>}
+            rules={[{ required: true }]}
+          >
             <Input placeholder="Ej: Inicio de sesión con Google" className="h-10 rounded-lg" />
           </Form.Item>
 
-          <Form.Item name="roles" label={<span className="font-semibold text-slate-600">Roles Autorizados</span>} rules={[{ required: true }]}>
+          <Form.Item
+            name="roles"
+            label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}
+            rules={[{ required: true }]}
+          >
             <Select
               mode="multiple"
               placeholder="Selecciona roles"
               className="executive-select"
-              options={rolesData.map((item) => ({ label: item.name, value: item.name }))}
+              options={rolesData.map(item => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>
 
-          <Form.Item name="testTypes" label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>} rules={[{ required: true }]}>
+          <Form.Item
+            name="testTypes"
+            label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>}
+            rules={[{ required: true }]}
+          >
             <Select
               mode="multiple"
               placeholder="Selecciona las pruebas a aplicar"
@@ -666,19 +831,31 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
           <Row gutter={20}>
             <Col span={12}>
-              <Form.Item name="priority" label={<span className="font-semibold text-slate-600">Prioridad</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="priority"
+                label={<span className="font-semibold text-slate-600">Prioridad</span>}
+                rules={[{ required: true }]}
+              >
                 <Select className="h-10 rounded-lg">
                   {Object.values(Priority).map(p => (
-                    <Select.Option key={p} value={p}>{labelPriority(p, t)}</Select.Option>
+                    <Select.Option key={p} value={p}>
+                      {labelPriority(p, t)}
+                    </Select.Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="riskLevel" label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>} rules={[{ required: true }]}>
+              <Form.Item
+                name="riskLevel"
+                label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>}
+                rules={[{ required: true }]}
+              >
                 <Select className="h-10 rounded-lg">
                   {Object.values(RiskLevel).map(r => (
-                    <Select.Option key={r} value={r}>{labelRisk(r, t)}</Select.Option>
+                    <Select.Option key={r} value={r}>
+                      {labelRisk(r, t)}
+                    </Select.Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -687,25 +864,40 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
 
           <Row gutter={20}>
             <Col span={12}>
-              <Form.Item name="sprint" label={<span className="font-semibold text-slate-600">Sprint</span>} rules={[{ required: true }]}>
-                <Select 
-                  placeholder="Selecciona un sprint" 
+              <Form.Item
+                name="sprint"
+                label={<span className="font-semibold text-slate-600">Sprint</span>}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  placeholder="Selecciona un sprint"
                   className="h-10 rounded-lg"
                   options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado Actual</span>} rules={[{ required: true }]}>
-                <Select 
+              <Form.Item
+                name="status"
+                label={<span className="font-semibold text-slate-600">Estado Actual</span>}
+                rules={[{ required: true }]}
+              >
+                <Select
                   className="h-10 rounded-lg"
-                  options={Object.values(TestStatus).map(v => ({ label: labelTestStatus(v, t), value: v }))} 
+                  options={Object.values(TestStatus).map(v => ({
+                    label: labelTestStatus(v, t),
+                    value: v,
+                  }))}
                 />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="deliveryDate" label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>} rules={[{ required: true }]}>
+          <Form.Item
+            name="deliveryDate"
+            label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>}
+            rules={[{ required: true }]}
+          >
             <Input type="date" className="h-10 rounded-lg" />
           </Form.Item>
         </Form>
@@ -721,9 +913,9 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         destroyOnClose
       >
         {selectedFunctionality && (
-          <TestCaseManagement 
-            projectId={projectId || ''} 
-            functionalityId={selectedFunctionality.id} 
+          <TestCaseManagement
+            projectId={projectId || ''}
+            functionalityId={selectedFunctionality.id}
             functionalityName={selectedFunctionality.name}
             moduleName={selectedFunctionality.module}
           />
@@ -731,7 +923,11 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
       </Modal>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">Edición Masiva ({selectedRowKeys.length} items)</span>}
+        title={
+          <span className="text-lg font-bold text-slate-800">
+            Edición Masiva ({selectedRowKeys.length} items)
+          </span>
+        }
         open={isBulkModalOpen}
         onOk={handleBulkSave}
         onCancel={() => setIsBulkModalOpen(false)}
@@ -742,19 +938,26 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
         className="executive-modal"
       >
         <Typography.Paragraph type="secondary" className="mb-4">
-          Selecciona solo los campos que deseas actualizar para todas las funcionalidades seleccionadas.
+          Selecciona solo los campos que deseas actualizar para todas las funcionalidades
+          seleccionadas.
         </Typography.Paragraph>
         <Form form={bulkForm} layout="vertical">
-          <Form.Item name="roles" label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}>
+          <Form.Item
+            name="roles"
+            label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}
+          >
             <Select
               mode="multiple"
               placeholder="Cambiar roles para todos..."
               className="executive-select"
-              options={rolesData.map((item) => ({ label: item.name, value: item.name }))}
+              options={rolesData.map(item => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>
 
-          <Form.Item name="testTypes" label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>}>
+          <Form.Item
+            name="testTypes"
+            label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>}
+          >
             <Select
               mode="multiple"
               placeholder="Cambiar pruebas para todos..."
@@ -763,11 +966,17 @@ export default function FunctionalityList({ filter, projectId }: { filter?: 'reg
             />
           </Form.Item>
 
-          <Form.Item name="status" label={<span className="font-semibold text-slate-600">Estado Actual</span>}>
-            <Select 
+          <Form.Item
+            name="status"
+            label={<span className="font-semibold text-slate-600">Estado Actual</span>}
+          >
+            <Select
               placeholder="Cambiar estado para todos..."
               className="h-10 rounded-lg"
-              options={Object.values(TestStatus).map(v => ({ label: labelTestStatus(v, t), value: v }))} 
+              options={Object.values(TestStatus).map(v => ({
+                label: labelTestStatus(v, t),
+                value: v,
+              }))}
             />
           </Form.Item>
         </Form>

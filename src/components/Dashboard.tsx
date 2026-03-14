@@ -13,14 +13,12 @@ import {
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import dayjs from 'dayjs';
-import {
-  useExecutions,
-  useFunctionalities,
-  useRegressionCycles,
-  useSmokeCycles,
-  useSprints,
-  useTestCases,
-} from '../hooks';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
+import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../theme/statusStyles';
@@ -81,7 +79,9 @@ function KpiCard({
     <Card
       variant="borderless"
       className="rounded-2xl qa-surface-card hover:shadow-md transition-shadow"
-      style={{ background: `linear-gradient(135deg, ${qaPalette.card} 0%, ${softSurface(accent)} 100%)` }}
+      style={{
+        background: `linear-gradient(135deg, ${qaPalette.card} 0%, ${softSurface(accent)} 100%)`,
+      }}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -115,9 +115,16 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card variant="borderless" className="rounded-2xl qa-surface-card hover:shadow-md transition-shadow">
+    <Card
+      variant="borderless"
+      className="rounded-2xl qa-surface-card hover:shadow-md transition-shadow"
+    >
       <Statistic
-        title={<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{title}</span>}
+        title={
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            {title}
+          </span>
+        }
         value={value}
         prefix={icon}
         styles={{ content: { color: accent, fontWeight: 'bold' } }}
@@ -137,7 +144,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = (Array.isArray(executionsData) ? executionsData : []).filter(
-    execution => execution.status === ExecutionStatus.FINAL
+    execution => execution.status === ExecutionStatus.FINAL,
   );
   const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
   const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
@@ -145,8 +152,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const sprints = Array.isArray(sprintsData) ? sprintsData : [];
 
   const totalFunctionalities = functionalities.length;
-  const completedFuncs = functionalities.filter(item => item.status === TestStatus.COMPLETED).length;
-  const inProgressFuncs = functionalities.filter(item => item.status === TestStatus.IN_PROGRESS).length;
+  const completedFuncs = functionalities.filter(
+    item => item.status === TestStatus.COMPLETED,
+  ).length;
+  const inProgressFuncs = functionalities.filter(
+    item => item.status === TestStatus.IN_PROGRESS,
+  ).length;
   const backlogFuncs = functionalities.filter(item => item.status === TestStatus.BACKLOG).length;
   const mvpFuncs = functionalities.filter(item => item.status === TestStatus.MVP).length;
   const failedFuncs = functionalities.filter(item => item.status === TestStatus.FAILED).length;
@@ -157,14 +168,16 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   ];
 
   const totalBugs = allCycleExecutions.filter(item => item.bugId).length;
-  const criticalBugs = allCycleExecutions.filter(item => item.severity === Severity.CRITICAL).length;
+  const criticalBugs = allCycleExecutions.filter(
+    item => item.severity === Severity.CRITICAL,
+  ).length;
   const funcsWithTestCases = new Set(testCases.map(item => item.functionalityId)).size;
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
 
   const regressionExecutions = regressionCycles.flatMap(cycle => cycle.executions || []);
   const regressionPassedExecutions = regressionExecutions.filter(
-    execution => execution.result === TestResult.PASSED
+    execution => execution.result === TestResult.PASSED,
   ).length;
   const regressionStability =
     regressionExecutions.length > 0
@@ -176,11 +189,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     testCases.length > 0 ? Math.round((automatedTests / testCases.length) * 100) : 0;
 
   const regressionFuncs = functionalities.filter(item => item.isRegression);
-  const regressionPassed = regressionFuncs.filter(item => item.status === TestStatus.COMPLETED).length;
+  const regressionPassed = regressionFuncs.filter(
+    item => item.status === TestStatus.COMPLETED,
+  ).length;
   const regressionFailed = regressionFuncs.filter(item => item.status === TestStatus.FAILED).length;
   const regressionRemaining = Math.max(
     regressionFuncs.length - regressionPassed - regressionFailed,
-    0
+    0,
   );
   const regressionPercent =
     regressionFuncs.length > 0 ? Math.round((regressionPassed / regressionFuncs.length) * 100) : 0;
@@ -300,17 +315,29 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const tableColumns = [
     {
-      title: <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sprint / Periodo</span>,
+      title: (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Sprint / Periodo
+        </span>
+      ),
       dataIndex: 'period',
       key: 'period',
     },
     {
-      title: <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Funcionalidad</span>,
+      title: (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Funcionalidad
+        </span>
+      ),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Estado</span>,
+      title: (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Estado
+        </span>
+      ),
       dataIndex: 'status',
       key: 'status',
       render: (status: TestStatus) => (
@@ -320,7 +347,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Calidad</span>,
+      title: (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Calidad
+        </span>
+      ),
       key: 'quality',
       render: (_: unknown, record: { status: TestStatus; quality: number }) => (
         <div className="flex items-center gap-2">
@@ -368,7 +399,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={`${testCaseCoverage.toFixed(1)}%`}
               hint={`${funcsWithTestCases} de ${totalFunctionalities} funcionalidades`}
               accent={qaPalette.functionalityStatus.completed}
-              icon={<FileSearchOutlined className="text-lg" style={{ color: qaPalette.functionalityStatus.completed }} />}
+              icon={
+                <FileSearchOutlined
+                  className="text-lg"
+                  style={{ color: qaPalette.functionalityStatus.completed }}
+                />
+              }
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -377,7 +413,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={totalBugs}
               hint={`${criticalBugs} criticos`}
               accent={qaPalette.functionalityStatus.failed}
-              icon={<BugOutlined className="text-lg" style={{ color: qaPalette.functionalityStatus.failed }} />}
+              icon={
+                <BugOutlined
+                  className="text-lg"
+                  style={{ color: qaPalette.functionalityStatus.failed }}
+                />
+              }
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -386,7 +427,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={`${automationCoverage}%`}
               hint={`${automatedTests} de ${testCases.length} casos`}
               accent={qaPalette.functionalityStatus.postMvp}
-              icon={<ThunderboltOutlined className="text-lg" style={{ color: qaPalette.functionalityStatus.postMvp }} />}
+              icon={
+                <ThunderboltOutlined
+                  className="text-lg"
+                  style={{ color: qaPalette.functionalityStatus.postMvp }}
+                />
+              }
             />
           </Col>
         </Row>
@@ -412,9 +458,16 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <MetricCard
               title="En desarrollo"
               value={inProgressFuncs}
-              percent={totalFunctionalities > 0 ? (inProgressFuncs / totalFunctionalities) * 100 : 0}
+              percent={
+                totalFunctionalities > 0 ? (inProgressFuncs / totalFunctionalities) * 100 : 0
+              }
               accent={qaPalette.functionalityStatus.inProgress}
-              icon={<ThunderboltOutlined className="mr-2" style={{ color: qaPalette.functionalityStatus.inProgress }} />}
+              icon={
+                <ThunderboltOutlined
+                  className="mr-2"
+                  style={{ color: qaPalette.functionalityStatus.inProgress }}
+                />
+              }
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -423,7 +476,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={completedFuncs}
               percent={totalFunctionalities > 0 ? (completedFuncs / totalFunctionalities) * 100 : 0}
               accent={qaPalette.functionalityStatus.completed}
-              icon={<CheckCircleFilled className="mr-2" style={{ color: qaPalette.functionalityStatus.completed }} />}
+              icon={
+                <CheckCircleFilled
+                  className="mr-2"
+                  style={{ color: qaPalette.functionalityStatus.completed }}
+                />
+              }
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -432,7 +490,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={mvpFuncs}
               percent={totalFunctionalities > 0 ? (mvpFuncs / totalFunctionalities) * 100 : 0}
               accent={qaPalette.functionalityStatus.inProgress}
-              icon={<SafetyCertificateOutlined className="mr-2" style={{ color: qaPalette.functionalityStatus.inProgress }} />}
+              icon={
+                <SafetyCertificateOutlined
+                  className="mr-2"
+                  style={{ color: qaPalette.functionalityStatus.inProgress }}
+                />
+              }
             />
           </Col>
         </Row>
@@ -615,7 +678,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                   );
                 })
               ) : (
-                <div className="py-10 text-center italic text-slate-400">No hay datos de modulos</div>
+                <div className="py-10 text-center italic text-slate-400">
+                  No hay datos de modulos
+                </div>
               )}
 
               <div className="mt-6 border-t border-slate-100 pt-4">
@@ -636,9 +701,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         </Col>
       </Row>
 
-      <div className="py-4 text-center text-xs text-slate-400">
-        QA Enterprise Division 2024
-      </div>
+      <div className="py-4 text-center text-xs text-slate-400">QA Enterprise Division 2024</div>
     </div>
   );
 }

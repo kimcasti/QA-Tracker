@@ -2,7 +2,8 @@ import { Button, Tag, Typography } from 'antd';
 import { CloseCircleFilled, DeleteOutlined, DragOutlined } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useTestCases, useTestRuns } from '../../../hooks';
+import { useTestCases } from '../../test-cases/hooks/useTestCases';
+import { useTestRuns } from '../../test-runs/hooks/useTestRuns';
 import { ExecutionStatus, TestResult, type Functionality, TestStatus } from '../../../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../../../i18n/labels';
 import { qaPalette } from '../../../theme/palette';
@@ -28,7 +29,9 @@ export function TaskCard({
         data-swapy-no-drag
         className="rounded-xl bg-slate-50 border border-dashed border-slate-200 px-3 py-2 shadow-sm"
       >
-        <Text type="secondary" className="text-xs">{t('storymap.drop_here')}</Text>
+        <Text type="secondary" className="text-xs">
+          {t('storymap.drop_here')}
+        </Text>
       </div>
     );
   }
@@ -101,14 +104,22 @@ export function TaskCard({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-black text-slate-700">{functionality?.id}</span>
-                  {functionality?.module && <Tag className="m-0 text-[10px]">{functionality.module}</Tag>}
+                  {functionality?.module && (
+                    <Tag className="m-0 text-[10px]">{functionality.module}</Tag>
+                  )}
                 </div>
-                <div className="text-sm font-semibold text-slate-800 truncate" title={functionality?.name}>
+                <div
+                  className="text-sm font-semibold text-slate-800 truncate"
+                  title={functionality?.name}
+                >
                   {functionality?.name}
                 </div>
               </div>
               {status && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black" style={statusStyle}>
+                <span
+                  className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black"
+                  style={statusStyle}
+                >
                   {labelTestStatus(status, t)}
                 </span>
               )}
@@ -129,8 +140,13 @@ export function TaskCard({
 
             {totalTests > 0 && (
               <div className="mt-2 text-[11px] text-slate-600 font-semibold">
-                <span>{t('functionality.tests')}: {totalTests} | </span>
-                <span className="inline-flex items-center gap-1" style={{ color: qaPalette.functionalityStatus.failed }}>
+                <span>
+                  {t('functionality.tests')}: {totalTests} |{' '}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1"
+                  style={{ color: qaPalette.functionalityStatus.failed }}
+                >
                   <CloseCircleFilled />
                   <span>{failedTests}</span>
                 </span>
@@ -144,7 +160,7 @@ export function TaskCard({
             size="small"
             danger
             icon={<DeleteOutlined />}
-            onClick={(e) => {
+            onClick={e => {
               e.stopPropagation();
               onUnassign();
             }}

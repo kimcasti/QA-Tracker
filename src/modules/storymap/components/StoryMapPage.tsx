@@ -1,11 +1,28 @@
-﻿import { Button, Card, Col, DatePicker, Dropdown, Empty, Form, Input, Modal, Row, Select, Space, Typography, message } from 'antd';
+﻿import {
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Typography,
+  message,
+} from 'antd';
 import { CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFunctionalities, useModules, useSprints } from '../../../hooks';
 import type { Functionality } from '../../../types';
 import { Priority, RiskLevel, TestStatus, TestType } from '../../../types';
 import { labelPriority, labelRisk } from '../../../i18n/labels';
+import { useFunctionalities } from '../../functionalities/hooks/useFunctionalities';
+import { useModules } from '../../settings/hooks/useModules';
+import { useSprints } from '../../settings/hooks/useSprints';
 import { storyMapService } from '../services/storyMapService';
 import { storyMapExportService } from '../services/storyMapExportService';
 import type { StoryMapRoleNode } from '../types';
@@ -38,7 +55,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
 
   const reload = () => {
     if (!projectId) return;
-    setFullMap(storyMapService.getFullStoryMap(projectId));
+    setFullMap(storyMapService.getFullStoryMap(projectId, functionalities));
   };
 
   useEffect(() => {
@@ -50,20 +67,20 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     return functionalities.filter(f => !f.storyId);
   }, [functionalities]);
 
-  const assignFunctionality = (storyId: string, functionalityId: string) => {
+  const assignFunctionality = async (storyId: string, functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
     const updated: Functionality = { ...func, storyId };
-    saveFunctionality(updated);
+    await saveFunctionality(updated);
     reload();
     message.success(t('storymap.assign_success', { id: func.id }));
   };
 
-  const unassignFunctionality = (functionalityId: string) => {
+  const unassignFunctionality = async (functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
     const updated: Functionality = { ...func, storyId: undefined };
-    saveFunctionality(updated);
+    await saveFunctionality(updated);
     reload();
     message.success(t('storymap.unassign_success', { id: func.id }));
   };
@@ -82,8 +99,14 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
 
   const generateFunctionalityId = (moduleName: string) => {
     if (!moduleName) return '';
-    const prefix = moduleName.trim().substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const count = functionalities.filter(f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase()).length;
+    const prefix = moduleName
+      .trim()
+      .substring(0, 4)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    const count = functionalities.filter(
+      f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase(),
+    ).length;
     return `${prefix}-${(count + 1).toString().padStart(2, '0')}`;
   };
 
@@ -117,7 +140,9 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     <div className="space-y-4 pb-6">
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
-          <Title level={2} className="m-0 font-bold text-slate-800">{t('storymap.title')}</Title>
+          <Title level={2} className="m-0 font-bold text-slate-800">
+            {t('storymap.title')}
+          </Title>
           <Text type="secondary" className="text-slate-500">
             {t('storymap.subtitle')}
           </Text>
@@ -137,7 +162,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
                     downloadTextFile(
                       `storymap_${projectId}_${ymd}.json`,
                       storyMapExportService.toJson(payload),
-                      'application/json;charset=utf-8'
+                      'application/json;charset=utf-8',
                     );
                     message.success(t('storymap.export.success_json'));
                   },
@@ -152,7 +177,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
                     downloadTextFile(
                       `storymap_${projectId}_${ymd}.csv`,
                       storyMapExportService.toCsv(payload),
-                      'text/csv;charset=utf-8'
+                      'text/csv;charset=utf-8',
                     );
                     message.success(t('storymap.export.success_csv'));
                   },
@@ -174,9 +199,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               ],
             }}
           >
-            <Button className="rounded-lg h-10 px-6">
-              {t('common.export')}
-            </Button>
+            <Button className="rounded-lg h-10 px-6">{t('common.export')}</Button>
           </Dropdown>
 
           <Button
@@ -193,11 +216,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         </Space>
       </div>
 
-      <Card
-        bordered={false}
-        className="rounded-2xl shadow-sm"
-        styles={{ body: { padding: 12 } }}
-      >
+      <Card bordered={false} className="rounded-2xl shadow-sm" styles={{ body: { padding: 12 } }}>
         {fullMap.length === 0 ? (
           <div className="w-full py-8">
             <Empty description={t('storymap.empty_roles')} />
@@ -253,7 +272,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             storyId: createFuncStoryId,
           };
 
-          saveFunctionality(payload);
+          await saveFunctionality(payload);
           setCreateFuncModalOpen(false);
           setCreateFuncStoryId(null);
           funcForm.resetFields();
@@ -272,7 +291,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="module" label={t('functionality.module')} rules={[{ required: true }]}>
+              <Form.Item
+                name="module"
+                label={t('functionality.module')}
+                rules={[{ required: true }]}
+              >
                 <Select
                   showSearch
                   placeholder={t('functionality.module_placeholder')}
@@ -295,17 +318,39 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="priority" label={t('functionality.priority')} rules={[{ required: true }]}>
-                <Select options={Object.values(Priority).map(p => ({ label: labelPriority(p, t), value: p }))} />
+              <Form.Item
+                name="priority"
+                label={t('functionality.priority')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  options={Object.values(Priority).map(p => ({
+                    label: labelPriority(p, t),
+                    value: p,
+                  }))}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="riskLevel" label={t('functionality.risk')} rules={[{ required: true }]}>
-                <Select options={Object.values(RiskLevel).map(r => ({ label: labelRisk(r, t), value: r }))} />
+              <Form.Item
+                name="riskLevel"
+                label={t('functionality.risk')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  options={Object.values(RiskLevel).map(r => ({
+                    label: labelRisk(r, t),
+                    value: r,
+                  }))}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="sprint" label={t('functionality.sprint')} rules={[{ required: true }]}>
+              <Form.Item
+                name="sprint"
+                label={t('functionality.sprint')}
+                rules={[{ required: true }]}
+              >
                 <Select
                   placeholder={t('functionality.sprint_placeholder')}
                   options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
@@ -340,7 +385,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         centered
       >
         <Form form={roleForm} layout="vertical">
-          <Form.Item name="name" label={t('common.name')} rules={[{ required: true, message: t('common.enter_name') }]}>
+          <Form.Item
+            name="name"
+            label={t('common.name')}
+            rules={[{ required: true, message: t('common.enter_name') }]}
+          >
             <Input placeholder={t('storymap.role_placeholder')} />
           </Form.Item>
         </Form>
@@ -367,7 +416,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         centered
       >
         <Form form={epicForm} layout="vertical">
-          <Form.Item name="name" label={t('common.name')} rules={[{ required: true, message: t('common.enter_name') }]}>
+          <Form.Item
+            name="name"
+            label={t('common.name')}
+            rules={[{ required: true, message: t('common.enter_name') }]}
+          >
             <Input placeholder={t('storymap.epic_placeholder')} />
           </Form.Item>
         </Form>
@@ -394,7 +447,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         centered
       >
         <Form form={storyForm} layout="vertical">
-          <Form.Item name="name" label={t('common.name')} rules={[{ required: true, message: t('common.enter_name') }]}>
+          <Form.Item
+            name="name"
+            label={t('common.name')}
+            rules={[{ required: true, message: t('common.enter_name') }]}
+          >
             <Input placeholder={t('storymap.story_placeholder')} />
           </Form.Item>
         </Form>

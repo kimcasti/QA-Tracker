@@ -1,28 +1,30 @@
 import React, { useState } from 'react';
-import { 
-  Card, 
-  Tabs, 
-  Table, 
-  Button, 
-  Modal, 
-  Form, 
-  Input, 
-  DatePicker, 
-  Select, 
-  Space, 
-  Typography, 
+import {
+  Card,
+  Tabs,
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  DatePicker,
+  Select,
+  Space,
+  Typography,
   message,
-  Popconfirm
+  Popconfirm,
 } from 'antd';
-import { 
-  PlusOutlined, 
-  CalendarOutlined, 
-  TeamOutlined, 
+import {
+  PlusOutlined,
+  CalendarOutlined,
+  TeamOutlined,
   AppstoreOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
 } from '@ant-design/icons';
-import { useSprints, useRoles, useModules } from '../hooks';
+import { useModules } from '../modules/settings/hooks/useModules';
+import { useRoles } from '../modules/settings/hooks/useRoles';
+import { useSprints } from '../modules/settings/hooks/useSprints';
 import { Sprint, Role, Module } from '../types';
 import dayjs from 'dayjs';
 
@@ -50,7 +52,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       if (activeTab === 'sprints') {
         form.setFieldsValue({
           ...item,
-          period: [dayjs(item.startDate), dayjs(item.endDate)]
+          period: [dayjs(item.startDate), dayjs(item.endDate)],
         });
       } else {
         form.setFieldsValue(item);
@@ -62,12 +64,14 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   };
 
   const handleSave = (values: any) => {
-    const id = editingItem?.id || `${activeTab === 'sprints' ? 'S' : activeTab === 'roles' ? 'R' : 'M'}${Date.now()}`;
-    
+    const id =
+      editingItem?.id ||
+      `${activeTab === 'sprints' ? 'S' : activeTab === 'roles' ? 'R' : 'M'}${Date.now()}`;
+
     let payload: any = {
       id,
       projectId,
-      ...values
+      ...values,
     };
 
     if (activeTab === 'sprints') {
@@ -82,7 +86,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     else if (activeTab === 'roles') saveRole(payload);
     else if (activeTab === 'modules') saveModule(payload);
 
-    message.success(`${activeTab.charAt(0).toUpperCase() + activeTab.slice(1, -1)} guardado con éxito`);
+    message.success(
+      `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1, -1)} guardado con éxito`,
+    );
     setIsModalVisible(false);
   };
 
@@ -94,20 +100,26 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   };
 
   const sprintColumns = [
-    { title: 'NOMBRE', dataIndex: 'name', key: 'name', render: (text: string) => <Text strong>{text}</Text> },
-    { 
-      title: 'PERIODO', 
-      key: 'period', 
+    {
+      title: 'NOMBRE',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string) => <Text strong>{text}</Text>,
+    },
+    {
+      title: 'PERIODO',
+      key: 'period',
       render: (_: any, record: Sprint) => (
         <Text type="secondary">
-          {dayjs(record.startDate).format('DD/MM/YYYY')} - {dayjs(record.endDate).format('DD/MM/YYYY')}
+          {dayjs(record.startDate).format('DD/MM/YYYY')} -{' '}
+          {dayjs(record.endDate).format('DD/MM/YYYY')}
         </Text>
-      ) 
+      ),
     },
     { title: 'ESTADO', dataIndex: 'status', key: 'status' },
-    { 
-      title: 'ACCIONES', 
-      key: 'actions', 
+    {
+      title: 'ACCIONES',
+      key: 'actions',
       render: (_: any, record: Sprint) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
@@ -115,16 +127,21 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
             <Button type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
-      ) 
+      ),
     },
   ];
 
   const roleColumns = [
-    { title: 'NOMBRE DEL ROL', dataIndex: 'name', key: 'name', render: (text: string) => <Text strong>{text}</Text> },
+    {
+      title: 'NOMBRE DEL ROL',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string) => <Text strong>{text}</Text>,
+    },
     { title: 'DESCRIPCIÓN', dataIndex: 'description', key: 'description' },
-    { 
-      title: 'ACCIONES', 
-      key: 'actions', 
+    {
+      title: 'ACCIONES',
+      key: 'actions',
       render: (_: any, record: Role) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
@@ -132,16 +149,21 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
             <Button type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
-      ) 
+      ),
     },
   ];
 
   const moduleColumns = [
-    { title: 'NOMBRE DEL MÓDULO', dataIndex: 'name', key: 'name', render: (text: string) => <Text strong>{text}</Text> },
+    {
+      title: 'NOMBRE DEL MÓDULO',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string) => <Text strong>{text}</Text>,
+    },
     { title: 'DESCRIPCIÓN', dataIndex: 'description', key: 'description' },
-    { 
-      title: 'ACCIONES', 
-      key: 'actions', 
+    {
+      title: 'ACCIONES',
+      key: 'actions',
       render: (_: any, record: Module) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
@@ -149,7 +171,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
             <Button type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
-      ) 
+      ),
     },
   ];
 
@@ -167,21 +189,23 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           <div className="flex justify-between items-center mb-6">
             <div>
               <Title level={4}>Gestión de Sprints</Title>
-              <Text type="secondary">Administra los periodos de trabajo y ciclos de desarrollo del proyecto.</Text>
+              <Text type="secondary">
+                Administra los periodos de trabajo y ciclos de desarrollo del proyecto.
+              </Text>
             </div>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={() => handleOpenModal()}
               className="bg-blue-600"
             >
               Nuevo Sprint
             </Button>
           </div>
-          <Table 
-            columns={sprintColumns} 
-            dataSource={sprints} 
-            rowKey="id" 
+          <Table
+            columns={sprintColumns}
+            dataSource={sprints}
+            rowKey="id"
             pagination={false}
             className="border border-gray-100 rounded-lg overflow-hidden"
           />
@@ -201,21 +225,23 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           <div className="flex justify-between items-center mb-6">
             <div>
               <Title level={4}>Gestión de Roles</Title>
-              <Text type="secondary">Define los roles de usuario que interactúan con las funcionalidades del sistema.</Text>
+              <Text type="secondary">
+                Define los roles de usuario que interactúan con las funcionalidades del sistema.
+              </Text>
             </div>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={() => handleOpenModal()}
               className="bg-blue-600"
             >
               Nuevo Rol
             </Button>
           </div>
-          <Table 
-            columns={roleColumns} 
-            dataSource={roles} 
-            rowKey="id" 
+          <Table
+            columns={roleColumns}
+            dataSource={roles}
+            rowKey="id"
             pagination={false}
             className="border border-gray-100 rounded-lg overflow-hidden"
           />
@@ -235,21 +261,23 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           <div className="flex justify-between items-center mb-6">
             <div>
               <Title level={4}>Gestión de Módulos</Title>
-              <Text type="secondary">Organiza las funcionalidades del sistema por módulos lógicos.</Text>
+              <Text type="secondary">
+                Organiza las funcionalidades del sistema por módulos lógicos.
+              </Text>
             </div>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={() => handleOpenModal()}
               className="bg-blue-600"
             >
               Nuevo Módulo
             </Button>
           </div>
-          <Table 
-            columns={moduleColumns} 
-            dataSource={modules} 
-            rowKey="id" 
+          <Table
+            columns={moduleColumns}
+            dataSource={modules}
+            rowKey="id"
             pagination={false}
             className="border border-gray-100 rounded-lg overflow-hidden"
           />
@@ -260,10 +288,10 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
   return (
     <Card className="rounded-2xl border-slate-100 shadow-sm min-h-[600px]">
-      <Tabs 
-        activeKey={activeTab} 
-        onChange={setActiveTab} 
-        items={tabItems} 
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={tabItems}
         className="settings-tabs"
       />
 
@@ -274,31 +302,26 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         footer={null}
         width={500}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSave}
-          className="mt-4"
-        >
+        <Form form={form} layout="vertical" onFinish={handleSave} className="mt-4">
           {activeTab === 'sprints' && (
             <>
-              <Form.Item 
-                name="name" 
-                label="Nombre del Sprint" 
+              <Form.Item
+                name="name"
+                label="Nombre del Sprint"
                 rules={[{ required: true, message: 'Campo requerido' }]}
               >
                 <Input placeholder="Ej: Sprint 1 - Core Features" />
               </Form.Item>
-              <Form.Item 
-                name="period" 
-                label="Periodo (Inicio - Fin)" 
+              <Form.Item
+                name="period"
+                label="Periodo (Inicio - Fin)"
                 rules={[{ required: true, message: 'Campo requerido' }]}
               >
                 <RangePicker className="w-full" />
               </Form.Item>
-              <Form.Item 
-                name="status" 
-                label="Estado Inicial" 
+              <Form.Item
+                name="status"
+                label="Estado Inicial"
                 rules={[{ required: true, message: 'Campo requerido' }]}
                 initialValue="Planeado"
               >
@@ -316,24 +339,27 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
           {activeTab === 'roles' && (
             <>
-              <Form.Item 
-                name="name" 
-                label="Nombre del Rol" 
+              <Form.Item
+                name="name"
+                label="Nombre del Rol"
                 rules={[{ required: true, message: 'Campo requerido' }]}
               >
                 <Input placeholder="Ej: Administrador, Cliente, Auditor" />
               </Form.Item>
               <Form.Item name="description" label="Descripción">
-                <Input.TextArea rows={4} placeholder="Describe las responsabilidades de este rol..." />
+                <Input.TextArea
+                  rows={4}
+                  placeholder="Describe las responsabilidades de este rol..."
+                />
               </Form.Item>
             </>
           )}
 
           {activeTab === 'modules' && (
             <>
-              <Form.Item 
-                name="name" 
-                label="Nombre del Módulo" 
+              <Form.Item
+                name="name"
+                label="Nombre del Módulo"
                 rules={[{ required: true, message: 'Campo requerido' }]}
               >
                 <Input placeholder="Ej: Autenticación, Pagos, Usuarios" />
@@ -346,7 +372,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
           <div className="flex justify-end gap-2 mt-6">
             <Button onClick={() => setIsModalVisible(false)}>Cancelar</Button>
-            <Button type="primary" htmlType="submit" className="bg-blue-600">Guardar</Button>
+            <Button type="primary" htmlType="submit" className="bg-blue-600">
+              Guardar
+            </Button>
           </div>
         </Form>
       </Modal>

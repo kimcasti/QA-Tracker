@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Avatar,
   Button,
   Card,
@@ -12,7 +13,6 @@ import {
   Modal,
   Progress,
   Row,
-  Select,
   Space,
   Tag,
   TimePicker,
@@ -39,8 +39,12 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import { GoogleGenAI } from '@google/genai';
 import { appBranding } from '../assets/branding';
+import { useMeetingNotes } from '../modules/meeting-notes/hooks/useMeetingNotes';
+import { useProjects } from '../modules/projects/hooks/useProjects';
+import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
+import type { SlackMember } from '../modules/slack-members/types/model';
 import { getGeminiApiKey } from '../services/geminiService';
-import { useMeetingNotes, useProjects } from '../hooks';
 import { MeetingNote, Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 
@@ -69,6 +73,25 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+function normalizeParticipantKey(value?: string) {
+  return (value || '').trim().toLowerCase();
+}
+
+function buildParticipantLookup(members: SlackMember[]) {
+  const entries: Array<[string, SlackMember]> = [];
+
+  members.forEach(member => {
+    [member.fullName, member.realName, member.displayName, member.username].forEach(candidate => {
+      const key = normalizeParticipantKey(candidate);
+      if (key) {
+        entries.push([key, member]);
+      }
+    });
+  });
+
+  return new Map(entries);
+}
+
 function normalizeRules(businessRules?: string) {
   return (businessRules || '')
     .split('\n')
@@ -88,7 +111,11 @@ function ExecutiveInfoCard({
   accent: string;
 }) {
   return (
-    <Card variant="borderless" className="h-full rounded-[28px] qa-surface-card" styles={{ body: { padding: 28 } }}>
+    <Card
+      variant="borderless"
+      className="h-full rounded-[28px] qa-surface-card"
+      styles={{ body: { padding: 28 } }}
+    >
       <div className="flex items-start gap-4">
         <div
           className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white shadow-sm"
@@ -123,9 +150,13 @@ function MeetingInsightCard({
       variant="borderless"
       className="rounded-3xl"
       styles={{ body: { padding: 18 } }}
-      style={{ background: `linear-gradient(135deg, ${qaPalette.card} 0%, ${softSurface(accent)} 100%)` }}
+      style={{
+        background: `linear-gradient(135deg, ${qaPalette.card} 0%, ${softSurface(accent)} 100%)`,
+      }}
     >
-      <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">{title}</Text>
+      <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+        {title}
+      </Text>
       <div className="mt-2 text-3xl font-bold" style={{ color: accent }}>
         {value}
       </div>
@@ -136,8 +167,16 @@ function MeetingInsightCard({
 
 export default function AboutView({ project }: { project: Project }) {
   const { save: saveProject } = useProjects();
-  const { data: meetingNotes = [], save: saveMeetingNote, delete: deleteMeetingNote } =
-    useMeetingNotes(project.id);
+  const {
+    data: meetingNotes = [],
+    save: saveMeetingNote,
+    delete: deleteMeetingNote,
+  } = useMeetingNotes(project.id);
+  const {
+    data: slackMembers = [],
+    isLoading: isSlackMembersLoading,
+    error: slackMembersError,
+  } = useSlackMembers(Boolean(project.id));
 
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
@@ -163,12 +202,22 @@ export default function AboutView({ project }: { project: Project }) {
       .map(value => ({ label: value, value }));
   }, [meetingNotes, project.teamMembers]);
 
-  const businessRuleItems = useMemo(() => normalizeRules(project.businessRules), [project.businessRules]);
+  const participantLookup = useMemo(
+    () => buildParticipantLookup(slackMembers),
+    [slackMembers],
+  );
+
+  const businessRuleItems = useMemo(
+    () => normalizeRules(project.businessRules),
+    [project.businessRules],
+  );
 
   const noteStats = useMemo(() => {
     const totalNotes = meetingNotes.length;
     const aiEnhanced = meetingNotes.filter(note => Boolean(note.aiSummary)).length;
-    const allParticipants = new Set(meetingNotes.flatMap(note => splitParticipants(note.participants)));
+    const allParticipants = new Set(
+      meetingNotes.flatMap(note => splitParticipants(note.participants)),
+    );
     return {
       totalNotes,
       aiEnhanced,
@@ -186,9 +235,9 @@ export default function AboutView({ project }: { project: Project }) {
 
   const latestMeetingDate = useMemo(() => {
     if (meetingNotes.length === 0) return null;
-    return [...meetingNotes]
-      .sort((left, right) => dayjs(right.date).valueOf() - dayjs(left.date).valueOf())[0]
-      .date;
+    return [...meetingNotes].sort(
+      (left, right) => dayjs(right.date).valueOf() - dayjs(left.date).valueOf(),
+    )[0].date;
   }, [meetingNotes]);
 
   const projectStatusMeta = useMemo(() => {
@@ -346,7 +395,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
               aiDecisions: result.decisions,
               aiActions: result.actions,
               aiNextSteps: result.nextSteps,
-            }
+            },
       );
       message.success('Notas mejoradas con IA');
     } catch (error) {
@@ -357,9 +406,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
       const reason = anyErr?.error?.details?.[0]?.reason || anyErr?.details?.[0]?.reason;
       const isLeakedKey = /reported as leaked/i.test(nestedMessage);
       const isInvalidKey =
-        reason === 'API_KEY_INVALID' ||
-        /api key not valid/i.test(nestedMessage) ||
-        isLeakedKey;
+        reason === 'API_KEY_INVALID' || /api key not valid/i.test(nestedMessage) || isLeakedKey;
       if (msg === 'GEMINI_API_KEY_MISSING') {
         message.warning('Configura tu API Key de Gemini para usar la mejora con IA.');
         setIsApiKeyModalOpen(true);
@@ -368,7 +415,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
         message.error(
           isLeakedKey
             ? 'API Key comprometida. Genera una nueva API Key.'
-            : 'API Key invalida. Ingresa una API Key valida de Gemini.'
+            : 'API Key invalida. Ingresa una API Key valida de Gemini.',
         );
         setIsApiKeyModalOpen(true);
       } else {
@@ -431,15 +478,18 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                       className="border border-slate-100 shadow-lg"
                       style={{
                         borderRadius: 26,
-                        background: project.logo || appBranding.logoUrl
-                          ? undefined
-                          : `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
+                        background:
+                          project.logo || appBranding.logoUrl
+                            ? undefined
+                            : `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
                         color: '#fff',
                         fontWeight: 700,
                         fontSize: 28,
                       }}
                     >
-                      {!project.logo && !appBranding.logoUrl && getInitials(project.organizationName || project.name)}
+                      {!project.logo &&
+                        !appBranding.logoUrl &&
+                        getInitials(project.organizationName || project.name)}
                     </Avatar>
                     <Upload
                       showUploadList={false}
@@ -458,14 +508,20 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                       <Tag
                         variant="filled"
                         className="rounded-full px-3 py-1 font-semibold"
-                        style={{ color: qaPalette.primary, backgroundColor: softSurface(qaPalette.primary) }}
+                        style={{
+                          color: qaPalette.primary,
+                          backgroundColor: softSurface(qaPalette.primary),
+                        }}
                       >
                         Workspace Overview
                       </Tag>
                       <Tag
                         variant="filled"
                         className="rounded-full px-3 py-1 font-semibold"
-                        style={{ color: qaPalette.accent, backgroundColor: softSurface(qaPalette.accent) }}
+                        style={{
+                          color: qaPalette.accent,
+                          backgroundColor: softSurface(qaPalette.accent),
+                        }}
                       >
                         Organizacion
                       </Tag>
@@ -527,7 +583,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
 
               <Row gutter={[20, 20]}>
                 <Col xs={24} md={12}>
-                  <ExecutiveInfoCard icon={<BulbOutlined className="text-2xl" />} title="Project Overview" accent={qaPalette.primary}>
+                  <ExecutiveInfoCard
+                    icon={<BulbOutlined className="text-2xl" />}
+                    title="Project Overview"
+                    accent={qaPalette.primary}
+                  >
                     <Paragraph className="!mb-0 text-base leading-8 text-slate-600">
                       {project.description ||
                         'Main enterprise platform for core services and operational quality management.'}
@@ -535,7 +595,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                   </ExecutiveInfoCard>
                 </Col>
                 <Col xs={24} md={12}>
-                  <ExecutiveInfoCard icon={<EyeOutlined className="text-2xl" />} title="Purpose and Vision" accent={qaPalette.accent}>
+                  <ExecutiveInfoCard
+                    icon={<EyeOutlined className="text-2xl" />}
+                    title="Purpose and Vision"
+                    accent={qaPalette.accent}
+                  >
                     <Paragraph className="!mb-0 text-base leading-8 text-slate-600">
                       {project.purpose ||
                         'Define aqui el objetivo estrategico del proyecto y la vision que guia al equipo.'}
@@ -546,41 +610,65 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
 
               <Row gutter={[20, 20]}>
                 <Col xs={24} md={12}>
-                  <Card variant="borderless" className="h-full rounded-[28px] qa-surface-card" styles={{ body: { padding: 28 } }}>
+                  <Card
+                    variant="borderless"
+                    className="h-full rounded-[28px] qa-surface-card"
+                    styles={{ body: { padding: 28 } }}
+                  >
                     <div className="mb-6 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm" style={{ color: qaPalette.primary }}>
+                        <div
+                          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
+                          style={{ color: qaPalette.primary }}
+                        >
                           <SafetyOutlined className="text-xl" />
                         </div>
                         <div>
-                          <Title level={4} className="!mb-0 !text-slate-900">Core Requirements</Title>
-                          <Text className="text-slate-400">{project.coreRequirements?.length || 0} items clave</Text>
+                          <Title level={4} className="!mb-0 !text-slate-900">
+                            Core Requirements
+                          </Title>
+                          <Text className="text-slate-400">
+                            {project.coreRequirements?.length || 0} items clave
+                          </Text>
                         </div>
                       </div>
                     </div>
 
-                    {Array.isArray(project.coreRequirements) && project.coreRequirements.length > 0 ? (
+                    {Array.isArray(project.coreRequirements) &&
+                    project.coreRequirements.length > 0 ? (
                       <div className="space-y-4">
                         {project.coreRequirements.map((requirement, index) => (
                           <div key={`${requirement}-${index}`} className="flex items-start gap-3">
                             <div
                               className="mt-1 flex h-8 w-8 items-center justify-center rounded-xl"
-                              style={{ backgroundColor: softSurface(qaPalette.primary), color: qaPalette.primary }}
+                              style={{
+                                backgroundColor: softSurface(qaPalette.primary),
+                                color: qaPalette.primary,
+                              }}
                             >
                               <CheckCircleOutlined />
                             </div>
-                            <Text className="text-base leading-7 text-slate-700">{requirement}</Text>
+                            <Text className="text-base leading-7 text-slate-700">
+                              {requirement}
+                            </Text>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No hay requerimientos core definidos." />
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No hay requerimientos core definidos."
+                      />
                     )}
                   </Card>
                 </Col>
 
                 <Col xs={24} md={12}>
-                  <Card variant="borderless" className="h-full rounded-[28px] qa-surface-card" styles={{ body: { padding: 28 } }}>
+                  <Card
+                    variant="borderless"
+                    className="h-full rounded-[28px] qa-surface-card"
+                    styles={{ body: { padding: 28 } }}
+                  >
                     <div className="mb-6 flex items-center gap-3">
                       <div
                         className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
@@ -589,7 +677,9 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                         <CheckCircleOutlined className="text-xl" />
                       </div>
                       <div>
-                        <Title level={4} className="!mb-0 !text-slate-900">Business Rules</Title>
+                        <Title level={4} className="!mb-0 !text-slate-900">
+                          Business Rules
+                        </Title>
                         <Text className="text-slate-400">Lineamientos operativos del proyecto</Text>
                       </div>
                     </div>
@@ -604,13 +694,18 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                               className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
                               style={{ borderLeft: `4px solid ${accent}` }}
                             >
-                              <Text className="block text-base font-semibold text-slate-800">{rule}</Text>
+                              <Text className="block text-base font-semibold text-slate-800">
+                                {rule}
+                              </Text>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No hay reglas de negocio definidas." />
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No hay reglas de negocio definidas."
+                      />
                     )}
                   </Card>
                 </Col>
@@ -620,27 +715,54 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
         </Col>
 
         <Col xs={24} xl={7}>
-          <Card variant="borderless" className="h-full rounded-[30px] qa-surface-card" styles={{ body: { padding: 24 } }}>
+          <Card
+            variant="borderless"
+            className="h-full rounded-[30px] qa-surface-card"
+            styles={{ body: { padding: 24 } }}
+          >
             <div className="flex h-full flex-col gap-6">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ backgroundColor: softSurface(qaPalette.primary), color: qaPalette.primary }}>
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                    style={{
+                      backgroundColor: softSurface(qaPalette.primary),
+                      color: qaPalette.primary,
+                    }}
+                  >
                     <MessageOutlined className="text-xl" />
                   </div>
                   <div>
-                    <Title level={4} className="!mb-0 !text-slate-900">Minutas de Reunion</Title>
+                    <Title level={4} className="!mb-0 !text-slate-900">
+                      Minutas de Reunion
+                    </Title>
                     <Text className="text-slate-400">Seguimiento de conversaciones y acuerdos</Text>
                   </div>
                 </div>
-                <Button type="text" icon={<PlusOutlined />} onClick={handleAddNote} className="rounded-2xl" />
+                <Button
+                  type="text"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddNote}
+                  className="rounded-2xl"
+                />
               </div>
 
               <Row gutter={[12, 12]}>
                 <Col span={12}>
-                  <MeetingInsightCard title="Minutas" value={noteStats.totalNotes} helper="sesiones registradas" accent={qaPalette.primary} />
+                  <MeetingInsightCard
+                    title="Minutas"
+                    value={noteStats.totalNotes}
+                    helper="sesiones registradas"
+                    accent={qaPalette.primary}
+                  />
                 </Col>
                 <Col span={12}>
-                  <MeetingInsightCard title="Participantes" value={noteStats.uniqueParticipants} helper="personas unicas" accent={qaPalette.accent} />
+                  <MeetingInsightCard
+                    title="Participantes"
+                    value={noteStats.uniqueParticipants}
+                    helper="personas unicas"
+                    accent={qaPalette.accent}
+                  />
                 </Col>
               </Row>
 
@@ -665,7 +787,10 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                               <Tag
                                 variant="filled"
                                 className="rounded-full px-3 py-1 font-semibold"
-                                style={{ color: qaPalette.primary, backgroundColor: softSurface(qaPalette.primary) }}
+                                style={{
+                                  color: qaPalette.primary,
+                                  backgroundColor: softSurface(qaPalette.primary),
+                                }}
                               >
                                 General
                               </Tag>
@@ -673,7 +798,9 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                             </div>
 
                             <div>
-                              <Title level={5} className="!mb-2 !text-slate-900">Reunion de Avance Semanal</Title>
+                              <Title level={5} className="!mb-2 !text-slate-900">
+                                Reunion de Avance Semanal
+                              </Title>
                               <Space size={12} wrap className="text-sm text-slate-500">
                                 <span className="inline-flex items-center gap-1">
                                   <ClockCircleOutlined />
@@ -686,7 +813,10 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                               {noteParticipants.map(participant => (
                                 <Avatar
                                   key={`${note.id}-${participant}`}
-                                  style={{ background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)` }}
+                                  src={participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl}
+                                  style={{
+                                    background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
+                                  }}
                                 >
                                   {getInitials(participant)}
                                 </Avatar>
@@ -695,12 +825,20 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
 
                             <Space size={[8, 8]} wrap>
                               {note.aiSummary && (
-                                <Tag variant="filled" className="rounded-full px-3 py-1" style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}>
+                                <Tag
+                                  variant="filled"
+                                  className="rounded-full px-3 py-1"
+                                  style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}
+                                >
                                   IA
                                 </Tag>
                               )}
                               {noteParticipants.slice(0, 2).map(participant => (
-                                <Tag key={`${note.id}-tag-${participant}`} variant="filled" className="rounded-full px-3 py-1 text-slate-500">
+                                <Tag
+                                  key={`${note.id}-tag-${participant}`}
+                                  variant="filled"
+                                  className="rounded-full px-3 py-1 text-slate-500"
+                                >
                                   {participant}
                                 </Tag>
                               ))}
@@ -715,8 +853,16 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                     className="rounded-[24px] border border-dashed border-slate-200 bg-white/60 text-center"
                     styles={{ body: { padding: 28 } }}
                   >
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No hay minutas registradas">
-                      <Button type="primary" icon={<PlusOutlined />} onClick={handleAddNote} className="rounded-2xl px-5 font-semibold">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="No hay minutas registradas"
+                    >
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={handleAddNote}
+                        className="rounded-2xl px-5 font-semibold"
+                      >
                         Nueva minuta
                       </Button>
                     </Empty>
@@ -731,13 +877,20 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                   <div className="space-y-3">
                     <div
                       className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-                      style={{ backgroundColor: softSurface(qaPalette.primary), color: qaPalette.primary }}
+                      style={{
+                        backgroundColor: softSurface(qaPalette.primary),
+                        color: qaPalette.primary,
+                      }}
                     >
                       <PlusOutlined className="text-lg" />
                     </div>
                     <div>
-                      <Text className="block text-base font-semibold text-slate-700">Nueva minuta de reunion</Text>
-                      <Text className="text-slate-400">Documenta acuerdos, bloqueos y siguientes pasos.</Text>
+                      <Text className="block text-base font-semibold text-slate-700">
+                        Nueva minuta de reunion
+                      </Text>
+                      <Text className="text-slate-400">
+                        Documenta acuerdos, bloqueos y siguientes pasos.
+                      </Text>
                     </div>
                   </div>
                 </button>
@@ -745,7 +898,9 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
 
               <div
                 className="mt-auto rounded-[28px] p-6 text-white"
-                style={{ background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.primary} 100%)` }}
+                style={{
+                  background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.primary} 100%)`,
+                }}
               >
                 <div className="mb-3 flex items-center justify-between">
                   <Text className="!text-white">Project Progress</Text>
@@ -759,7 +914,8 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                   size={{ height: 8 }}
                 />
                 <Text className="mt-4 block !text-white/80">
-                  {noteStats.aiEnhanced} minutas mejoradas con IA y {project.coreRequirements?.length || 0} requerimientos documentados.
+                  {noteStats.aiEnhanced} minutas mejoradas con IA y{' '}
+                  {project.coreRequirements?.length || 0} requerimientos documentados.
                 </Text>
               </div>
             </div>
@@ -768,7 +924,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
       </Row>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">Editar Informacion de la Organizacion</span>}
+        title={
+          <span className="text-lg font-bold text-slate-800">
+            Editar Informacion de la Organizacion
+          </span>
+        }
         open={isEditProjectModalOpen}
         onOk={handleSaveProject}
         onCancel={() => setIsEditProjectModalOpen(false)}
@@ -781,7 +941,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
         <Form form={projectForm} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item name="organizationName" label="Nombre de la organizacion" rules={[{ required: true }]}>
+              <Form.Item
+                name="organizationName"
+                label="Nombre de la organizacion"
+                rules={[{ required: true }]}
+              >
                 <Input size="large" />
               </Form.Item>
             </Col>
@@ -795,7 +959,10 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
             <Input.TextArea rows={4} />
           </Form.Item>
           <Form.Item name="coreRequirements" label="Requisitos basicos (uno por linea)">
-            <Input.TextArea rows={5} placeholder="Ej: Autenticacion biometrica&#10;Pasarela de pagos" />
+            <Input.TextArea
+              rows={5}
+              placeholder="Ej: Autenticacion biometrica&#10;Pasarela de pagos"
+            />
           </Form.Item>
           <Form.Item name="businessRules" label="Normas empresariales">
             <Input.TextArea rows={5} />
@@ -804,7 +971,11 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
       </Modal>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">{selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunion'}</span>}
+        title={
+          <span className="text-lg font-bold text-slate-800">
+            {selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunion'}
+          </span>
+        }
         open={isNoteModalOpen}
         onOk={handleSaveNote}
         onCancel={() => setIsNoteModalOpen(false)}
@@ -829,18 +1000,30 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
           </Row>
 
           <Form.Item name="participants" label="Participantes" rules={[{ required: true }]}>
-            <Select
-              mode="tags"
+            <SlackMemberSelect
               size="large"
-              options={participantOptions}
+              members={slackMembers}
+              valueField="fullName"
+              extraOptions={participantOptions}
               placeholder="Selecciona participantes de la reunion"
               className="rounded-2xl"
-              allowClear
-              showSearch
-              maxTagCount="responsive"
-              tokenSeparators={[',']}
+              loading={isSlackMembersLoading}
             />
           </Form.Item>
+
+          {slackMembersError ? (
+            <Alert
+              type="warning"
+              showIcon
+              className="mb-4 rounded-2xl"
+              message="No se pudieron cargar los miembros de Slack"
+              description="Puedes seguir escribiendo participantes manualmente mientras revisamos la configuracion del token o los permisos users:read."
+            />
+          ) : (
+            <div className="mb-4 text-xs text-slate-500">
+              Selecciona desde Slack o escribe nombres manualmente si necesitas agregar invitados.
+            </div>
+          )}
 
           <Form.Item
             name="notes"
@@ -950,8 +1133,8 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
               Modal.confirm({
                 title: 'Eliminar minuta',
                 content: 'Esta accion no se puede deshacer.',
-                onOk: () => {
-                  deleteMeetingNote(selectedNote.id);
+                onOk: async () => {
+                  await deleteMeetingNote(selectedNote.id);
                   setIsViewNoteModalOpen(false);
                 },
               });
@@ -973,12 +1156,17 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
               <div className="flex items-center gap-4">
                 <div
                   className="flex h-14 w-14 items-center justify-center rounded-2xl"
-                  style={{ backgroundColor: softSurface(qaPalette.primary), color: qaPalette.primary }}
+                  style={{
+                    backgroundColor: softSurface(qaPalette.primary),
+                    color: qaPalette.primary,
+                  }}
                 >
                   <FileTextOutlined className="text-2xl" />
                 </div>
                 <div>
-                  <Title level={4} className="!mb-1 !text-slate-900">Minuta de Reunion</Title>
+                  <Title level={4} className="!mb-1 !text-slate-900">
+                    Minuta de Reunion
+                  </Title>
                   <Space size={16} wrap className="text-sm text-slate-400">
                     <span className="inline-flex items-center gap-2">
                       <CalendarOutlined />
@@ -1006,21 +1194,41 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
             <Row gutter={[24, 24]}>
               <Col xs={24} lg={selectedNote.aiSummary ? 11 : 24}>
                 <div className="space-y-6">
-                  <Card variant="borderless" className="rounded-[24px] qa-surface-card" styles={{ body: { padding: 24 } }}>
+                  <Card
+                    variant="borderless"
+                    className="rounded-[24px] qa-surface-card"
+                    styles={{ body: { padding: 24 } }}
+                  >
                     <Text className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                       Participantes
                     </Text>
                     <Space size={[8, 8]} wrap>
                       {splitParticipants(selectedNote.participants).map(participant => (
-                        <Tag key={`${selectedNote.id}-${participant}`} variant="filled" className="rounded-full px-3 py-1">
-                          <UserOutlined className="mr-1" />
-                          {participant}
+                        <Tag
+                          key={`${selectedNote.id}-${participant}`}
+                          variant="filled"
+                          className="rounded-full px-3 py-1"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <Avatar
+                              size={20}
+                              src={
+                                participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl
+                              }
+                              icon={<UserOutlined />}
+                            />
+                            <span>{participant}</span>
+                          </span>
                         </Tag>
                       ))}
                     </Space>
                   </Card>
 
-                  <Card variant="borderless" className="rounded-[24px] qa-surface-card" styles={{ body: { padding: 24 } }}>
+                  <Card
+                    variant="borderless"
+                    className="rounded-[24px] qa-surface-card"
+                    styles={{ body: { padding: 24 } }}
+                  >
                     <Text className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                       Notas originales
                     </Text>
@@ -1044,28 +1252,36 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                         <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
                           Resumen de la reunion
                         </Text>
-                        <Paragraph className="!mb-0 text-slate-700">{selectedNote.aiSummary}</Paragraph>
+                        <Paragraph className="!mb-0 text-slate-700">
+                          {selectedNote.aiSummary}
+                        </Paragraph>
                       </div>
                       <Divider className="my-0" />
                       <div>
                         <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
                           Decisiones
                         </Text>
-                        <Paragraph className="!mb-0 text-slate-700">{selectedNote.aiDecisions}</Paragraph>
+                        <Paragraph className="!mb-0 text-slate-700">
+                          {selectedNote.aiDecisions}
+                        </Paragraph>
                       </div>
                       <Divider className="my-0" />
                       <div>
                         <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
                           Acciones a realizar
                         </Text>
-                        <Paragraph className="!mb-0 text-slate-700">{selectedNote.aiActions}</Paragraph>
+                        <Paragraph className="!mb-0 text-slate-700">
+                          {selectedNote.aiActions}
+                        </Paragraph>
                       </div>
                       <Divider className="my-0" />
                       <div>
                         <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
                           Proximos pasos
                         </Text>
-                        <Paragraph className="!mb-0 text-slate-700">{selectedNote.aiNextSteps}</Paragraph>
+                        <Paragraph className="!mb-0 text-slate-700">
+                          {selectedNote.aiNextSteps}
+                        </Paragraph>
                       </div>
                     </div>
                   </Card>

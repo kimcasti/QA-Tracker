@@ -1,19 +1,38 @@
 import React, { useState } from 'react';
-import { Card, Table, Typography, Tag, Progress, Row, Col, Input, Select, Space, Button, Tooltip, Badge, Dropdown } from 'antd';
-import { 
-  SearchOutlined, 
-  FilterOutlined, 
-  CheckCircleOutlined, 
-  CloseCircleOutlined, 
+import {
+  Card,
+  Table,
+  Typography,
+  Tag,
+  Progress,
+  Row,
+  Col,
+  Input,
+  Select,
+  Space,
+  Button,
+  Tooltip,
+  Badge,
+  Dropdown,
+} from 'antd';
+import {
+  SearchOutlined,
+  FilterOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
   ClockCircleOutlined,
   InfoCircleOutlined,
   ExportOutlined,
   TableOutlined,
   BugOutlined,
   FileSearchOutlined,
-  AlertOutlined
+  AlertOutlined,
 } from '@ant-design/icons';
-import { useFunctionalities, useExecutions, useTestCases, useRegressionCycles, useSmokeCycles } from '../hooks';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
+import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { TestResult, TestType, Priority, RiskLevel } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -25,7 +44,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const { data: testCasesData } = useTestCases(projectId);
   const { data: regressionCyclesData } = useRegressionCycles(projectId);
   const { data: smokeCyclesData } = useSmokeCycles(projectId);
-  
+
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = Array.isArray(executionsData) ? executionsData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
@@ -38,8 +57,9 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const modules = Array.from(new Set(functionalities.map(f => f.module)));
 
   const filteredData = functionalities.filter(f => {
-    const matchesSearch = f.name.toLowerCase().includes(searchText.toLowerCase()) || 
-                         f.id.toLowerCase().includes(searchText.toLowerCase());
+    const matchesSearch =
+      f.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      f.id.toLowerCase().includes(searchText.toLowerCase());
     const matchesModule = !moduleFilter || f.module === moduleFilter;
     return matchesSearch && matchesModule;
   });
@@ -50,20 +70,28 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       dataIndex: 'id',
       key: 'id',
       width: 100,
-      render: (id: string) => <span className="font-bold text-blue-600">{id}</span>
+      render: (id: string) => <span className="font-bold text-blue-600">{id}</span>,
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Módulo</span>,
       dataIndex: 'module',
       key: 'module',
       width: 150,
-      render: (m: string) => <Tag className="rounded-md border-slate-200 bg-slate-50 text-slate-600 font-medium">{m}</Tag>
+      render: (m: string) => (
+        <Tag className="rounded-md border-slate-200 bg-slate-50 text-slate-600 font-medium">
+          {m}
+        </Tag>
+      ),
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Funcionalidad</span>,
       dataIndex: 'name',
       key: 'name',
-      render: (n: string) => <Text strong className="text-slate-800">{n}</Text>
+      render: (n: string) => (
+        <Text strong className="text-slate-800">
+          {n}
+        </Text>
+      ),
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Tipo de Prueba</span>,
@@ -72,34 +100,55 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       render: (types: TestType[]) => (
         <Space size={[0, 4]} wrap>
           {types?.map(t => (
-            <Tag key={t} color={t === TestType.SMOKE ? 'orange' : t === TestType.REGRESSION ? 'blue' : 'purple'} className="rounded-full px-3 text-[10px] font-bold uppercase">
+            <Tag
+              key={t}
+              color={
+                t === TestType.SMOKE ? 'orange' : t === TestType.REGRESSION ? 'blue' : 'purple'
+              }
+              className="rounded-full px-3 text-[10px] font-bold uppercase"
+            >
               {t}
             </Tag>
           ))}
         </Space>
-      )
+      ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Prioridad / Riesgo</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-400 uppercase">Prioridad / Riesgo</span>
+      ),
       key: 'priority_risk',
       width: 160,
       render: (_: any, record: any) => (
         <div className="flex flex-col gap-1">
-          <Tag color={
-            record.priority === Priority.CRITICAL ? 'red' :
-            record.priority === Priority.HIGH ? 'orange' :
-            record.priority === Priority.MEDIUM ? 'blue' : 'default'
-          } className="m-0 text-[10px] font-bold uppercase w-fit">
+          <Tag
+            color={
+              record.priority === Priority.CRITICAL
+                ? 'red'
+                : record.priority === Priority.HIGH
+                  ? 'orange'
+                  : record.priority === Priority.MEDIUM
+                    ? 'blue'
+                    : 'default'
+            }
+            className="m-0 text-[10px] font-bold uppercase w-fit"
+          >
             P: {record.priority}
           </Tag>
-          <Tag color={
-            record.riskLevel === RiskLevel.HIGH ? 'volcano' :
-            record.riskLevel === RiskLevel.MEDIUM ? 'gold' : 'lime'
-          } className="m-0 text-[10px] font-bold uppercase w-fit">
+          <Tag
+            color={
+              record.riskLevel === RiskLevel.HIGH
+                ? 'volcano'
+                : record.riskLevel === RiskLevel.MEDIUM
+                  ? 'gold'
+                  : 'lime'
+            }
+            className="m-0 text-[10px] font-bold uppercase w-fit"
+          >
             R: {record.riskLevel}
           </Tag>
         </div>
-      )
+      ),
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Casos</span>,
@@ -112,24 +161,28 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
             <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
               <FileSearchOutlined className={count > 0 ? 'text-emerald-500' : 'text-slate-300'} />
             </Badge>
-            <span className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+            <span
+              className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
+            >
               {count}
             </span>
           </div>
         );
-      }
+      },
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Trazabilidad Bugs</span>,
+      title: (
+        <span className="text-[11px] font-bold text-slate-400 uppercase">Trazabilidad Bugs</span>
+      ),
       key: 'bugs',
       width: 120,
       render: (_: any, record: any) => {
         const allExecs = [
           ...regressionCycles.flatMap(c => c.executions || []),
-          ...smokeCycles.flatMap(c => c.executions || [])
+          ...smokeCycles.flatMap(c => c.executions || []),
         ];
         const bugs = allExecs.filter(ex => ex.functionalityId === record.id && ex.bugId);
-        
+
         if (bugs.length === 0) return <span className="text-slate-300 text-xs">-</span>;
 
         return (
@@ -143,7 +196,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
             ))}
           </Space>
         );
-      }
+      },
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Estado QA</span>,
@@ -152,21 +205,30 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       render: (_: any, record: any) => {
         const exec = executions.find(e => e.functionalityId === record.id);
         const result = exec ? exec.result : TestResult.NOT_EXECUTED;
-        
+
         return (
           <div className="flex items-center gap-2">
-            {result === TestResult.PASSED ? <CheckCircleOutlined className="text-emerald-500" /> :
-             result === TestResult.FAILED ? <CloseCircleOutlined className="text-rose-500" /> :
-             <ClockCircleOutlined className="text-slate-300" />}
-            <span className={`font-bold text-xs ${
-              result === TestResult.PASSED ? 'text-emerald-600' :
-              result === TestResult.FAILED ? 'text-rose-600' : 'text-slate-400'
-            }`}>
+            {result === TestResult.PASSED ? (
+              <CheckCircleOutlined className="text-emerald-500" />
+            ) : result === TestResult.FAILED ? (
+              <CloseCircleOutlined className="text-rose-500" />
+            ) : (
+              <ClockCircleOutlined className="text-slate-300" />
+            )}
+            <span
+              className={`font-bold text-xs ${
+                result === TestResult.PASSED
+                  ? 'text-emerald-600'
+                  : result === TestResult.FAILED
+                    ? 'text-rose-600'
+                    : 'text-slate-400'
+              }`}
+            >
               {result}
             </span>
           </div>
         );
-      }
+      },
     },
     {
       title: <span className="text-[11px] font-bold text-slate-400 uppercase">Cobertura</span>,
@@ -177,22 +239,24 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
         const percent = exec?.executed ? 100 : 0;
         return (
           <div className="flex items-center gap-3">
-            <Progress 
-              percent={percent} 
-              size="small" 
-              showInfo={false} 
+            <Progress
+              percent={percent}
+              size="small"
+              showInfo={false}
               strokeColor={percent === 100 ? '#10b981' : '#cbd5e1'}
               className="m-0"
             />
             <span className="text-xs font-bold text-slate-500">{percent}%</span>
           </div>
         );
-      }
-    }
+      },
+    },
   ];
 
   const totalFuncs = functionalities.length;
-  const coveredWithCases = functionalities.filter(f => testCases.some(tc => tc.functionalityId === f.id)).length;
+  const coveredWithCases = functionalities.filter(f =>
+    testCases.some(tc => tc.functionalityId === f.id),
+  ).length;
   const coveragePercent = totalFuncs > 0 ? Math.round((coveredWithCases / totalFuncs) * 100) : 0;
 
   const exportMatrix = (format: 'xlsx' | 'csv') => {
@@ -200,10 +264,10 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       const tcCount = testCases.filter(tc => tc.functionalityId === f.id).length;
       const exec = executions.find(e => e.functionalityId === f.id);
       const coverage = exec?.executed ? '100%' : '0%';
-      
+
       const allExecs = [
         ...regressionCycles.flatMap(c => c.executions || []),
-        ...smokeCycles.flatMap(c => c.executions || [])
+        ...smokeCycles.flatMap(c => c.executions || []),
       ];
       const bugs = allExecs
         .filter(ex => ex.functionalityId === f.id && ex.bugId)
@@ -211,27 +275,27 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
         .join(', ');
 
       return {
-        'Módulo': f.module,
-        'Funcionalidad': f.name,
+        Módulo: f.module,
+        Funcionalidad: f.name,
         'Casos de Prueba': tcCount,
         'Porcentaje de Cobertura': coverage,
-        'Bugs Vinculados': bugs || 'Ninguno'
+        'Bugs Vinculados': bugs || 'Ninguno',
       };
     });
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Matriz de Cobertura");
-    
+    XLSX.utils.book_append_sheet(wb, ws, 'Matriz de Cobertura');
+
     if (format === 'xlsx') {
       XLSX.writeFile(wb, `Matriz_Cobertura_${projectId || 'QA'}.xlsx`);
     } else {
       const csv = XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", `Matriz_Cobertura_${projectId || 'QA'}.csv`);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Matriz_Cobertura_${projectId || 'QA'}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -243,18 +307,25 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
     items: [
       { key: 'xlsx', label: 'Exportar Excel (.xlsx)', onClick: () => exportMatrix('xlsx') },
       { key: 'csv', label: 'Exportar CSV (.csv)', onClick: () => exportMatrix('csv') },
-    ]
+    ],
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <Title level={2} className="!mb-1">Matriz de Cobertura</Title>
-          <Paragraph type="secondary">Visualización detallada de la trazabilidad y estado de pruebas por funcionalidad.</Paragraph>
+          <Title level={2} className="!mb-1">
+            Matriz de Cobertura
+          </Title>
+          <Paragraph type="secondary">
+            Visualización detallada de la trazabilidad y estado de pruebas por funcionalidad.
+          </Paragraph>
         </div>
         <Dropdown menu={exportMenu} trigger={['click']}>
-          <Button icon={<ExportOutlined />} className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold">
+          <Button
+            icon={<ExportOutlined />}
+            className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
+          >
             Exportar Matriz
           </Button>
         </Dropdown>
@@ -268,8 +339,12 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
                 <TableOutlined className="text-blue-500 text-xl" />
               </div>
               <div>
-                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Total Funcionalidades</Text>
-                <div className="text-2xl font-bold text-slate-800 leading-none mt-1">{totalFuncs}</div>
+                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">
+                  Total Funcionalidades
+                </Text>
+                <div className="text-2xl font-bold text-slate-800 leading-none mt-1">
+                  {totalFuncs}
+                </div>
               </div>
             </div>
           </Card>
@@ -281,9 +356,13 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
                 <FileSearchOutlined className="text-emerald-500 text-xl" />
               </div>
               <div>
-                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Cobertura de Casos</Text>
+                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">
+                  Cobertura de Casos
+                </Text>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-emerald-600 leading-none">{coveredWithCases}</span>
+                  <span className="text-2xl font-bold text-emerald-600 leading-none">
+                    {coveredWithCases}
+                  </span>
                   <span className="text-xs text-emerald-500 font-bold">({coveragePercent}%)</span>
                 </div>
               </div>
@@ -297,9 +376,14 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
                 <BugOutlined className="text-rose-500 text-xl" />
               </div>
               <div>
-                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">Bugs Activos</Text>
+                <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">
+                  Bugs Activos
+                </Text>
                 <div className="text-2xl font-bold text-rose-600 leading-none mt-1">
-                  {[...regressionCycles, ...smokeCycles].reduce((acc, c) => acc + c.executions.filter(ex => ex.bugId).length, 0)}
+                  {[...regressionCycles, ...smokeCycles].reduce(
+                    (acc, c) => acc + c.executions.filter(ex => ex.bugId).length,
+                    0,
+                  )}
                 </div>
               </div>
             </div>
@@ -310,15 +394,15 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       <Card className="rounded-2xl border-slate-100 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4 flex-1 max-w-2xl">
-            <Input 
-              prefix={<SearchOutlined className="text-slate-400" />} 
-              placeholder="Buscar por ID o Funcionalidad..." 
+            <Input
+              prefix={<SearchOutlined className="text-slate-400" />}
+              placeholder="Buscar por ID o Funcionalidad..."
               className="h-11 rounded-xl bg-slate-50 border-none"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
             />
-            <Select 
-              placeholder="Filtrar por Módulo" 
+            <Select
+              placeholder="Filtrar por Módulo"
               className="w-64 h-11"
               allowClear
               value={moduleFilter}
@@ -328,18 +412,21 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
           </div>
           <div className="flex items-center gap-2">
             <Tooltip title="Configurar Columnas">
-              <Button icon={<FilterOutlined />} className="rounded-xl h-11 w-11 flex items-center justify-center border-slate-200" />
+              <Button
+                icon={<FilterOutlined />}
+                className="rounded-xl h-11 w-11 flex items-center justify-center border-slate-200"
+              />
             </Tooltip>
           </div>
         </div>
 
-        <Table 
-          columns={columns} 
-          dataSource={filteredData} 
+        <Table
+          columns={columns}
+          dataSource={filteredData}
           rowKey="id"
-          pagination={{ 
+          pagination={{
             pageSize: 10,
-            showTotal: (total, range) => `Mostrando ${range[0]}-${range[1]} de ${total} registros`
+            showTotal: (total, range) => `Mostrando ${range[0]}-${range[1]} de ${total} registros`,
           }}
           className="coverage-table"
         />

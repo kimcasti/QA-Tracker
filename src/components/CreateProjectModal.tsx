@@ -1,6 +1,9 @@
-import { Button, Col, Form, Input, Modal, Row, Select, message } from 'antd';
+import { Alert, Button, Col, Form, Input, Modal, Row, Select, message } from 'antd';
 import dayjs from 'dayjs';
-import { useProjects } from '../hooks';
+import { toApiError } from '../config/http';
+import { useProjects } from '../modules/projects/hooks/useProjects';
+import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import { Project, ProjectStatus } from '../types';
 
 interface CreateProjectModalProps {
@@ -8,11 +11,13 @@ interface CreateProjectModalProps {
   onCancel: () => void;
 }
 
-export default function CreateProjectModal({
-  open,
-  onCancel,
-}: CreateProjectModalProps) {
+export default function CreateProjectModal({ open, onCancel }: CreateProjectModalProps) {
   const { save: saveProject, isSaving } = useProjects();
+  const {
+    data: slackMembers = [],
+    isLoading: isSlackMembersLoading,
+    error: slackMembersError,
+  } = useSlackMembers(open);
   const [form] = Form.useForm();
 
   const handleClose = () => {
@@ -55,7 +60,7 @@ export default function CreateProjectModal({
       handleClose();
     } catch (error) {
       console.error('Error creating project:', error);
-      message.error('Error al crear el proyecto');
+      message.error(toApiError(error).message || 'Error al crear el proyecto');
     }
   };
 
@@ -136,12 +141,13 @@ export default function CreateProjectModal({
         </Row>
 
         <Form.Item name="teamMembers" label="Miembros del equipo">
-          <Select
-            mode="tags"
+          <SlackMemberSelect
+            members={slackMembers}
             size="large"
-            tokenSeparators={[',']}
+            valueField="fullName"
+            loading={isSlackMembersLoading}
             placeholder="Agrega nombres del equipo"
-            options={[
+            extraOptions={[
               { label: 'QA Lead', value: 'QA Lead' },
               { label: 'QA Engineer', value: 'QA Engineer' },
               { label: 'Automation Engineer', value: 'Automation Engineer' },
@@ -149,6 +155,16 @@ export default function CreateProjectModal({
             ]}
           />
         </Form.Item>
+
+        {slackMembersError ? (
+          <Alert
+            type="warning"
+            showIcon
+            className="mb-6 rounded-2xl"
+            message="No se pudieron cargar los miembros de Slack"
+            description="Puedes seguir agregando nombres manualmente mientras revisas la configuración de Slack."
+          />
+        ) : null}
 
         <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button

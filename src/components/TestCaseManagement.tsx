@@ -1,10 +1,31 @@
 import React, { useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Space, Tag, Typography, Card, message, Popconfirm, Spin } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, ThunderboltOutlined, KeyOutlined } from '@ant-design/icons';
+import {
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Select,
+  Space,
+  Tag,
+  Typography,
+  Card,
+  message,
+  Popconfirm,
+  Spin,
+} from 'antd';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  FileTextOutlined,
+  ThunderboltOutlined,
+  KeyOutlined,
+} from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
 import { labelPriority } from '../i18n/labels';
-import { useTestCases } from '../hooks';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
 
 const { Title, Text } = Typography;
@@ -17,9 +38,19 @@ interface TestCaseManagementProps {
   moduleName: string;
 }
 
-const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, functionalityId, functionalityName, moduleName }) => {
+const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
+  projectId,
+  functionalityId,
+  functionalityName,
+  moduleName,
+}) => {
   const { t } = useTranslation();
-  const { data: testCases, isLoading, save, delete: deleteTestCase } = useTestCases(projectId, functionalityId);
+  const {
+    data: testCases,
+    isLoading,
+    save,
+    delete: deleteTestCase,
+  } = useTestCases(projectId, functionalityId);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
@@ -31,7 +62,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
     setIsGenerating(true);
     try {
       const generated = await generateTestCasesWithAI(functionalityName, moduleName);
-      
+
       // Save each generated test case
       for (const tc of generated) {
         const newTestCase: TestCase = {
@@ -50,8 +81,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       const nestedMessage = (anyErr?.error?.message || anyErr?.message || '').toString();
       const reason = anyErr?.error?.details?.[0]?.reason || anyErr?.details?.[0]?.reason;
       const isLeakedKey =
-        msg === 'GEMINI_API_KEY_LEAKED' ||
-        /reported as leaked/i.test(nestedMessage);
+        msg === 'GEMINI_API_KEY_LEAKED' || /reported as leaked/i.test(nestedMessage);
       const isInvalidKey =
         msg === 'GEMINI_API_KEY_INVALID' ||
         isLeakedKey ||
@@ -65,7 +95,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
         message.error(
           isLeakedKey
             ? 'API Key comprometida (reportada como filtrada). Genera una nueva API Key.'
-            : 'API Key inválida. Ingresa una API Key válida de Gemini.'
+            : 'API Key inválida. Ingresa una API Key válida de Gemini.',
         );
         setIsApiKeyModalVisible(true);
       } else {
@@ -174,11 +204,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       width: 150,
       render: (_: any, record: TestCase) => (
         <Space size="middle">
-          <Button 
-            type="text" 
-            icon={<EditOutlined />} 
-            onClick={() => showModal(record)}
-          />
+          <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
           <Popconfirm
             title="¿Estás seguro de eliminar este caso de prueba?"
             onConfirm={() => handleDelete(record.id)}
@@ -193,7 +219,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
   ];
 
   return (
-    <Card 
+    <Card
       title={
         <Space>
           <FileTextOutlined />
@@ -209,19 +235,15 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
           >
             API Key
           </Button>
-          <Button 
-            icon={<ThunderboltOutlined />} 
+          <Button
+            icon={<ThunderboltOutlined />}
             onClick={handleGenerateAI}
             loading={isGenerating}
             className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
           >
             Generar con IA
           </Button>
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />} 
-            onClick={() => showModal()}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
             Nuevo Caso de Prueba
           </Button>
         </Space>
@@ -235,7 +257,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
         loading={isLoading}
         pagination={{ pageSize: 5 }}
         expandable={{
-          expandedRowRender: (record) => (
+          expandedRowRender: record => (
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="mb-4">
                 <Text strong>Descripción:</Text>
@@ -284,43 +306,31 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
               <Input placeholder="Ej: Validar login con credenciales correctas" />
             </Form.Item>
 
-            <Form.Item
-              name="testType"
-              label="Tipo de Prueba"
-              rules={[{ required: true }]}
-            >
+            <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
               <Select>
                 {Object.values(TestType).map(type => (
-                  <Select.Option key={type} value={type}>{type}</Select.Option>
+                  <Select.Option key={type} value={type}>
+                    {type}
+                  </Select.Option>
                 ))}
               </Select>
             </Form.Item>
 
-            <Form.Item
-              name="priority"
-              label="Prioridad"
-              rules={[{ required: true }]}
-            >
+            <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
               <Select>
                 {Object.values(Priority).map(p => (
-                  <Select.Option key={p} value={p}>{labelPriority(p, t)}</Select.Option>
+                  <Select.Option key={p} value={p}>
+                    {labelPriority(p, t)}
+                  </Select.Option>
                 ))}
               </Select>
             </Form.Item>
 
-            <Form.Item
-              name="description"
-              label="Descripción"
-              className="col-span-2"
-            >
+            <Form.Item name="description" label="Descripción" className="col-span-2">
               <TextArea rows={2} placeholder="Descripción breve del objetivo de la prueba" />
             </Form.Item>
 
-            <Form.Item
-              name="preconditions"
-              label="Precondiciones"
-              className="col-span-2"
-            >
+            <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
               <TextArea rows={2} placeholder="Estado inicial requerido" />
             </Form.Item>
 
@@ -330,7 +340,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
               rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
               className="col-span-2"
             >
-              <TextArea rows={4} placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Click en botón..." />
+              <TextArea
+                rows={4}
+                placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Click en botón..."
+              />
             </Form.Item>
 
             <Form.Item
@@ -364,10 +377,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
         cancelText="Cancelar"
         onOk={async () => {
           const trimmed = apiKeyInput.trim();
-            if (!trimmed) {
-              message.warning('Ingresa una API Key válida');
-              return;
-            }
+          if (!trimmed) {
+            message.warning('Ingresa una API Key válida');
+            return;
+          }
           localStorage.setItem('GEMINI_API_KEY', trimmed);
           setIsApiKeyModalVisible(false);
           setApiKeyInput('');
@@ -376,12 +389,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({ projectId, func
       >
         <div className="space-y-2">
           <Text type="secondary">
-            Esta llave se guardará en tu navegador (localStorage) para habilitar la generación de casos con IA.
+            Esta llave se guardará en tu navegador (localStorage) para habilitar la generación de
+            casos con IA.
           </Text>
           <Input.Password
             placeholder="AIza..."
             value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
+            onChange={e => setApiKeyInput(e.target.value)}
           />
         </div>
       </Modal>

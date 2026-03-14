@@ -1,4 +1,3 @@
-import { storageService } from '../../../services/storageService';
 import type { Functionality } from '../../../types';
 import type { Epic, Role, Story, StoryMapRoleNode } from '../types';
 
@@ -67,12 +66,10 @@ export const storyMapService = {
     return story;
   },
 
-  getFullStoryMap(projectId: string): StoryMapRoleNode[] {
+  getFullStoryMap(projectId: string, functionalities: Functionality[]): StoryMapRoleNode[] {
     const roles = storyMapService.getRoles(projectId);
     const epics = storyMapService.getEpics(projectId);
     const stories = storyMapService.getStories(projectId);
-
-    const functionalities: Functionality[] = storageService.getFunctionalities(projectId) || [];
 
     return roles.map(role => {
       const roleEpics = epics
@@ -95,4 +92,3 @@ export const storyMapService = {
     });
   },
 };
-

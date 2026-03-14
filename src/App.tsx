@@ -1,10 +1,8 @@
-import { Layout, Menu, Input, Badge, Avatar, Space, Button, Typography } from 'antd';
+import { Layout, Menu, Avatar, Space, Button, Typography, Spin } from 'antd';
 import {
   DatabaseOutlined,
   CheckCircleOutlined,
   SettingOutlined,
-  BellOutlined,
-  SearchOutlined,
   AppstoreOutlined,
   HistoryOutlined,
   ThunderboltOutlined,
@@ -33,9 +31,11 @@ import EditProject from './components/EditProject';
 import Settings from './components/Settings';
 import AboutView from './components/AboutView';
 import CreateProjectModal from './components/CreateProjectModal';
+import AuthPage from './modules/auth/components/AuthPage';
+import { useAuthSession } from './modules/auth/context/AuthSessionProvider';
 import StoryMapPage from './modules/storymap/components/StoryMapPage';
+import { useProjects } from './modules/projects/hooks/useProjects';
 import type { Project } from './types';
-import { useProjects } from './hooks';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
 import { appBranding } from './assets/branding';
@@ -172,6 +172,38 @@ function getPersistedProjectId() {
 }
 
 export default function App() {
+  const { status, isAuthenticated, user, logout } = useAuthSession();
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <img
+            src={appBranding.logoUrl}
+            alt={qaBrand.name}
+            className="h-14 w-14 rounded-2xl object-cover shadow-lg"
+          />
+          <Spin size="large" />
+          <Text type="secondary">Loading your QA workspace...</Text>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
+    return <AuthPage />;
+  }
+
+  return <WorkspaceApp currentUser={user} onLogout={logout} />;
+}
+
+function WorkspaceApp({
+  currentUser,
+  onLogout,
+}: {
+  currentUser: { username: string; email: string };
+  onLogout: () => void;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -179,10 +211,12 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(getPersistedProjectId);
   const [collapsed, setCollapsed] = useState(false);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
+  const userInitial = currentUser.username.slice(0, 1).toUpperCase();
+  const userDisplayName = currentUser.username?.trim() || currentUser.email.split('@')[0] || 'User';
 
   const currentProject = useMemo(
     () => projects.find(project => project.id === selectedProjectId) || null,
-    [projects, selectedProjectId]
+    [projects, selectedProjectId],
   );
 
   const parsedRoute = useMemo(() => parseRoute(location.pathname), [location.pathname]);
@@ -245,7 +279,7 @@ export default function App() {
       { key: 'config', icon: <SettingOutlined />, label: t('nav.config') },
       { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
     ],
-    [t]
+    [t],
   );
 
   const handleViewProject = (project: Project) => {
@@ -288,8 +322,20 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <LanguageSwitcher size="small" />
-          <Avatar src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" />
-          <Text strong>Admin User</Text>
+          <Space size={12}>
+            <Avatar className="bg-slate-900">{userInitial}</Avatar>
+            <div className="flex max-w-[220px] flex-col leading-none">
+              <Text strong className="truncate">
+                {userDisplayName}
+              </Text>
+              <Text type="secondary" className="truncate text-[11px]">
+                {currentUser.email}
+              </Text>
+            </div>
+            <Button type="text" icon={<LogoutOutlined />} onClick={onLogout} className="rounded-lg">
+              Logout
+            </Button>
+          </Space>
         </div>
       </Header>
       <Content>
@@ -391,19 +437,27 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-              <Input
-                prefix={<SearchOutlined className="text-slate-400" />}
-                placeholder={t('app.search_workspace')}
-                className="w-64 bg-slate-50 border-none rounded-lg h-10"
-              />
-              <Space size={20}>
-                <Badge dot color="blue">
-                  <BellOutlined className="text-xl text-slate-500 cursor-pointer hover:text-blue-600 transition-colors" />
-                </Badge>
-                <SettingOutlined className="text-xl text-slate-500 cursor-pointer hover:text-blue-600 transition-colors" />
-                <LanguageSwitcher size="small" />
-              </Space>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <Avatar className="bg-slate-900">{userInitial}</Avatar>
+                <div className="hidden min-w-0 sm:flex sm:max-w-[220px] sm:flex-col sm:leading-none">
+                  <Text strong className="truncate text-slate-800">
+                    {userDisplayName}
+                  </Text>
+                  <Text type="secondary" className="truncate text-[11px]">
+                    {currentUser.email}
+                  </Text>
+                </div>
+              </div>
+              <Button
+                type="text"
+                icon={<LogoutOutlined />}
+                onClick={onLogout}
+                className="rounded-lg"
+              >
+                Logout
+              </Button>
+              <LanguageSwitcher size="small" />
             </div>
           </Header>
 
@@ -417,7 +471,9 @@ export default function App() {
               theme="light"
               className="bg-white border-r border-slate-100"
             >
-              <div className={`px-4 py-6 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-3`}>
+              <div
+                className={`px-4 py-6 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-3`}
+              >
                 <div className="flex items-center gap-3">
                   <img
                     src={appBranding.logoUrl}
@@ -426,8 +482,12 @@ export default function App() {
                   />
                   {!collapsed && (
                     <div className="flex flex-col overflow-hidden">
-                      <span className="font-bold text-slate-800 leading-none truncate">{qaBrand.workspaceLabel}</span>
-                      <span className="text-[10px] text-slate-400 font-medium truncate">{routedProject.name}</span>
+                      <span className="font-bold text-slate-800 leading-none truncate">
+                        {qaBrand.workspaceLabel}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium truncate">
+                        {routedProject.name}
+                      </span>
                     </div>
                   )}
                 </div>

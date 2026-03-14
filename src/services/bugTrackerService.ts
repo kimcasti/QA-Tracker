@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
-import { storageService } from './storageService';
 import { BugStatus, type BugOrigin, type QABug, type Severity } from '../types';
+import { getBugs, saveBug } from '../modules/bugs/services/bugsService';
 
 export interface BugSyncPayload {
   linkedBugId?: string;
@@ -41,24 +41,29 @@ function buildLinkedSourceId(payload: BugSyncPayload) {
   ].join('::');
 }
 
-export function shouldSyncBug(payload: Pick<BugSyncPayload, 'linkedBugId' | 'externalBugId' | 'title' | 'description' | 'severity' | 'bugLink' | 'evidenceImage'>) {
+export function shouldSyncBug(
+  payload: Pick<
+    BugSyncPayload,
+    'linkedBugId' | 'externalBugId' | 'title' | 'description' | 'severity' | 'bugLink' | 'evidenceImage'
+  >,
+) {
   return Boolean(
     normalize(payload.linkedBugId) ||
-    normalize(payload.externalBugId) ||
-    normalize(payload.title) ||
-    normalize(payload.description) ||
-    payload.severity ||
-    normalize(payload.bugLink) ||
-    payload.evidenceImage
+      normalize(payload.externalBugId) ||
+      normalize(payload.title) ||
+      normalize(payload.description) ||
+      payload.severity ||
+      normalize(payload.bugLink) ||
+      payload.evidenceImage,
   );
 }
 
-export function syncBugReport(payload: BugSyncPayload): QABug | null {
+export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | null> {
   if (!shouldSyncBug(payload)) {
     return null;
   }
 
-  const bugs = storageService.getBugs();
+  const bugs = await getBugs(payload.projectId);
   const linkedSourceId = buildLinkedSourceId(payload);
   const normalizedLinkedBugId = normalize(payload.linkedBugId);
   const normalizedExternalBugId = normalize(payload.externalBugId);
@@ -71,14 +76,20 @@ export function syncBugReport(payload: BugSyncPayload): QABug | null {
         normalizedExternalBugId &&
         bug.projectId === payload.projectId &&
         bug.functionalityId === payload.functionalityId &&
-        bug.externalBugId === normalizedExternalBugId
+        bug.externalBugId === normalizedExternalBugId,
     ) ||
     bugs.find(bug => bug.linkedSourceId === linkedSourceId);
 
   const bug: QABug = {
-    internalBugId: existing?.internalBugId || `BUG-${dayjs().format('YYYYMMDD-HHmmss')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+    internalBugId:
+      existing?.internalBugId ||
+      `BUG-${dayjs().format('YYYYMMDD-HHmmss')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     externalBugId: normalizedExternalBugId,
-    title: normalize(payload.title) || existing?.title || normalizedExternalBugId || `Bug ${payload.functionalityId}`,
+    title:
+      normalize(payload.title) ||
+      existing?.title ||
+      normalizedExternalBugId ||
+      `Bug ${payload.functionalityId}`,
     description: normalize(payload.description) || existing?.description,
     severity: payload.severity || existing?.severity,
     bugLink: normalize(payload.bugLink) || existing?.bugLink,
@@ -101,6 +112,5 @@ export function syncBugReport(payload: BugSyncPayload): QABug | null {
     updatedAt: now,
   };
 
-  storageService.saveBug(bug);
-  return bug;
+  return saveBug(bug);
 }
