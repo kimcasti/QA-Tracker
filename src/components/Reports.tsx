@@ -1,74 +1,70 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Card,
-  Typography,
-  Row,
-  Col,
   Button,
-  Select,
-  Space,
-  Tag,
+  Card,
+  Col,
   Divider,
   Empty,
-  Statistic,
   Progress,
+  Row,
+  Select,
+  Space,
+  Statistic,
   Table,
-  Badge,
-  Tooltip,
+  Tag,
+  Typography,
   message,
 } from 'antd';
 import {
-  FileTextOutlined,
-  LineChartOutlined,
-  ProjectOutlined,
-  CheckCircleFilled,
   ArrowLeftOutlined,
-  DownloadOutlined,
-  ThunderboltOutlined,
   BugOutlined,
-  SafetyCertificateOutlined,
-  AppstoreOutlined,
   CalendarOutlined,
-  FilterOutlined,
-  ExportOutlined,
-  FilePdfOutlined,
-  FileWordOutlined,
-  FileExcelOutlined,
+  CheckCircleFilled,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
-  AlertOutlined,
+  FileExcelOutlined,
+  FilePdfOutlined,
+  FileTextOutlined,
+  FileWordOutlined,
+  FilterOutlined,
+  LineChartOutlined,
+  ProjectOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
-import { useSprints } from '../modules/settings/hooks/useSprints';
-import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
-import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
-import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { TestResult, RiskLevel, TestStatus, TestType, RegressionCycle } from '../types';
 import {
-  BarChart,
+  Area,
+  AreaChart,
   Bar,
-  XAxis,
-  YAxis,
+  BarChart,
   CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
   Legend,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 import dayjs from 'dayjs';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
+import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { BugStatus, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
 import { exportToPdf } from '../utils/reportUtils';
 
 const { Title, Text, Paragraph } = Typography;
 
 type ReportVariant = 'QA_STATUS_SUMMARY' | 'QA_PROGRESS_REPORT' | 'PROJECT_STATUS_REPORT';
+
+type RiskTone = {
+  label: string;
+  color: 'green' | 'orange' | 'red';
+};
 
 interface SelectionCardProps {
   type: ReportVariant;
@@ -79,6 +75,61 @@ interface SelectionCardProps {
   onSelect: (type: ReportVariant) => void;
   icon: React.ReactNode;
 }
+
+const normalizeSprintKey = (value?: string | null) =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^sprint\s*/i, '');
+
+const getCycleTypeLabel = (cycle: RegressionCycle) => {
+  if (cycle.type === 'SMOKE') return 'Smoke';
+  if (cycle.type === 'REGRESSION') return 'Regresion';
+  return cycle.cycleId?.startsWith('S-') ? 'Smoke' : 'Regresion';
+};
+
+const getExecutedCount = (cycle: RegressionCycle) =>
+  Math.max(cycle.totalTests - cycle.pending - cycle.blocked, 0);
+
+const getPercent = (value: number, total: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
+
+const average = (values: number[]) =>
+  values.length > 0 ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
+
+const calculatePercentChange = (current: number, previous: number) => {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+};
+
+const getPassRateTone = (passRate: number): RiskTone => {
+  if (passRate >= 85) return { label: 'Alta', color: 'green' };
+  if (passRate >= 60) return { label: 'Media', color: 'orange' };
+  return { label: 'Baja', color: 'red' };
+};
+
+const getCycleRiskTone = (failed: number, executed: number, activeBugCount: number): RiskTone => {
+  const failureRate = getPercent(failed, Math.max(executed, 1));
+
+  if (failureRate >= 40 || activeBugCount >= 3) return { label: 'Alto', color: 'red' };
+  if (failureRate >= 15 || activeBugCount > 0) return { label: 'Medio', color: 'orange' };
+  return { label: 'Bajo', color: 'green' };
+};
+
+const getProjectRiskTone = (
+  activeBugCount: number,
+  highRiskCount: number,
+  averagePassRate: number,
+): RiskTone => {
+  if (activeBugCount >= 3 || highRiskCount >= 2 || averagePassRate < 60) {
+    return { label: 'Alto', color: 'red' };
+  }
+
+  if (activeBugCount > 0 || highRiskCount > 0 || averagePassRate < 85) {
+    return { label: 'Medio', color: 'orange' };
+  }
+
+  return { label: 'Bajo', color: 'green' };
+};
 
 const SelectionCard: React.FC<SelectionCardProps> = ({
   type,
@@ -91,7 +142,9 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
 }) => (
   <Card
     hoverable
-    className={`relative overflow-hidden transition-all duration-300 border-2 ${selected ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}
+    className={`relative overflow-hidden transition-all duration-300 border-2 ${
+      selected ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'
+    }`}
     onClick={() => onSelect(type)}
   >
     {selected && (
@@ -101,7 +154,9 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
     )}
     <div className="flex flex-col gap-4">
       <div
-        className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${selected ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400'}`}
+        className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${
+          selected ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400'
+        }`}
       >
         {icon}
       </div>
@@ -112,10 +167,7 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
         <Paragraph type="secondary" className="text-xs !mb-3 line-clamp-2">
           {description}
         </Paragraph>
-        <Tag
-          color={selected ? 'blue' : 'default'}
-          className="rounded-full px-3 border-none font-medium"
-        >
+        <Tag color={selected ? 'blue' : 'default'} className="rounded-full px-3 border-none font-medium">
           {format}
         </Tag>
       </div>
@@ -123,24 +175,65 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
   </Card>
 );
 
-// --- Variant 1: QA Status Summary ---
 const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | null }> = ({
   projectId,
   cycle,
 }) => {
+  const { data: bugs = [] } = useBugs(projectId);
+
   if (!cycle) return <Empty description="Seleccione un ciclo para ver el reporte" />;
+
+  const cycleBugs = useMemo(
+    () => bugs.filter(bug => bug.cycleId === cycle.cycleId),
+    [bugs, cycle.cycleId],
+  );
+
+  const activeCycleBugs = useMemo(
+    () => cycleBugs.filter(bug => bug.status !== BugStatus.RESOLVED),
+    [cycleBugs],
+  );
+
+  const executedTests = getExecutedCount(cycle);
+  const executionCoverage = getPercent(executedTests, cycle.totalTests);
+  const stabilityTone = getPassRateTone(cycle.passRate);
+  const riskTone = getCycleRiskTone(cycle.failed, executedTests, activeCycleBugs.length);
 
   const pieData = [
     { name: 'Aprobados', value: cycle.passed, color: '#10b981' },
     { name: 'Fallidos', value: cycle.failed, color: '#ef4444' },
-    { name: 'Pendientes', value: cycle.pending, color: '#f59e0b' },
+    { name: 'Bloqueados', value: cycle.blocked, color: '#f59e0b' },
+    { name: 'Pendientes', value: cycle.pending, color: '#94a3b8' },
+  ].filter(item => item.value > 0);
+
+  const qualityMetrics = [
+    {
+      label: 'Estabilidad del sistema',
+      value: <Tag color={stabilityTone.color}>{stabilityTone.label}</Tag>,
+    },
+    {
+      label: 'Riesgo del ciclo',
+      value: <Tag color={riskTone.color}>{riskTone.label}</Tag>,
+    },
+    {
+      label: 'Cobertura de ejecucion',
+      value: <Text strong>{executionCoverage}%</Text>,
+    },
+    {
+      label: 'Bugs activos del ciclo',
+      value: <Text strong>{activeCycleBugs.length}</Text>,
+    },
+    {
+      label: 'Pruebas ejecutadas',
+      value: (
+        <Text strong>
+          {executedTests}/{cycle.totalTests}
+        </Text>
+      ),
+    },
   ];
 
   return (
-    <div
-      id="report-content"
-      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
-    >
+    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
       <div className="flex justify-between items-start border-b border-slate-100 pb-6">
         <div>
           <Title level={3} className="!mb-1">
@@ -151,7 +244,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
               <CalendarOutlined /> {dayjs(cycle.date).format('DD MMM, YYYY')}
             </Text>
             <Text type="secondary">
-              <Tag color="blue">{cycle.type}</Tag>
+              <Tag color="blue">{getCycleTypeLabel(cycle)}</Tag>
             </Text>
             <Text type="secondary">Sprint: {cycle.sprint || 'N/A'}</Text>
           </Space>
@@ -160,7 +253,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
           <Text strong className="text-lg block">
             {cycle.cycleId}
           </Text>
-          <Text type="secondary">ID de Ciclo</Text>
+          <Text type="secondary">ID de ciclo</Text>
         </div>
       </div>
 
@@ -168,7 +261,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
         <Col span={8}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
-              title="Tasa de Aprobación"
+              title="Tasa de aprobacion"
               value={cycle.passRate}
               suffix="%"
               valueStyle={{ color: '#10b981', fontWeight: 800 }}
@@ -178,25 +271,21 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
         </Col>
         <Col span={8}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
-            <Statistic
-              title="Total Pruebas"
-              value={cycle.totalTests}
-              valueStyle={{ fontWeight: 800 }}
-            />
+            <Statistic title="Total pruebas" value={cycle.totalTests} valueStyle={{ fontWeight: 800 }} />
             <Text type="secondary" className="text-xs">
-              Ejecutadas en este ciclo
+              Incluidas en este ciclo
             </Text>
           </Card>
         </Col>
         <Col span={8}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
-              title="Bugs Encontrados"
-              value={cycle.failed}
+              title="Bugs encontrados"
+              value={cycleBugs.length}
               valueStyle={{ color: '#ef4444', fontWeight: 800 }}
             />
             <Text type="secondary" className="text-xs">
-              Casos fallidos reportados
+              Bugs vinculados al ciclo
             </Text>
           </Card>
         </Col>
@@ -204,7 +293,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
 
       <Row gutter={24}>
         <Col span={12}>
-          <Card title="Distribución de Resultados" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Distribucion de resultados" className="rounded-2xl border-slate-100 h-full">
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -217,8 +306,8 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    {pieData.map(entry => (
+                      <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
                   <RechartsTooltip />
@@ -229,57 +318,55 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="Métricas de Calidad" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Metricas de calidad" className="rounded-2xl border-slate-100 h-full">
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <Text>Estabilidad del Sistema</Text>
-                <Tag color="green">ALTA</Tag>
-              </div>
-              <Divider className="!my-2" />
-              <div className="flex justify-between items-center">
-                <Text>Riesgo de Regresión</Text>
-                <Tag color="orange">MEDIO</Tag>
-              </div>
-              <Divider className="!my-2" />
-              <div className="flex justify-between items-center">
-                <Text>Cobertura Funcional</Text>
-                <Text strong>{Math.round((cycle.passed / cycle.totalTests) * 100)}%</Text>
-              </div>
-              <Divider className="!my-2" />
-              <div className="flex justify-between items-center">
-                <Text>Tiempo de Ejecución</Text>
-                <Text strong>4.5h</Text>
-              </div>
+              {qualityMetrics.map((metric, index) => (
+                <React.Fragment key={metric.label}>
+                  <div className="flex justify-between items-center gap-4">
+                    <Text>{metric.label}</Text>
+                    {metric.value}
+                  </div>
+                  {index < qualityMetrics.length - 1 && <Divider className="!my-2" />}
+                </React.Fragment>
+              ))}
             </div>
           </Card>
         </Col>
       </Row>
 
-      <Card title="Detalle de Ejecución" className="rounded-2xl border-slate-100 overflow-hidden">
+      <Card title="Detalle de ejecucion" className="rounded-2xl border-slate-100 overflow-hidden">
         <Table
           dataSource={cycle.executions}
+          rowKey="id"
           columns={[
             { title: 'Funcionalidad', dataIndex: 'functionalityName', key: 'name' },
-            { title: 'Módulo', dataIndex: 'module', key: 'module' },
+            { title: 'Modulo', dataIndex: 'module', key: 'module' },
             {
               title: 'Resultado',
               dataIndex: 'result',
               key: 'result',
-              render: res => (
+              render: result => (
                 <Tag
                   color={
-                    res === TestResult.PASSED
+                    result === TestResult.PASSED
                       ? 'green'
-                      : res === TestResult.FAILED
+                      : result === TestResult.FAILED
                         ? 'red'
-                        : 'orange'
+                        : result === TestResult.BLOCKED
+                          ? 'orange'
+                          : 'default'
                   }
                 >
-                  {res}
+                  {result}
                 </Tag>
               ),
             },
-            { title: 'Bug ID', dataIndex: 'bugId', key: 'bugId', render: id => id || '-' },
+            {
+              title: 'Bug ID',
+              dataIndex: 'bugId',
+              key: 'bugId',
+              render: bugId => bugId || '-',
+            },
           ]}
           pagination={false}
           size="small"
@@ -289,38 +376,81 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
   );
 };
 
-// --- Variant 2: QA Progress Report ---
 const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> = ({
   projectId,
   sprint,
 }) => {
   const { data: regressionCycles = [] } = useRegressionCycles(projectId);
+  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
 
-  const chartData = useMemo(() => {
-    const filtered = sprint
-      ? regressionCycles.filter(c => c.sprint === sprint)
-      : regressionCycles.slice(-5);
+  const filteredCycles = useMemo(() => {
+    const finalizedCycles = [...regressionCycles, ...smokeCycles]
+      .filter(cycle => cycle.status === 'FINALIZADA')
+      .sort((a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf());
 
-    return filtered.map(c => ({
-      name: c.cycleId,
-      passRate: c.passRate,
-      total: c.totalTests,
-    }));
-  }, [regressionCycles, sprint]);
+    if (!sprint) return finalizedCycles.slice(-6);
+
+    const selectedKey = normalizeSprintKey(sprint);
+    return finalizedCycles.filter(cycle => normalizeSprintKey(cycle.sprint) === selectedKey);
+  }, [regressionCycles, smokeCycles, sprint]);
+
+  const chartData = useMemo(
+    () =>
+      filteredCycles.map(cycle => ({
+        name: cycle.cycleId,
+        passRate: cycle.passRate,
+        totalTests: cycle.totalTests,
+        executed: getExecutedCount(cycle),
+      })),
+    [filteredCycles],
+  );
+
+  const evolutionMetrics = useMemo(() => {
+    const firstCycle = filteredCycles[0];
+    const lastCycle = filteredCycles[filteredCycles.length - 1];
+
+    if (!firstCycle || !lastCycle) {
+      return {
+        casesGrowth: 0,
+        failureReduction: 0,
+        executionVelocity: 0,
+        latestExecutionCoverage: 0,
+      };
+    }
+
+    const firstExecutionCoverage = getPercent(getExecutedCount(firstCycle), firstCycle.totalTests);
+    const latestExecutionCoverage = getPercent(getExecutedCount(lastCycle), lastCycle.totalTests);
+
+    return {
+      casesGrowth: calculatePercentChange(lastCycle.totalTests, firstCycle.totalTests),
+      failureReduction: calculatePercentChange(firstCycle.failed - lastCycle.failed, firstCycle.failed),
+      executionVelocity: calculatePercentChange(latestExecutionCoverage, firstExecutionCoverage),
+      latestExecutionCoverage,
+    };
+  }, [filteredCycles]);
+
+  const recentMilestones = useMemo(
+    () =>
+      [...filteredCycles]
+        .sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf())
+        .slice(0, 3),
+    [filteredCycles],
+  );
+
+  if (filteredCycles.length === 0) {
+    return <Empty description="No hay ciclos finalizados para el filtro seleccionado" />;
+  }
 
   return (
-    <div
-      id="report-content"
-      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
-    >
+    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
       <div className="border-b border-slate-100 pb-6 flex justify-between items-end">
         <div>
           <Title level={3} className="!mb-1">
             Reporte de Progreso QA
           </Title>
           <Paragraph type="secondary">
-            Tendencia de calidad y evolución de las pruebas
-            {sprint ? ` en ${sprint}` : ' en los últimos ciclos'}.
+            Tendencia de calidad y evolucion de las pruebas
+            {sprint ? ` en ${sprint}` : ' en los ultimos ciclos'}.
           </Paragraph>
         </div>
         {sprint && (
@@ -330,23 +460,18 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
         )}
       </div>
 
-      <Card title="Tendencia de Tasa de Aprobación (%)" className="rounded-2xl border-slate-100">
+      <Card title="Tendencia de tasa de aprobacion (%)" className="rounded-2xl border-slate-100">
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>
-                <linearGradient id="colorPass" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="report-pass-rate" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
                   <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis
-                dataKey="name"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 12 }}
-              />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
               <RechartsTooltip />
               <Area
@@ -355,7 +480,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                 stroke="#3b82f6"
                 strokeWidth={3}
                 fillOpacity={1}
-                fill="url(#colorPass)"
+                fill="url(#report-pass-rate)"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -364,74 +489,82 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
 
       <Row gutter={24}>
         <Col span={12}>
-          <Card title="Métricas de Evolución" className="rounded-2xl border-slate-100">
+          <Card title="Metricas de evolucion" className="rounded-2xl border-slate-100">
             <div className="space-y-6">
               <div>
                 <div className="flex justify-between mb-2">
-                  <Text strong>Crecimiento de Casos de Prueba</Text>
-                  <Text type="success">+15%</Text>
+                  <Text strong>Crecimiento de casos</Text>
+                  <Text type={evolutionMetrics.casesGrowth >= 0 ? 'success' : 'danger'}>
+                    {evolutionMetrics.casesGrowth > 0 ? '+' : ''}
+                    {evolutionMetrics.casesGrowth}%
+                  </Text>
                 </div>
-                <Progress percent={85} strokeColor="#8b5cf6" />
+                <Progress percent={Math.min(Math.abs(evolutionMetrics.casesGrowth), 100)} strokeColor="#8b5cf6" />
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <Text strong>Reducción de Deuda Técnica</Text>
-                  <Text type="success">-10%</Text>
+                  <Text strong>Reduccion de fallos</Text>
+                  <Text type={evolutionMetrics.failureReduction >= 0 ? 'success' : 'danger'}>
+                    {evolutionMetrics.failureReduction > 0 ? '+' : ''}
+                    {evolutionMetrics.failureReduction}%
+                  </Text>
                 </div>
-                <Progress percent={45} strokeColor="#10b981" />
+                <Progress
+                  percent={Math.min(Math.abs(evolutionMetrics.failureReduction), 100)}
+                  strokeColor="#10b981"
+                />
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <Text strong>Velocidad de Ejecución</Text>
-                  <Text type="warning">+5%</Text>
+                  <Text strong>Velocidad de ejecucion</Text>
+                  <Text type={evolutionMetrics.executionVelocity >= 0 ? 'success' : 'danger'}>
+                    {evolutionMetrics.executionVelocity > 0 ? '+' : ''}
+                    {evolutionMetrics.executionVelocity}%
+                  </Text>
                 </div>
-                <Progress percent={60} strokeColor="#f59e0b" />
+                <Progress percent={evolutionMetrics.latestExecutionCoverage} strokeColor="#f59e0b" />
               </div>
             </div>
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="Hitos Recientes" className="rounded-2xl border-slate-100">
+          <Card title="Hitos recientes" className="rounded-2xl border-slate-100">
             <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0">
-                  <CheckCircleOutlined />
-                </div>
-                <div>
-                  <Text strong className="block">
-                    Certificación de Módulo de Pagos
-                  </Text>
-                  <Text type="secondary" className="text-xs">
-                    Ciclo REG-004 completado con 100% éxito
-                  </Text>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                  <ThunderboltOutlined />
-                </div>
-                <div>
-                  <Text strong className="block">
-                    Automatización de Smoke Tests
-                  </Text>
-                  <Text type="secondary" className="text-xs">
-                    80% de cobertura alcanzada
-                  </Text>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                  <ClockCircleOutlined />
-                </div>
-                <div>
-                  <Text strong className="block">
-                    Inicio de Pruebas de Carga
-                  </Text>
-                  <Text type="secondary" className="text-xs">
-                    Planificación de Fase 2 en curso
-                  </Text>
-                </div>
-              </div>
+              {recentMilestones.map(cycle => {
+                const tone = getPassRateTone(cycle.passRate);
+                const icon =
+                  tone.color === 'green' ? (
+                    <CheckCircleOutlined />
+                  ) : tone.color === 'orange' ? (
+                    <ClockCircleOutlined />
+                  ) : (
+                    <CloseCircleOutlined />
+                  );
+
+                const iconClass =
+                  tone.color === 'green'
+                    ? 'bg-green-100 text-green-600'
+                    : tone.color === 'orange'
+                      ? 'bg-amber-100 text-amber-600'
+                      : 'bg-rose-100 text-rose-600';
+
+                return (
+                  <div className="flex gap-3" key={cycle.id}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconClass}`}>
+                      {icon}
+                    </div>
+                    <div>
+                      <Text strong className="block">
+                        {cycle.cycleId} · {getCycleTypeLabel(cycle)}
+                      </Text>
+                      <Text type="secondary" className="text-xs">
+                        {dayjs(cycle.date).format('DD/MM/YYYY')} · {cycle.passed}/{cycle.totalTests} aprobadas ·{' '}
+                        {cycle.failed} fallidas
+                      </Text>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </Col>
@@ -440,56 +573,81 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
   );
 };
 
-// --- Variant 3: Project Status Report ---
 const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }> = ({
   projectId,
   sprint,
 }) => {
   const { data: functionalities = [] } = useFunctionalities(projectId);
   const { data: testCases = [] } = useTestCases(projectId);
+  const { data: bugs = [] } = useBugs(projectId);
+  const { data: regressionCycles = [] } = useRegressionCycles(projectId);
+  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
 
   const stats = useMemo(() => {
-    const filteredFuncs = sprint
-      ? functionalities.filter(f => f.sprint === sprint)
+    const selectedSprintKey = normalizeSprintKey(sprint);
+    const filteredFunctionalities = sprint
+      ? functionalities.filter(item => normalizeSprintKey(item.sprint) === selectedSprintKey)
       : functionalities;
 
-    const total = filteredFuncs.length;
-    const completed = filteredFuncs.filter(f => f.status === TestStatus.COMPLETED).length;
-    const highRisk = filteredFuncs.filter(f => f.riskLevel === RiskLevel.HIGH).length;
-
-    // Filter test cases by functionality if sprint is selected
-    const sprintFuncIds = new Set(filteredFuncs.map(f => f.id));
+    const functionalityIds = new Set(filteredFunctionalities.map(item => item.id));
     const filteredTestCases = sprint
-      ? testCases.filter(tc => sprintFuncIds.has(tc.functionalityId))
+      ? testCases.filter(item => functionalityIds.has(item.functionalityId))
       : testCases;
 
+    const filteredCycles = [...regressionCycles, ...smokeCycles].filter(cycle => {
+      if (!sprint) return true;
+      return normalizeSprintKey(cycle.sprint) === selectedSprintKey;
+    });
+
+    const filteredBugs = bugs.filter(bug => {
+      if (!sprint) return true;
+
+      const bugSprintMatches = normalizeSprintKey(bug.sprint) === selectedSprintKey;
+      const bugFunctionalityMatches = functionalityIds.has(bug.functionalityId);
+      const bugCycleMatches = filteredCycles.some(cycle => cycle.cycleId === bug.cycleId);
+
+      return bugSprintMatches || bugFunctionalityMatches || bugCycleMatches;
+    });
+
+    const activeBugs = filteredBugs.filter(bug => bug.status !== BugStatus.RESOLVED);
+    const finalizedCycles = filteredCycles.filter(cycle => cycle.status === 'FINALIZADA');
+    const averagePassRate = average(finalizedCycles.map(cycle => cycle.passRate));
+    const pendingCycleTests = filteredCycles.reduce((sum, cycle) => sum + cycle.pending + cycle.blocked, 0);
+    const completed = filteredFunctionalities.filter(item => item.status === TestStatus.COMPLETED).length;
+    const highRisk = filteredFunctionalities.filter(item => item.riskLevel === RiskLevel.HIGH).length;
+    const riskTone = getProjectRiskTone(activeBugs.length, highRisk, averagePassRate);
+
     return {
-      total,
+      total: filteredFunctionalities.length,
       completed,
-      progress: total > 0 ? Math.round((completed / total) * 100) : 0,
+      progress: filteredFunctionalities.length > 0 ? getPercent(completed, filteredFunctionalities.length) : 0,
       highRisk,
       testCasesCount: filteredTestCases.length,
+      activeBugsCount: activeBugs.length,
+      cycleCount: filteredCycles.length,
+      averagePassRate,
+      pendingCycleTests,
+      riskTone,
     };
-  }, [functionalities, testCases, sprint]);
+  }, [bugs, functionalities, regressionCycles, smokeCycles, sprint, testCases]);
 
   const barData = [
     { name: 'Total', value: stats.total, fill: '#3b82f6' },
     { name: 'Completadas', value: stats.completed, fill: '#10b981' },
-    { name: 'Críticas', value: stats.highRisk, fill: '#ef4444' },
+    { name: 'Casos', value: stats.testCasesCount, fill: '#8b5cf6' },
+    { name: 'Bugs activos', value: stats.activeBugsCount, fill: '#ef4444' },
+    { name: 'Ciclos', value: stats.cycleCount, fill: '#f59e0b' },
   ];
 
   return (
-    <div
-      id="report-content"
-      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
-    >
+    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
       <div className="border-b border-slate-100 pb-6 flex justify-between items-end">
         <div>
           <Title level={3} className="!mb-1">
             Reporte de Estado del Proyecto
           </Title>
           <Paragraph type="secondary">
-            Visión global del avance funcional y riesgos{sprint ? ` para ${sprint}` : ''}.
+            Vision global del avance funcional, cobertura y riesgos{sprint ? ` para ${sprint}` : ''}.
           </Paragraph>
         </div>
         {sprint && (
@@ -501,7 +659,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
 
       <Row gutter={24}>
         <Col span={16}>
-          <Card title="Avance por Categoría" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Avance por categoria" className="rounded-2xl border-slate-100 h-full">
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barData}>
@@ -509,16 +667,16 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                   <XAxis dataKey="name" axisLine={false} tickLine={false} />
                   <YAxis axisLine={false} tickLine={false} />
                   <RechartsTooltip />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>
         </Col>
         <Col span={8}>
-          <Card title="Resumen Ejecutivo" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Resumen ejecutivo" className="rounded-2xl border-slate-100 h-full">
             <div className="space-y-6">
-              <Statistic title="Progreso General" value={stats.progress} suffix="%" />
+              <Statistic title="Progreso general" value={stats.progress} suffix="%" />
               <Progress percent={stats.progress} status="active" strokeColor="#3b82f6" />
               <Divider />
               <div className="space-y-2">
@@ -527,12 +685,20 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                   <Text strong>{stats.total}</Text>
                 </div>
                 <div className="flex justify-between">
-                  <Text type="secondary">Casos de Prueba:</Text>
+                  <Text type="secondary">Casos de prueba:</Text>
                   <Text strong>{stats.testCasesCount}</Text>
                 </div>
                 <div className="flex justify-between">
-                  <Text type="secondary">Nivel de Riesgo:</Text>
-                  <Tag color="red">ALTO</Tag>
+                  <Text type="secondary">Bugs activos:</Text>
+                  <Text strong>{stats.activeBugsCount}</Text>
+                </div>
+                <div className="flex justify-between">
+                  <Text type="secondary">Promedio de ciclos:</Text>
+                  <Text strong>{stats.averagePassRate}%</Text>
+                </div>
+                <div className="flex justify-between">
+                  <Text type="secondary">Nivel de riesgo:</Text>
+                  <Tag color={stats.riskTone.color}>{stats.riskTone.label}</Tag>
                 </div>
               </div>
             </div>
@@ -540,30 +706,45 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
         </Col>
       </Row>
 
-      <Card title="Análisis de Riesgos" className="rounded-2xl border-slate-100">
+      <Card title="Analisis de riesgos" className="rounded-2xl border-slate-100">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100">
-            <Text strong className="text-rose-900 block mb-1">
-              Riesgo Funcional
-            </Text>
+            <div className="flex items-center gap-2 mb-2 text-rose-700">
+              <SafetyCertificateOutlined />
+              <Text strong className="!text-rose-900">
+                Riesgo funcional
+              </Text>
+            </div>
             <Text className="text-xs text-rose-700">
-              Existen {stats.highRisk} funcionalidades críticas sin certificar.
+              {stats.highRisk > 0
+                ? `Existen ${stats.highRisk} funcionalidades de alto riesgo dentro del alcance del reporte.`
+                : 'No hay funcionalidades de alto riesgo dentro del alcance del reporte.'}
             </Text>
           </div>
           <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-            <Text strong className="text-amber-900 block mb-1">
-              Riesgo de Tiempo
-            </Text>
+            <div className="flex items-center gap-2 mb-2 text-amber-700">
+              <ClockCircleOutlined />
+              <Text strong className="!text-amber-900">
+                Riesgo de tiempo
+              </Text>
+            </div>
             <Text className="text-xs text-amber-700">
-              El cronograma presenta un retraso estimado de 3 días.
+              {stats.pendingCycleTests > 0
+                ? `Quedan ${stats.pendingCycleTests} pruebas pendientes o bloqueadas en los ciclos filtrados.`
+                : 'No hay pruebas pendientes ni bloqueadas en los ciclos filtrados.'}
             </Text>
           </div>
           <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-            <Text strong className="text-blue-900 block mb-1">
-              Riesgo de Calidad
-            </Text>
+            <div className="flex items-center gap-2 mb-2 text-blue-700">
+              <BugOutlined />
+              <Text strong className="!text-blue-900">
+                Riesgo de calidad
+              </Text>
+            </div>
             <Text className="text-xs text-blue-700">
-              La tasa de defectos en el módulo central es superior al 5%.
+              {stats.activeBugsCount > 0
+                ? `Hay ${stats.activeBugsCount} bugs activos y una tasa promedio de aprobacion de ${stats.averagePassRate}%.`
+                : `No hay bugs activos y la tasa promedio de aprobacion de los ciclos es ${stats.averagePassRate}%.`}
             </Text>
           </div>
         </div>
@@ -572,7 +753,6 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
   );
 };
 
-// --- Main Reports Component ---
 export default function Reports({ projectId }: { projectId: string }) {
   const [selectedVariant, setSelectedVariant] = useState<ReportVariant>('QA_STATUS_SUMMARY');
   const [selectedSprint, setSelectedSprint] = useState<string | null>(null);
@@ -583,25 +763,16 @@ export default function Reports({ projectId }: { projectId: string }) {
   const { data: smokeCycles = [] } = useSmokeCycles(projectId);
   const { data: sprints = [] } = useSprints(projectId);
 
-  const allCycles = useMemo(
-    () => [...regressionCycles, ...smokeCycles],
-    [regressionCycles, smokeCycles],
-  );
-
-  const normalizeSprintKey = (value?: string | null) =>
-    (value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/^sprint\s*/i, '');
+  const allCycles = useMemo(() => [...regressionCycles, ...smokeCycles], [regressionCycles, smokeCycles]);
 
   const filteredCycles = useMemo(() => {
     if (!selectedSprint) return allCycles;
     const selectedKey = normalizeSprintKey(selectedSprint);
-    return allCycles.filter(c => normalizeSprintKey(c.sprint) === selectedKey);
+    return allCycles.filter(cycle => normalizeSprintKey(cycle.sprint) === selectedKey);
   }, [allCycles, selectedSprint]);
 
   const selectedCycle = useMemo(
-    () => allCycles.find(c => c.id === selectedCycleId) || null,
+    () => allCycles.find(cycle => cycle.id === selectedCycleId) || null,
     [allCycles, selectedCycleId],
   );
 
@@ -610,15 +781,13 @@ export default function Reports({ projectId }: { projectId: string }) {
       message.warning('Por favor seleccione un ciclo para este tipo de reporte');
       return;
     }
+
     setView('REPORT');
   };
 
   const handleExportPdf = async () => {
     try {
-      await exportToPdf(
-        'report-content',
-        `Reporte_${selectedVariant}_${dayjs().format('YYYYMMDD')}`,
-      );
+      await exportToPdf('report-content', `Reporte_${selectedVariant}_${dayjs().format('YYYYMMDD')}`);
       message.success('Reporte exportado correctamente');
     } catch (error) {
       message.error('Error al exportar el reporte');
@@ -634,7 +803,7 @@ export default function Reports({ projectId }: { projectId: string }) {
             onClick={() => setView('CONFIG')}
             className="rounded-xl border-slate-200 hover:text-blue-500"
           >
-            Volver a Configuración
+            Volver a configuracion
           </Button>
           <Space>
             <Button icon={<FileWordOutlined />} className="rounded-xl border-slate-200">
@@ -654,9 +823,7 @@ export default function Reports({ projectId }: { projectId: string }) {
           </Space>
         </div>
 
-        {selectedVariant === 'QA_STATUS_SUMMARY' && (
-          <QAStatusSummary projectId={projectId} cycle={selectedCycle} />
-        )}
+        {selectedVariant === 'QA_STATUS_SUMMARY' && <QAStatusSummary projectId={projectId} cycle={selectedCycle} />}
         {selectedVariant === 'QA_PROGRESS_REPORT' && (
           <QAProgressReport projectId={projectId} sprint={selectedSprint} />
         )}
@@ -674,7 +841,7 @@ export default function Reports({ projectId }: { projectId: string }) {
           Generar Reportes de Proyecto
         </Title>
         <Paragraph type="secondary" className="text-lg">
-          Seleccione el tipo de reporte y configure los filtros para obtener información detallada.
+          Seleccione el tipo de reporte y configure los filtros para obtener informacion detallada.
         </Paragraph>
       </div>
 
@@ -682,7 +849,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="QA_STATUS_SUMMARY"
           title="Resumen de Estado QA"
-          description="Visión detallada de un ciclo específico, métricas de aprobación y fallos."
+          description="Vision detallada de un ciclo especifico, metricas de aprobacion y fallos."
           format="PDF / EXCEL / WORD"
           icon={<FileTextOutlined />}
           selected={selectedVariant === 'QA_STATUS_SUMMARY'}
@@ -691,7 +858,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="QA_PROGRESS_REPORT"
           title="Reporte de Progreso QA"
-          description="Tendencias de calidad, evolución de casos y hitos alcanzados en el tiempo."
+          description="Tendencias de calidad, evolucion de casos y hitos alcanzados en el tiempo."
           format="PDF / EXCEL"
           icon={<LineChartOutlined />}
           selected={selectedVariant === 'QA_PROGRESS_REPORT'}
@@ -711,7 +878,7 @@ export default function Reports({ projectId }: { projectId: string }) {
       <Card className="rounded-3xl border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <div className="flex items-center gap-2 font-bold text-slate-700">
-            <FilterOutlined /> Configuración de Filtros
+            <FilterOutlined /> Configuracion de filtros
           </div>
         </div>
         <div className="p-8">
@@ -723,14 +890,14 @@ export default function Reports({ projectId }: { projectId: string }) {
                 </Text>
                 <Select
                   className="w-full h-12 rounded-xl"
-                  placeholder="Todos los Sprints"
+                  placeholder="Todos los sprints"
                   value={selectedSprint}
-                  onChange={val => {
-                    setSelectedSprint(val);
+                  onChange={value => {
+                    setSelectedSprint(value);
                     setSelectedCycleId(null);
                   }}
                   allowClear
-                  options={sprints.map(s => ({ label: s.name, value: s.name }))}
+                  options={sprints.map(sprintItem => ({ label: sprintItem.name, value: sprintItem.name }))}
                 />
               </div>
             </Col>
@@ -745,9 +912,9 @@ export default function Reports({ projectId }: { projectId: string }) {
                     placeholder="Elija un ciclo de prueba..."
                     value={selectedCycleId}
                     onChange={setSelectedCycleId}
-                    options={filteredCycles.map(c => ({
-                      label: `${c.cycleId} - ${c.type || (c.cycleId?.startsWith('S-') ? 'SMOKE' : 'REGRESSION')} (${dayjs(c.date).format('DD/MM/YYYY')})`,
-                      value: c.id,
+                    options={filteredCycles.map(cycle => ({
+                      label: `${cycle.cycleId} - ${getCycleTypeLabel(cycle)} (${dayjs(cycle.date).format('DD/MM/YYYY')})`,
+                      value: cycle.id,
                     }))}
                   />
                 </div>
