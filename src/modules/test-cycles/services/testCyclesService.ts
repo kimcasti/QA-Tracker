@@ -18,6 +18,7 @@ import {
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
+import { getBugs } from '../../bugs/services/bugsService';
 import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
 import { getSprints } from '../../settings/services/settingsService';
 import { getTestCases } from '../../test-cases/services/testCasesService';
@@ -37,6 +38,7 @@ function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
     result: testResultFromApi(document.result),
     evidence: document.evidence || '',
     evidenceImage: document.evidenceImage,
+    bugId: document.bug?.externalBugId || document.bug?.internalBugId,
     bugTitle: document.bugTitle,
     bugLink: document.bugLink,
     severity: severityFromApi(document.severity),
@@ -73,12 +75,13 @@ async function syncExecutions(
   organizationDocumentId?: string,
   projectDocumentId?: string,
 ) {
-  const [functionalities, testCases, existingExecutions] = await Promise.all([
+  const [functionalities, testCases, bugs, existingExecutions] = await Promise.all([
     getFunctionalities(cycle.projectId),
     getTestCases(cycle.projectId),
+    getBugs(cycle.projectId),
     listDocuments<TestCycleExecutionDto>('/api/test-cycle-executions', {
       'filters[testCycle][documentId][$eq]': cycleDocumentId,
-      ...populateParams(['functionality', 'testCase']),
+      ...populateParams(['functionality', 'testCase', 'bug']),
     }),
   ]);
 
@@ -86,6 +89,17 @@ async function syncExecutions(
   for (const execution of cycle.executions) {
     const functionality = functionalities.find(item => item.id === execution.functionalityId);
     const testCase = testCases.find(item => item.id === execution.testCaseId);
+    const linkedBug = bugs.find(
+      item =>
+        item.internalBugId === execution.linkedBugId ||
+        item.internalBugId === execution.bugId ||
+        item.externalBugId === execution.bugId,
+    );
+    const bugDocuments = linkedBug
+      ? await listDocuments<any>('/api/bugs', {
+          'filters[internalBugId][$eq]': linkedBug.internalBugId,
+        })
+      : [];
     const documentId = existingExecutions.some(item => item.documentId === execution.id)
       ? execution.id
       : null;
@@ -111,6 +125,7 @@ async function syncExecutions(
         testCycle: relation(cycleDocumentId),
         functionality: relation(functionality?.id),
         testCase: relation(testCase?.id),
+        bug: relation(bugDocuments[0]?.documentId),
       },
     );
 
@@ -134,6 +149,7 @@ export async function getTestCycles(projectId?: string, cycleType?: 'REGRESSION'
       'executions',
       'executions.functionality',
       'executions.testCase',
+      'executions.bug',
     ]),
     sort: 'date:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),

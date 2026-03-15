@@ -12,6 +12,11 @@ export interface TestCycleExecutionDto {
   bugLink?: string;
   severity?: string;
   linkedBugId?: string;
+  bug?: {
+    documentId: string;
+    internalBugId: string;
+    externalBugId?: string;
+  };
   functionality?: {
     documentId: string;
     code: string;

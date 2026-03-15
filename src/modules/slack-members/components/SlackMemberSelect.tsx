@@ -15,9 +15,10 @@ type SlackMemberOption = DefaultOptionType & {
 };
 
 export interface SlackMemberSelectProps
-  extends Omit<SelectProps<string[], SlackMemberOption>, 'mode' | 'options'> {
+  extends Omit<SelectProps<any, SlackMemberOption>, 'mode' | 'options' | 'tagRender'> {
   members: SlackMember[];
   valueField?: ValueField;
+  multiple?: boolean;
   extraOptions?: Array<{
     label: string;
     value: string;
@@ -46,6 +47,7 @@ function getOptionValue(member: SlackMember, valueField: ValueField) {
 export function SlackMemberSelect({
   members,
   valueField = 'id',
+  multiple = true,
   extraOptions = [],
   ...props
 }: SlackMemberSelectProps) {
@@ -111,8 +113,8 @@ export function SlackMemberSelect({
   };
 
   return (
-    <Select<string[], SlackMemberOption>
-      mode="tags"
+    <Select<any, SlackMemberOption>
+      mode={multiple ? 'tags' : undefined}
       options={options}
       optionFilterProp="label"
       maxTagCount="responsive"
@@ -137,7 +139,7 @@ export function SlackMemberSelect({
           </div>
         );
       }}
-      tagRender={renderTag}
+      tagRender={multiple ? renderTag : undefined}
       {...props}
     />
   );

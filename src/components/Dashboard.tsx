@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import dayjs from 'dayjs';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
@@ -141,6 +142,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const { data: smokeCyclesData } = useSmokeCycles(projectId);
   const { data: testCasesData } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
+  const { data: bugsData = [] } = useBugs(projectId);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = (Array.isArray(executionsData) ? executionsData : []).filter(
@@ -150,6 +152,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
   const sprints = Array.isArray(sprintsData) ? sprintsData : [];
+  const bugs = Array.isArray(bugsData) ? bugsData : [];
 
   const totalFunctionalities = functionalities.length;
   const completedFuncs = functionalities.filter(
@@ -167,10 +170,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     ...smokeCycles.flatMap(cycle => cycle.executions || []),
   ];
 
-  const totalBugs = allCycleExecutions.filter(item => item.bugId).length;
-  const criticalBugs = allCycleExecutions.filter(
-    item => item.severity === Severity.CRITICAL,
-  ).length;
+  const totalBugs = bugs.length;
+  const criticalBugs = bugs.filter(item => item.severity === Severity.CRITICAL).length;
   const funcsWithTestCases = new Set(testCases.map(item => item.functionalityId)).size;
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;

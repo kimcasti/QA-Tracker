@@ -26,14 +26,12 @@ import {
   TableOutlined,
   BugOutlined,
   FileSearchOutlined,
-  AlertOutlined,
 } from '@ant-design/icons';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
-import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { TestResult, TestType, Priority, RiskLevel } from '../types';
+import { TestResult, TestType, Priority, RiskLevel, BugStatus } from '../types';
 import * as XLSX from 'xlsx';
 
 const { Title, Text, Paragraph } = Typography;
@@ -42,14 +40,12 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
   const { data: testCasesData } = useTestCases(projectId);
-  const { data: regressionCyclesData } = useRegressionCycles(projectId);
-  const { data: smokeCyclesData } = useSmokeCycles(projectId);
+  const { data: bugsData = [] } = useBugs(projectId);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const executions = Array.isArray(executionsData) ? executionsData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
-  const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
-  const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
+  const bugs = Array.isArray(bugsData) ? bugsData : [];
 
   const [searchText, setSearchText] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string | undefined>(undefined);
@@ -177,20 +173,19 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       key: 'bugs',
       width: 120,
       render: (_: any, record: any) => {
-        const allExecs = [
-          ...regressionCycles.flatMap(c => c.executions || []),
-          ...smokeCycles.flatMap(c => c.executions || []),
-        ];
-        const bugs = allExecs.filter(ex => ex.functionalityId === record.id && ex.bugId);
+        const functionalityBugs = bugs.filter(bug => bug.functionalityId === record.id);
 
-        if (bugs.length === 0) return <span className="text-slate-300 text-xs">-</span>;
+        if (functionalityBugs.length === 0) return <span className="text-slate-300 text-xs">-</span>;
 
         return (
           <Space size={[0, 4]} wrap>
-            {bugs.map((b, idx) => (
-              <Tooltip key={idx} title={`${b.severity}: ${b.bugLink || 'Sin link'}`}>
+            {functionalityBugs.map((bug, idx) => (
+              <Tooltip
+                key={`${bug.internalBugId}-${idx}`}
+                title={`${bug.severity || 'Sin severidad'}: ${bug.bugLink || 'Sin link'}`}
+              >
                 <Tag color="magenta" icon={<BugOutlined />} className="m-0 text-[10px] cursor-help">
-                  {b.bugId}
+                  {bug.internalBugId}
                 </Tag>
               </Tooltip>
             ))}
@@ -265,13 +260,9 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       const exec = executions.find(e => e.functionalityId === f.id);
       const coverage = exec?.executed ? '100%' : '0%';
 
-      const allExecs = [
-        ...regressionCycles.flatMap(c => c.executions || []),
-        ...smokeCycles.flatMap(c => c.executions || []),
-      ];
-      const bugs = allExecs
-        .filter(ex => ex.functionalityId === f.id && ex.bugId)
-        .map(b => b.bugId)
+      const linkedBugs = bugs
+        .filter(bug => bug.functionalityId === f.id)
+        .map(bug => bug.internalBugId)
         .join(', ');
 
       return {
@@ -279,7 +270,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
         Funcionalidad: f.name,
         'Casos de Prueba': tcCount,
         'Porcentaje de Cobertura': coverage,
-        'Bugs Vinculados': bugs || 'Ninguno',
+        'Bugs Vinculados': linkedBugs || 'Ninguno',
       };
     });
 
@@ -380,10 +371,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
                   Bugs Activos
                 </Text>
                 <div className="text-2xl font-bold text-rose-600 leading-none mt-1">
-                  {[...regressionCycles, ...smokeCycles].reduce(
-                    (acc, c) => acc + c.executions.filter(ex => ex.bugId).length,
-                    0,
-                  )}
+                  {bugs.filter(bug => bug.status !== BugStatus.RESOLVED).length}
                 </div>
               </div>
             </div>

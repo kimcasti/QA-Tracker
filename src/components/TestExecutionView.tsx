@@ -32,7 +32,6 @@ import {
   EyeOutlined,
   EditOutlined,
   BugOutlined,
-  UserOutlined,
   ArrowLeftOutlined,
   SaveOutlined,
   ExportOutlined,
@@ -44,6 +43,8 @@ import {
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
@@ -73,6 +74,17 @@ import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
 
+function formatCompactId(value?: string | null, startLength = 6, endLength = 5) {
+  if (!value) return '—';
+
+  const normalizedValue = value.trim();
+  if (normalizedValue.length <= startLength + endLength + 3) {
+    return normalizedValue;
+  }
+
+  return `${normalizedValue.slice(0, startLength)}...${normalizedValue.slice(-endLength)}`;
+}
+
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const { data: functionalitiesData } = useFunctionalities(projectId);
@@ -86,6 +98,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
+    useSlackMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm();
 
@@ -335,9 +349,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       width: 300,
       render: (_: any, record: TestRun) => (
         <div>
-          <Text strong className="text-slate-700">
-            {record.id}
-          </Text>
+          <Tooltip title={record.id}>
+            <Text strong className="text-slate-700">
+              {formatCompactId(record.id)}
+            </Text>
+          </Tooltip>
           <br />
           <Text className="text-slate-500 text-xs">{record.title}</Text>
         </div>
@@ -530,7 +546,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </Title>
               </div>
               <Text type="secondary" className="text-xs text-slate-400">
-                {activeTestRun.id} • {activeTestRun.sprint || 'Sin Sprint'} •{' '}
+                {formatCompactId(activeTestRun.id)} • {activeTestRun.sprint || 'Sin Sprint'} •{' '}
                 {activeTestRun.tester || 'Sin Tester'}
                 {activeTestRun.environment ? ` • ${activeTestRun.environment}` : ''}
                 {activeTestRun.buildVersion ? ` • Build ${activeTestRun.buildVersion}` : ''}
@@ -669,9 +685,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 render: (_, record) => {
                   const tc = testCases.find(t => t.id === record.testCaseId);
                   return (
-                    <Text strong className="text-blue-600 font-bold">
-                      {tc?.id}
-                    </Text>
+                    <Tooltip title={tc?.id}>
+                      <Text strong className="text-blue-600 font-bold">
+                        {formatCompactId(tc?.id)}
+                      </Text>
+                    </Tooltip>
                   );
                 },
               },
@@ -1238,10 +1256,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
             <Col span={12}>
               <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
-                <Input
-                  placeholder="Ej: QA Engineer"
+                <SlackMemberSelect
+                  members={slackMembers}
+                  valueField="fullName"
+                  multiple={false}
+                  placeholder="Selecciona el tester desde Slack"
                   className="h-10 rounded-lg"
-                  prefix={<UserOutlined />}
+                  loading={isSlackMembersLoading}
                 />
               </Form.Item>
             </Col>

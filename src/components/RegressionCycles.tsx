@@ -34,11 +34,12 @@ import {
   DeleteOutlined,
   BugOutlined,
   RollbackOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
@@ -71,6 +72,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const latestCycle = Array.isArray(cycles) && cycles.length > 0 ? cycles[0] : null;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
+    useSlackMembers(isModalOpen);
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<RegressionCycle | null>(null);
   const [form] = Form.useForm();
@@ -1270,10 +1273,13 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 label={<span className="font-semibold text-slate-600">Tester</span>}
                 rules={[{ required: true }]}
               >
-                <Input
-                  placeholder="Ej: QA Engineer"
+                <SlackMemberSelect
+                  members={slackMembers}
+                  valueField="fullName"
+                  multiple={false}
+                  placeholder="Selecciona el tester desde Slack"
                   className="h-10 rounded-lg"
-                  prefix={<UserOutlined />}
+                  loading={isSlackMembersLoading}
                 />
               </Form.Item>
             </Col>

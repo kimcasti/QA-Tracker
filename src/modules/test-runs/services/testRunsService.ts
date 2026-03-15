@@ -35,7 +35,7 @@ function mapTestRunResult(document: TestRunResultDto): TestRunResult {
     result: testResultFromApi(document.result),
     notes: document.notes || '',
     evidenceImage: document.evidenceImage,
-    bugId: document.bug?.internalBugId,
+    bugId: document.bug?.externalBugId || document.bug?.internalBugId,
     bugTitle: document.bugTitle,
     bugLink: document.bugLink,
     severity: severityFromApi(document.severity),
@@ -85,7 +85,9 @@ async function syncResults(
     const testCase = testCases.find(item => item.id === result.testCaseId);
     const linkedBug = bugs.find(
       item =>
-        item.internalBugId === result.linkedBugId || item.internalBugId === result.bugId,
+        item.internalBugId === result.linkedBugId ||
+        item.internalBugId === result.bugId ||
+        item.externalBugId === result.bugId,
     );
     const bugDocuments = linkedBug
       ? await listDocuments<any>('/api/bugs', {

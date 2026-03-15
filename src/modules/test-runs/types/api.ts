@@ -18,6 +18,7 @@ export interface TestRunResultDto {
   bug?: {
     documentId: string;
     internalBugId: string;
+    externalBugId?: string;
   };
 }
 
