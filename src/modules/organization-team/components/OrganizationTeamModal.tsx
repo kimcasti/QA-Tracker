@@ -436,7 +436,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
                 onFinish={handleInvite}
                 initialValues={{ roleDocumentId: primaryInviteRole }}
               >
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_220px_auto]">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_220px_132px] lg:items-start">
                   <Form.Item
                     name="email"
                     label="Correo"
@@ -464,18 +464,21 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
                     />
                   </Form.Item>
 
-                  <div className="flex items-end">
+                  <Form.Item
+                    label={<span className="opacity-0 select-none">Accion</span>}
+                    className="mb-0"
+                  >
                     <Button
                       type="primary"
                       size="large"
                       htmlType="submit"
                       icon={<UserSwitchOutlined />}
                       loading={isInviting}
-                      className="w-full rounded-2xl"
+                      className="h-10 w-full rounded-2xl"
                     >
                       Invitar
                     </Button>
-                  </div>
+                  </Form.Item>
                 </div>
               </Form>
             </Card>

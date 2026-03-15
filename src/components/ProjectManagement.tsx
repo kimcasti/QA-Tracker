@@ -343,12 +343,8 @@ export default function ProjectManagement({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <Title level={3} className="!mb-1 !text-slate-900">
-                Proyectos de la organizacion
+                {activeOrganization?.name || 'Organizacion actual'}
               </Title>
-              <Text className="text-slate-500">
-                {filteredProjects.length} resultados visibles dentro de {projectMetrics.totalProjects}{' '}
-                proyectos.
-              </Text>
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">

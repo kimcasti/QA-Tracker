@@ -14,10 +14,11 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import authIllustrationUrl from '../../../assets/auth-qa-illustration.svg';
 import { appBranding } from '../../../assets/branding';
-import { toApiError } from '../../../config/http';
+import { PublicHttp, toApiError } from '../../../config/http';
 import { qaBrand, qaPalette } from '../../../theme/palette';
 import { useAuthSession } from '../context/AuthSessionProvider';
 
@@ -35,6 +36,16 @@ type SignupValues = {
   email: string;
   password: string;
   organizationName: string;
+};
+
+type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'cancelled';
+
+type InvitationContext = {
+  documentId: string;
+  email: string;
+  organizationName: string;
+  roleName: string;
+  status: InvitationStatus;
 };
 
 const heroCopy = {
@@ -68,11 +79,187 @@ const showcaseStats = [
 
 export default function AuthPage() {
   const { login, signup } = useAuthSession();
+  const [loginForm] = Form.useForm<LoginValues>();
+  const [signupForm] = Form.useForm<SignupValues>();
+  const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<AuthMode>('login');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isInvitationLoading, setIsInvitationLoading] = useState(false);
+  const [invitationContext, setInvitationContext] = useState<InvitationContext | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const activeCopy = heroCopy[mode];
+  const invitationId = searchParams.get('invitation')?.trim() || '';
+  const requestedMode = searchParams.get('mode');
+  const hasPendingInvitation = invitationContext?.status === 'pending';
+  const lockedFieldStyle = hasPendingInvitation
+    ? {
+        backgroundColor: '#f1f5f9',
+        color: '#64748b',
+        cursor: 'not-allowed' as const,
+      }
+    : undefined;
+
+  useEffect(() => {
+    const searchMode = requestedMode === 'signup' || requestedMode === 'login' ? requestedMode : null;
+
+    if (!invitationId) {
+      setInvitationContext(null);
+      setIsInvitationLoading(false);
+      if (searchMode) {
+        setMode(searchMode);
+      }
+      return;
+    }
+
+    let isCurrent = true;
+
+    setIsInvitationLoading(true);
+    setErrorMessage(null);
+
+    PublicHttp.get(`/api/organization-team/invitations/${encodeURIComponent(invitationId)}/public`)
+      .then(response => {
+        if (!isCurrent) return;
+
+        const payload = response.data?.data;
+        const nextInvitation: InvitationContext = {
+          documentId: String(payload?.documentId || invitationId),
+          email: String(payload?.email || ''),
+          organizationName: String(payload?.organization?.name || ''),
+          roleName: String(payload?.role?.name || 'Viewer'),
+          status: (payload?.status || 'pending') as InvitationStatus,
+        };
+
+        setInvitationContext(nextInvitation);
+        loginForm.setFieldsValue({ identifier: nextInvitation.email });
+        signupForm.setFieldsValue({
+          email: nextInvitation.email,
+          organizationName: nextInvitation.organizationName,
+        });
+        setMode(searchMode === 'login' ? 'login' : 'signup');
+      })
+      .catch(error => {
+        if (!isCurrent) return;
+        setInvitationContext(null);
+        setErrorMessage(toApiError(error).message);
+        if (searchMode) {
+          setMode(searchMode);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsInvitationLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [invitationId, loginForm, requestedMode, signupForm]);
+
+  useEffect(() => {
+    if (!invitationContext) return;
+
+    loginForm.setFieldValue('identifier', invitationContext.email);
+    signupForm.setFieldsValue({
+      email: invitationContext.email,
+      organizationName: invitationContext.organizationName,
+    });
+  }, [invitationContext, loginForm, signupForm]);
+
+  const activeCopy = useMemo(() => {
+    if (hasPendingInvitation && invitationContext && mode === 'signup') {
+      return {
+        eyebrow: 'Invitacion a organizacion',
+        title: `Unete a ${invitationContext.organizationName}.`,
+        description: `Crea tu acceso para colaborar como ${invitationContext.roleName} dentro de QA Tracker.`,
+        accent: '#D9F3FA',
+      };
+    }
+
+    if (hasPendingInvitation && invitationContext && mode === 'login') {
+      return {
+        eyebrow: 'Acceso por invitacion',
+        title: 'Entra con tu cuenta existente.',
+        description: `Inicia sesion con ${invitationContext.email} para sumarte a ${invitationContext.organizationName}.`,
+        accent: '#DCE8F8',
+      };
+    }
+
+    return heroCopy[mode];
+  }, [hasPendingInvitation, invitationContext, mode]);
+
+  const panelCopy = useMemo(() => {
+    if (mode === 'login') {
+      if (hasPendingInvitation && invitationContext) {
+        return {
+          eyebrow: 'Accede a tu invitacion',
+          title: 'Inicia sesion',
+          description: `Si ya tienes cuenta, entra con ${invitationContext.email} para aceptar el acceso a ${invitationContext.organizationName}.`,
+          submitLabel: 'Entrar y unirme',
+          helper: 'Necesitas una cuenta? Cambia a Registro para completar tu acceso con esta invitacion.',
+        };
+      }
+
+      return {
+        eyebrow: 'Acceso a QA Tracker',
+        title: 'Inicia sesion',
+        description: 'Usa tus credenciales de QA Tracker para continuar.',
+        submitLabel: 'Entrar a QA Tracker',
+        helper: 'Necesitas una cuenta? Cambia a Registro y crea tu organizacion en un solo paso.',
+      };
+    }
+
+    if (hasPendingInvitation && invitationContext) {
+      return {
+        eyebrow: 'Acepta tu invitacion',
+        title: 'Crea tu cuenta',
+        description: `Completa tu usuario y contrasena para unirte a ${invitationContext.organizationName} como ${invitationContext.roleName}.`,
+        submitLabel: 'Crear cuenta y unirme',
+        helper: 'Ya tienes una cuenta? Vuelve a Ingresar y usa el mismo correo invitado.',
+      };
+    }
+
+    return {
+      eyebrow: 'Provisiona tu organizacion',
+      title: 'Crea tu cuenta',
+      description: 'Crea tu usuario admin y aprovisionaremos una organizacion inicial para ti.',
+      submitLabel: 'Crear organizacion',
+      helper: 'Ya te registraste? Vuelve a Ingresar y continua con tu operacion QA.',
+    };
+  }, [hasPendingInvitation, invitationContext, mode]);
+
+  const invitationAlert = useMemo(() => {
+    if (!invitationContext) return null;
+
+    if (invitationContext.status === 'pending') {
+      return {
+        type: 'info' as const,
+        message: `Invitacion a ${invitationContext.organizationName}`,
+        description: `${invitationContext.email} fue invitado como ${invitationContext.roleName}.`,
+      };
+    }
+
+    const statusLabel =
+      invitationContext.status === 'accepted'
+        ? 'aceptada'
+        : invitationContext.status === 'expired'
+          ? 'expirada'
+          : 'cancelada';
+
+    return {
+      type: 'warning' as const,
+      message: `Invitacion ${statusLabel}`,
+      description: 'Puedes iniciar sesion o registrarte de forma normal si necesitas continuar.',
+    };
+  }, [invitationContext]);
+
+  const signupInitialValues = useMemo(
+    () => ({
+      email: invitationContext?.email || '',
+      organizationName: invitationContext?.organizationName || '',
+    }),
+    [invitationContext],
+  );
 
   const handleLogin = async (values: LoginValues) => {
     try {
@@ -231,17 +418,33 @@ export default function AuthPage() {
 
                   <div className="mb-6">
                     <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                      {mode === 'login' ? 'Acceso a QA Tracker' : 'Provisiona tu organizacion'}
+                      {panelCopy.eyebrow}
                     </Text>
                     <Title level={2} className="!mb-2 !mt-3 !text-slate-900">
-                      {mode === 'login' ? 'Inicia sesion' : 'Crea tu cuenta'}
+                      {panelCopy.title}
                     </Title>
                     <Text className="text-sm leading-6 text-slate-500">
-                      {mode === 'login'
-                        ? 'Usa tus credenciales de QA Tracker para continuar.'
-                        : 'Crea tu usuario admin y aprovisionaremos una organizacion inicial para ti.'}
+                      {panelCopy.description}
                     </Text>
                   </div>
+
+                  {isInvitationLoading ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Validando invitacion"
+                      description="Estamos cargando los datos de la organizacion invitante."
+                      className="mb-6 rounded-2xl"
+                    />
+                  ) : invitationAlert ? (
+                    <Alert
+                      type={invitationAlert.type}
+                      showIcon
+                      message={invitationAlert.message}
+                      description={invitationAlert.description}
+                      className="mb-6 rounded-2xl"
+                    />
+                  ) : null}
 
                   {errorMessage ? (
                     <Alert
@@ -253,7 +456,16 @@ export default function AuthPage() {
                   ) : null}
 
                   {mode === 'login' ? (
-                    <Form layout="vertical" onFinish={handleLogin} size="large">
+                    <Form
+                      key={`login-${invitationContext?.documentId || 'default'}`}
+                      form={loginForm}
+                      layout="vertical"
+                      onFinish={handleLogin}
+                      size="large"
+                      initialValues={{
+                        identifier: invitationContext?.email || '',
+                      }}
+                    >
                       <Form.Item
                         name="identifier"
                         label="Correo o usuario"
@@ -263,6 +475,8 @@ export default function AuthPage() {
                           prefix={<UserOutlined className="text-slate-400" />}
                           placeholder="tu-correo@empresa.com"
                           className="h-12 rounded-2xl"
+                          disabled={hasPendingInvitation}
+                          style={lockedFieldStyle}
                         />
                       </Form.Item>
                       <Form.Item
@@ -280,14 +494,21 @@ export default function AuthPage() {
                       <Button
                         type="primary"
                         htmlType="submit"
-                        loading={isSubmitting}
+                        loading={isSubmitting || isInvitationLoading}
                         className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
                       >
-                        Entrar a QA Tracker
+                        {panelCopy.submitLabel}
                       </Button>
                     </Form>
                   ) : (
-                    <Form layout="vertical" onFinish={handleSignup} size="large">
+                    <Form
+                      key={`signup-${invitationContext?.documentId || 'default'}`}
+                      form={signupForm}
+                      layout="vertical"
+                      onFinish={handleSignup}
+                      size="large"
+                      initialValues={signupInitialValues}
+                    >
                       <Form.Item
                         name="username"
                         label="Nombre de usuario"
@@ -311,6 +532,9 @@ export default function AuthPage() {
                           prefix={<MailOutlined className="text-slate-400" />}
                           placeholder="kimberly@empresa.com"
                           className="h-12 rounded-2xl"
+                          disabled={hasPendingInvitation}
+                          style={lockedFieldStyle}
+                          value={hasPendingInvitation ? invitationContext?.email || '' : undefined}
                         />
                       </Form.Item>
                       <Form.Item
@@ -336,24 +560,29 @@ export default function AuthPage() {
                           prefix={<SafetyCertificateOutlined className="text-slate-400" />}
                           placeholder="Laboratorio QA Kimberly"
                           className="h-12 rounded-2xl"
+                          disabled={hasPendingInvitation}
+                          style={lockedFieldStyle}
+                          value={
+                            hasPendingInvitation
+                              ? invitationContext?.organizationName || ''
+                              : undefined
+                          }
                         />
                       </Form.Item>
 
                       <Button
                         type="primary"
                         htmlType="submit"
-                        loading={isSubmitting}
+                        loading={isSubmitting || isInvitationLoading}
                         className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
                       >
-                        Crear organizacion
+                        {panelCopy.submitLabel}
                       </Button>
                     </Form>
                   )}
 
                   <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
-                    {mode === 'login'
-                      ? 'Necesitas una cuenta? Cambia a Registro y crea tu organizacion en un solo paso.'
-                      : 'Ya te registraste? Vuelve a Ingresar y continua con tu operacion QA.'}
+                    {panelCopy.helper}
                   </div>
                 </div>
               </Card>
