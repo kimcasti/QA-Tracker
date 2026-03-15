@@ -4,6 +4,7 @@ import {
   deactivateOrganizationMember,
   getOrganizationTeam,
   inviteOrganizationMember,
+  reactivateOrganizationMember,
   resendOrganizationInvitation,
   updateOrganizationMemberRole,
 } from '../services/organizationTeamService';
@@ -40,6 +41,11 @@ export function useOrganizationTeam(enabled = true) {
     onSuccess: syncTeamState,
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: reactivateOrganizationMember,
+    onSuccess: syncTeamState,
+  });
+
   const resendInvitationMutation = useMutation({
     mutationFn: resendOrganizationInvitation,
     onSuccess: syncTeamState,
@@ -55,11 +61,13 @@ export function useOrganizationTeam(enabled = true) {
     inviteMember: inviteMutation.mutateAsync,
     updateMemberRole: updateRoleMutation.mutateAsync,
     deactivateMember: deactivateMutation.mutateAsync,
+    reactivateMember: reactivateMutation.mutateAsync,
     resendInvitation: resendInvitationMutation.mutateAsync,
     cancelInvitation: cancelInvitationMutation.mutateAsync,
     isInviting: inviteMutation.isPending,
     isUpdatingRole: updateRoleMutation.isPending,
     isDeactivatingMember: deactivateMutation.isPending,
+    isReactivatingMember: reactivateMutation.isPending,
     isResendingInvitation: resendInvitationMutation.isPending,
     isCancellingInvitation: cancelInvitationMutation.isPending,
   };

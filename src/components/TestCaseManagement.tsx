@@ -9,11 +9,10 @@ import {
   Space,
   Switch,
   Tag,
-  Typography,
   Card,
+  Typography,
   message,
   Popconfirm,
-  Spin,
 } from 'antd';
 import {
   PlusOutlined,
@@ -21,7 +20,6 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   ThunderboltOutlined,
-  KeyOutlined,
 } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
@@ -29,8 +27,8 @@ import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
 
-const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { Text } = Typography;
 
 interface TestCaseManagementProps {
   projectId: string;
@@ -56,15 +54,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
   const [form] = Form.useForm();
-  const [isApiKeyModalVisible, setIsApiKeyModalVisible] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
 
   const runGenerateAI = async () => {
     setIsGenerating(true);
     try {
       const generated = await generateTestCasesWithAI(functionalityName, moduleName);
 
-      // Save each generated test case
       for (const tc of generated) {
         const newTestCase: TestCase = {
           ...tc,
@@ -75,6 +70,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         };
         save(newTestCase);
       }
+
       message.success(`Se generaron ${generated.length} casos de prueba con IA`);
     } catch (error) {
       console.error('AI Generation error:', error);
@@ -89,19 +85,19 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         isLeakedKey ||
         reason === 'API_KEY_INVALID' ||
         /api key not valid/i.test(nestedMessage);
+
       if (msg === 'GEMINI_API_KEY_MISSING') {
-        message.warning('Configura tu API Key de Gemini para usar la generación con IA.');
-        setIsApiKeyModalVisible(true);
+        message.warning(
+          'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la generación con IA.',
+        );
       } else if (isInvalidKey) {
-        localStorage.removeItem('GEMINI_API_KEY');
         message.error(
           isLeakedKey
-            ? 'API Key comprometida (reportada como filtrada). Genera una nueva API Key.'
-            : 'API Key inválida. Ingresa una API Key válida de Gemini.',
+            ? 'La API Key configurada en el entorno fue reportada como filtrada. Genera una nueva.'
+            : 'La API Key configurada en el entorno no es válida.',
         );
-        setIsApiKeyModalVisible(true);
       } else {
-        message.error('Error al generar casos con IA. Revisa tu API Key.');
+        message.error('Error al generar casos con IA. Revisa la configuración de Gemini.');
       }
     } finally {
       setIsGenerating(false);
@@ -110,9 +106,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
   const handleGenerateAI = async () => {
     if (!getGeminiApiKey()) {
-      setIsApiKeyModalVisible(true);
+      message.warning(
+        'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la generación con IA.',
+      );
       return;
     }
+
     await runGenerateAI();
   };
 
@@ -140,7 +139,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       functionalityId,
     };
 
-    console.log('Payload - Save Test Case:', newTestCase);
     save(newTestCase, {
       onSuccess: () => {
         message.success(editingTestCase ? 'Caso de prueba actualizado' : 'Caso de prueba creado');
@@ -166,13 +164,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 100,
-      render: (id: string) => <Text copyable>{id}</Text>,
-    },
-    {
       title: 'Título',
       dataIndex: 'title',
       key: 'title',
@@ -186,7 +177,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       render: (type: TestType) => <Tag color="blue">{type}</Tag>,
     },
     {
-      title: 'Automatizacion',
+      title: 'Automatización',
       dataIndex: 'isAutomated',
       key: 'isAutomated',
       width: 140,
@@ -242,13 +233,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       extra={
         <Space>
           <Button
-            icon={<KeyOutlined />}
-            onClick={() => setIsApiKeyModalVisible(true)}
-            className="rounded-lg"
-          >
-            API Key
-          </Button>
-          <Button
             icon={<ThunderboltOutlined />}
             onClick={handleGenerateAI}
             loading={isGenerating}
@@ -271,7 +255,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         pagination={{ pageSize: 5 }}
         expandable={{
           expandedRowRender: record => (
-            <div className="p-4 bg-gray-50 rounded-lg">
+            <div className="rounded-lg bg-gray-50 p-4">
               <div className="mb-4">
                 <Text strong>Descripción:</Text>
                 <p className="mt-1">{record.description}</p>
@@ -332,9 +316,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
             <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
               <Select>
-                {Object.values(Priority).map(p => (
-                  <Select.Option key={p} value={p}>
-                    {labelPriority(p, t)}
+                {Object.values(Priority).map(priority => (
+                  <Select.Option key={priority} value={priority}>
+                    {labelPriority(priority, t)}
                   </Select.Option>
                 ))}
               </Select>
@@ -350,7 +334,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               valuePropName="checked"
               className="col-span-2"
             >
-              <Switch checkedChildren="Si" unCheckedChildren="No" />
+              <Switch checkedChildren="Sí" unCheckedChildren="No" />
             </Form.Item>
 
             <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
@@ -365,7 +349,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             >
               <TextArea
                 rows={4}
-                placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Click en botón..."
+                placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
               />
             </Form.Item>
 
@@ -379,7 +363,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             </Form.Item>
           </div>
 
-          <Form.Item className="flex justify-end mb-0 mt-4">
+          <Form.Item className="mb-0 mt-4 flex justify-end">
             <Space>
               <Button onClick={handleCancel}>Cancelar</Button>
               <Button type="primary" htmlType="submit">
@@ -388,39 +372,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             </Space>
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        title="Configurar Gemini API Key"
-        open={isApiKeyModalVisible}
-        onCancel={() => setIsApiKeyModalVisible(false)}
-        zIndex={2000}
-        maskClosable={false}
-        okText="Guardar"
-        cancelText="Cancelar"
-        onOk={async () => {
-          const trimmed = apiKeyInput.trim();
-          if (!trimmed) {
-            message.warning('Ingresa una API Key válida');
-            return;
-          }
-          localStorage.setItem('GEMINI_API_KEY', trimmed);
-          setIsApiKeyModalVisible(false);
-          setApiKeyInput('');
-          await runGenerateAI();
-        }}
-      >
-        <div className="space-y-2">
-          <Text type="secondary">
-            Esta llave se guardará en tu navegador (localStorage) para habilitar la generación de
-            casos con IA.
-          </Text>
-          <Input.Password
-            placeholder="AIza..."
-            value={apiKeyInput}
-            onChange={e => setApiKeyInput(e.target.value)}
-          />
-        </div>
       </Modal>
     </Card>
   );

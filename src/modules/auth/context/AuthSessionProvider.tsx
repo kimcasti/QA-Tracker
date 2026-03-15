@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getAuthClearedEventName, getStoredToken } from '../../../config/http';
+import { invalidateWorkspaceCache } from '../../workspace/services/workspaceService';
 import {
   clearStoredAuthSession,
   fetchCurrentUser,
@@ -22,6 +23,14 @@ type AuthSessionValue = {
 };
 
 const AuthSessionContext = createContext<AuthSessionValue | null>(null);
+const SELECTED_PROJECT_STORAGE_KEY = 'qa_tracker_selected_project_id';
+const SELECTED_PROJECT_OWNER_STORAGE_KEY = 'qa_tracker_selected_project_owner';
+
+function clearWorkspaceSelection() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+  window.localStorage.removeItem(SELECTED_PROJECT_OWNER_STORAGE_KEY);
+}
 
 export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -48,6 +57,8 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
         }
       } catch {
         clearStoredAuthSession();
+        invalidateWorkspaceCache();
+        clearWorkspaceSelection();
         queryClient.clear();
         if (!cancelled) {
           setUser(null);
@@ -65,6 +76,8 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     const handleAuthCleared = () => {
+      invalidateWorkspaceCache();
+      clearWorkspaceSelection();
       setUser(null);
       setStatus('unauthenticated');
       queryClient.clear();
@@ -81,6 +94,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       isAuthenticated: status === 'authenticated' && Boolean(user),
       async login(input: LoginInput) {
         const result = await loginRequest(input);
+        invalidateWorkspaceCache();
         setUser(result.user);
         setStatus('authenticated');
         queryClient.clear();
@@ -88,6 +102,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       },
       async signup(input: SignupInput) {
         const result = await signupRequest(input);
+        invalidateWorkspaceCache();
         setUser(result.user);
         setStatus('authenticated');
         queryClient.clear();
@@ -95,6 +110,8 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       },
       logout() {
         clearStoredAuthSession();
+        invalidateWorkspaceCache();
+        clearWorkspaceSelection();
         setUser(null);
         setStatus('unauthenticated');
         queryClient.clear();

@@ -8,12 +8,28 @@ import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { MeetingNote } from '../types/model';
 import type { MeetingNoteDto } from '../types/api';
 
+function normalizeMeetingNoteTime(value?: string | null) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return '';
+
+  if (/^\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}:00`;
+  }
+
+  const secondsMatch = trimmed.match(/^(\d{2}:\d{2}:\d{2})/);
+  if (secondsMatch) {
+    return secondsMatch[1];
+  }
+
+  return trimmed;
+}
+
 function mapMeetingNote(document: MeetingNoteDto): MeetingNote {
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
     date: document.date,
-    time: document.time,
+    time: normalizeMeetingNoteTime(document.time).slice(0, 5),
     participants: document.participants || '',
     notes: document.notes || '',
     aiSummary: document.aiSummary || undefined,
@@ -43,7 +59,7 @@ export async function saveMeetingNote(note: MeetingNote) {
   const documentId = note.id.startsWith('note-') ? null : note.id;
   const saved = await upsertDocument<MeetingNoteDto>('/api/meeting-notes', documentId, {
     date: note.date,
-    time: note.time,
+    time: normalizeMeetingNoteTime(note.time),
     participants: note.participants,
     notes: note.notes,
     aiSummary: note.aiSummary || null,

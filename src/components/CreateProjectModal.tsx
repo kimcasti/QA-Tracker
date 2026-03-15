@@ -71,7 +71,7 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
       width={720}
     >
       <div className="pb-2 text-slate-500">
-        Registra un nuevo proyecto QA dentro de tu organizacion actual.
+        Registra un nuevo proyecto QA dentro de tu organización actual.
       </div>
 
       <Form

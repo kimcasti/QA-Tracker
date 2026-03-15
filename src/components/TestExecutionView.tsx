@@ -342,21 +342,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          ID / TÍTULO
+          TÍTULO
         </span>
       ),
       key: 'title',
       width: 300,
       render: (_: any, record: TestRun) => (
-        <div>
-          <Tooltip title={record.id}>
-            <Text strong className="text-slate-700">
-              {formatCompactId(record.id)}
-            </Text>
-          </Tooltip>
-          <br />
-          <Text className="text-slate-500 text-xs">{record.title}</Text>
-        </div>
+        <Text strong className="text-slate-700">
+          {record.title}
+        </Text>
       ),
     },
     {
@@ -645,7 +639,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         <Card className="rounded-2xl shadow-sm border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
             <Input
-              placeholder="Search by ID, Module or Functionality..."
+              placeholder="Search by Module or Functionality..."
               prefix={<SearchOutlined className="text-slate-400" />}
               className="w-80 rounded-lg h-10 border-slate-200"
               value={executionSearchText}
@@ -677,30 +671,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               {
                 title: (
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    ID
-                  </span>
-                ),
-                key: 'id',
-                width: '12%',
-                render: (_, record) => {
-                  const tc = testCases.find(t => t.id === record.testCaseId);
-                  return (
-                    <Tooltip title={tc?.id}>
-                      <Text strong className="text-blue-600 font-bold">
-                        {formatCompactId(tc?.id)}
-                      </Text>
-                    </Tooltip>
-                  );
-                },
-              },
-              {
-                title: (
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                     MODULO
                   </span>
                 ),
                 key: 'module',
-                width: '12%',
+                width: '14%',
                 render: (_, record) => {
                   const func = functionalities.find(f => f.id === record.functionalityId);
                   return (
@@ -717,7 +692,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </span>
                 ),
                 key: 'case',
-                width: '25%',
+                width: '30%',
                 render: (_, record) => {
                   const tc = testCases.find(t => t.id === record.testCaseId);
                   const func = functionalities.find(f => f.id === record.functionalityId);

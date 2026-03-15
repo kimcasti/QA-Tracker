@@ -43,10 +43,7 @@ interface OrganizationTeamModalProps {
   onCancel: () => void;
 }
 
-const ROLE_META: Record<
-  OrganizationTeamRoleCode,
-  { label: string; color: string }
-> = {
+const ROLE_META: Record<OrganizationTeamRoleCode, { label: string; color: string }> = {
   owner: { label: 'Owner', color: qaPalette.primary },
   'qa-lead': { label: 'QA Lead', color: qaPalette.accent },
   'qa-engineer': { label: 'QA Engineer', color: qaPalette.functionalityStatus.completed },
@@ -121,11 +118,13 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
     inviteMember,
     updateMemberRole,
     deactivateMember,
+    reactivateMember,
     resendInvitation,
     cancelInvitation,
     isInviting,
     isUpdatingRole,
     isDeactivatingMember,
+    isReactivatingMember,
     isResendingInvitation,
     isCancellingInvitation,
   } = useOrganizationTeam(open);
@@ -133,7 +132,8 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
   const canManage = data?.canManage ?? false;
   const availableRoles = data?.availableRoles ?? [];
   const primaryInviteRole =
-    availableRoles.find(role => role.code === 'qa-engineer')?.documentId || availableRoles[0]?.documentId;
+    availableRoles.find(role => role.code === 'qa-engineer')?.documentId ||
+    availableRoles[0]?.documentId;
 
   useEffect(() => {
     if (!open || !primaryInviteRole) return;
@@ -172,6 +172,15 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       message.success(`Acceso desactivado para ${member.name}`);
     } catch (deactivateError) {
       message.error(toApiError(deactivateError).message);
+    }
+  };
+
+  const handleReactivate = async (member: OrganizationTeamMember) => {
+    try {
+      await reactivateMember(member.documentId);
+      message.success(`Acceso reactivado para ${member.name}`);
+    } catch (reactivateError) {
+      message.error(toApiError(reactivateError).message);
     }
   };
 
@@ -246,8 +255,24 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       key: 'actions',
       align: 'right',
       render: (_, member) => {
-        if (!canManage || member.status !== 'active' || member.isCurrentUser) {
+        if (!canManage || member.isCurrentUser) {
           return <Text type="secondary">Sin acciones</Text>;
+        }
+
+        if (member.status === 'inactive') {
+          return (
+            <Popconfirm
+              title="Reactivar acceso"
+              description={`Se restaurara el acceso de ${member.name}.`}
+              okText="Reactivar"
+              cancelText="Cancelar"
+              onConfirm={() => handleReactivate(member)}
+            >
+              <Button type="text" icon={<ReloadOutlined />} loading={isReactivatingMember}>
+                Reactivar acceso
+              </Button>
+            </Popconfirm>
+          );
         }
 
         return (
@@ -258,12 +283,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
             cancelText="Cancelar"
             onConfirm={() => handleDeactivate(member)}
           >
-            <Button
-              danger
-              type="text"
-              icon={<StopOutlined />}
-              loading={isDeactivatingMember}
-            >
+            <Button danger type="text" icon={<StopOutlined />} loading={isDeactivatingMember}>
               Desactivar acceso
             </Button>
           </Popconfirm>
@@ -293,10 +313,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       title: 'Estado',
       key: 'status',
       render: (_, invitation) => (
-        <StatusTag
-          status={invitation.status}
-          meta={INVITATION_STATUS_META[invitation.status]}
-        />
+        <StatusTag status={invitation.status} meta={INVITATION_STATUS_META[invitation.status]} />
       ),
     },
     {
@@ -325,12 +342,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
               cancelText="Volver"
               onConfirm={() => handleCancelInvitation(invitation)}
             >
-              <Button
-                danger
-                type="text"
-                icon={<StopOutlined />}
-                loading={isCancellingInvitation}
-              >
+              <Button danger type="text" icon={<StopOutlined />} loading={isCancellingInvitation}>
                 Cancelar
               </Button>
             </Popconfirm>
@@ -359,9 +371,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
             <Title level={4} className="!mb-0">
               Crear equipo de trabajo
             </Title>
-            <Text type="secondary">
-              {data?.organization.name || 'Organizacion actual'}
-            </Text>
+            <Text type="secondary">{data?.organization.name || 'Organización actual'}</Text>
           </div>
         </div>
       }
@@ -385,7 +395,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl">
               <Title level={5} className="!mb-1">
-                Equipo de la organizacion
+                Equipo de la organización
               </Title>
               <Paragraph className="!mb-0 text-slate-500">
                 Gestiona miembros activos e invitaciones pendientes sin salir de la escena principal
@@ -415,18 +425,12 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
               message="Solo Owner y QA Lead pueden gestionar miembros e invitaciones."
             />
           ) : (
-            <Card
-              size="small"
-              className="mt-5 rounded-[20px]"
-              styles={{ body: { padding: 20 } }}
-            >
+            <Card size="small" className="mt-5 rounded-[20px]" styles={{ body: { padding: 20 } }}>
               <div className="mb-4 flex items-center gap-3">
                 <MailOutlined style={{ color: qaPalette.primary }} />
                 <div>
                   <Text strong>Invitar miembro</Text>
-                  <div>
-                    <Text type="secondary">No envia correo real todavia. Solo registra la invitacion.</Text>
-                  </div>
+                  <div></div>
                 </div>
               </div>
 
@@ -485,18 +489,14 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
           )}
         </Card>
 
-        <Card
-          variant="borderless"
-          className="rounded-[24px]"
-          styles={{ body: { padding: 24 } }}
-        >
+        <Card variant="borderless" className="rounded-[24px]" styles={{ body: { padding: 24 } }}>
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <Title level={5} className="!mb-1">
                 Miembros actuales
               </Title>
               <Text type="secondary">
-                {data?.members.length || 0} miembros registrados en la organizacion.
+                {data?.members.length || 0} miembros registrados en la organización.
               </Text>
             </div>
             {isFetching ? <Text type="secondary">Actualizando...</Text> : null}
@@ -519,11 +519,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
           />
         </Card>
 
-        <Card
-          variant="borderless"
-          className="rounded-[24px]"
-          styles={{ body: { padding: 24 } }}
-        >
+        <Card variant="borderless" className="rounded-[24px]" styles={{ body: { padding: 24 } }}>
           <div className="mb-4">
             <Title level={5} className="!mb-1">
               Invitaciones pendientes

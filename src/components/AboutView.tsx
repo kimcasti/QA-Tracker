@@ -28,7 +28,6 @@ import {
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
-  KeyOutlined,
   MessageOutlined,
   PlusOutlined,
   RobotOutlined,
@@ -38,14 +37,13 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { GoogleGenAI } from '@google/genai';
 import { appBranding } from '../assets/branding';
 import { useMeetingNotes } from '../modules/meeting-notes/hooks/useMeetingNotes';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
 import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import type { SlackMember } from '../modules/slack-members/types/model';
-import { getGeminiApiKey } from '../services/geminiService';
+import { getGeminiApiKey, improveMeetingNotesWithAI } from '../services/geminiService';
 import { MeetingNote, Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 
@@ -184,8 +182,6 @@ export default function AboutView({ project }: { project: Project }) {
   const [isViewNoteModalOpen, setIsViewNoteModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
   const [isImproving, setIsImproving] = useState(false);
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
 
   const [projectForm] = Form.useForm();
   const [noteForm] = Form.useForm<NoteFormValues>();
@@ -357,28 +353,12 @@ export default function AboutView({ project }: { project: Project }) {
       return;
     }
     if (!getGeminiApiKey()) {
-      setIsApiKeyModalOpen(true);
+      message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la mejora con IA.');
       return;
     }
     setIsImproving(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() || '' });
-      const prompt = `Reorganiza las siguientes notas de reunion en un formato estructurado con las siguientes secciones:
-1. Resumen de la reunion
-2. Decisiones
-3. Acciones a realizar
-4. Proximos pasos
-
-Notas:
-${notes}
-
-Responde unicamente con un objeto JSON con las llaves: summary, decisions, actions, nextSteps.`;
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { responseMimeType: 'application/json' },
-      });
-      const result = JSON.parse(response.text || '{}');
+      const result = await improveMeetingNotesWithAI(notes);
       const formValues = noteForm.getFieldsValue();
       setSelectedNote(prev =>
         prev
@@ -413,16 +393,13 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
       const isInvalidKey =
         reason === 'API_KEY_INVALID' || /api key not valid/i.test(nestedMessage) || isLeakedKey;
       if (msg === 'GEMINI_API_KEY_MISSING') {
-        message.warning('Configura tu API Key de Gemini para usar la mejora con IA.');
-        setIsApiKeyModalOpen(true);
+        message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la mejora con IA.');
       } else if (isInvalidKey) {
-        localStorage.removeItem('GEMINI_API_KEY');
         message.error(
           isLeakedKey
-            ? 'API Key comprometida. Genera una nueva API Key.'
-            : 'API Key invalida. Ingresa una API Key valida de Gemini.',
+            ? 'La API Key configurada en el entorno fue reportada como filtrada. Genera una nueva.'
+            : 'La API Key configurada en el entorno no es válida.',
         );
-        setIsApiKeyModalOpen(true);
       } else {
         message.error('Error al mejorar las notas con IA');
       }
@@ -980,6 +957,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
         centered
         okText="Guardar cambios"
         cancelText="Cancelar"
+        forceRender
         destroyOnHidden
       >
         <Form form={projectForm} layout="vertical" className="mt-4">
@@ -1038,6 +1016,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
         centered
         okText="Guardar minuta"
         cancelText="Cancelar"
+        forceRender
         destroyOnHidden
       >
         <Form form={noteForm} layout="vertical" className="mt-4">
@@ -1087,14 +1066,6 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                 <span>Notas de la reunion</span>
                 <Space size={8}>
                   <Button
-                    size="small"
-                    icon={<KeyOutlined />}
-                    onClick={() => setIsApiKeyModalOpen(true)}
-                    className="rounded-full text-[10px] font-bold h-7"
-                  >
-                    API Key
-                  </Button>
-                  <Button
                     type="primary"
                     size="small"
                     icon={<RobotOutlined />}
@@ -1126,43 +1097,6 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
             </div>
           )}
         </Form>
-      </Modal>
-
-      <Modal
-        title="Configurar Gemini API Key"
-        open={isApiKeyModalOpen}
-        onCancel={() => setIsApiKeyModalOpen(false)}
-        okText="Guardar"
-        cancelText="Cancelar"
-        zIndex={2100}
-        maskClosable={false}
-        destroyOnHidden
-        onOk={async () => {
-          const trimmed = apiKeyInput.trim();
-          if (!trimmed) {
-            message.warning('Ingresa una API Key valida');
-            return;
-          }
-          localStorage.setItem('GEMINI_API_KEY', trimmed);
-          setIsApiKeyModalOpen(false);
-          setApiKeyInput('');
-
-          const currentNotes = noteForm.getFieldValue('notes');
-          if (currentNotes) {
-            await handleImproveWithAI();
-          }
-        }}
-      >
-        <div className="space-y-3">
-          <Text type="secondary">
-            Esta llave se guardara en tu navegador para habilitar la mejora con IA.
-          </Text>
-          <Input.Password
-            placeholder="AIza..."
-            value={apiKeyInput}
-            onChange={event => setApiKeyInput(event.target.value)}
-          />
-        </div>
       </Modal>
 
       <Modal

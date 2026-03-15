@@ -704,7 +704,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               <div className="flex items-center gap-4 flex-1 max-w-md">
                 <Input
                   prefix={<SearchOutlined className="text-slate-400" />}
-                  placeholder="Search by ID, Module or Functionality..."
+                  placeholder="Search by Module or Functionality..."
                   className="h-11 rounded-xl bg-slate-50 border-none"
                   value={detailSearch}
                   onChange={e => setDetailSearch(e.target.value)}
@@ -735,12 +735,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               className="regression-table"
               columns={[
                 {
-                  title: <span className="text-[11px] font-bold text-slate-400 uppercase">ID</span>,
-                  dataIndex: 'functionalityId',
-                  key: 'id',
-                  render: id => <span className="font-bold text-orange-600">{id}</span>,
-                },
-                {
                   title: (
                     <span className="text-[11px] font-bold text-slate-400 uppercase">MODULO</span>
                   ),
@@ -760,13 +754,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     <div>
                       <div className="text-slate-800 font-medium">{n}</div>
                       {record.testCaseId && (
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <Tag color="cyan" className="text-[10px] m-0">
-                            {record.testCaseId}
-                          </Tag>
-                          <span className="text-[11px] text-slate-500 italic">
-                            {record.testCaseTitle}
-                          </span>
+                        <div className="mt-0.5 text-[11px] text-slate-500 italic">
+                          {record.testCaseTitle}
                         </div>
                       )}
                     </div>
@@ -1337,12 +1326,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 pagination={false}
                 size="small"
                 columns={[
-                  {
-                    title: 'ID',
-                    dataIndex: 'id',
-                    key: 'id',
-                    render: id => <span className="text-xs font-bold text-orange-600">{id}</span>,
-                  },
                   {
                     title: 'Módulo',
                     dataIndex: 'module',

@@ -51,29 +51,29 @@ type InvitationContext = {
 const heroCopy = {
   login: {
     eyebrow: 'Acceso QA Tracker',
-    title: 'Vuelve a tu centro de calidad.',
+    title: 'Asegura la calidad.',
     description:
-      'Retoma ciclos de regresion, revisa bugs y manten a tu equipo alineado desde una organizacion QA clara y profesional.',
+      'Retoma ciclos de regresión, revisa bugs y mantén a tu equipo alineado desde una organización QA clara y profesional.',
     accent: '#DCE8F8',
   },
   signup: {
-    eyebrow: 'Crea tu organizacion',
-    title: 'Lanza tu operacion QA en minutos.',
+    eyebrow: 'Crea tu organización',
+    title: 'Lanza tu operación QA en minutos.',
     description:
-      'Registrate, crea tu organizacion y empieza a gestionar proyectos, casos de prueba, ejecuciones y reportes.',
+      'Regístrate, crea tu organización y empieza a gestionar proyectos, casos de prueba, ejecuciones y reportes.',
     accent: '#D9F3FA',
   },
 } as const;
 
 const heroHighlights = [
-  'Operacion QA clara',
-  'Organizacion + proyectos',
+  'Operación QA clara',
+  'Organización + proyectos',
   'Reportes y trazabilidad',
 ] as const;
 
 const showcaseStats = [
-  { value: '1 organizacion', label: 'lista al registrarte' },
-  { value: 'Roles + membresias', label: 'control de acceso real' },
+  { value: '1 organización', label: 'lista al registrarte' },
+  { value: 'Roles + membresías', label: 'control de acceso real' },
   { value: 'Story map y ciclos', label: 'todo en una sola capa' },
 ] as const;
 
@@ -169,8 +169,8 @@ export default function AuthPage() {
   const activeCopy = useMemo(() => {
     if (hasPendingInvitation && invitationContext && mode === 'signup') {
       return {
-        eyebrow: 'Invitacion a organizacion',
-        title: `Unete a ${invitationContext.organizationName}.`,
+        eyebrow: 'Invitación a organización',
+        title: `Únete a ${invitationContext.organizationName}.`,
         description: `Crea tu acceso para colaborar como ${invitationContext.roleName} dentro de QA Tracker.`,
         accent: '#D9F3FA',
       };
@@ -178,9 +178,9 @@ export default function AuthPage() {
 
     if (hasPendingInvitation && invitationContext && mode === 'login') {
       return {
-        eyebrow: 'Acceso por invitacion',
+        eyebrow: 'Acceso por invitación',
         title: 'Entra con tu cuenta existente.',
-        description: `Inicia sesion con ${invitationContext.email} para sumarte a ${invitationContext.organizationName}.`,
+        description: `Inicia sesión con ${invitationContext.email} para sumarte a ${invitationContext.organizationName}.`,
         accent: '#DCE8F8',
       };
     }
@@ -192,39 +192,39 @@ export default function AuthPage() {
     if (mode === 'login') {
       if (hasPendingInvitation && invitationContext) {
         return {
-          eyebrow: 'Accede a tu invitacion',
-          title: 'Inicia sesion',
+          eyebrow: 'Accede a tu invitación',
+          title: 'Inicia sesión',
           description: `Si ya tienes cuenta, entra con ${invitationContext.email} para aceptar el acceso a ${invitationContext.organizationName}.`,
           submitLabel: 'Entrar y unirme',
-          helper: 'Necesitas una cuenta? Cambia a Registro para completar tu acceso con esta invitacion.',
+          helper: '¿Necesitas una cuenta? Cambia a Registro para completar tu acceso con esta invitación.',
         };
       }
 
       return {
         eyebrow: 'Acceso a QA Tracker',
-        title: 'Inicia sesion',
+        title: 'Inicia sesión',
         description: 'Usa tus credenciales de QA Tracker para continuar.',
         submitLabel: 'Entrar a QA Tracker',
-        helper: 'Necesitas una cuenta? Cambia a Registro y crea tu organizacion en un solo paso.',
+        helper: '¿Necesitas una cuenta? Cambia a Registro y crea tu organización en un solo paso.',
       };
     }
 
     if (hasPendingInvitation && invitationContext) {
       return {
-        eyebrow: 'Acepta tu invitacion',
+        eyebrow: 'Acepta tu invitación',
         title: 'Crea tu cuenta',
-        description: `Completa tu usuario y contrasena para unirte a ${invitationContext.organizationName} como ${invitationContext.roleName}.`,
+        description: `Completa tu usuario y contraseña para unirte a ${invitationContext.organizationName} como ${invitationContext.roleName}.`,
         submitLabel: 'Crear cuenta y unirme',
-        helper: 'Ya tienes una cuenta? Vuelve a Ingresar y usa el mismo correo invitado.',
+        helper: '¿Ya tienes una cuenta? Vuelve a Ingresar y usa el mismo correo invitado.',
       };
     }
 
     return {
-      eyebrow: 'Provisiona tu organizacion',
+      eyebrow: 'Provisiona tu organización',
       title: 'Crea tu cuenta',
-      description: 'Crea tu usuario admin y aprovisionaremos una organizacion inicial para ti.',
-      submitLabel: 'Crear organizacion',
-      helper: 'Ya te registraste? Vuelve a Ingresar y continua con tu operacion QA.',
+      description: 'Crea tu usuario admin y aprovisionaremos una organización inicial para ti.',
+      submitLabel: 'Crear organización',
+      helper: '¿Ya te registraste? Vuelve a Ingresar y continúa con tu operación QA.',
     };
   }, [hasPendingInvitation, invitationContext, mode]);
 
@@ -234,7 +234,7 @@ export default function AuthPage() {
     if (invitationContext.status === 'pending') {
       return {
         type: 'info' as const,
-        message: `Invitacion a ${invitationContext.organizationName}`,
+        message: `Invitación a ${invitationContext.organizationName}`,
         description: `${invitationContext.email} fue invitado como ${invitationContext.roleName}.`,
       };
     }
@@ -248,8 +248,8 @@ export default function AuthPage() {
 
     return {
       type: 'warning' as const,
-      message: `Invitacion ${statusLabel}`,
-      description: 'Puedes iniciar sesion o registrarte de forma normal si necesitas continuar.',
+      message: `Invitación ${statusLabel}`,
+      description: 'Puedes iniciar sesión o registrarte de forma normal si necesitas continuar.',
     };
   }, [invitationContext]);
 
@@ -371,21 +371,21 @@ export default function AuthPage() {
               <div className="relative">
                 <div>
                   <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                    Vista general de la organizacion
+                    Vista general de la organización
                   </Text>
                   <Title level={3} className="!mb-2 !mt-3 !text-slate-900">
                     Una entrada limpia para equipos que viven entre bugs, ciclos y trazabilidad.
                   </Title>
                   <Text className="block max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
-                    La ilustracion y los bloques informativos ahora acompañan la accion principal
-                    sin empujar el contenido hacia vacios gigantes.
+                    La ilustración y los bloques informativos ahora acompañan la acción principal
+                    sin empujar el contenido hacia vacíos gigantes.
                   </Text>
                 </div>
               </div>
 
               <img
                 src={authIllustrationUrl}
-                alt="Ilustracion de organizacion QA Tracker"
+                alt="Ilustración de organización QA Tracker"
                 className="relative mx-auto mt-6 max-h-[420px] w-full max-w-[780px] object-contain"
               />
             </div>
@@ -432,8 +432,8 @@ export default function AuthPage() {
                     <Alert
                       type="info"
                       showIcon
-                      message="Validando invitacion"
-                      description="Estamos cargando los datos de la organizacion invitante."
+                      message="Validando invitación"
+                      description="Estamos cargando los datos de la organización invitante."
                       className="mb-6 rounded-2xl"
                     />
                   ) : invitationAlert ? (
@@ -481,12 +481,12 @@ export default function AuthPage() {
                       </Form.Item>
                       <Form.Item
                         name="password"
-                        label="Contrasena"
-                        rules={[{ required: true, message: 'Ingresa tu contrasena.' }]}
+                        label="Contraseña"
+                        rules={[{ required: true, message: 'Ingresa tu contraseña.' }]}
                       >
                         <Input.Password
                           prefix={<LockOutlined className="text-slate-400" />}
-                          placeholder="Tu contrasena segura"
+                          placeholder="Tu contraseña segura"
                           className="h-12 rounded-2xl"
                         />
                       </Form.Item>
@@ -522,10 +522,10 @@ export default function AuthPage() {
                       </Form.Item>
                       <Form.Item
                         name="email"
-                        label="Correo electronico"
+                        label="Correo electrónico"
                         rules={[
                           { required: true, message: 'Ingresa tu correo.' },
-                          { type: 'email', message: 'Usa un correo valido.' },
+                          { type: 'email', message: 'Usa un correo válido.' },
                         ]}
                       >
                         <Input
@@ -539,22 +539,22 @@ export default function AuthPage() {
                       </Form.Item>
                       <Form.Item
                         name="password"
-                        label="Contrasena"
+                        label="Contraseña"
                         rules={[
-                          { required: true, message: 'Crea una contrasena.' },
+                          { required: true, message: 'Crea una contraseña.' },
                           { min: 6, message: 'Usa al menos 6 caracteres.' },
                         ]}
                       >
                         <Input.Password
                           prefix={<LockOutlined className="text-slate-400" />}
-                          placeholder="Minimo 6 caracteres"
+                          placeholder="Mínimo 6 caracteres"
                           className="h-12 rounded-2xl"
                         />
                       </Form.Item>
                       <Form.Item
                         name="organizationName"
-                        label="Nombre de la organizacion"
-                        rules={[{ required: true, message: 'Ingresa el nombre de tu organizacion.' }]}
+                        label="Nombre de la organización"
+                        rules={[{ required: true, message: 'Ingresa el nombre de tu organización.' }]}
                       >
                         <Input
                           prefix={<SafetyCertificateOutlined className="text-slate-400" />}

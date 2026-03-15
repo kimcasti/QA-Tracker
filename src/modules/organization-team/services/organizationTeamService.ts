@@ -41,6 +41,14 @@ export async function deactivateOrganizationMember(membershipDocumentId: string)
   return response.data;
 }
 
+export async function reactivateOrganizationMember(membershipDocumentId: string) {
+  const response = await Http.put<OrganizationTeamData>(
+    `/api/organization-team/members/${membershipDocumentId}/reactivate`,
+  );
+
+  return response.data;
+}
+
 export async function resendOrganizationInvitation(invitationDocumentId: string) {
   const response = await Http.post<OrganizationTeamData>(
     `/api/organization-team/invitations/${invitationDocumentId}/resend`,

@@ -112,7 +112,7 @@ export default function ProjectManagement({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
-      message.success('Nombre de la organizacion actualizado');
+      message.success('Nombre de la organización actualizado');
       setIsEditOrganizationModalOpen(false);
     },
   });
@@ -160,7 +160,7 @@ export default function ProjectManagement({
         return;
       }
 
-      message.error('No se pudo actualizar el nombre de la organizacion');
+      message.error('No se pudo actualizar el nombre de la organización');
     }
   };
 
@@ -223,7 +223,7 @@ export default function ProjectManagement({
                       backgroundColor: softSurface(qaPalette.accent),
                     }}
                   >
-                    Organizacion y proyectos
+                    Organización y proyectos
                   </Tag>
                 </Space>
 
@@ -231,11 +231,10 @@ export default function ProjectManagement({
                   level={1}
                   className="!mb-3 !text-3xl !font-bold !text-slate-900 sm:!text-5xl"
                 >
-                  Gestion de proyectos QA con identidad consistente y acceso claro.
+                  Gestión de proyectos QA con identidad consistente y acceso claro.
                 </Title>
                 <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
-                  Administra los proyectos de tu organizacion, el acceso del equipo y la
-                  informacion clave sin mezclar conceptos entre organizacion y proyecto.
+                  Administra los proyectos de tu organización.
                 </Paragraph>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -267,12 +266,12 @@ export default function ProjectManagement({
                     disabled={!canEditOrganization}
                     className="h-11 rounded-2xl px-5 font-semibold"
                   >
-                    Editar organizacion
+                    Editar organización
                   </Button>
                 </div>
                 <div className="mb-4 text-right">
                   <Text className="text-slate-500">
-                    {activeOrganization?.name || 'Organizacion actual'}
+                    {activeOrganization?.name || 'Organización actual'}
                   </Text>
                 </div>
                 <Row gutter={[16, 16]}>
@@ -343,7 +342,7 @@ export default function ProjectManagement({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <Title level={3} className="!mb-1 !text-slate-900">
-                {activeOrganization?.name || 'Organizacion actual'}
+                {activeOrganization?.name || 'Organización actual'}
               </Title>
             </div>
 
@@ -477,7 +476,7 @@ export default function ProjectManagement({
                             {project.name}
                           </Title>
                           <Text className="text-slate-500">
-                            {project.purpose || 'Proyecto QA de la organizacion actual'}
+                            {project.purpose || 'Proyecto QA de la organización actual'}
                           </Text>
                         </div>
 
@@ -553,13 +552,10 @@ export default function ProjectManagement({
         )}
       </div>
 
-      <OrganizationTeamModal
-        open={isTeamModalOpen}
-        onCancel={() => setIsTeamModalOpen(false)}
-      />
+      <OrganizationTeamModal open={isTeamModalOpen} onCancel={() => setIsTeamModalOpen(false)} />
       <Modal
         open={isEditOrganizationModalOpen}
-        title="Editar organizacion"
+        title="Editar organización"
         onOk={handleSaveOrganizationName}
         onCancel={() => setIsEditOrganizationModalOpen(false)}
         okText="Guardar cambios"
@@ -570,13 +566,10 @@ export default function ProjectManagement({
         <Form form={organizationForm} layout="vertical" className="mt-4">
           <Form.Item
             name="name"
-            label="Nombre de la organizacion"
-            rules={[{ required: true, message: 'Ingresa el nombre de la organizacion.' }]}
+            label="Nombre de la organización"
+            rules={[{ required: true, message: 'Ingresa el nombre de la organización.' }]}
           >
-            <Input
-              size="large"
-              placeholder="Ej. Laboratorio QA Kimberly"
-            />
+            <Input size="large" placeholder="Ej. Laboratorio QA" />
           </Form.Item>
         </Form>
       </Modal>

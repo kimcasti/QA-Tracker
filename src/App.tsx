@@ -65,6 +65,7 @@ type ParsedRoute =
   | { type: 'unknown' };
 
 const SELECTED_PROJECT_STORAGE_KEY = 'qa_tracker_selected_project_id';
+const SELECTED_PROJECT_OWNER_STORAGE_KEY = 'qa_tracker_selected_project_owner';
 
 const WORKSPACE_VIEW_TO_PATH: Record<WorkspaceViewKey, string> = {
   dashboard: 'dashboard',
@@ -222,6 +223,21 @@ function WorkspaceApp({
   const parsedRoute = useMemo(() => parseRoute(location.pathname), [location.pathname]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const currentOwner = currentUser.email.trim().toLowerCase();
+    const persistedOwner = window.localStorage.getItem(SELECTED_PROJECT_OWNER_STORAGE_KEY);
+
+    if (persistedOwner && persistedOwner !== currentOwner) {
+      window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      window.localStorage.removeItem(SELECTED_PROJECT_OWNER_STORAGE_KEY);
+      setSelectedProjectId(null);
+    }
+
+    window.localStorage.setItem(SELECTED_PROJECT_OWNER_STORAGE_KEY, currentOwner);
+  }, [currentUser.email]);
+
+  useEffect(() => {
     if (!selectedProjectId || projects.length === 0) return;
     const projectExists = projects.some(project => project.id === selectedProjectId);
     if (!projectExists) {
@@ -306,6 +322,18 @@ function WorkspaceApp({
     navigate('/');
   };
 
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      window.localStorage.removeItem(SELECTED_PROJECT_OWNER_STORAGE_KEY);
+    }
+    flushSync(() => {
+      setSelectedProjectId(null);
+    });
+    navigate('/');
+    onLogout();
+  };
+
   const projectsScreen = (
     <Layout className="qa-workspace-shell min-h-screen">
       <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
@@ -332,7 +360,7 @@ function WorkspaceApp({
                 {currentUser.email}
               </Text>
             </div>
-            <Button type="text" icon={<LogoutOutlined />} onClick={onLogout} className="rounded-lg">
+            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} className="rounded-lg">
               Logout
             </Button>
           </Space>
@@ -446,7 +474,7 @@ function WorkspaceApp({
                 <Button
                   type="text"
                   icon={<LogoutOutlined />}
-                  onClick={onLogout}
+                  onClick={handleLogout}
                   className="rounded-lg"
                 >
                   Logout
