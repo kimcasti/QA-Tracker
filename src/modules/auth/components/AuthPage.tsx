@@ -14,7 +14,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import authIllustrationUrl from '../../../assets/auth-qa-illustration.svg';
 import { appBranding } from '../../../assets/branding';
 import { toApiError } from '../../../config/http';
@@ -54,6 +54,18 @@ const heroCopy = {
   },
 } as const;
 
+const heroHighlights = [
+  'Operacion QA clara',
+  'Multiples workspaces',
+  'Reportes y trazabilidad',
+] as const;
+
+const showcaseStats = [
+  { value: '1 workspace', label: 'listo al registrarte' },
+  { value: 'Roles + membresias', label: 'control de acceso real' },
+  { value: 'Story map y ciclos', label: 'todo en una sola capa' },
+] as const;
+
 export default function AuthPage() {
   const { login, signup } = useAuthSession();
   const [mode, setMode] = useState<AuthMode>('login');
@@ -61,15 +73,6 @@ export default function AuthPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const activeCopy = heroCopy[mode];
-
-  const featureItems = useMemo(
-    () => [
-      'Proyectos, modulos, story map, ejecuciones y ciclos conectados a tu API.',
-      'Acceso seguro por membresia de workspace y rol organizacional.',
-      'Una capa QA lista para equipos SaaS que necesitan orden y trazabilidad.',
-    ],
-    [],
-  );
 
   const handleLogin = async (values: LoginValues) => {
     try {
@@ -99,55 +102,112 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-[100dvh] w-full overflow-hidden bg-[linear-gradient(135deg,#f7fbff_0%,#eef6fb_42%,#f8f1ec_100%)]">
-      <div className="relative flex min-h-[100dvh] w-full items-stretch justify-center overflow-hidden p-4 lg:p-5">
+      <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[1600px] items-center justify-center overflow-hidden p-4 lg:p-6">
         <div className="absolute inset-x-10 top-0 h-40 rounded-full bg-[radial-gradient(circle,_rgba(23,182,211,0.16)_0%,_rgba(23,182,211,0)_72%)] blur-2xl" />
         <div className="absolute -left-10 top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(18,63,104,0.14)_0%,_rgba(18,63,104,0)_74%)] blur-3xl" />
 
         <section
-          className="relative w-full overflow-hidden rounded-[32px] border border-white/70 bg-white/78 p-6 shadow-[0_32px_80px_rgba(16,42,67,0.14)] backdrop-blur md:p-8 lg:min-h-[calc(100dvh-2.5rem)] lg:p-10"
+          className="relative w-full overflow-hidden rounded-[36px] border border-white/70 bg-white/78 p-5 shadow-[0_32px_80px_rgba(16,42,67,0.14)] backdrop-blur md:p-7 lg:p-8"
           style={{
             backgroundImage: `radial-gradient(circle at top right, ${activeCopy.accent} 0%, rgba(255,255,255,0) 34%)`,
           }}
         >
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.18fr)_minmax(420px,0.72fr)] lg:gap-8">
-              <div className="min-w-0">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={appBranding.logoUrl}
-                    alt={qaBrand.name}
-                    className="h-14 w-14 rounded-2xl border border-slate-100 object-cover shadow-md"
-                  />
-                  <div>
-                    <Text className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">
-                      {activeCopy.eyebrow}
-                    </Text>
-                    <Title level={2} className="!mb-0 !mt-1 max-w-2xl !text-slate-900">
-                      {activeCopy.title}
-                    </Title>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.08fr)_440px] lg:gap-8">
+            <div className="min-w-0 space-y-6">
+              <div className="relative overflow-hidden rounded-[32px] border border-white/80 bg-white/74 p-6 shadow-[0_22px_54px_rgba(16,42,67,0.08)] md:p-8">
+                <div className="absolute right-[-72px] top-[-76px] h-56 w-56 rounded-full bg-[rgba(23,182,211,0.12)] blur-2xl" />
+                <div className="relative">
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={appBranding.logoUrl}
+                      alt={qaBrand.name}
+                      className="h-14 w-14 rounded-2xl border border-slate-100 object-cover shadow-md"
+                    />
+                    <div>
+                      <Text className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">
+                        {activeCopy.eyebrow}
+                      </Text>
+                      <Title level={1} className="!mb-0 !mt-1 max-w-3xl !text-[clamp(2rem,3.3vw,4.25rem)] !leading-[1.02] !text-slate-900">
+                        {activeCopy.title}
+                      </Title>
+                    </div>
                   </div>
-                </div>
 
-                <Paragraph className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-                  {activeCopy.description}
-                </Paragraph>
+                  <Paragraph className="mt-5 max-w-3xl text-base leading-7 text-slate-600 md:text-lg">
+                    {activeCopy.description}
+                  </Paragraph>
 
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <div className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
-                    Operacion QA
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    {heroHighlights.map((item) => (
+                      <div
+                        key={item}
+                        className="rounded-full border border-slate-200 bg-white/85 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-600"
+                      >
+                        {item}
+                      </div>
+                    ))}
                   </div>
-                  <div className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
-                    Multiples workspaces
-                  </div>
-                  <div className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
-                    Reportes y trazabilidad
+
+                  <div className="mt-8 grid gap-3 md:grid-cols-3">
+                    {showcaseStats.map((item, index) => (
+                      <div
+                        key={item.label}
+                        className="rounded-[24px] border border-slate-200/80 bg-white/84 px-4 py-4 shadow-[0_16px_30px_rgba(16,42,67,0.05)]"
+                      >
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900/5">
+                          {index === 0 ? (
+                            <UserOutlined style={{ color: qaPalette.primary }} />
+                          ) : index === 1 ? (
+                            <SafetyCertificateOutlined style={{ color: qaPalette.accent }} />
+                          ) : (
+                            <ArrowRightOutlined
+                              style={{ color: qaPalette.functionalityStatus.completed }}
+                            />
+                          )}
+                        </div>
+                        <Text className="block text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+                          {item.value}
+                        </Text>
+                        <Text className="mt-2 block text-sm leading-6 text-slate-600">
+                          {item.label}
+                        </Text>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
+            <div className="relative overflow-hidden rounded-[32px] border border-[#d7e9f0] bg-[linear-gradient(135deg,rgba(18,63,104,0.05)_0%,rgba(23,182,211,0.12)_100%)] p-6 md:p-8">
+              <div className="absolute -left-12 bottom-[-72px] h-56 w-56 rounded-full bg-[rgba(18,63,104,0.07)]" />
+              <div className="absolute right-[-30px] top-[-18px] h-56 w-56 rounded-full bg-[rgba(23,182,211,0.11)]" />
+
+              <div className="relative">
+                <div>
+                  <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
+                    Vista general del workspace
+                  </Text>
+                  <Title level={3} className="!mb-2 !mt-3 !text-slate-900">
+                    Una entrada limpia para equipos que viven entre bugs, ciclos y trazabilidad.
+                  </Title>
+                  <Text className="block max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
+                    La ilustracion y los bloques informativos ahora acompañan la accion principal
+                    sin empujar el contenido hacia vacios gigantes.
+                  </Text>
+                </div>
+              </div>
+
+              <img
+                src={authIllustrationUrl}
+                alt="Ilustracion de workspace QA Tracker"
+                className="relative mx-auto mt-6 max-h-[420px] w-full max-w-[780px] object-contain"
+              />
+            </div>
+            </div>
+
+            <div className="space-y-4">
               <Card
                 variant="borderless"
-                className="relative overflow-hidden rounded-[30px] border border-white/90 bg-white/92 shadow-[0_28px_72px_rgba(16,42,67,0.16)]"
+                className="relative overflow-hidden rounded-[30px] border border-white/90 bg-white/92 shadow-[0_28px_72px_rgba(16,42,67,0.16)] lg:sticky lg:top-6"
                 styles={{ body: { padding: 24 } }}
               >
                 <div className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(23,182,211,0.10)_0%,rgba(23,182,211,0)_100%)]" />
@@ -293,44 +353,6 @@ export default function AuthPage() {
                   </div>
                 </div>
               </Card>
-            </div>
-
-            <div className="mt-8 grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.62fr)] lg:items-stretch">
-              <div className="relative min-h-[300px] overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,rgba(18,63,104,0.04)_0%,rgba(23,182,211,0.10)_100%)]">
-                <div className="absolute -left-12 bottom-[-72px] h-56 w-56 rounded-full bg-[rgba(18,63,104,0.07)]" />
-                <div className="absolute right-[-30px] top-[-18px] h-56 w-56 rounded-full bg-[rgba(23,182,211,0.11)]" />
-                <img
-                  src={authIllustrationUrl}
-                  alt="Ilustracion de workspace QA Tracker"
-                  className="relative mx-auto h-full max-h-[50vh] w-full object-contain p-6 md:p-8"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                {featureItems.map((item, index) => (
-                  <Card
-                    key={item}
-                    variant="borderless"
-                    className="rounded-3xl bg-white/82 shadow-[0_18px_42px_rgba(16,42,67,0.08)]"
-                    styles={{ body: { padding: 18 } }}
-                  >
-                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900/5">
-                      {index === 0 ? (
-                        <SafetyCertificateOutlined style={{ color: qaPalette.primary }} />
-                      ) : index === 1 ? (
-                        <LockOutlined style={{ color: qaPalette.accent }} />
-                      ) : (
-                        <ArrowRightOutlined
-                          style={{ color: qaPalette.functionalityStatus.completed }}
-                        />
-                      )}
-                    </div>
-                    <Text className="block text-sm font-semibold leading-6 text-slate-700">
-                      {item}
-                    </Text>
-                  </Card>
-                ))}
-              </div>
             </div>
           </div>
         </section>
