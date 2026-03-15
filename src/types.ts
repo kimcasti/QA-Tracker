@@ -47,6 +47,7 @@ export interface Project {
 }
 
 export interface Functionality {
+  documentId?: string;
   id: string;
   projectId: string;
   module: string;

@@ -12,6 +12,7 @@ import {
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -19,8 +20,30 @@ import { getModules, getRoles, getSprints } from '../../settings/services/settin
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { FunctionalityDto } from '../types/api';
 
+export function buildNextFunctionalityCode(
+  moduleName: string,
+  functionalities: Array<Pick<Functionality, 'id' | 'module'>>,
+) {
+  if (!moduleName) return '';
+
+  const normalizedModuleName = moduleName.trim().toLowerCase();
+  const prefix = moduleName.trim().substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const nextSequence =
+    functionalities
+      .filter(item => item.module.trim().toLowerCase() === normalizedModuleName)
+      .map(item => {
+        const match = item.id.match(new RegExp(`^${prefix}-(\\d+)$`));
+        return match ? Number.parseInt(match[1], 10) : 0;
+      })
+      .reduce((max, current) => Math.max(max, current), 0) + 1;
+
+  return `${prefix}-${nextSequence.toString().padStart(2, '0')}`;
+}
+
 function mapFunctionality(document: FunctionalityDto): Functionality {
   return {
+    documentId: document.documentId,
     id: document.code,
     projectId: document.project?.key || '',
     module: document.module?.name || '',
@@ -41,11 +64,16 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
 export async function getFunctionalities(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<FunctionalityDto>('/api/functionalities', {
-    populate: 'project,module,personaRoles,sprint',
+    ...populateParams(['project', 'module', 'personaRoles', 'sprint']),
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
   return documents.map(mapFunctionality);
+}
+
+export async function getNextFunctionalityCode(projectId: string, moduleName: string) {
+  const functionalities = await getFunctionalities(projectId);
+  return buildNextFunctionalityCode(moduleName, functionalities);
 }
 
 export async function saveFunctionality(functionality: Functionality) {
@@ -55,10 +83,12 @@ export async function saveFunctionality(functionality: Functionality) {
   }
 
   const [documents, modules, roles, sprints] = await Promise.all([
-    listDocuments<FunctionalityDto>('/api/functionalities', {
-      'filters[project][documentId][$eq]': context.documentId,
-      'filters[code][$eq]': functionality.id,
-    }),
+    functionality.documentId
+      ? Promise.resolve([])
+      : listDocuments<FunctionalityDto>('/api/functionalities', {
+          'filters[project][documentId][$eq]': context.documentId,
+          'filters[code][$eq]': functionality.id,
+        }),
     getModules(functionality.projectId),
     getRoles(functionality.projectId),
     getSprints(functionality.projectId),
@@ -70,9 +100,13 @@ export async function saveFunctionality(functionality: Functionality) {
     .filter(item => functionality.roles.includes(item.name))
     .map(item => ({ documentId: item.id }));
 
+  if (!functionality.documentId && documents[0]?.documentId) {
+    throw new Error(`Functionality code ${functionality.id} already exists in this project.`);
+  }
+
   const saved = await upsertDocument<FunctionalityDto>(
     '/api/functionalities',
-    documents[0]?.documentId || null,
+    functionality.documentId || documents[0]?.documentId || null,
     {
       code: functionality.id,
       name: functionality.name,

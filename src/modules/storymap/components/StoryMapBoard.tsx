@@ -8,7 +8,7 @@ import { qaPalette, softSurface } from '../../../theme/palette';
 import type { StoryMapRoleNode } from '../types';
 import { taskOrderService } from '../services/taskOrderService';
 import { StoryColumn } from './StoryColumn';
-import { TaskCard } from './TaskCard';
+import { TaskCard, TaskPlaceholderCard } from './TaskCard';
 
 const { Text } = Typography;
 
@@ -119,10 +119,19 @@ export default function StoryMapBoard({
       const next: Record<string, string[]> = { ...prev };
 
       const existingFuncIds = new Set(functionalities.map(f => f.id));
+      const assignedStoryByFunctionId = new Map(
+        functionalities
+          .filter((f): f is Functionality & { storyId: string } => Boolean(f.storyId))
+          .map(f => [f.id, f.storyId]),
+      );
 
-      // Remove ids that no longer exist.
+      // Remove ids that no longer exist or are no longer assigned to this story.
       Object.keys(next).forEach(storyId => {
-        next[storyId] = (next[storyId] || []).filter(id => existingFuncIds.has(id));
+        next[storyId] = (next[storyId] || []).filter(id => {
+          if (!existingFuncIds.has(id)) return false;
+          const assignedStoryId = assignedStoryByFunctionId.get(id);
+          return !assignedStoryId || assignedStoryId === storyId;
+        });
       });
 
       // Ensure every rendered story has a list.
@@ -266,7 +275,7 @@ export default function StoryMapBoard({
       {roles.map(role => (
         <Card
           key={role.id}
-          bordered={false}
+          variant="borderless"
           className="rounded-2xl qa-surface-card border-l-4"
           style={{ borderLeftColor: qaPalette.primary }}
           styles={{
@@ -300,7 +309,7 @@ export default function StoryMapBoard({
               <Card
                 key={epic.id}
                 size="small"
-                bordered={false}
+                variant="borderless"
                 className={`rounded-2xl qa-story-surface shadow-none border-l-4 ${epicAccentClass(epic.id)}`}
                 style={{ background: `linear-gradient(180deg, ${qaPalette.storyMapCard} 0%, ${softSurface(qaPalette.storyMapBorder)} 100%)` }}
                 styles={{
@@ -344,7 +353,7 @@ export default function StoryMapBoard({
                           onAssignExisting={handleAssignExisting}
                           renderItem={(itemId) => {
                             if (isEmptyItem(itemId)) {
-                              return <TaskCard isPlaceholder />;
+                              return <TaskPlaceholderCard />;
                             }
                             const f = funcById.get(itemId);
                             return (

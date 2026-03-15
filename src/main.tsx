@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -10,12 +11,14 @@ import { AuthSessionProvider } from './modules/auth/context/AuthSessionProvider'
 
 createRoot(document.getElementById('root')!).render(
   <LanguageProvider>
-    <QueryClientProvider client={queryClient}>
-      <AuthSessionProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthSessionProvider>
-    </QueryClientProvider>
+    <AntdApp>
+      <QueryClientProvider client={queryClient}>
+        <AuthSessionProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </AuthSessionProvider>
+      </QueryClientProvider>
+    </AntdApp>
   </LanguageProvider>,
 );

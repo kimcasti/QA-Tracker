@@ -10,17 +10,39 @@ import {
 
 export function useFunctionalities(projectId?: string) {
   const queryClient = useQueryClient();
+  const queryKey = ['functionalities', projectId] as const;
 
   const query = useQuery({
-    queryKey: ['functionalities', projectId],
+    queryKey,
     queryFn: () => getFunctionalities(projectId),
     enabled: Boolean(projectId),
+    refetchOnMount: 'always',
   });
 
   const saveMutation = useMutation({
     mutationFn: (functionality: Functionality) => saveFunctionality(functionality),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['functionalities', projectId] }),
+    onSuccess: savedFunctionality => {
+      queryClient.setQueryData<Functionality[] | undefined>(queryKey, previous => {
+        if (!previous) return [savedFunctionality];
+
+        const existingIndex = previous.findIndex(item =>
+          savedFunctionality.documentId
+            ? item.documentId === savedFunctionality.documentId
+            : item.id === savedFunctionality.id,
+        );
+
+        if (existingIndex === -1) {
+          return [...previous, savedFunctionality];
+        }
+
+        const next = [...previous];
+        next[existingIndex] = savedFunctionality;
+        return next;
+      });
+
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.refetchQueries({ queryKey, type: 'active' });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -28,8 +50,7 @@ export function useFunctionalities(projectId?: string) {
       if (!projectId) throw new Error('A projectId is required to delete a functionality.');
       return removeFunctionality(projectId, id);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['functionalities', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
   const bulkUpdateMutation = useMutation({
@@ -37,14 +58,12 @@ export function useFunctionalities(projectId?: string) {
       if (!projectId) throw new Error('A projectId is required to bulk update functionalities.');
       return bulkUpdateFunctionalities(projectId, ids, updates);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['functionalities', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
   const bulkAddMutation = useMutation({
     mutationFn: (functionalities: Functionality[]) => bulkAddFunctionalities(functionalities),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['functionalities', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
   return {

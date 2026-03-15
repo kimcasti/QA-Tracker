@@ -113,16 +113,45 @@ async function getActiveOrganizationDocumentId() {
 }
 
 async function listCollection(endpoint: string, params?: Record<string, string>) {
-  const response = await apiRequest<{ data: ApiDocument[] }>({
+  const pageSize = Number(params?.['pagination[pageSize]'] ?? 200);
+  const baseParams = {
+    ...params,
+    'pagination[pageSize]': pageSize,
+  };
+
+  const firstResponse = await apiRequest<{
+    data: ApiDocument[];
+    meta?: { pagination?: { pageCount?: number } };
+  }>({
     method: 'GET',
     url: endpoint,
     params: {
-      ...params,
-      'pagination[pageSize]': 200,
+      ...baseParams,
+      'pagination[page]': 1,
     },
   });
 
-  return response.data || [];
+  const firstPageData = firstResponse.data || [];
+  const pageCount = firstResponse.meta?.pagination?.pageCount ?? 1;
+
+  if (pageCount <= 1) {
+    return firstPageData;
+  }
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      apiRequest<{ data: ApiDocument[] }>({
+        method: 'GET',
+        url: endpoint,
+        params: {
+          ...baseParams,
+          'pagination[page]': index + 2,
+        },
+      }),
+    ),
+  );
+
+  return [...firstPageData, ...remainingPages.flatMap(response => response.data || [])];
 }
 
 async function createOrUpdateDocument(
@@ -140,7 +169,18 @@ async function createOrUpdateDocument(
 }
 
 function relation(documentId?: string | null) {
-  return documentId || undefined;
+  if (!documentId) {
+    return undefined;
+  }
+
+  return { documentId };
+}
+
+function populateParams(paths: string[]) {
+  return paths.reduce<Record<string, string>>((params, path, index) => {
+    params[`populate[${index}]`] = path;
+    return params;
+  }, {});
 }
 
 function projectStatusToApi(status: ProjectStatus) {
@@ -554,7 +594,7 @@ export const dataService = {
     withApiFallback(async () => {
       const projectDocumentId = projectId ? await getProjectDocumentId(projectId) : null;
       const functionalities = await listCollection('/api/functionalities', {
-        populate: 'project,module,personaRoles,sprint',
+        ...populateParams(['project', 'module', 'personaRoles', 'sprint']),
         ...(projectDocumentId ? { 'filters[project][documentId][$eq]': projectDocumentId } : {}),
       });
 
@@ -632,7 +672,7 @@ export const dataService = {
     withApiFallback(async () => {
       const projectDocumentId = projectId ? await getProjectDocumentId(projectId) : null;
       const testCases = await listCollection('/api/test-cases', {
-        populate: 'project,functionality',
+        ...populateParams(['project', 'functionality']),
         ...(projectDocumentId ? { 'filters[project][documentId][$eq]': projectDocumentId } : {}),
       });
 
@@ -659,7 +699,7 @@ export const dataService = {
         priority: priorityToApi(testCase.priority),
         organization: relation(await getOrganizationDocumentId(testCase.projectId)),
         project: relation(await getProjectDocumentId(testCase.projectId)),
-        functionality: relation(functionality?.documentId),
+        functionality: relation(functionality?.documentId || functionality?.id),
       });
 
       return mapTestCase(saved);

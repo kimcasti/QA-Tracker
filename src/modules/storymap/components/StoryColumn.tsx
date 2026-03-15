@@ -37,7 +37,7 @@ export function StoryColumn({
   return (
     <Card
       size="small"
-      bordered={false}
+      variant="borderless"
       className="rounded-xl qa-story-surface qa-story-accent"
       styles={{
         header: { padding: '8px 12px' },

@@ -35,6 +35,30 @@
   background: var(--qa-color-card, #FFFFFF);
 }
 
+.qa-workspace-shell {
+  min-height: 100vh;
+}
+
+.qa-workspace-stage {
+  min-height: calc(100vh - 64px);
+}
+
+.qa-workspace-content {
+  min-height: calc(100vh - 64px);
+  background:
+    radial-gradient(circle at top right, rgba(23, 182, 211, 0.14) 0%, transparent 24%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, white 92%, var(--qa-color-bg, #F4F8FB) 8%) 0%,
+      var(--qa-color-bg, #F4F8FB) 52%,
+      #EAF4FA 100%
+    );
+}
+
+.qa-workspace-canvas {
+  min-height: 100%;
+}
+
 .ant-layout-sider,
 .ant-layout-header,
 .ant-card,

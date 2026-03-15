@@ -8,6 +8,7 @@ import {
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -33,7 +34,7 @@ function mapTestCase(document: TestCaseDto): TestCase {
 export async function getTestCases(projectId?: string, functionalityId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestCaseDto>('/api/test-cases', {
-    populate: 'project,functionality',
+    ...populateParams(['project', 'functionality']),
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
@@ -66,7 +67,7 @@ export async function saveTestCase(testCase: TestCase) {
     priority: priorityToApi(testCase.priority),
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
-    functionality: relation(functionality?.id),
+    functionality: relation(functionality?.documentId || functionality?.id),
   });
 
   return mapTestCase(saved);

@@ -11,6 +11,7 @@ import {
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -51,7 +52,7 @@ function mapBug(document: BugDto): QABug {
 export async function getBugs(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<BugDto>('/api/bugs', {
-    populate: 'project,functionality,sprint,testCase,testRun,testCycle',
+    ...populateParams(['project', 'functionality', 'sprint', 'testCase', 'testRun', 'testCycle']),
     sort: 'detectedAt:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });

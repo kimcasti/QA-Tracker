@@ -12,7 +12,7 @@
   Select,
   Space,
   Typography,
-  message,
+  App as AntdApp,
 } from 'antd';
 import { CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -21,19 +21,29 @@ import type { Functionality } from '../../../types';
 import { Priority, RiskLevel, TestStatus, TestType } from '../../../types';
 import { labelPriority, labelRisk } from '../../../i18n/labels';
 import { useFunctionalities } from '../../functionalities/hooks/useFunctionalities';
+import {
+  buildNextFunctionalityCode,
+  getNextFunctionalityCode,
+} from '../../functionalities/services/functionalitiesService';
 import { useModules } from '../../settings/hooks/useModules';
 import { useSprints } from '../../settings/hooks/useSprints';
 import { storyMapService } from '../services/storyMapService';
 import { storyMapExportService } from '../services/storyMapExportService';
 import type { StoryMapRoleNode } from '../types';
 import StoryMapBoard from './StoryMapBoard';
+import { StoryMapErrorBoundary } from './StoryMapErrorBoundary';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
 export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
-  const { data: functionalitiesData, save: saveFunctionality } = useFunctionalities(projectId);
+  const { message } = AntdApp.useApp();
+  const {
+    data: functionalitiesData,
+    save: saveFunctionality,
+    refetch: refetchFunctionalities,
+  } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -47,11 +57,13 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const [createFuncStoryId, setCreateFuncStoryId] = useState<string | null>(null);
   const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
   const [activeEpicId, setActiveEpicId] = useState<string | null>(null);
+  const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
 
   const [roleForm] = Form.useForm();
   const [epicForm] = Form.useForm();
   const [storyForm] = Form.useForm();
   const [funcForm] = Form.useForm();
+  const selectedModule = Form.useWatch('module', funcForm);
 
   const reload = () => {
     if (!projectId) return;
@@ -70,19 +82,29 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const assignFunctionality = async (storyId: string, functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
-    const updated: Functionality = { ...func, storyId };
-    await saveFunctionality(updated);
-    reload();
-    message.success(t('storymap.assign_success', { id: func.id }));
+    try {
+      const updated: Functionality = { ...func, storyId };
+      await saveFunctionality(updated);
+      await refetchFunctionalities();
+      message.success(t('storymap.assign_success', { id: func.id }));
+    } catch (error) {
+      console.error('Story Map assign functionality error:', error);
+      message.error('No se pudo asociar la funcionalidad a la historia.');
+    }
   };
 
   const unassignFunctionality = async (functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
-    const updated: Functionality = { ...func, storyId: undefined };
-    await saveFunctionality(updated);
-    reload();
-    message.success(t('storymap.unassign_success', { id: func.id }));
+    try {
+      const updated: Functionality = { ...func, storyId: undefined };
+      await saveFunctionality(updated);
+      await refetchFunctionalities();
+      message.success(t('storymap.unassign_success', { id: func.id }));
+    } catch (error) {
+      console.error('Story Map unassign functionality error:', error);
+      message.error('No se pudo desasociar la funcionalidad de la historia.');
+    }
   };
 
   const openCreateEpic = (roleId: string) => {
@@ -97,21 +119,34 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     setStoryModalOpen(true);
   };
 
-  const generateFunctionalityId = (moduleName: string) => {
-    if (!moduleName) return '';
-    const prefix = moduleName
-      .trim()
-      .substring(0, 4)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
-    const count = functionalities.filter(
-      f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase(),
-    ).length;
-    return `${prefix}-${(count + 1).toString().padStart(2, '0')}`;
-  };
+  useEffect(() => {
+    if (!createFuncModalOpen || !projectId || !selectedModule) {
+      setNextFunctionalityIdPreview('');
+      return;
+    }
+
+    let cancelled = false;
+
+    setNextFunctionalityIdPreview(buildNextFunctionalityCode(selectedModule, functionalities));
+
+    getNextFunctionalityCode(projectId, selectedModule)
+      .then(nextId => {
+        if (!cancelled) {
+          setNextFunctionalityIdPreview(nextId);
+        }
+      })
+      .catch(error => {
+        console.error('Story Map next functionality id error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [createFuncModalOpen, functionalities, projectId, selectedModule]);
 
   const openCreateFunctionality = (storyId: string) => {
     setCreateFuncStoryId(storyId);
+    setNextFunctionalityIdPreview('');
     funcForm.resetFields();
     funcForm.setFieldsValue({
       priority: Priority.MEDIUM,
@@ -216,24 +251,26 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         </Space>
       </div>
 
-      <Card bordered={false} className="rounded-2xl shadow-sm" styles={{ body: { padding: 12 } }}>
+      <Card variant="borderless" className="rounded-2xl shadow-sm" styles={{ body: { padding: 12 } }}>
         {fullMap.length === 0 ? (
           <div className="w-full py-8">
             <Empty description={t('storymap.empty_roles')} />
           </div>
         ) : (
-          <StoryMapBoard
-            projectId={projectId}
-            roles={fullMap}
-            functionalities={functionalities}
-            unassignedFunctionalities={unassignedFunctionalities}
-            onCreateEpic={openCreateEpic}
-            onCreateStory={openCreateStory}
-            onCreateFunctionality={openCreateFunctionality}
-            onAssignExisting={assignFunctionality}
-            onUnassignFunctionality={unassignFunctionality}
-            onSaveFunctionality={saveFunctionality}
-          />
+          <StoryMapErrorBoundary onRetry={reload}>
+            <StoryMapBoard
+              projectId={projectId}
+              roles={fullMap}
+              functionalities={functionalities}
+              unassignedFunctionalities={unassignedFunctionalities}
+              onCreateEpic={openCreateEpic}
+              onCreateStory={openCreateStory}
+              onCreateFunctionality={openCreateFunctionality}
+              onAssignExisting={assignFunctionality}
+              onUnassignFunctionality={unassignFunctionality}
+              onSaveFunctionality={saveFunctionality}
+            />
+          </StoryMapErrorBoundary>
         )}
       </Card>
 
@@ -245,39 +282,51 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           setCreateFuncStoryId(null);
         }}
         onOk={async () => {
-          const values = await funcForm.validateFields();
-          if (!createFuncStoryId) {
-            message.error(t('storymap.error_no_story'));
-            return;
+          try {
+            const values = await funcForm.validateFields();
+            if (!createFuncStoryId) {
+              message.error(t('storymap.error_no_story'));
+              return;
+            }
+
+            const newId =
+              (projectId && values.module
+                ? await getNextFunctionalityCode(projectId, values.module)
+                : '') || nextFunctionalityIdPreview;
+            const deliveryDateStr = values.deliveryDate
+              ? values.deliveryDate.format('YYYY-MM-DD')
+              : dayjs().format('YYYY-MM-DD');
+            const payload: Functionality = {
+              id: newId,
+              projectId,
+              module: values.module,
+              name: values.name,
+              roles: ['Todos'],
+              testTypes: [TestType.FUNCTIONAL],
+              isRegression: false,
+              isSmoke: false,
+              deliveryDate: deliveryDateStr,
+              status: TestStatus.BACKLOG,
+              priority: values.priority,
+              riskLevel: values.riskLevel,
+              sprint: values.sprint,
+              storyId: createFuncStoryId,
+            };
+
+            await saveFunctionality(payload);
+            await refetchFunctionalities();
+            setCreateFuncModalOpen(false);
+            setCreateFuncStoryId(null);
+            funcForm.resetFields();
+            message.success(t('storymap.create_func_success', { id: payload.id }));
+          } catch (error) {
+            console.error('Story Map create functionality error:', error);
+            const errorMessage =
+              error instanceof Error && error.message.includes('already exists')
+                ? 'Ya existe una funcionalidad con ese ID en este proyecto. Intenta de nuevo para generar el siguiente consecutivo.'
+                : 'No se pudo crear la funcionalidad. Revisa que el ID generado no esté repetido y que el módulo y sprint sean válidos.';
+            message.error(errorMessage);
           }
-
-          const newId = generateFunctionalityId(values.module);
-          const deliveryDateStr = values.deliveryDate
-            ? values.deliveryDate.format('YYYY-MM-DD')
-            : dayjs().format('YYYY-MM-DD');
-          const payload: Functionality = {
-            id: newId,
-            projectId,
-            module: values.module,
-            name: values.name,
-            roles: ['Todos'],
-            testTypes: [TestType.FUNCTIONAL],
-            isRegression: false,
-            isSmoke: false,
-            deliveryDate: deliveryDateStr,
-            status: TestStatus.BACKLOG,
-            priority: values.priority,
-            riskLevel: values.riskLevel,
-            sprint: values.sprint,
-            storyId: createFuncStoryId,
-          };
-
-          await saveFunctionality(payload);
-          setCreateFuncModalOpen(false);
-          setCreateFuncStoryId(null);
-          funcForm.resetFields();
-          reload();
-          message.success(t('storymap.create_func_success', { id: payload.id }));
         }}
         okText={t('common.create')}
         cancelText={t('common.cancel')}
@@ -310,9 +359,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               <Form.Item label={t('functionality.id_auto')}>
                 <Form.Item shouldUpdate noStyle>
                   {() => {
-                    const moduleName = funcForm.getFieldValue('module');
-                    const preview = generateFunctionalityId(moduleName || '');
-                    return <Input value={preview || '—'} disabled />;
+                    return <Input value={nextFunctionalityIdPreview || '—'} disabled />;
                   }}
                 </Form.Item>
               </Form.Item>

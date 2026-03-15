@@ -16,6 +16,7 @@ import {
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -74,7 +75,7 @@ async function syncResults(
     getBugs(testRun.projectId),
     listDocuments<TestRunResultDto>('/api/test-run-results', {
       'filters[testRun][documentId][$eq]': testRunDocumentId,
-      populate: 'functionality,testCase,bug',
+      ...populateParams(['functionality', 'testCase', 'bug']),
     }),
   ]);
 
@@ -128,7 +129,14 @@ async function syncResults(
 export async function getTestRuns(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestRunDto>('/api/test-runs', {
-    populate: 'project,sprint,results,results.functionality,results.testCase,results.bug',
+    ...populateParams([
+      'project',
+      'sprint',
+      'results',
+      'results.functionality',
+      'results.testCase',
+      'results.bug',
+    ]),
     sort: 'executionDate:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });

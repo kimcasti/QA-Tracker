@@ -146,7 +146,7 @@ export default function AuthPage() {
               </div>
 
               <Card
-                bordered={false}
+                variant="borderless"
                 className="relative overflow-hidden rounded-[30px] border border-white/90 bg-white/92 shadow-[0_28px_72px_rgba(16,42,67,0.16)]"
                 styles={{ body: { padding: 24 } }}
               >
@@ -310,7 +310,7 @@ export default function AuthPage() {
                 {featureItems.map((item, index) => (
                   <Card
                     key={item}
-                    bordered={false}
+                    variant="borderless"
                     className="rounded-3xl bg-white/82 shadow-[0_18px_42px_rgba(16,42,67,0.08)]"
                     styles={{ body: { padding: 18 } }}
                   >

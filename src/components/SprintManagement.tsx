@@ -12,14 +12,10 @@ import {
   DatePicker,
   Select,
   message,
-  Popconfirm,
-  Row,
-  Col,
 } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
-  DeleteOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -37,7 +33,7 @@ interface SprintManagementProps {
 }
 
 export default function SprintManagement({ projectId }: SprintManagementProps) {
-  const { data: sprints = [], save: saveSprint, delete: deleteSprint } = useSprints(projectId);
+  const { data: sprints = [], save: saveSprint } = useSprints(projectId);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
   const [form] = Form.useForm();
@@ -120,7 +116,7 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
     {
       title: 'Acciones',
       key: 'actions',
-      width: 120,
+      width: 72,
       render: (_: any, record: Sprint) => (
         <Space>
           <Button
@@ -135,17 +131,6 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
               setIsModalOpen(true);
             }}
           />
-          <Popconfirm
-            title="¿Eliminar este sprint?"
-            onConfirm={() => {
-              deleteSprint(record.id);
-              message.success('Sprint eliminado');
-            }}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
         </Space>
       ),
     },

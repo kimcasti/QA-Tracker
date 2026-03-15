@@ -11,30 +11,31 @@ import { functionalityStatusColors, softTagStyle } from '../../../theme/statusSt
 
 const { Text } = Typography;
 
+export function TaskPlaceholderCard() {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      data-swapy-no-drag
+      className="rounded-xl bg-slate-50 border border-dashed border-slate-200 px-3 py-2 shadow-sm"
+    >
+      <Text type="secondary" className="text-xs">
+        {t('storymap.drop_here')}
+      </Text>
+    </div>
+  );
+}
+
 export function TaskCard({
   projectId,
   functionality,
-  isPlaceholder,
   onUnassign,
 }: {
   projectId?: string;
   functionality?: Functionality;
-  isPlaceholder?: boolean;
   onUnassign?: () => void;
 }) {
   const { t } = useTranslation();
-  if (isPlaceholder) {
-    return (
-      <div
-        data-swapy-no-drag
-        className="rounded-xl bg-slate-50 border border-dashed border-slate-200 px-3 py-2 shadow-sm"
-      >
-        <Text type="secondary" className="text-xs">
-          {t('storymap.drop_here')}
-        </Text>
-      </div>
-    );
-  }
 
   const functionalityId = functionality?.id || '';
   const { data: testCasesData } = useTestCases(projectId);

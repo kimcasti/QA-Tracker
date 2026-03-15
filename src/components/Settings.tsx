@@ -123,9 +123,6 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       render: (_: any, record: Sprint) => (
         <Space>
           <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-          <Popconfirm title="¿Eliminar sprint?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
         </Space>
       ),
     },

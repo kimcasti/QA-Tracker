@@ -14,6 +14,7 @@ import {
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -77,7 +78,7 @@ async function syncExecutions(
     getTestCases(cycle.projectId),
     listDocuments<TestCycleExecutionDto>('/api/test-cycle-executions', {
       'filters[testCycle][documentId][$eq]': cycleDocumentId,
-      populate: 'functionality,testCase',
+      ...populateParams(['functionality', 'testCase']),
     }),
   ]);
 
@@ -127,7 +128,13 @@ async function syncExecutions(
 export async function getTestCycles(projectId?: string, cycleType?: 'REGRESSION' | 'SMOKE') {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestCycleDto>('/api/test-cycles', {
-    populate: 'project,sprint,executions,executions.functionality,executions.testCase',
+    ...populateParams([
+      'project',
+      'sprint',
+      'executions',
+      'executions.functionality',
+      'executions.testCase',
+    ]),
     sort: 'date:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     ...(cycleType ? { 'filters[cycleType][$eq]': cycleTypeToApi(cycleType) } : {}),

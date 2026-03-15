@@ -1,6 +1,7 @@
 import {
   deleteDocument,
   listDocuments,
+  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -29,7 +30,7 @@ function mapTestPlan(document: TestPlanDto): TestPlan {
 export async function getTestPlans(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestPlanDto>('/api/test-plans', {
-    populate: 'project,sprint',
+    ...populateParams(['project', 'sprint']),
     sort: 'date:asc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });

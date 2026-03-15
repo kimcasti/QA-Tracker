@@ -800,7 +800,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                           })
                         }
                         className="w-32"
-                        bordered={false}
+                        variant="borderless"
                         disabled={isReadOnly}
                         dropdownStyle={{ borderRadius: '12px' }}
                         options={Object.values(TestResult).map(r => ({

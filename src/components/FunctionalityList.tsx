@@ -28,6 +28,10 @@ import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import {
+  buildNextFunctionalityCode,
+  getNextFunctionalityCode,
+} from '../modules/functionalities/services/functionalitiesService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
@@ -79,8 +83,10 @@ export default function FunctionalityList({
   const [isTestCaseModalOpen, setIsTestCaseModalOpen] = useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
+  const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
   const [form] = Form.useForm();
   const [bulkForm] = Form.useForm();
+  const selectedModule = Form.useWatch('module', form);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
@@ -306,8 +312,39 @@ export default function FunctionalityList({
     },
   ];
 
+  React.useEffect(() => {
+    if (!isModalOpen || editingFunc || !projectId || !selectedModule) {
+      if (!editingFunc) {
+        setNextFunctionalityIdPreview('');
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const fallbackId = buildNextFunctionalityCode(selectedModule, allFunctionalities);
+    setNextFunctionalityIdPreview(fallbackId);
+    form.setFieldsValue({ id: fallbackId });
+
+    getNextFunctionalityCode(projectId, selectedModule)
+      .then(nextId => {
+        if (!cancelled) {
+          setNextFunctionalityIdPreview(nextId);
+          form.setFieldsValue({ id: nextId });
+        }
+      })
+      .catch(error => {
+        console.error('Functionality next id error:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allFunctionalities, editingFunc, form, isModalOpen, projectId, selectedModule]);
+
   const handleEdit = (func: Functionality) => {
     setEditingFunc(func);
+    setNextFunctionalityIdPreview(func.id);
     form.setFieldsValue(func);
     setIsModalOpen(true);
   };
@@ -326,7 +363,11 @@ export default function FunctionalityList({
       const values = await form.validateFields();
 
       // Ensure ID is generated if empty (though it's required and auto-filled)
-      const finalId = values.id || generateId(values.module);
+      const finalId =
+        editingFunc?.id ||
+        (projectId && values.module
+          ? await getNextFunctionalityCode(projectId, values.module)
+          : values.id || nextFunctionalityIdPreview);
 
       const isRegression = values.testTypes?.includes(TestType.REGRESSION) || false;
       const isSmoke = values.testTypes?.includes(TestType.SMOKE) || false;
@@ -516,25 +557,11 @@ export default function FunctionalityList({
     }
   };
 
-  const generateId = (moduleName: string) => {
-    if (!moduleName) return '';
-    // Clean module name to create a prefix (first 4 chars, uppercase, no spaces)
-    const prefix = moduleName
-      .trim()
-      .substring(0, 4)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
-    const count = allFunctionalities.filter(
-      f => f.module.trim().toLowerCase() === moduleName.trim().toLowerCase(),
-    ).length;
-    return `${prefix}-${(count + 1).toString().padStart(2, '0')}`;
-  };
-
-  const handleValuesChange = (changedValues: any, allValues: any) => {
-    // Only auto-generate ID if we are creating a new one and module changed
-    if (!editingFunc && changedValues.module) {
-      const newId = generateId(changedValues.module);
-      form.setFieldsValue({ id: newId });
+  const handleValuesChange = (changedValues: any) => {
+    if (!editingFunc && changedValues.module && projectId) {
+      const fallbackId = buildNextFunctionalityCode(changedValues.module, allFunctionalities);
+      setNextFunctionalityIdPreview(fallbackId);
+      form.setFieldsValue({ id: fallbackId });
     }
   };
 
@@ -575,6 +602,7 @@ export default function FunctionalityList({
             icon={<PlusOutlined />}
             onClick={() => {
               setEditingFunc(null);
+              setNextFunctionalityIdPreview('');
               form.resetFields();
               form.setFieldsValue({
                 status: TestStatus.BACKLOG,
@@ -910,7 +938,7 @@ export default function FunctionalityList({
         footer={null}
         width={1000}
         centered
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedFunctionality && (
           <TestCaseManagement

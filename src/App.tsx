@@ -364,7 +364,7 @@ function WorkspaceApp({
 
     return (
       <>
-        <Layout className="min-h-screen bg-slate-50">
+        <Layout className="qa-workspace-shell min-h-screen bg-slate-50">
           <EditProject
             project={project}
             onCancel={() => navigate('/')}
@@ -438,7 +438,7 @@ function WorkspaceApp({
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <Avatar className="bg-slate-900">{userInitial}</Avatar>
                 <div className="hidden min-w-0 sm:flex sm:max-w-[220px] sm:flex-col sm:leading-none">
                   <Text strong className="truncate text-slate-800">
@@ -461,7 +461,7 @@ function WorkspaceApp({
             </div>
           </Header>
 
-          <Layout>
+          <Layout className="qa-workspace-stage">
             <Sider
               width={260}
               collapsible
@@ -526,8 +526,14 @@ function WorkspaceApp({
                 )}
               </div>
             </Sider>
-            <Content className={`${isStoryMapView ? 'p-4' : 'p-8'} overflow-auto`}>
-              <div className={isStoryMapView ? 'w-full' : 'max-w-7xl mx-auto'}>
+            <Content className={`qa-workspace-content ${isStoryMapView ? 'p-4' : 'p-8'} overflow-auto`}>
+              <div
+                className={
+                  isStoryMapView
+                    ? 'qa-workspace-canvas w-full'
+                    : 'qa-workspace-canvas mx-auto w-full max-w-7xl'
+                }
+              >
                 {renderWorkspaceContent(workspaceView, routedProject)}
               </div>
             </Content>
