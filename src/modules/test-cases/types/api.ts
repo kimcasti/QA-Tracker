@@ -7,6 +7,7 @@ export interface TestCaseDto {
   expectedResult?: string;
   testType?: string;
   priority?: string;
+  isAutomated?: boolean;
   project?: {
     documentId: string;
     key: string;

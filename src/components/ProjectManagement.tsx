@@ -96,20 +96,12 @@ export default function ProjectManagement({
     const activeProjects = projects.filter(
       project => project.status === ProjectStatus.ACTIVE,
     ).length;
-    const completedProjects = projects.filter(
-      project => project.status === ProjectStatus.COMPLETED,
-    ).length;
     const distinctMembers = new Set(projects.flatMap(project => project.teamMembers || [])).size;
-    const latestProject = [...projects].sort(
-      (left, right) => dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf(),
-    )[0];
 
     return {
       totalProjects: projects.length,
       activeProjects,
-      completedProjects,
       distinctMembers,
-      latestProject,
     };
   }, [projects]);
 
@@ -131,8 +123,6 @@ export default function ProjectManagement({
     });
   }, [projects, searchTerm, statusFilter]);
 
-  const featuredProject = filteredProjects[0] || projectMetrics.latestProject || null;
-
   const filterOptions = [
     { label: 'Todos', value: ALL_PROJECTS_FILTER },
     { label: 'Activos', value: ProjectStatus.ACTIVE },
@@ -141,7 +131,7 @@ export default function ProjectManagement({
   ];
 
   return (
-    <div className="relative overflow-hidden px-6 py-8 sm:px-8">
+    <div className="relative min-h-full overflow-hidden px-6 py-8 sm:px-8">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-80"
@@ -217,16 +207,6 @@ export default function ProjectManagement({
                   >
                     Nuevo proyecto
                   </Button>
-                  {featuredProject ? (
-                    <Button
-                      size="large"
-                      icon={<ArrowRightOutlined />}
-                      onClick={() => onViewDetails(featuredProject)}
-                      className="h-12 rounded-2xl border-slate-200 px-6 text-base font-semibold"
-                    >
-                      Abrir ultimo workspace
-                    </Button>
-                  ) : null}
                 </div>
               </Col>
 
@@ -283,45 +263,6 @@ export default function ProjectManagement({
                       <Text className="mt-2 block text-slate-500">
                         Participantes distintos registrados en el portfolio
                       </Text>
-                    </Card>
-                  </Col>
-                  <Col xs={24}>
-                    <Card
-                      variant="borderless"
-                      className="rounded-3xl"
-                      styles={{ body: { padding: 20 } }}
-                      style={{
-                        background: `linear-gradient(135deg, ${softSurface(qaPalette.primary)} 0%, ${qaPalette.card} 100%)`,
-                      }}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <Text className="block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            Ultimo workspace
-                          </Text>
-                          <Title level={4} className="!mb-1 !mt-2 !text-slate-900">
-                            {featuredProject?.organizationName ||
-                              featuredProject?.name ||
-                              'Sin proyectos'}
-                          </Title>
-                          <Text className="text-slate-500">
-                            {featuredProject
-                              ? `Version ${featuredProject.version} - ${PROJECT_STATUS_META[featuredProject.status].label}`
-                              : 'Crea el primer proyecto para comenzar.'}
-                          </Text>
-                        </div>
-
-                        <Tag
-                          variant="filled"
-                          className="rounded-full px-3 py-1 font-semibold"
-                          style={{
-                            color: qaPalette.primary,
-                            backgroundColor: qaPalette.card,
-                          }}
-                        >
-                          {projectMetrics.completedProjects} completados
-                        </Tag>
-                      </div>
                     </Card>
                   </Col>
                 </Row>

@@ -7,6 +7,7 @@ import {
   Input,
   Select,
   Space,
+  Switch,
   Tag,
   Typography,
   Card,
@@ -70,6 +71,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           projectId,
           functionalityId,
+          isAutomated: false,
         };
         save(newTestCase);
       }
@@ -184,6 +186,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       render: (type: TestType) => <Tag color="blue">{type}</Tag>,
     },
     {
+      title: 'Automatizacion',
+      dataIndex: 'isAutomated',
+      key: 'isAutomated',
+      width: 140,
+      render: (isAutomated: boolean | undefined) => (
+        <Tag color={isAutomated ? 'green' : 'default'}>
+          {isAutomated ? 'Automatizado' : 'Manual'}
+        </Tag>
+      ),
+    },
+    {
       title: 'Prioridad',
       dataIndex: 'priority',
       key: 'priority',
@@ -294,6 +307,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           initialValues={{
             priority: Priority.MEDIUM,
             testType: TestType.FUNCTIONAL,
+            isAutomated: false,
           }}
         >
           <div className="grid grid-cols-2 gap-4">
@@ -328,6 +342,15 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
             <Form.Item name="description" label="Descripción" className="col-span-2">
               <TextArea rows={2} placeholder="Descripción breve del objetivo de la prueba" />
+            </Form.Item>
+
+            <Form.Item
+              name="isAutomated"
+              label="Automatizado"
+              valuePropName="checked"
+              className="col-span-2"
+            >
+              <Switch checkedChildren="Si" unCheckedChildren="No" />
             </Form.Item>
 
             <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">

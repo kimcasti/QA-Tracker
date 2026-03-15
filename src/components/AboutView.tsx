@@ -847,27 +847,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                         </Card>
                       );
                     })
-                ) : (
-                  <Card
-                    variant="borderless"
-                    className="rounded-[24px] border border-dashed border-slate-200 bg-white/60 text-center"
-                    styles={{ body: { padding: 28 } }}
-                  >
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="No hay minutas registradas"
-                    >
-                      <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        onClick={handleAddNote}
-                        className="rounded-2xl px-5 font-semibold"
-                      >
-                        Nueva minuta
-                      </Button>
-                    </Empty>
-                  </Card>
-                )}
+                ) : null}
 
                 <button
                   type="button"

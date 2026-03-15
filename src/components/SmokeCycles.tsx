@@ -59,6 +59,26 @@ import dayjs from 'dayjs';
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 
+function normalizeSprintName(value?: string) {
+  return value ? value.replace(/^Sprint\s+/i, '').trim() : undefined;
+}
+
+function parseTesterValue(value?: string) {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function serializeTesterValue(value?: string | string[]) {
+  if (Array.isArray(value)) {
+    return value.map(item => item.trim()).filter(Boolean).join(', ');
+  }
+
+  return value?.trim() || '';
+}
+
 export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const { data: cyclesData, save } = useSmokeCycles(projectId);
@@ -97,7 +117,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       status: 'EN_PROGRESO',
       date: dayjs(),
       note: '',
-      tester: '',
+      tester: [],
       environment: undefined,
       buildVersion: '',
     });
@@ -110,10 +130,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     form.setFieldsValue({
       cycleId: cycle.cycleId,
       status: cycle.status,
-      sprint: cycle.sprint?.match(/\d+/)?.[0] || '',
+      sprint: normalizeSprintName(cycle.sprint),
       date: dayjs(cycle.date),
       note: cycle.note,
-      tester: cycle.tester || '',
+      tester: parseTesterValue(cycle.tester),
       environment: cycle.environment,
       buildVersion: cycle.buildVersion || '',
     });
@@ -295,7 +315,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         const updatedCycle: RegressionCycle = {
           ...editingCycle,
           ...values,
-          sprint: values.sprint ? `Sprint ${values.sprint}` : undefined,
+          sprint: normalizeSprintName(values.sprint),
+          tester: serializeTesterValue(values.tester),
           date: values.date.format('YYYY-MM-DD'),
         };
         console.log('Payload - Update Smoke Cycle:', updatedCycle);
@@ -342,7 +363,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           projectId: projectId || '',
           type: 'SMOKE',
           ...values,
-          sprint: values.sprint ? `Sprint ${values.sprint}` : undefined,
+          sprint: normalizeSprintName(values.sprint),
+          tester: serializeTesterValue(values.tester),
           date: values.date.format('YYYY-MM-DD'),
           totalTests: initialExecutions.length,
           passed: 0,
@@ -555,11 +577,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 >
                   <span>
                     <Button
-                      type="primary"
+                      type={selectedCycle.pending > 0 ? 'default' : 'primary'}
                       icon={<CheckCircleOutlined />}
                       size="large"
                       disabled={selectedCycle.pending > 0}
-                      className="rounded-xl h-11 px-8 bg-emerald-600 hover:bg-emerald-700 border-none shadow-lg shadow-emerald-200 font-bold"
+                      className={`rounded-xl h-11 px-8 font-bold ${
+                        selectedCycle.pending > 0
+                          ? 'border-slate-200 bg-slate-100 text-slate-500 shadow-none'
+                          : 'bg-emerald-600 hover:bg-emerald-700 border-none text-white shadow-lg shadow-emerald-200'
+                      }`}
                   onClick={() => void handleFinalizeCycle(selectedCycle)}
                     >
                       Finalizar Ciclo
@@ -1255,8 +1281,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 <SlackMemberSelect
                   members={slackMembers}
                   valueField="fullName"
-                  multiple={false}
-                  placeholder="Selecciona el tester desde Slack"
+                  multiple
+                  placeholder="Selecciona uno o mas testers desde Slack"
                   className="h-10 rounded-lg"
                   loading={isSlackMembersLoading}
                 />

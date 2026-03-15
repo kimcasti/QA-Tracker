@@ -28,6 +28,7 @@ function mapTestCase(document: TestCaseDto): TestCase {
     expectedResult: document.expectedResult || '',
     testType: testTypeFromApi(document.testType),
     priority: priorityFromApi(document.priority),
+    isAutomated: Boolean(document.isAutomated),
   };
 }
 
@@ -65,6 +66,7 @@ export async function saveTestCase(testCase: TestCase) {
     expectedResult: testCase.expectedResult,
     testType: testTypeToApi(testCase.testType),
     priority: priorityToApi(testCase.priority),
+    isAutomated: Boolean(testCase.isAutomated),
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
     functionality: relation(functionality?.documentId || functionality?.id),

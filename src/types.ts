@@ -75,6 +75,7 @@ export interface TestCase {
   expectedResult: string;
   testType: TestType;
   priority: Priority;
+  isAutomated?: boolean;
 }
 
 export enum ExecutionStatus {

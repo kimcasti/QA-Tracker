@@ -307,7 +307,7 @@ function WorkspaceApp({
   };
 
   const projectsScreen = (
-    <Layout className="min-h-screen bg-slate-50">
+    <Layout className="qa-workspace-shell min-h-screen">
       <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <img
@@ -338,7 +338,7 @@ function WorkspaceApp({
           </Space>
         </div>
       </Header>
-      <Content>
+      <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto">
         <ProjectManagement
           onViewDetails={handleViewProject}
           onEditProject={handleEditProject}
@@ -417,47 +417,41 @@ function WorkspaceApp({
               />
               <div className="h-6 w-[1px] bg-gray-200 mx-2" />
               <div className="flex items-center gap-3">
-                {routedProject.logo ? (
-                  <Avatar src={routedProject.logo} className="border border-slate-100" />
-                ) : (
-                  <Avatar
-                    src={appBranding.logoUrl}
-                    className="border border-slate-100"
-                    shape="square"
-                  />
-                )}
-                <div className="flex flex-col">
-                  <Text strong className="leading-none">
-                    {routedProject.organizationName || routedProject.name}
-                  </Text>
-                  <Text type="secondary" className="text-[10px] uppercase tracking-wider">
-                    {routedProject.version}
-                  </Text>
+                <img
+                  src={appBranding.logoUrl}
+                  alt={qaBrand.name}
+                  className="h-10 w-10 rounded-xl object-cover shadow-md"
+                />
+                <div className="flex flex-col leading-none">
+                  <span className="font-bold text-slate-800">{qaBrand.name}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {routedProject.organizationName || routedProject.name} · {routedProject.version}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <LanguageSwitcher size="small" />
+              <Space size={12}>
                 <Avatar className="bg-slate-900">{userInitial}</Avatar>
-                <div className="hidden min-w-0 sm:flex sm:max-w-[220px] sm:flex-col sm:leading-none">
-                  <Text strong className="truncate text-slate-800">
+                <div className="flex max-w-[220px] flex-col leading-none">
+                  <Text strong className="truncate">
                     {userDisplayName}
                   </Text>
                   <Text type="secondary" className="truncate text-[11px]">
                     {currentUser.email}
                   </Text>
                 </div>
-              </div>
-              <Button
-                type="text"
-                icon={<LogoutOutlined />}
-                onClick={onLogout}
-                className="rounded-lg"
-              >
-                Logout
-              </Button>
-              <LanguageSwitcher size="small" />
+                <Button
+                  type="text"
+                  icon={<LogoutOutlined />}
+                  onClick={onLogout}
+                  className="rounded-lg"
+                >
+                  Logout
+                </Button>
+              </Space>
             </div>
           </Header>
 

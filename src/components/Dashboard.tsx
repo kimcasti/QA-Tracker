@@ -20,7 +20,7 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
+import { BugStatus, ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../theme/statusStyles';
 
@@ -34,6 +34,16 @@ const CHART_COLORS = {
   regression: qaPalette.primary,
   automation: qaPalette.functionalityStatus.postMvp,
 } as const;
+
+const TEST_TYPE_COLORS: Record<TestType, string> = {
+  [TestType.INTEGRATION]: qaPalette.secondary,
+  [TestType.FUNCTIONAL]: qaPalette.functionalityStatus.completed,
+  [TestType.SANITY]: '#E78A8A',
+  [TestType.REGRESSION]: qaPalette.primary,
+  [TestType.SMOKE]: qaPalette.functionalityStatus.inProgress,
+  [TestType.EXPLORATORY]: '#F89A44',
+  [TestType.UAT]: qaPalette.functionalityStatus.postMvp,
+};
 
 function FixedPie({
   data,
@@ -165,13 +175,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const mvpFuncs = functionalities.filter(item => item.status === TestStatus.MVP).length;
   const failedFuncs = functionalities.filter(item => item.status === TestStatus.FAILED).length;
 
-  const allCycleExecutions = [
-    ...regressionCycles.flatMap(cycle => cycle.executions || []),
-    ...smokeCycles.flatMap(cycle => cycle.executions || []),
-  ];
-
-  const totalBugs = bugs.length;
-  const criticalBugs = bugs.filter(item => item.severity === Severity.CRITICAL).length;
+  const activeBugs = bugs.filter(item => item.status !== BugStatus.RESOLVED);
+  const totalBugs = activeBugs.length;
+  const criticalBugs = activeBugs.filter(item => item.severity === Severity.CRITICAL).length;
   const funcsWithTestCases = new Set(testCases.map(item => item.functionalityId)).size;
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
@@ -185,28 +191,53 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       ? (regressionPassedExecutions / regressionExecutions.length) * 100
       : 0;
 
-  const automatedTests = testCases.filter(item => item.testType === TestType.SANITY).length;
+  const automatedTests = testCases.filter(item => item.isAutomated).length;
   const automationCoverage =
     testCases.length > 0 ? Math.round((automatedTests / testCases.length) * 100) : 0;
 
-  const regressionFuncs = functionalities.filter(item => item.isRegression);
-  const regressionPassed = regressionFuncs.filter(
-    item => item.status === TestStatus.COMPLETED,
-  ).length;
-  const regressionFailed = regressionFuncs.filter(item => item.status === TestStatus.FAILED).length;
-  const regressionRemaining = Math.max(
-    regressionFuncs.length - regressionPassed - regressionFailed,
-    0,
-  );
-  const regressionPercent =
-    regressionFuncs.length > 0 ? Math.round((regressionPassed / regressionFuncs.length) * 100) : 0;
+  const latestExecutionByTestCase = executions
+    .filter(execution => execution.testCaseId)
+    .sort((left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf())
+    .reduce<Record<string, (typeof executions)[number]>>((acc, execution) => {
+      const testCaseId = execution.testCaseId;
+      if (!testCaseId || acc[testCaseId]) return acc;
+      acc[testCaseId] = execution;
+      return acc;
+    }, {});
 
-  const smokeFuncs = functionalities.filter(item => item.isSmoke);
-  const smokePassed = smokeFuncs.filter(item => item.status === TestStatus.COMPLETED).length;
-  const smokeFailed = smokeFuncs.filter(item => item.status === TestStatus.FAILED).length;
-  const smokeRemaining = Math.max(smokeFuncs.length - smokePassed - smokeFailed, 0);
-  const smokePercent =
-    smokeFuncs.length > 0 ? Math.round((smokePassed / smokeFuncs.length) * 100) : 0;
+  const executedTestCasesCount = testCases.filter(testCase => {
+    const latestExecution = latestExecutionByTestCase[testCase.id];
+    return latestExecution && latestExecution.result !== TestResult.NOT_EXECUTED;
+  }).length;
+
+  const notExecutedTestCasesCount = Math.max(testCases.length - executedTestCasesCount, 0);
+  const passedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
+    execution => execution.result === TestResult.PASSED,
+  ).length;
+  const failedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
+    execution => execution.result === TestResult.FAILED,
+  ).length;
+
+  const latestFinalRegressionCycle = regressionCycles.find(cycle => cycle.status === 'FINALIZADA');
+  const latestFinalSmokeCycle = smokeCycles.find(cycle => cycle.status === 'FINALIZADA');
+
+  const regressionPassed = latestFinalRegressionCycle?.passed || 0;
+  const regressionFailed = latestFinalRegressionCycle?.failed || 0;
+  const regressionRemaining =
+    latestFinalRegressionCycle?.blocked || latestFinalRegressionCycle?.pending || 0;
+  const regressionTotal =
+    latestFinalRegressionCycle?.totalTests ||
+    regressionPassed + regressionFailed + regressionRemaining;
+  const regressionPercent =
+    regressionTotal > 0 ? Math.round((regressionPassed / regressionTotal) * 100) : 0;
+
+  const smokePassed = latestFinalSmokeCycle?.passed || 0;
+  const smokeFailed = latestFinalSmokeCycle?.failed || 0;
+  const smokeRemaining =
+    latestFinalSmokeCycle?.blocked || latestFinalSmokeCycle?.pending || 0;
+  const smokeTotal =
+    latestFinalSmokeCycle?.totalTests || smokePassed + smokeFailed + smokeRemaining;
+  const smokePercent = smokeTotal > 0 ? Math.round((smokePassed / smokeTotal) * 100) : 0;
 
   const regressionPieData = [
     { name: 'Aprobados', value: regressionPassed, color: CHART_COLORS.passed },
@@ -223,28 +254,34 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const executionMixData = [
     {
       name: 'Ejecutados',
-      value: completedFuncs + failedFuncs,
+      value: executedTestCasesCount,
       color: qaPalette.primary,
     },
     {
       name: 'No ejecutados',
-      value: Math.max(totalFunctionalities - (completedFuncs + failedFuncs), 0),
+      value: notExecutedTestCasesCount,
       color: qaPalette.border,
     },
   ];
 
-  const sanityMixData = [
-    {
-      name: 'Sanity',
-      value: functionalities.filter(item => item.isSmoke).length,
-      color: qaPalette.primary,
-    },
-    {
-      name: 'Funcional',
-      value: functionalities.filter(item => !item.isSmoke).length,
-      color: softSurface(qaPalette.primary),
-    },
-  ];
+  const testTypeUsageCounts = functionalities.reduce<Record<string, number>>((acc, item) => {
+    const uniqueTypes = Array.from(new Set(item.testTypes || []));
+    uniqueTypes.forEach(testType => {
+      acc[testType] = (acc[testType] || 0) + 1;
+    });
+    return acc;
+  }, {});
+
+  const appliedTestTypesData = Object.values(TestType)
+    .map(testType => ({
+      name: testType,
+      value: testTypeUsageCounts[testType] || 0,
+      color: TEST_TYPE_COLORS[testType],
+    }))
+    .filter(item => item.value > 0)
+    .sort((left, right) => right.value - left.value);
+
+  const totalAppliedTestTypes = appliedTestTypesData.reduce((sum, item) => sum + item.value, 0);
 
   const moduleCounts = functionalities.reduce<Record<string, number>>((acc, item) => {
     acc[item.module] = (acc[item.module] || 0) + 1;
@@ -285,25 +322,16 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const sprintByName = new Map(sprints.map(sprint => [sprint.name, sprint]));
 
   const tableData = functionalities
-    .filter(item => item.status === TestStatus.COMPLETED)
-    .filter(item => {
-      const sprint = item.sprint ? sprintByName.get(item.sprint) : undefined;
-      if (!sprint) return true;
-
-      const delivery = dayjs(item.deliveryDate);
-      const start = dayjs(sprint.startDate);
-      const end = dayjs(sprint.endDate);
-      if (!delivery.isValid() || !start.isValid() || !end.isValid()) return true;
-      return delivery.isAfter(start.subtract(1, 'day')) && delivery.isBefore(end.add(1, 'day'));
-    })
+    .filter(item => dayjs(item.deliveryDate).isValid())
     .sort((left, right) => dayjs(right.deliveryDate).valueOf() - dayjs(left.deliveryDate).valueOf())
     .slice(0, 5)
     .map(item => {
       const sprint = item.sprint ? sprintByName.get(item.sprint) : undefined;
+      const deliveryLabel = dayjs(item.deliveryDate).format('DD/MM/YYYY');
       const period =
         sprint && dayjs(sprint.startDate).isValid() && dayjs(sprint.endDate).isValid()
-          ? `${sprint.name} (${dayjs(sprint.startDate).format('DD/MM/YYYY')} - ${dayjs(sprint.endDate).format('DD/MM/YYYY')})`
-          : item.sprint || 'Sin Sprint';
+          ? `${deliveryLabel} · ${sprint.name}`
+          : deliveryLabel;
 
       return {
         key: item.id,
@@ -318,7 +346,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     {
       title: (
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          Sprint / Periodo
+          Fecha / Periodo
         </span>
       ),
       dataIndex: 'period',
@@ -410,7 +438,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Bugs detectados"
+              title="Bugs activos"
               value={totalBugs}
               hint={`${criticalBugs} criticos`}
               accent={qaPalette.functionalityStatus.failed}
@@ -564,16 +592,16 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-4 font-semibold text-slate-800">Ejecutados vs no ejecutados</div>
             <div className="relative flex h-48 items-center justify-center">
               <FixedPie data={executionMixData} innerRadius={50} outerRadius={70} />
-              <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-2xl font-bold">
-                  {totalFunctionalities > 0
-                    ? Math.round(((completedFuncs + failedFuncs) / totalFunctionalities) * 100)
-                    : 0}
-                  %
-                </span>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
+                <div className="absolute inset-0 flex items-center justify-center flex-col">
+                  <span className="text-2xl font-bold">
+                    {testCases.length > 0
+                      ? Math.round((executedTestCasesCount / testCases.length) * 100)
+                      : 0}
+                    %
+                  </span>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
+                </div>
               </div>
-            </div>
           </Card>
         </Col>
 
@@ -587,10 +615,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                   className="w-12 rounded-t-lg"
                   style={{
                     backgroundColor: qaPalette.functionalityStatus.completed,
-                    height: `${totalFunctionalities > 0 ? (completedFuncs / totalFunctionalities) * 100 : 0}%`,
+                    height: `${testCases.length > 0 ? (passedTestCasesCount / testCases.length) * 100 : 0}%`,
                     minHeight: '4px',
                   }}
                 />
+                <div className="mt-2 text-xs font-semibold text-slate-600">{passedTestCasesCount}</div>
               </div>
               <div className="flex flex-col items-center">
                 <div className="mb-2 text-xs font-bold uppercase text-slate-400">Failed</div>
@@ -598,10 +627,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                   className="w-12 rounded-t-lg"
                   style={{
                     backgroundColor: qaPalette.functionalityStatus.failed,
-                    height: `${totalFunctionalities > 0 ? (failedFuncs / totalFunctionalities) * 100 : 0}%`,
+                    height: `${testCases.length > 0 ? (failedTestCasesCount / testCases.length) * 100 : 0}%`,
                     minHeight: '4px',
                   }}
                 />
+                <div className="mt-2 text-xs font-semibold text-slate-600">{failedTestCasesCount}</div>
               </div>
             </div>
           </Card>
@@ -609,16 +639,51 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
-            <div className="mb-4 font-semibold text-slate-800">Sanity vs funcional</div>
-            <div className="relative flex h-48 items-center justify-center">
-              <FixedPie data={sanityMixData} innerRadius={50} outerRadius={70} />
-              <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-2xl font-bold">
-                  {sanityMixData[0].value} / {sanityMixData[1].value}
-                </span>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Distribucion</span>
+            <div className="mb-4 font-semibold text-slate-800">Tipos de prueba aplicados</div>
+            {appliedTestTypesData.length > 0 ? (
+              <div className="space-y-4">
+                <div className="relative flex h-48 items-center justify-center">
+                  <FixedPie data={appliedTestTypesData} innerRadius={50} outerRadius={70} />
+                  <div className="absolute inset-0 flex items-center justify-center flex-col">
+                    <span className="text-2xl font-bold">{totalAppliedTestTypes}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">
+                      Asignaciones
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 text-left sm:grid-cols-2">
+                  {appliedTestTypesData.map(item => {
+                    const percent =
+                      totalAppliedTestTypes > 0
+                        ? Math.round((item.value / totalAppliedTestTypes) * 100)
+                        : 0;
+
+                    return (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <span className="text-xs font-medium text-slate-600">{item.name}</span>
+                        </div>
+                        <span className="text-xs font-bold text-slate-800">
+                          {percent}% ({item.value})
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex h-48 items-center justify-center text-sm text-slate-400">
+                No hay tipos de prueba aplicados
+              </div>
+            )}
           </Card>
         </Col>
       </Row>
@@ -626,7 +691,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={16}>
           <Card
-            title="Funcionalidades entregadas por periodos"
+            title="Funcionalidades por fecha de entrega"
             variant="borderless"
             className="rounded-2xl qa-surface-card"
           >

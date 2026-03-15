@@ -34,7 +34,7 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { TestResult, Priority, RiskLevel, TestStatus, TestType } from '../types';
+import { TestResult, Priority, RiskLevel, TestStatus } from '../types';
 import {
   BarChart,
   Bar,
@@ -333,8 +333,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
                   <span className="text-sm font-bold text-slate-900">
                     {testCases.length > 0
                       ? Math.round(
-                          (testCases.filter(tc => tc.testType === TestType.SANITY).length /
-                            testCases.length) *
+                          (testCases.filter(tc => tc.isAutomated).length / testCases.length) *
                             100,
                         )
                       : 0}
@@ -345,8 +344,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
                   percent={
                     testCases.length > 0
                       ? Math.round(
-                          (testCases.filter(tc => tc.testType === TestType.SANITY).length /
-                            testCases.length) *
+                          (testCases.filter(tc => tc.isAutomated).length / testCases.length) *
                             100,
                         )
                       : 0

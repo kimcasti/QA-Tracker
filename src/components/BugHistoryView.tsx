@@ -210,6 +210,7 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
                     size="small"
                     className="w-36"
                     value={record.status}
+                    disabled={record.status === BugStatus.RESOLVED}
                     onChange={status => {
                       saveBug({ ...record, status, updatedAt: dayjs().toISOString() });
                       message.success(`Estado actualizado a ${status}`);

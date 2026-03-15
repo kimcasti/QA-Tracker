@@ -13,6 +13,7 @@ import {
 } from '../../shared/services/enumMappers';
 import {
   deleteDocument,
+  getDocument,
   listDocuments,
   populateParams,
   relation,
@@ -24,6 +25,11 @@ import { getSprints } from '../../settings/services/settingsService';
 import { getTestCases } from '../../test-cases/services/testCasesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCycleDto, TestCycleExecutionDto } from '../types/api';
+
+function normalizeSprintName(value?: string | null) {
+  if (!value) return undefined;
+  return value.replace(/^Sprint\s+/i, '').trim();
+}
 
 function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
   return {
@@ -166,7 +172,8 @@ export async function saveTestCycle(cycle: RegressionCycle) {
   }
 
   const sprints = await getSprints(cycle.projectId);
-  const sprint = sprints.find(item => item.name === cycle.sprint);
+  const normalizedSprintName = normalizeSprintName(cycle.sprint);
+  const sprint = sprints.find(item => item.name === normalizedSprintName);
   const documents = await listDocuments<TestCycleDto>('/api/test-cycles', {
     'filters[project][documentId][$eq]': context.documentId,
     'filters[code][$eq]': cycle.cycleId,
@@ -199,6 +206,16 @@ export async function saveTestCycle(cycle: RegressionCycle) {
     context.documentId,
   );
 
-  const refreshedCycles = await getTestCycles(cycle.projectId, cycle.type);
-  return refreshedCycles.find(item => item.id === saved.documentId) || mapCycle(saved);
+  const refreshedCycle = await getDocument<TestCycleDto>('/api/test-cycles', saved.documentId, {
+    ...populateParams([
+      'project',
+      'sprint',
+      'executions',
+      'executions.functionality',
+      'executions.testCase',
+      'executions.bug',
+    ]),
+  });
+
+  return mapCycle(refreshedCycle);
 }

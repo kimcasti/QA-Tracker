@@ -393,6 +393,7 @@ function mapTestCase(document: ApiDocument): TestCase {
     expectedResult: document.expectedResult || '',
     testType: testTypeFromApi(document.testType),
     priority: priorityFromApi(document.priority),
+    isAutomated: Boolean(document.isAutomated),
   } as TestCase;
 }
 
@@ -697,6 +698,7 @@ export const dataService = {
         expectedResult: testCase.expectedResult,
         testType: testTypeToApi(testCase.testType),
         priority: priorityToApi(testCase.priority),
+        isAutomated: Boolean(testCase.isAutomated),
         organization: relation(await getOrganizationDocumentId(testCase.projectId)),
         project: relation(await getProjectDocumentId(testCase.projectId)),
         functionality: relation(functionality?.documentId || functionality?.id),
