@@ -53,6 +53,17 @@ export function invalidateWorkspaceCache() {
   workspaceCache = null;
 }
 
+export async function renameActiveOrganization(name: string) {
+  const response = await Http.put('/api/me/organization', {
+    data: {
+      name: name.trim(),
+    },
+  });
+
+  invalidateWorkspaceCache();
+  return response.data?.data;
+}
+
 export async function getActiveOrganizationDocumentId() {
   const workspace = await getWorkspace();
   return workspace.memberships[0]?.organization?.documentId || null;

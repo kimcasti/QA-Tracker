@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
   Button,
@@ -6,15 +6,19 @@ import {
   Col,
   Dropdown,
   Empty,
+  Form,
   Input,
+  Modal,
   Row,
   Select,
   Space,
   Statistic,
   Tag,
   Typography,
+  message,
 } from 'antd';
 import type { MenuProps } from 'antd';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AppstoreOutlined,
   ArrowRightOutlined,
@@ -32,6 +36,9 @@ import {
 import dayjs from 'dayjs';
 import { appBranding } from '../assets/branding';
 import { useProjects } from '../modules/projects/hooks/useProjects';
+import { OrganizationTeamModal } from '../modules/organization-team/components/OrganizationTeamModal';
+import { useWorkspace } from '../modules/workspace/hooks/useWorkspace';
+import { renameActiveOrganization } from '../modules/workspace/services/workspaceService';
 import { Project, ProjectStatus } from '../types';
 import { qaBrand, qaPalette, softSurface } from '../theme/palette';
 
@@ -89,8 +96,31 @@ export default function ProjectManagement({
   onOpenCreateModal,
 }: ProjectManagementProps) {
   const { data: projects = [] } = useProjects();
+  const { data: workspace } = useWorkspace();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectFilter>(ALL_PROJECTS_FILTER);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [isEditOrganizationModalOpen, setIsEditOrganizationModalOpen] = useState(false);
+  const [organizationForm] = Form.useForm<{ name: string }>();
+  const activeMembership = workspace?.memberships[0];
+  const activeOrganization = activeMembership?.organization;
+  const canEditOrganization = ['owner', 'qa-lead'].includes(activeMembership?.role?.code || '');
+
+  const renameOrganizationMutation = useMutation({
+    mutationFn: renameActiveOrganization,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      message.success('Nombre de la organizacion actualizado');
+      setIsEditOrganizationModalOpen(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!isEditOrganizationModalOpen) return;
+    organizationForm.setFieldValue('name', activeOrganization?.name || '');
+  }, [activeOrganization?.name, isEditOrganizationModalOpen, organizationForm]);
 
   const projectMetrics = useMemo(() => {
     const activeProjects = projects.filter(
@@ -109,10 +139,8 @@ export default function ProjectManagement({
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return projects.filter(project => {
-      const workspaceName = (project.organizationName || project.name).toLowerCase();
       const matchesSearch =
         normalizedSearch.length === 0 ||
-        workspaceName.includes(normalizedSearch) ||
         project.name.toLowerCase().includes(normalizedSearch) ||
         project.description.toLowerCase().includes(normalizedSearch) ||
         project.version.toLowerCase().includes(normalizedSearch);
@@ -122,6 +150,19 @@ export default function ProjectManagement({
       return matchesSearch && matchesStatus;
     });
   }, [projects, searchTerm, statusFilter]);
+
+  const handleSaveOrganizationName = async () => {
+    try {
+      const values = await organizationForm.validateFields();
+      await renameOrganizationMutation.mutateAsync(values.name);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+
+      message.error('No se pudo actualizar el nombre de la organizacion');
+    }
+  };
 
   const filterOptions = [
     { label: 'Todos', value: ALL_PROJECTS_FILTER },
@@ -182,7 +223,7 @@ export default function ProjectManagement({
                       backgroundColor: softSurface(qaPalette.accent),
                     }}
                   >
-                    Ant Design Workspace
+                    Organizacion y proyectos
                   </Tag>
                 </Space>
 
@@ -193,8 +234,8 @@ export default function ProjectManagement({
                   Gestion de proyectos QA con identidad consistente y acceso claro.
                 </Title>
                 <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
-                  Administra cada workspace con un layout mas solido, cards clicables de punta a
-                  punta y un flujo de alta de proyecto construido con Ant Design.
+                  Administra los proyectos de tu organizacion, el acceso del equipo y la
+                  informacion clave sin mezclar conceptos entre organizacion y proyecto.
                 </Paragraph>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -207,10 +248,33 @@ export default function ProjectManagement({
                   >
                     Nuevo proyecto
                   </Button>
+                  <Button
+                    size="large"
+                    icon={<TeamOutlined />}
+                    onClick={() => setIsTeamModalOpen(true)}
+                    className="h-12 rounded-2xl px-6 text-base font-semibold"
+                  >
+                    Crear equipo de trabajo
+                  </Button>
                 </div>
               </Col>
 
               <Col xs={24} xl={9}>
+                <div className="mb-4 flex justify-start xl:justify-end">
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => setIsEditOrganizationModalOpen(true)}
+                    disabled={!canEditOrganization}
+                    className="h-11 rounded-2xl px-5 font-semibold"
+                  >
+                    Editar organizacion
+                  </Button>
+                </div>
+                <div className="mb-4 text-right">
+                  <Text className="text-slate-500">
+                    {activeOrganization?.name || 'Organizacion actual'}
+                  </Text>
+                </div>
                 <Row gutter={[16, 16]}>
                   <Col xs={24} sm={12}>
                     <Card
@@ -222,7 +286,7 @@ export default function ProjectManagement({
                       <Statistic
                         title={
                           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            Workspaces
+                            Proyectos
                           </span>
                         }
                         value={projectMetrics.totalProjects}
@@ -279,11 +343,11 @@ export default function ProjectManagement({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <Title level={3} className="!mb-1 !text-slate-900">
-                Portafolio de proyectos
+                Proyectos de la organizacion
               </Title>
               <Text className="text-slate-500">
-                {filteredProjects.length} resultados visibles dentro de{' '}
-                {projectMetrics.totalProjects} workspaces.
+                {filteredProjects.length} resultados visibles dentro de {projectMetrics.totalProjects}{' '}
+                proyectos.
               </Text>
             </div>
 
@@ -291,7 +355,7 @@ export default function ProjectManagement({
               <Input
                 allowClear
                 size="large"
-                placeholder="Buscar por nombre, descripcion o version..."
+                placeholder="Buscar por nombre del proyecto, descripcion o version..."
                 prefix={<SearchOutlined className="text-slate-400" />}
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
@@ -311,13 +375,12 @@ export default function ProjectManagement({
         {filteredProjects.length > 0 ? (
           <Row gutter={[24, 24]}>
             {filteredProjects.map(project => {
-              const workspaceName = project.organizationName || project.name;
               const statusMeta = PROJECT_STATUS_META[project.status];
               const teamMemberCount = project.teamMembers?.length || 0;
               const menuItems: MenuProps['items'] = [
                 {
                   key: 'open',
-                  label: 'Abrir workspace',
+                  label: 'Abrir proyecto',
                   icon: <FolderOpenOutlined />,
                 },
                 {
@@ -337,7 +400,7 @@ export default function ProjectManagement({
                       openProjectFromKeyboard(event, () => onViewDetails(project))
                     }
                     className="outline-none"
-                    aria-label={`Abrir proyecto ${workspaceName}`}
+                    aria-label={`Abrir proyecto ${project.name}`}
                   >
                     <Card
                       hoverable
@@ -362,7 +425,7 @@ export default function ProjectManagement({
                               className="border border-slate-100"
                               style={{ borderRadius: 18 }}
                             >
-                              {getInitials(workspaceName)}
+                              {getInitials(project.name)}
                             </Avatar>
                           )}
 
@@ -415,9 +478,11 @@ export default function ProjectManagement({
                       <div className="mt-8 space-y-3">
                         <div>
                           <Title level={4} className="!mb-1 !text-slate-900">
-                            {workspaceName}
+                            {project.name}
                           </Title>
-                          <Text className="text-slate-500">{project.name}</Text>
+                          <Text className="text-slate-500">
+                            {project.purpose || 'Proyecto QA de la organizacion actual'}
+                          </Text>
                         </div>
 
                         <Paragraph
@@ -491,6 +556,34 @@ export default function ProjectManagement({
           </Card>
         )}
       </div>
+
+      <OrganizationTeamModal
+        open={isTeamModalOpen}
+        onCancel={() => setIsTeamModalOpen(false)}
+      />
+      <Modal
+        open={isEditOrganizationModalOpen}
+        title="Editar organizacion"
+        onOk={handleSaveOrganizationName}
+        onCancel={() => setIsEditOrganizationModalOpen(false)}
+        okText="Guardar cambios"
+        cancelText="Cancelar"
+        confirmLoading={renameOrganizationMutation.isPending}
+        destroyOnHidden
+      >
+        <Form form={organizationForm} layout="vertical" className="mt-4">
+          <Form.Item
+            name="name"
+            label="Nombre de la organizacion"
+            rules={[{ required: true, message: 'Ingresa el nombre de la organizacion.' }]}
+          >
+            <Input
+              size="large"
+              placeholder="Ej. Laboratorio QA Kimberly"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

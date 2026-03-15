@@ -425,7 +425,7 @@ function WorkspaceApp({
                 <div className="flex flex-col leading-none">
                   <span className="font-bold text-slate-800">{qaBrand.name}</span>
                   <span className="text-[11px] text-slate-500">
-                    {routedProject.organizationName || routedProject.name} · {routedProject.version}
+                    {routedProject.name} · {routedProject.version}
                   </span>
                 </div>
               </div>

@@ -65,7 +65,7 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
     username: normalizeText(input?.username),
     email: normalizeText(input?.email).toLowerCase(),
     password: input?.password || '',
-    organizationName: normalizeText(input?.organizationName) || undefined,
+    organizationName: normalizeText(input?.organizationName),
   });
 
   const result: AuthResult = {

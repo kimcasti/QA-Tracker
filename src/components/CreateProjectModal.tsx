@@ -27,14 +27,12 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
 
   const handleCreateProject = async (values: {
     name: string;
-    organizationName?: string;
     description: string;
     version: string;
     status: ProjectStatus;
     teamMembers?: string[];
   }) => {
     const normalizedName = values.name.trim();
-    const normalizedOrganizationName = values.organizationName?.trim();
     const normalizedMembers = (values.teamMembers || [])
       .map(member => member.trim())
       .filter(Boolean);
@@ -42,7 +40,6 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
     const newProject: Project = {
       id: `P${Date.now()}`,
       name: normalizedName,
-      organizationName: normalizedOrganizationName || normalizedName,
       description: values.description.trim(),
       version: values.version.trim(),
       status: values.status,
@@ -74,7 +71,7 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
       width={720}
     >
       <div className="pb-2 text-slate-500">
-        Registra un workspace QA alineado con el branding y listo para navegar desde la home.
+        Registra un nuevo proyecto QA dentro de tu organizacion actual.
       </div>
 
       <Form
@@ -89,18 +86,13 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
         className="mt-6"
       >
         <Row gutter={16}>
-          <Col xs={24} md={12}>
+          <Col xs={24}>
             <Form.Item
               name="name"
-              label="Nombre interno"
+              label="Nombre del proyecto"
               rules={[{ required: true, message: 'Ingresa el nombre del proyecto' }]}
             >
               <Input size="large" placeholder="Ej. Nexus Core Platform" />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={12}>
-            <Form.Item name="organizationName" label="Nombre visible del workspace">
-              <Input size="large" placeholder="Ej. QA Payments Workspace" />
             </Form.Item>
           </Col>
         </Row>

@@ -33,6 +33,7 @@ import {
   PlusOutlined,
   RobotOutlined,
   SafetyOutlined,
+  TeamOutlined,
   UploadOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -261,9 +262,10 @@ export default function AboutView({ project }: { project: Project }) {
 
   const handleEditProject = () => {
     projectForm.setFieldsValue({
-      organizationName: project.organizationName || project.name,
+      name: project.name,
       description: project.description,
       purpose: project.purpose,
+      teamMembers: project.teamMembers || [],
       coreRequirements: Array.isArray(project.coreRequirements)
         ? project.coreRequirements.join('\n')
         : project.coreRequirements,
@@ -277,9 +279,12 @@ export default function AboutView({ project }: { project: Project }) {
       const values = await projectForm.validateFields();
       const updatedProject = {
         ...project,
-        organizationName: values.organizationName,
+        name: values.name,
         description: values.description,
         purpose: values.purpose,
+        teamMembers: (values.teamMembers || [])
+          .map((member: string) => member.trim())
+          .filter(Boolean),
         coreRequirements: values.coreRequirements
           ? values.coreRequirements
               .split('\n')
@@ -290,7 +295,7 @@ export default function AboutView({ project }: { project: Project }) {
       };
       await saveProject(updatedProject);
       setIsEditProjectModalOpen(false);
-      message.success('Informacion de la organizacion actualizada');
+      message.success('Informacion del proyecto actualizada');
     } catch (error) {
       console.error('Validation failed:', error);
     }
@@ -489,7 +494,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                     >
                       {!project.logo &&
                         !appBranding.logoUrl &&
-                        getInitials(project.organizationName || project.name)}
+                        getInitials(project.name)}
                     </Avatar>
                     <Upload
                       showUploadList={false}
@@ -513,7 +518,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                           backgroundColor: softSurface(qaPalette.primary),
                         }}
                       >
-                        Workspace Overview
+                        Project Overview
                       </Tag>
                       <Tag
                         variant="filled"
@@ -523,7 +528,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                           backgroundColor: softSurface(qaPalette.accent),
                         }}
                       >
-                        Organizacion
+                        Proyecto
                       </Tag>
                       <Tag
                         variant="filled"
@@ -539,7 +544,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
 
                     <div>
                       <Title level={2} className="!mb-2 !text-slate-950">
-                        {project.organizationName || project.name}
+                        {project.name}
                       </Title>
                       <Space size={16} wrap className="text-sm text-slate-500">
                         <span className="inline-flex items-center gap-2">
@@ -577,7 +582,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
                   onClick={handleEditProject}
                   className="h-12 rounded-2xl px-6 font-semibold"
                 >
-                  Editar organizacion
+                  Editar proyecto
                 </Button>
               </div>
 
@@ -609,6 +614,65 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
               </Row>
 
               <Row gutter={[20, 20]}>
+                <Col xs={24}>
+                  <Card
+                    variant="borderless"
+                    className="rounded-[28px] qa-surface-card"
+                    styles={{ body: { padding: 28 } }}
+                  >
+                    <div className="mb-6 flex items-center gap-3">
+                      <div
+                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
+                        style={{ color: qaPalette.functionalityStatus.completed }}
+                      >
+                        <TeamOutlined className="text-xl" />
+                      </div>
+                      <div>
+                        <Title level={4} className="!mb-0 !text-slate-900">
+                          Participantes del proyecto
+                        </Title>
+                        <Text className="text-slate-400">
+                          {(project.teamMembers || []).length} personas base asociadas al proyecto
+                        </Text>
+                      </div>
+                    </div>
+
+                    {Array.isArray(project.teamMembers) && project.teamMembers.length > 0 ? (
+                      <div className="flex flex-wrap gap-3">
+                        {project.teamMembers.map(member => {
+                          const matchedMember = participantLookup.get(normalizeParticipantKey(member));
+
+                          return (
+                            <Tag
+                              key={member}
+                              variant="filled"
+                              className="m-0 flex items-center gap-2 rounded-full px-3 py-2 text-slate-700"
+                              style={{ backgroundColor: softSurface(qaPalette.accent) }}
+                            >
+                              <Avatar
+                                size={24}
+                                src={matchedMember?.avatarUrl}
+                                icon={<UserOutlined />}
+                                style={{
+                                  backgroundColor: matchedMember?.avatarUrl
+                                    ? undefined
+                                    : qaPalette.primary,
+                                }}
+                              />
+                              <span>{member}</span>
+                            </Tag>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No hay participantes base definidos para este proyecto."
+                      />
+                    )}
+                  </Card>
+                </Col>
+
                 <Col xs={24} md={12}>
                   <Card
                     variant="borderless"
@@ -906,7 +970,7 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
       <Modal
         title={
           <span className="text-lg font-bold text-slate-800">
-            Editar Informacion de la Organizacion
+            Editar Informacion del Proyecto
           </span>
         }
         open={isEditProjectModalOpen}
@@ -922,8 +986,8 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
-                name="organizationName"
-                label="Nombre de la organizacion"
+                name="name"
+                label="Nombre del proyecto"
                 rules={[{ required: true }]}
               >
                 <Input size="large" />
@@ -937,6 +1001,17 @@ Responde unicamente con un objeto JSON con las llaves: summary, decisions, actio
           </Row>
           <Form.Item name="purpose" label="Objetivo del proyecto">
             <Input.TextArea rows={4} />
+          </Form.Item>
+          <Form.Item name="teamMembers" label="Participantes del proyecto">
+            <SlackMemberSelect
+              size="large"
+              members={slackMembers}
+              valueField="fullName"
+              extraOptions={participantOptions}
+              placeholder="Selecciona o escribe participantes base del proyecto"
+              className="rounded-2xl"
+              loading={isSlackMembersLoading}
+            />
           </Form.Item>
           <Form.Item name="coreRequirements" label="Requisitos basicos (uno por linea)">
             <Input.TextArea

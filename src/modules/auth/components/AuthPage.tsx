@@ -34,7 +34,7 @@ type SignupValues = {
   username: string;
   email: string;
   password: string;
-  organizationName?: string;
+  organizationName: string;
 };
 
 const heroCopy = {
@@ -42,26 +42,26 @@ const heroCopy = {
     eyebrow: 'Acceso QA Tracker',
     title: 'Vuelve a tu centro de calidad.',
     description:
-      'Retoma ciclos de regresion, revisa bugs y manten a tu equipo alineado desde un workspace QA claro y profesional.',
+      'Retoma ciclos de regresion, revisa bugs y manten a tu equipo alineado desde una organizacion QA clara y profesional.',
     accent: '#DCE8F8',
   },
   signup: {
-    eyebrow: 'Crea tu workspace',
-    title: 'Lanza tu laboratorio QA en minutos.',
+    eyebrow: 'Crea tu organizacion',
+    title: 'Lanza tu operacion QA en minutos.',
     description:
-      'Registrate, genera tu espacio automaticamente y empieza a organizar proyectos, casos de prueba, ejecuciones y reportes.',
+      'Registrate, crea tu organizacion y empieza a gestionar proyectos, casos de prueba, ejecuciones y reportes.',
     accent: '#D9F3FA',
   },
 } as const;
 
 const heroHighlights = [
   'Operacion QA clara',
-  'Multiples workspaces',
+  'Organizacion + proyectos',
   'Reportes y trazabilidad',
 ] as const;
 
 const showcaseStats = [
-  { value: '1 workspace', label: 'listo al registrarte' },
+  { value: '1 organizacion', label: 'lista al registrarte' },
   { value: 'Roles + membresias', label: 'control de acceso real' },
   { value: 'Story map y ciclos', label: 'todo en una sola capa' },
 ] as const;
@@ -184,7 +184,7 @@ export default function AuthPage() {
               <div className="relative">
                 <div>
                   <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                    Vista general del workspace
+                    Vista general de la organizacion
                   </Text>
                   <Title level={3} className="!mb-2 !mt-3 !text-slate-900">
                     Una entrada limpia para equipos que viven entre bugs, ciclos y trazabilidad.
@@ -198,7 +198,7 @@ export default function AuthPage() {
 
               <img
                 src={authIllustrationUrl}
-                alt="Ilustracion de workspace QA Tracker"
+                alt="Ilustracion de organizacion QA Tracker"
                 className="relative mx-auto mt-6 max-h-[420px] w-full max-w-[780px] object-contain"
               />
             </div>
@@ -231,7 +231,7 @@ export default function AuthPage() {
 
                   <div className="mb-6">
                     <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                      {mode === 'login' ? 'Acceso al workspace' : 'Provisiona tu espacio'}
+                      {mode === 'login' ? 'Acceso a QA Tracker' : 'Provisiona tu organizacion'}
                     </Text>
                     <Title level={2} className="!mb-2 !mt-3 !text-slate-900">
                       {mode === 'login' ? 'Inicia sesion' : 'Crea tu cuenta'}
@@ -239,7 +239,7 @@ export default function AuthPage() {
                     <Text className="text-sm leading-6 text-slate-500">
                       {mode === 'login'
                         ? 'Usa tus credenciales de QA Tracker para continuar.'
-                        : 'Crea tu usuario y aprovisionaremos un workspace inicial para ti.'}
+                        : 'Crea tu usuario admin y aprovisionaremos una organizacion inicial para ti.'}
                     </Text>
                   </div>
 
@@ -327,7 +327,11 @@ export default function AuthPage() {
                           className="h-12 rounded-2xl"
                         />
                       </Form.Item>
-                      <Form.Item name="organizationName" label="Nombre del workspace (opcional)">
+                      <Form.Item
+                        name="organizationName"
+                        label="Nombre de la organizacion"
+                        rules={[{ required: true, message: 'Ingresa el nombre de tu organizacion.' }]}
+                      >
                         <Input
                           prefix={<SafetyCertificateOutlined className="text-slate-400" />}
                           placeholder="Laboratorio QA Kimberly"
@@ -341,14 +345,14 @@ export default function AuthPage() {
                         loading={isSubmitting}
                         className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
                       >
-                        Crear workspace
+                        Crear organizacion
                       </Button>
                     </Form>
                   )}
 
                   <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
                     {mode === 'login'
-                      ? 'Necesitas una cuenta? Cambia a Registro y crea tu workspace en un solo paso.'
+                      ? 'Necesitas una cuenta? Cambia a Registro y crea tu organizacion en un solo paso.'
                       : 'Ya te registraste? Vuelve a Ingresar y continua con tu operacion QA.'}
                   </div>
                 </div>
