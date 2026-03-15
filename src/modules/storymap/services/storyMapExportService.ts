@@ -1,5 +1,6 @@
 import type { Functionality } from '../../../types';
 import type { Epic, Role, Story } from '../types';
+import { storyAssociationsService } from './storyAssociationsService';
 import { storyMapService } from './storyMapService';
 
 export type StoryMapExportStory = Story & { tasks: Functionality[] };
@@ -25,6 +26,11 @@ export const storyMapExportService = {
     const roles = storyMapService.getRoles(projectId);
     const epics = storyMapService.getEpics(projectId);
     const stories = storyMapService.getStories(projectId);
+    const links = storyAssociationsService.syncProjectLinks(
+      projectId,
+      functionalities,
+      stories.map(story => story.id),
+    );
 
     const rolesOut: StoryMapExportRole[] = roles.map(role => {
       const roleEpics: StoryMapExportEpic[] = epics
@@ -33,7 +39,10 @@ export const storyMapExportService = {
           const epicStories: StoryMapExportStory[] = stories
             .filter(s => s.epicId === epic.id)
             .map(story => {
-              const tasks = functionalities.filter(f => f.storyId === story.id);
+              const tasks = links
+                .filter(link => link.storyId === story.id)
+                .map(link => functionalities.find(f => f.id === link.functionalityId))
+                .filter((task): task is Functionality => Boolean(task));
               return { ...story, tasks };
             });
 
@@ -47,7 +56,9 @@ export const storyMapExportService = {
       exportedAt: new Date().toISOString(),
       projectId,
       roles: rolesOut,
-      unassignedTasks: functionalities.filter(f => !f.storyId),
+      unassignedTasks: functionalities.filter(
+        functionality => !links.some(link => link.functionalityId === functionality.id),
+      ),
     };
   },
 

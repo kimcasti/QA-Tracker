@@ -28,6 +28,7 @@ import {
 import { useModules } from '../../settings/hooks/useModules';
 import { useSprints } from '../../settings/hooks/useSprints';
 import { storyMapService } from '../services/storyMapService';
+import { storyAssociationsService } from '../services/storyAssociationsService';
 import { storyMapExportService } from '../services/storyMapExportService';
 import type { StoryMapRoleNode } from '../types';
 import StoryMapBoard from './StoryMapBoard';
@@ -75,13 +76,15 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, functionalitiesData]);
 
-  const unassignedFunctionalities = useMemo(() => {
-    return functionalities.filter(f => !f.storyId);
-  }, [functionalities]);
-
-  const assignFunctionality = async (storyId: string, functionalityId: string) => {
+  const ensurePrimaryAssociation = async (storyId: string, functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
+
+    if (func.storyId) {
+      message.success(t('storymap.assign_success', { id: func.id }));
+      return;
+    }
+
     try {
       const updated: Functionality = { ...func, storyId };
       await saveFunctionality(updated);
@@ -93,11 +96,22 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     }
   };
 
-  const unassignFunctionality = async (functionalityId: string) => {
+  const syncPrimaryStoryAfterUnassign = async (storyId: string, functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
     if (!func) return;
+
+    if (func.storyId !== storyId) {
+      return;
+    }
+
+    const remainingLinks = storyAssociationsService
+      .getProjectLinks(projectId)
+      .filter(link => link.functionalityId === functionalityId);
+
+    const nextPrimaryStoryId = remainingLinks[0]?.storyId;
+
     try {
-      const updated: Functionality = { ...func, storyId: undefined };
+      const updated: Functionality = { ...func, storyId: nextPrimaryStoryId };
       await saveFunctionality(updated);
       await refetchFunctionalities();
       message.success(t('storymap.unassign_success', { id: func.id }));
@@ -262,12 +276,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               projectId={projectId}
               roles={fullMap}
               functionalities={functionalities}
-              unassignedFunctionalities={unassignedFunctionalities}
               onCreateEpic={openCreateEpic}
               onCreateStory={openCreateStory}
               onCreateFunctionality={openCreateFunctionality}
-              onAssignExisting={assignFunctionality}
-              onUnassignFunctionality={unassignFunctionality}
+              onEnsurePrimaryAssociation={ensurePrimaryAssociation}
+              onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
               onSaveFunctionality={saveFunctionality}
             />
           </StoryMapErrorBoundary>
@@ -313,7 +326,8 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               storyId: createFuncStoryId,
             };
 
-            await saveFunctionality(payload);
+            const saved = await saveFunctionality(payload);
+            storyAssociationsService.ensureAssociation(projectId, createFuncStoryId, saved.id);
             await refetchFunctionalities();
             setCreateFuncModalOpen(false);
             setCreateFuncStoryId(null);

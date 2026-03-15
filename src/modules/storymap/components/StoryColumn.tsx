@@ -11,7 +11,7 @@ export function StoryColumn({
   storyId,
   storyName,
   slots,
-  unassignedFunctionalities,
+  availableFunctionalities,
   onCreateFunctionality,
   onAssignExisting,
   renderItem,
@@ -19,7 +19,7 @@ export function StoryColumn({
   storyId: string;
   storyName: string;
   slots: { slotId: string; itemId: string }[];
-  unassignedFunctionalities: Functionality[];
+  availableFunctionalities: Functionality[];
   onCreateFunctionality: (storyId: string) => void;
   onAssignExisting: (storyId: string, functionalityId: string) => void;
   renderItem: (itemId: string) => ReactNode;
@@ -28,11 +28,11 @@ export function StoryColumn({
   const [showAssociate, setShowAssociate] = useState(false);
 
   const options = useMemo(() => {
-    return unassignedFunctionalities.map(f => ({
+    return availableFunctionalities.map(f => ({
       label: `${f.id} - ${f.name}`,
       value: f.id,
     }));
-  }, [unassignedFunctionalities]);
+  }, [availableFunctionalities]);
 
   return (
     <Card

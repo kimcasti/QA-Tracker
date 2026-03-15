@@ -7,6 +7,10 @@ import type { Functionality } from '../../../types';
 import { qaPalette, softSurface } from '../../../theme/palette';
 import type { StoryMapRoleNode } from '../types';
 import { taskOrderService } from '../services/taskOrderService';
+import {
+  storyAssociationsService,
+  type StoryFunctionalityLink,
+} from '../services/storyAssociationsService';
 import { StoryColumn } from './StoryColumn';
 import { TaskCard, TaskPlaceholderCard } from './TaskCard';
 
@@ -51,23 +55,21 @@ export default function StoryMapBoard({
   projectId,
   roles,
   functionalities,
-  unassignedFunctionalities,
   onCreateEpic,
   onCreateStory,
   onCreateFunctionality,
-  onAssignExisting,
-  onUnassignFunctionality,
+  onEnsurePrimaryAssociation,
+  onSyncPrimaryStoryAfterUnassign,
   onSaveFunctionality,
 }: {
   projectId: string;
   roles: StoryMapRoleNode[];
   functionalities: Functionality[];
-  unassignedFunctionalities: Functionality[];
   onCreateEpic: (roleId: string) => void;
   onCreateStory: (epicId: string) => void;
   onCreateFunctionality: (storyId: string) => void;
-  onAssignExisting: (storyId: string, functionalityId: string) => void;
-  onUnassignFunctionality: (functionalityId: string) => void;
+  onEnsurePrimaryAssociation: (storyId: string, functionalityId: string) => void;
+  onSyncPrimaryStoryAfterUnassign: (storyId: string, functionalityId: string) => void;
   onSaveFunctionality: (func: Functionality) => void;
 }) {
   const { t } = useTranslation();
@@ -89,17 +91,31 @@ export default function StoryMapBoard({
   const [tasksByStory, setTasksByStory] = useState<Record<string, string[]>>(() =>
     taskOrderService.getProjectOrder(projectId)
   );
+  const [links, setLinks] = useState<StoryFunctionalityLink[]>(() =>
+    storyAssociationsService.getProjectLinks(projectId)
+  );
 
   const storyIdsRef = useRef(storyIdsInRenderOrder);
   useEffect(() => {
     storyIdsRef.current = storyIdsInRenderOrder;
   }, [storyIdsInRenderOrder]);
 
+  useEffect(() => {
+    setTasksByStory(taskOrderService.getProjectOrder(projectId));
+    setLinks(storyAssociationsService.getProjectLinks(projectId));
+  }, [projectId]);
+
   const funcById = useMemo(() => {
     const m = new Map<string, Functionality>();
     for (const f of functionalities) m.set(f.id, f);
     return m;
   }, [functionalities]);
+
+  const linkById = useMemo(() => {
+    const map = new Map<string, StoryFunctionalityLink>();
+    links.forEach(link => map.set(link.id, link));
+    return map;
+  }, [links]);
 
   const funcByIdRef = useRef(funcById);
   const onSaveRef = useRef(onSaveFunctionality);
@@ -112,61 +128,45 @@ export default function StoryMapBoard({
     onSaveRef.current = onSaveFunctionality;
   }, [onSaveFunctionality]);
 
-  // Keep board-local ordering as the visual source of truth. When new functionalities
-  // appear (create/associate), append them to their story if not present.
   useEffect(() => {
+    const syncedLinks = storyAssociationsService.syncProjectLinks(
+      projectId,
+      functionalities,
+      storyIdsInRenderOrder,
+    );
+    setLinks(syncedLinks);
+
     setTasksByStory(prev => {
-      const next: Record<string, string[]> = { ...prev };
+      const next: Record<string, string[]> = {};
+      const linkIdsByStory = new Map<string, string[]>();
 
-      const existingFuncIds = new Set(functionalities.map(f => f.id));
-      const assignedStoryByFunctionId = new Map(
-        functionalities
-          .filter((f): f is Functionality & { storyId: string } => Boolean(f.storyId))
-          .map(f => [f.id, f.storyId]),
-      );
-
-      // Remove ids that no longer exist or are no longer assigned to this story.
-      Object.keys(next).forEach(storyId => {
-        next[storyId] = (next[storyId] || []).filter(id => {
-          if (!existingFuncIds.has(id)) return false;
-          const assignedStoryId = assignedStoryByFunctionId.get(id);
-          return !assignedStoryId || assignedStoryId === storyId;
-        });
+      syncedLinks.forEach(link => {
+        const storyLinks = linkIdsByStory.get(link.storyId) || [];
+        storyLinks.push(link.id);
+        linkIdsByStory.set(link.storyId, storyLinks);
       });
 
-      // Ensure every rendered story has a list.
       storyIdsInRenderOrder.forEach(storyId => {
-        if (!next[storyId]) next[storyId] = [];
+        const validIds = linkIdsByStory.get(storyId) || [];
+        const orderedIds = (prev[storyId] || []).filter(id => validIds.includes(id));
+        const missingIds = validIds.filter(id => !orderedIds.includes(id));
+        next[storyId] = [...orderedIds, ...missingIds];
       });
 
-      // Track what's already placed on the board.
-      const placed = new Set<string>();
-      storyIdsInRenderOrder.forEach(storyId => {
-        next[storyId].forEach(id => placed.add(id));
-      });
-
-      // Add missing assigned functionalities.
-      functionalities.forEach(f => {
-        if (!f.storyId) return;
-        if (!next[f.storyId]) return;
-        if (placed.has(f.id)) return;
-        next[f.storyId].push(f.id);
-        placed.add(f.id);
-      });
-
+      taskOrderService.saveProjectOrder(projectId, next);
       return next;
     });
-  }, [functionalities, storyIdsInRenderOrder]);
+  }, [functionalities, projectId, storyIdsInRenderOrder]);
 
   const canonicalSlotItemMap = useMemo<SlotItemMapArray>(() => {
     const map: SlotItemMapArray = [];
     for (const storyId of storyIdsInRenderOrder) {
-      const tasks = (tasksByStory[storyId] || []).filter(id => funcByIdRef.current.has(id));
+      const tasks = (tasksByStory[storyId] || []).filter(id => linkById.has(id));
       const items = [...tasks, emptyId(storyId)];
       items.forEach((itemId, idx) => map.push({ slot: `${storyId}::${idx}`, item: itemId }));
     }
     return map;
-  }, [storyIdsInRenderOrder, tasksByStory]);
+  }, [linkById, storyIdsInRenderOrder, tasksByStory]);
 
   const slotsByStory = useMemo(() => {
     const grouped: Record<string, Array<{ slotId: string; itemId: string }>> = {};
@@ -179,55 +179,74 @@ export default function StoryMapBoard({
   }, [canonicalSlotItemMap]);
 
   const normalizeAndPersist = (mapArray: SlotItemMapArray) => {
-    // Build new order per story (ignore empties), for all rendered stories.
     const nextOrder: Record<string, string[]> = {};
     storyIdsRef.current.forEach(storyId => (nextOrder[storyId] = []));
-    const nextStoryByFuncId = new Map<string, string>();
+    const nextStoryByLinkId = new Map<string, string>();
 
     for (const { slot, item } of mapArray) {
       const sid = storyIdFromSlot(slot);
       if (isEmptyItem(item)) continue;
       if (!nextOrder[sid]) nextOrder[sid] = [];
       nextOrder[sid].push(item);
-      nextStoryByFuncId.set(item, sid);
+      nextStoryByLinkId.set(item, sid);
     }
 
-    // Persist order.
     setTasksByStory(nextOrder);
     taskOrderService.saveProjectOrder(projectId, nextOrder);
 
-    // Update storyId only when item moved to a different story.
-    nextStoryByFuncId.forEach((newStoryId, funcId) => {
-      const current = funcByIdRef.current.get(funcId);
+    const nextLinks = Array.from(linkById.values()).map(link => {
+      const nextStoryId = nextStoryByLinkId.get(link.id);
+      return nextStoryId && nextStoryId !== link.storyId ? { ...link, storyId: nextStoryId } : link;
+    });
+
+    setLinks(nextLinks);
+    storyAssociationsService.saveProjectLinks(projectId, nextLinks);
+
+    nextLinks.forEach(link => {
+      const current = funcByIdRef.current.get(link.functionalityId);
       if (!current) return;
-      if (current.storyId !== newStoryId) {
-        onSaveRef.current({ ...current, storyId: newStoryId });
+      if (current.storyId === link.storyId) return;
+
+      const sameFunctionalityLinks = nextLinks.filter(
+        item => item.functionalityId === link.functionalityId,
+      );
+
+      if (sameFunctionalityLinks.length === 1) {
+        onSaveRef.current({ ...current, storyId: link.storyId });
       }
     });
   };
 
   const handleAssignExisting = (storyId: string, functionalityId: string) => {
-    onAssignExisting(storyId, functionalityId);
+    const link = storyAssociationsService.ensureAssociation(projectId, storyId, functionalityId);
+    const nextLinks = storyAssociationsService.getProjectLinks(projectId);
+    setLinks(nextLinks);
+    onEnsurePrimaryAssociation(storyId, functionalityId);
+
     setTasksByStory(prev => {
-      const next: Record<string, string[]> = {};
-      const ids = storyIdsRef.current;
-      ids.forEach(sid => {
-        next[sid] = (prev[sid] || []).filter(id => id !== functionalityId);
-      });
+      const next = { ...prev };
       if (!next[storyId]) next[storyId] = [];
-      next[storyId] = [...next[storyId], functionalityId];
+      if (!next[storyId].includes(link.id)) {
+        next[storyId] = [...next[storyId], link.id];
+      }
       taskOrderService.saveProjectOrder(projectId, next);
       return next;
     });
   };
 
-  const handleUnassign = (functionalityId: string) => {
-    onUnassignFunctionality(functionalityId);
+  const handleUnassign = (linkId: string) => {
+    const link = linkById.get(linkId);
+    if (!link) return;
+
+    const nextLinks = storyAssociationsService.removeAssociation(projectId, linkId);
+    setLinks(nextLinks);
+    onSyncPrimaryStoryAfterUnassign(link.storyId, link.functionalityId);
+
     setTasksByStory(prev => {
       const next: Record<string, string[]> = {};
       const ids = storyIdsRef.current;
       ids.forEach(sid => {
-        next[sid] = (prev[sid] || []).filter(id => id !== functionalityId);
+        next[sid] = (prev[sid] || []).filter(id => id !== linkId);
       });
       taskOrderService.saveProjectOrder(projectId, next);
       return next;
@@ -348,14 +367,22 @@ export default function StoryMapBoard({
                           storyId={story.id}
                           storyName={story.name}
                           slots={slotsByStory[story.id] || [{ slotId: `${story.id}::0`, itemId: emptyId(story.id) }]}
-                          unassignedFunctionalities={unassignedFunctionalities}
+                          availableFunctionalities={functionalities.filter(
+                            functionality =>
+                              !links.some(
+                                link =>
+                                  link.storyId === story.id &&
+                                  link.functionalityId === functionality.id,
+                              ),
+                          )}
                           onCreateFunctionality={onCreateFunctionality}
                           onAssignExisting={handleAssignExisting}
                           renderItem={(itemId) => {
                             if (isEmptyItem(itemId)) {
                               return <TaskPlaceholderCard />;
                             }
-                            const f = funcById.get(itemId);
+                            const link = linkById.get(itemId);
+                            const f = link ? funcById.get(link.functionalityId) : undefined;
                             return (
                               <TaskCard
                                 projectId={projectId}
