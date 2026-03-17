@@ -15,6 +15,7 @@ import {
 } from '../../shared/services/enumMappers';
 import {
   deleteDocument,
+  getDocument,
   listDocuments,
   populateParams,
   relation,
@@ -43,7 +44,7 @@ function mapTestRunResult(document: TestRunResultDto): TestRunResult {
   };
 }
 
-function mapTestRun(document: TestRunDto): TestRun {
+function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): TestRun {
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
@@ -59,8 +60,31 @@ function mapTestRun(document: TestRunDto): TestRun {
     environment: environmentFromApi(document.environment),
     selectedModules: document.selectedModules || [],
     selectedFunctionalities: document.selectedFunctionalities || [],
-    results: (document.results || []).map(mapTestRunResult),
+    results: resultsOverride || (document.results || []).map(mapTestRunResult),
   };
+}
+
+async function getResultsByRun(projectId?: string, testRunDocumentId?: string) {
+  const context = projectId ? await findProjectContext(projectId) : null;
+  const documents = await listDocuments<TestRunResultDto>('/api/test-run-results', {
+    ...populateParams(['testRun', 'functionality', 'testCase', 'bug']),
+    ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+    ...(testRunDocumentId ? { 'filters[testRun][documentId][$eq]': testRunDocumentId } : {}),
+  });
+
+  return documents.reduce<Record<string, TestRunResult[]>>((acc, document) => {
+    const runId = document.testRun?.documentId;
+    if (!runId) {
+      return acc;
+    }
+
+    if (!acc[runId]) {
+      acc[runId] = [];
+    }
+
+    acc[runId].push(mapTestRunResult(document));
+    return acc;
+  }, {});
 }
 
 async function syncResults(
@@ -130,20 +154,41 @@ async function syncResults(
 
 export async function getTestRuns(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
-  const documents = await listDocuments<TestRunDto>('/api/test-runs', {
-    ...populateParams([
-      'project',
-      'sprint',
-      'results',
-      'results.functionality',
-      'results.testCase',
-      'results.bug',
-    ]),
-    sort: 'executionDate:desc',
-    ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
-  });
+  const [documents, resultsByRun] = await Promise.all([
+    listDocuments<TestRunDto>('/api/test-runs', {
+      ...populateParams([
+        'project',
+        'sprint',
+        'results',
+        'results.functionality',
+        'results.testCase',
+        'results.bug',
+      ]),
+      sort: 'executionDate:desc',
+      ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+    }),
+    getResultsByRun(projectId),
+  ]);
 
-  return documents.map(mapTestRun);
+  return documents.map(document => mapTestRun(document, resultsByRun[document.documentId] || []));
+}
+
+async function getTestRunById(documentId: string) {
+  const [document, resultsByRun] = await Promise.all([
+    getDocument<TestRunDto>('/api/test-runs', documentId, {
+      ...populateParams([
+        'project',
+        'sprint',
+        'results',
+        'results.functionality',
+        'results.testCase',
+        'results.bug',
+      ]),
+    }),
+    getResultsByRun(undefined, documentId),
+  ]);
+
+  return mapTestRun(document, resultsByRun[documentId] || []);
 }
 
 export async function saveTestRun(testRun: TestRun) {
@@ -180,8 +225,7 @@ export async function saveTestRun(testRun: TestRun) {
     context.documentId,
   );
 
-  const refreshedRuns = await getTestRuns(testRun.projectId);
-  return refreshedRuns.find(item => item.id === saved.documentId) || mapTestRun(saved);
+  return getTestRunById(saved.documentId);
 }
 
 export async function removeTestRun(id: string) {

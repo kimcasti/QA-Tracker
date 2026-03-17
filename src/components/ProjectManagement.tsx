@@ -293,7 +293,7 @@ export default function ProjectManagement({
                         styles={{ content: { color: qaPalette.primary, fontWeight: 700 } }}
                       />
                       <Text className="mt-2 block text-slate-500">
-                        {projectMetrics.activeProjects} activos listos para seguimiento
+                        {projectMetrics.activeProjects} Activos listos para seguimiento
                       </Text>
                     </Card>
                   </Col>

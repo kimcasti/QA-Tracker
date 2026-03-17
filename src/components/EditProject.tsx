@@ -1,22 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Button,
-  Card,
-  Col,
-  Form,
-  Input,
-  List,
-  Row,
-  Select,
-  Typography,
-  message,
-} from 'antd';
-import {
-  ArrowLeftOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  SaveOutlined,
-} from '@ant-design/icons';
+import { Button, Card, Col, Form, Input, List, Row, Select, Typography, message } from 'antd';
+import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { appBranding } from '../assets/branding';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { Project, ProjectStatus } from '../types';
@@ -98,7 +82,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
               Editar Proyecto
             </Title>
             <Text type="secondary">
-              Actualiza la informacion general y el proposito del proyecto.
+              Actualiza la información general y el propósito del proyecto.
             </Text>
           </div>
         </div>
@@ -129,7 +113,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
               <Col xs={24} md={6}>
                 <Form.Item
                   name="version"
-                  label="Version"
+                  label="Versión"
                   rules={[{ required: true, message: 'La version es requerida' }]}
                 >
                   <Input placeholder="v1.0.0" className="h-10 rounded-lg" />
@@ -213,7 +197,11 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
           </Card>
 
           <div className="flex justify-end gap-4 pb-12">
-            <Button size="large" onClick={onCancel} className="h-12 rounded-xl px-8 border-gray-200">
+            <Button
+              size="large"
+              onClick={onCancel}
+              className="h-12 rounded-xl px-8 border-gray-200"
+            >
               Cancelar
             </Button>
             <Button

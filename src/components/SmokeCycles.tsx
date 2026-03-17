@@ -19,6 +19,7 @@ import {
   Divider,
   Checkbox,
 } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -80,6 +81,7 @@ function serializeTesterValue(value?: string | string[]) {
 }
 
 export default function SmokeCycles({ projectId }: { projectId?: string }) {
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { data: cyclesData, save } = useSmokeCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
@@ -1394,6 +1396,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 executionId: currentExecution.id,
               });
               linkedBugId = syncedBug?.internalBugId;
+              if (syncedBug) {
+                await queryClient.invalidateQueries({
+                  queryKey: ['bugs', selectedCycle.projectId],
+                });
+              }
             }
 
             console.log('Payload - Save Smoke Evidence:', {

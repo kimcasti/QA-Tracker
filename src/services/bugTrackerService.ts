@@ -71,14 +71,17 @@ export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | nu
 
   const existing =
     bugs.find(bug => normalizedLinkedBugId && bug.internalBugId === normalizedLinkedBugId) ||
+    bugs.find(bug => bug.linkedSourceId === linkedSourceId) ||
     bugs.find(
       bug =>
         normalizedExternalBugId &&
         bug.projectId === payload.projectId &&
+        bug.origin === payload.origin &&
         bug.functionalityId === payload.functionalityId &&
+        (bug.cycleId || undefined) === (payload.cycleId || undefined) &&
+        (bug.testCaseId || undefined) === (payload.testCaseId || undefined) &&
         bug.externalBugId === normalizedExternalBugId,
-    ) ||
-    bugs.find(bug => bug.linkedSourceId === linkedSourceId);
+    );
 
   const bug: QABug = {
     internalBugId:

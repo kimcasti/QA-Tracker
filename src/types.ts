@@ -286,6 +286,15 @@ export interface MeetingNote {
   aiNextSteps?: string;
 }
 
+export interface PersonalNote {
+  documentId?: string;
+  activityDate: string;
+  title: string;
+  description: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface QABug {
   internalBugId: string;
   externalBugId?: string;

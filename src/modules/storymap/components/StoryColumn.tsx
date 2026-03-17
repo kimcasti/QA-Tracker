@@ -1,5 +1,5 @@
 import { Button, Card, Select, Space, Tag, Typography } from 'antd';
-import { BookOutlined, PlusOutlined } from '@ant-design/icons';
+import { BookOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
@@ -13,6 +13,7 @@ export function StoryColumn({
   slots,
   availableFunctionalities,
   onCreateFunctionality,
+  onEditStory,
   onAssignExisting,
   renderItem,
 }: {
@@ -21,6 +22,7 @@ export function StoryColumn({
   slots: { slotId: string; itemId: string }[];
   availableFunctionalities: Functionality[];
   onCreateFunctionality: (storyId: string) => void;
+  onEditStory: (storyId: string, storyName: string) => void;
   onAssignExisting: (storyId: string, functionalityId: string) => void;
   renderItem: (itemId: string) => ReactNode;
 }) {
@@ -52,6 +54,14 @@ export function StoryColumn({
           <span className="font-bold text-slate-800 truncate" title={storyName}>
             {storyName}
           </span>
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            className="shrink-0 text-slate-500"
+            title={t('common.edit')}
+            onClick={() => onEditStory(storyId, storyName)}
+          />
         </div>
       }
       extra={<Tag className="m-0 text-[10px] uppercase font-bold">{Math.max(0, slots.length - 1)}</Tag>}

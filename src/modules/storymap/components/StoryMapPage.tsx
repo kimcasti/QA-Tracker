@@ -58,6 +58,9 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const [createFuncStoryId, setCreateFuncStoryId] = useState<string | null>(null);
   const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
   const [activeEpicId, setActiveEpicId] = useState<string | null>(null);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [editingEpicId, setEditingEpicId] = useState<string | null>(null);
+  const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
   const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
 
   const [roleForm] = Form.useForm();
@@ -122,15 +125,57 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   };
 
   const openCreateEpic = (roleId: string) => {
+    setEditingEpicId(null);
     setActiveRoleId(roleId);
     epicForm.resetFields();
     setEpicModalOpen(true);
   };
 
   const openCreateStory = (epicId: string) => {
+    setEditingStoryId(null);
     setActiveEpicId(epicId);
     storyForm.resetFields();
     setStoryModalOpen(true);
+  };
+
+  const openEditRole = (roleId: string, name: string) => {
+    setEditingRoleId(roleId);
+    roleForm.setFieldsValue({ name });
+    setRoleModalOpen(true);
+  };
+
+  const openEditEpic = (epicId: string, name: string) => {
+    setEditingEpicId(epicId);
+    setActiveRoleId(null);
+    epicForm.setFieldsValue({ name });
+    setEpicModalOpen(true);
+  };
+
+  const openEditStory = (storyId: string, name: string) => {
+    setEditingStoryId(storyId);
+    setActiveEpicId(null);
+    storyForm.setFieldsValue({ name });
+    setStoryModalOpen(true);
+  };
+
+  const closeRoleModal = () => {
+    setRoleModalOpen(false);
+    setEditingRoleId(null);
+    roleForm.resetFields();
+  };
+
+  const closeEpicModal = () => {
+    setEpicModalOpen(false);
+    setActiveRoleId(null);
+    setEditingEpicId(null);
+    epicForm.resetFields();
+  };
+
+  const closeStoryModal = () => {
+    setStoryModalOpen(false);
+    setActiveEpicId(null);
+    setEditingStoryId(null);
+    storyForm.resetFields();
   };
 
   useEffect(() => {
@@ -169,6 +214,22 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       deliveryDate: undefined,
     });
     setCreateFuncModalOpen(true);
+  };
+
+  const handleMoveFunctionality = async (functionalityId: string, storyId: string) => {
+    const functionality = functionalities.find(item => item.id === functionalityId);
+    if (!functionality || functionality.storyId === storyId) {
+      return;
+    }
+
+    try {
+      await saveFunctionality({ ...functionality, storyId });
+      await refetchFunctionalities();
+    } catch (error) {
+      console.error('Story Map move functionality error:', error);
+      reload();
+      message.error(t('storymap.move_error'));
+    }
   };
 
   const downloadTextFile = (filename: string, content: string, mime: string) => {
@@ -251,13 +312,14 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             <Button className="rounded-lg h-10 px-6">{t('common.export')}</Button>
           </Dropdown>
 
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              roleForm.resetFields();
-              setRoleModalOpen(true);
-            }}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingRoleId(null);
+                roleForm.resetFields();
+                setRoleModalOpen(true);
+              }}
             className="rounded-lg h-10 px-6"
           >
             {t('storymap.new_role')}
@@ -279,9 +341,12 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               onCreateEpic={openCreateEpic}
               onCreateStory={openCreateStory}
               onCreateFunctionality={openCreateFunctionality}
+              onEditRole={openEditRole}
+              onEditEpic={openEditEpic}
+              onEditStory={openEditStory}
               onEnsurePrimaryAssociation={ensurePrimaryAssociation}
               onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
-              onSaveFunctionality={saveFunctionality}
+              onMoveFunctionality={handleMoveFunctionality}
             />
           </StoryMapErrorBoundary>
         )}
@@ -431,17 +496,23 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       </Modal>
 
       <Modal
-        title={t('storymap.create_role_title')}
+        title={editingRoleId ? t('storymap.edit_role_title') : t('storymap.create_role_title')}
         open={roleModalOpen}
-        onCancel={() => setRoleModalOpen(false)}
+        onCancel={closeRoleModal}
         onOk={async () => {
           const values = await roleForm.validateFields();
-          storyMapService.createRole(projectId, values.name);
-          setRoleModalOpen(false);
+          if (editingRoleId) {
+            storyMapService.updateRole(projectId, editingRoleId, values.name);
+          } else {
+            storyMapService.createRole(projectId, values.name);
+          }
+          closeRoleModal();
           reload();
-          message.success(t('storymap.create_role_success'));
+          message.success(
+            editingRoleId ? t('storymap.edit_role_success') : t('storymap.create_role_success'),
+          );
         }}
-        okText={t('common.create')}
+        okText={editingRoleId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
       >
@@ -457,22 +528,27 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       </Modal>
 
       <Modal
-        title={t('storymap.create_epic_title')}
+        title={editingEpicId ? t('storymap.edit_epic_title') : t('storymap.create_epic_title')}
         open={epicModalOpen}
-        onCancel={() => setEpicModalOpen(false)}
+        onCancel={closeEpicModal}
         onOk={async () => {
           const values = await epicForm.validateFields();
-          if (!activeRoleId) {
+          if (!editingEpicId && !activeRoleId) {
             message.error(t('storymap.error_no_role'));
             return;
           }
-          storyMapService.createEpic(projectId, activeRoleId, values.name);
-          setEpicModalOpen(false);
-          setActiveRoleId(null);
+          if (editingEpicId) {
+            storyMapService.updateEpic(projectId, editingEpicId, values.name);
+          } else {
+            storyMapService.createEpic(projectId, activeRoleId!, values.name);
+          }
+          closeEpicModal();
           reload();
-          message.success(t('storymap.create_epic_success'));
+          message.success(
+            editingEpicId ? t('storymap.edit_epic_success') : t('storymap.create_epic_success'),
+          );
         }}
-        okText={t('common.create')}
+        okText={editingEpicId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
       >
@@ -488,22 +564,29 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       </Modal>
 
       <Modal
-        title={t('storymap.create_story_title')}
+        title={editingStoryId ? t('storymap.edit_story_title') : t('storymap.create_story_title')}
         open={storyModalOpen}
-        onCancel={() => setStoryModalOpen(false)}
+        onCancel={closeStoryModal}
         onOk={async () => {
           const values = await storyForm.validateFields();
-          if (!activeEpicId) {
+          if (!editingStoryId && !activeEpicId) {
             message.error(t('storymap.error_no_epic'));
             return;
           }
-          storyMapService.createStory(projectId, activeEpicId, values.name);
-          setStoryModalOpen(false);
-          setActiveEpicId(null);
+          if (editingStoryId) {
+            storyMapService.updateStory(projectId, editingStoryId, values.name);
+          } else {
+            storyMapService.createStory(projectId, activeEpicId!, values.name);
+          }
+          closeStoryModal();
           reload();
-          message.success(t('storymap.create_story_success'));
+          message.success(
+            editingStoryId
+              ? t('storymap.edit_story_success')
+              : t('storymap.create_story_success'),
+          );
         }}
-        okText={t('common.create')}
+        okText={editingStoryId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
       >

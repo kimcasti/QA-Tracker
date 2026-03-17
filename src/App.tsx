@@ -1,4 +1,4 @@
-import { Layout, Menu, Avatar, Space, Button, Typography, Spin } from 'antd';
+import { App as AntdApp, Layout, Menu, Button, Typography, Spin } from 'antd';
 import {
   DatabaseOutlined,
   CheckCircleOutlined,
@@ -33,11 +33,12 @@ import AboutView from './components/AboutView';
 import CreateProjectModal from './components/CreateProjectModal';
 import AuthPage from './modules/auth/components/AuthPage';
 import { useAuthSession } from './modules/auth/context/AuthSessionProvider';
+import { UserMenu } from './components/UserMenu';
 import StoryMapPage from './modules/storymap/components/StoryMapPage';
+import PersonalNotesPage from './modules/personal-notes/components/PersonalNotesPage';
 import { useProjects } from './modules/projects/hooks/useProjects';
 import type { Project } from './types';
 import { useTranslation } from 'react-i18next';
-import { LanguageSwitcher } from './i18n/LanguageSwitcher';
 import { appBranding } from './assets/branding';
 import { qaBrand } from './theme/palette';
 
@@ -59,6 +60,7 @@ type WorkspaceViewKey =
 
 type ParsedRoute =
   | { type: 'projects' }
+  | { type: 'notes' }
   | { type: 'edit'; projectId: string }
   | { type: 'workspace'; projectId: string; scene: string }
   | { type: 'legacy_workspace'; scene: string }
@@ -102,6 +104,10 @@ function routeForProjectWorkspace(projectId: string, view: WorkspaceViewKey) {
   return `/projects/${encodeURIComponent(projectId)}/${WORKSPACE_VIEW_TO_PATH[view]}`;
 }
 
+function routeForNotes() {
+  return '/notes';
+}
+
 function decodePathSegment(value: string) {
   try {
     return decodeURIComponent(value);
@@ -116,6 +122,11 @@ function parseRoute(pathname: string): ParsedRoute {
   }
 
   const normalized = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+
+  if (normalized === '/notes') {
+    return { type: 'notes' };
+  }
+
   const editMatch = normalized.match(/^\/edit-project\/([^/]+)$/);
   if (editMatch) {
     return { type: 'edit', projectId: decodePathSegment(editMatch[1]) };
@@ -206,6 +217,7 @@ function WorkspaceApp({
   onLogout: () => void;
 }) {
   const { t } = useTranslation();
+  const { message } = AntdApp.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects();
@@ -334,6 +346,19 @@ function WorkspaceApp({
     onLogout();
   };
 
+  const handleOpenNotes = () => {
+    navigate(routeForNotes());
+  };
+
+  const handleReturnFromNotes = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
+
   const projectsScreen = (
     <Layout className="qa-workspace-shell min-h-screen">
       <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
@@ -349,21 +374,13 @@ function WorkspaceApp({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <LanguageSwitcher size="small" />
-          <Space size={12}>
-            <Avatar className="bg-slate-900">{userInitial}</Avatar>
-            <div className="flex max-w-[220px] flex-col leading-none">
-              <Text strong className="truncate">
-                {userDisplayName}
-              </Text>
-              <Text type="secondary" className="truncate text-[11px]">
-                {currentUser.email}
-              </Text>
-            </div>
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} className="rounded-lg">
-              Logout
-            </Button>
-          </Space>
+          <UserMenu
+            email={currentUser.email}
+            userDisplayName={userDisplayName}
+            userInitial={userInitial}
+            onLogout={handleLogout}
+            onOpenNotes={handleOpenNotes}
+          />
         </div>
       </Header>
       <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto">
@@ -404,6 +421,49 @@ function WorkspaceApp({
           onCancel={() => setIsCreateProjectModalOpen(false)}
         />
       </>
+    );
+  }
+
+  if (parsedRoute.type === 'notes') {
+    return (
+      <Layout className="qa-workspace-shell min-h-screen">
+        <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={handleReturnFromNotes}
+              className="border-none hover:bg-gray-100 rounded-lg"
+            />
+            <div className="h-6 w-[1px] bg-gray-200 mx-2" />
+            <div className="flex items-center gap-3">
+              <img
+                src={appBranding.logoUrl}
+                alt={qaBrand.name}
+                className="h-10 w-10 rounded-xl object-cover shadow-md"
+              />
+              <div className="flex flex-col leading-none">
+                <span className="font-bold text-slate-800">Notas</span>
+                <span className="text-[11px] text-slate-500">
+                  Registro personal por organizacion
+                </span>
+              </div>
+            </div>
+          </div>
+          <UserMenu
+            email={currentUser.email}
+            userDisplayName={userDisplayName}
+            userInitial={userInitial}
+            onLogout={handleLogout}
+            onOpenNotes={() => message.info('Ya estas en la vista de notas.')}
+            notesActive
+          />
+        </Header>
+        <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto p-8">
+          <div className="qa-workspace-canvas mx-auto w-full max-w-7xl">
+            <PersonalNotesPage />
+          </div>
+        </Content>
+      </Layout>
     );
   }
 
@@ -453,33 +513,20 @@ function WorkspaceApp({
                 <div className="flex flex-col leading-none">
                   <span className="font-bold text-slate-800">{qaBrand.name}</span>
                   <span className="text-[11px] text-slate-500">
-                    {routedProject.name} · {routedProject.version}
+                    {routedProject.name} - {routedProject.version}
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <LanguageSwitcher size="small" />
-              <Space size={12}>
-                <Avatar className="bg-slate-900">{userInitial}</Avatar>
-                <div className="flex max-w-[220px] flex-col leading-none">
-                  <Text strong className="truncate">
-                    {userDisplayName}
-                  </Text>
-                  <Text type="secondary" className="truncate text-[11px]">
-                    {currentUser.email}
-                  </Text>
-                </div>
-                <Button
-                  type="text"
-                  icon={<LogoutOutlined />}
-                  onClick={handleLogout}
-                  className="rounded-lg"
-                >
-                  Logout
-                </Button>
-              </Space>
+              <UserMenu
+                email={currentUser.email}
+                userDisplayName={userDisplayName}
+                userInitial={userInitial}
+                onLogout={handleLogout}
+                onOpenNotes={handleOpenNotes}
+              />
             </div>
           </Header>
 

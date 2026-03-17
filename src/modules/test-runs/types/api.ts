@@ -7,6 +7,9 @@ export interface TestRunResultDto {
   bugLink?: string;
   severity?: string;
   linkedBugId?: string;
+  testRun?: {
+    documentId: string;
+  };
   functionality?: {
     documentId: string;
     code: string;

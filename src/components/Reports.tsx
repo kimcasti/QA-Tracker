@@ -91,7 +91,8 @@ const getCycleTypeLabel = (cycle: RegressionCycle) => {
 const getExecutedCount = (cycle: RegressionCycle) =>
   Math.max(cycle.totalTests - cycle.pending - cycle.blocked, 0);
 
-const getPercent = (value: number, total: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
+const getPercent = (value: number, total: number) =>
+  total > 0 ? Math.round((value / total) * 100) : 0;
 
 const average = (values: number[]) =>
   values.length > 0 ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
@@ -167,7 +168,10 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
         <Paragraph type="secondary" className="text-xs !mb-3 line-clamp-2">
           {description}
         </Paragraph>
-        <Tag color={selected ? 'blue' : 'default'} className="rounded-full px-3 border-none font-medium">
+        <Tag
+          color={selected ? 'blue' : 'default'}
+          className="rounded-full px-3 border-none font-medium"
+        >
           {format}
         </Tag>
       </div>
@@ -233,7 +237,10 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
   ];
 
   return (
-    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+    <div
+      id="report-content"
+      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
+    >
       <div className="flex justify-between items-start border-b border-slate-100 pb-6">
         <div>
           <Title level={3} className="!mb-1">
@@ -271,7 +278,11 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
         </Col>
         <Col span={8}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
-            <Statistic title="Total pruebas" value={cycle.totalTests} valueStyle={{ fontWeight: 800 }} />
+            <Statistic
+              title="Total pruebas"
+              value={cycle.totalTests}
+              valueStyle={{ fontWeight: 800 }}
+            />
             <Text type="secondary" className="text-xs">
               Incluidas en este ciclo
             </Text>
@@ -423,7 +434,10 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
 
     return {
       casesGrowth: calculatePercentChange(lastCycle.totalTests, firstCycle.totalTests),
-      failureReduction: calculatePercentChange(firstCycle.failed - lastCycle.failed, firstCycle.failed),
+      failureReduction: calculatePercentChange(
+        firstCycle.failed - lastCycle.failed,
+        firstCycle.failed,
+      ),
       executionVelocity: calculatePercentChange(latestExecutionCoverage, firstExecutionCoverage),
       latestExecutionCoverage,
     };
@@ -442,7 +456,10 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
   }
 
   return (
-    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+    <div
+      id="report-content"
+      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
+    >
       <div className="border-b border-slate-100 pb-6 flex justify-between items-end">
         <div>
           <Title level={3} className="!mb-1">
@@ -471,7 +488,12 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#64748b', fontSize: 12 }}
+              />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
               <RechartsTooltip />
               <Area
@@ -499,7 +521,10 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                     {evolutionMetrics.casesGrowth}%
                   </Text>
                 </div>
-                <Progress percent={Math.min(Math.abs(evolutionMetrics.casesGrowth), 100)} strokeColor="#8b5cf6" />
+                <Progress
+                  percent={Math.min(Math.abs(evolutionMetrics.casesGrowth), 100)}
+                  strokeColor="#8b5cf6"
+                />
               </div>
               <div>
                 <div className="flex justify-between mb-2">
@@ -522,7 +547,10 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                     {evolutionMetrics.executionVelocity}%
                   </Text>
                 </div>
-                <Progress percent={evolutionMetrics.latestExecutionCoverage} strokeColor="#f59e0b" />
+                <Progress
+                  percent={evolutionMetrics.latestExecutionCoverage}
+                  strokeColor="#f59e0b"
+                />
               </div>
             </div>
           </Card>
@@ -550,7 +578,9 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
 
                 return (
                   <div className="flex gap-3" key={cycle.id}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconClass}`}>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconClass}`}
+                    >
                       {icon}
                     </div>
                     <div>
@@ -558,8 +588,8 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                         {cycle.cycleId} · {getCycleTypeLabel(cycle)}
                       </Text>
                       <Text type="secondary" className="text-xs">
-                        {dayjs(cycle.date).format('DD/MM/YYYY')} · {cycle.passed}/{cycle.totalTests} aprobadas ·{' '}
-                        {cycle.failed} fallidas
+                        {dayjs(cycle.date).format('DD/MM/YYYY')} · {cycle.passed}/{cycle.totalTests}{' '}
+                        aprobadas · {cycle.failed} fallidas
                       </Text>
                     </div>
                   </div>
@@ -612,15 +642,25 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
     const activeBugs = filteredBugs.filter(bug => bug.status !== BugStatus.RESOLVED);
     const finalizedCycles = filteredCycles.filter(cycle => cycle.status === 'FINALIZADA');
     const averagePassRate = average(finalizedCycles.map(cycle => cycle.passRate));
-    const pendingCycleTests = filteredCycles.reduce((sum, cycle) => sum + cycle.pending + cycle.blocked, 0);
-    const completed = filteredFunctionalities.filter(item => item.status === TestStatus.COMPLETED).length;
-    const highRisk = filteredFunctionalities.filter(item => item.riskLevel === RiskLevel.HIGH).length;
+    const pendingCycleTests = filteredCycles.reduce(
+      (sum, cycle) => sum + cycle.pending + cycle.blocked,
+      0,
+    );
+    const completed = filteredFunctionalities.filter(
+      item => item.status === TestStatus.COMPLETED,
+    ).length;
+    const highRisk = filteredFunctionalities.filter(
+      item => item.riskLevel === RiskLevel.HIGH,
+    ).length;
     const riskTone = getProjectRiskTone(activeBugs.length, highRisk, averagePassRate);
 
     return {
       total: filteredFunctionalities.length,
       completed,
-      progress: filteredFunctionalities.length > 0 ? getPercent(completed, filteredFunctionalities.length) : 0,
+      progress:
+        filteredFunctionalities.length > 0
+          ? getPercent(completed, filteredFunctionalities.length)
+          : 0,
       highRisk,
       testCasesCount: filteredTestCases.length,
       activeBugsCount: activeBugs.length,
@@ -640,14 +680,18 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
   ];
 
   return (
-    <div id="report-content" className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+    <div
+      id="report-content"
+      className="space-y-6 bg-white p-8 rounded-3xl shadow-sm border border-slate-100"
+    >
       <div className="border-b border-slate-100 pb-6 flex justify-between items-end">
         <div>
           <Title level={3} className="!mb-1">
             Reporte de Estado del Proyecto
           </Title>
           <Paragraph type="secondary">
-            Vision global del avance funcional, cobertura y riesgos{sprint ? ` para ${sprint}` : ''}.
+            Vision global del avance funcional, cobertura y riesgos{sprint ? ` para ${sprint}` : ''}
+            .
           </Paragraph>
         </div>
         {sprint && (
@@ -763,7 +807,10 @@ export default function Reports({ projectId }: { projectId: string }) {
   const { data: smokeCycles = [] } = useSmokeCycles(projectId);
   const { data: sprints = [] } = useSprints(projectId);
 
-  const allCycles = useMemo(() => [...regressionCycles, ...smokeCycles], [regressionCycles, smokeCycles]);
+  const allCycles = useMemo(
+    () => [...regressionCycles, ...smokeCycles],
+    [regressionCycles, smokeCycles],
+  );
 
   const filteredCycles = useMemo(() => {
     if (!selectedSprint) return allCycles;
@@ -787,7 +834,10 @@ export default function Reports({ projectId }: { projectId: string }) {
 
   const handleExportPdf = async () => {
     try {
-      await exportToPdf('report-content', `Reporte_${selectedVariant}_${dayjs().format('YYYYMMDD')}`);
+      await exportToPdf(
+        'report-content',
+        `Reporte_${selectedVariant}_${dayjs().format('YYYYMMDD')}`,
+      );
       message.success('Reporte exportado correctamente');
     } catch (error) {
       message.error('Error al exportar el reporte');
@@ -823,7 +873,9 @@ export default function Reports({ projectId }: { projectId: string }) {
           </Space>
         </div>
 
-        {selectedVariant === 'QA_STATUS_SUMMARY' && <QAStatusSummary projectId={projectId} cycle={selectedCycle} />}
+        {selectedVariant === 'QA_STATUS_SUMMARY' && (
+          <QAStatusSummary projectId={projectId} cycle={selectedCycle} />
+        )}
         {selectedVariant === 'QA_PROGRESS_REPORT' && (
           <QAProgressReport projectId={projectId} sprint={selectedSprint} />
         )}
@@ -849,7 +901,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="QA_STATUS_SUMMARY"
           title="Resumen de Estado QA"
-          description="Vision detallada de un ciclo especifico, metricas de aprobacion y fallos."
+          description="Visión detallada de un ciclo específico, métricas de aprobación y fallos."
           format="PDF / EXCEL / WORD"
           icon={<FileTextOutlined />}
           selected={selectedVariant === 'QA_STATUS_SUMMARY'}
@@ -858,7 +910,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="QA_PROGRESS_REPORT"
           title="Reporte de Progreso QA"
-          description="Tendencias de calidad, evolucion de casos y hitos alcanzados en el tiempo."
+          description="Tendencias de calidad, evolución de casos y hitos alcanzados en el tiempo."
           format="PDF / EXCEL"
           icon={<LineChartOutlined />}
           selected={selectedVariant === 'QA_PROGRESS_REPORT'}
@@ -878,7 +930,7 @@ export default function Reports({ projectId }: { projectId: string }) {
       <Card className="rounded-3xl border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">
           <div className="flex items-center gap-2 font-bold text-slate-700">
-            <FilterOutlined /> Configuracion de filtros
+            <FilterOutlined /> Configuración de filtros
           </div>
         </div>
         <div className="p-8">
@@ -897,7 +949,10 @@ export default function Reports({ projectId }: { projectId: string }) {
                     setSelectedCycleId(null);
                   }}
                   allowClear
-                  options={sprints.map(sprintItem => ({ label: sprintItem.name, value: sprintItem.name }))}
+                  options={sprints.map(sprintItem => ({
+                    label: sprintItem.name,
+                    value: sprintItem.name,
+                  }))}
                 />
               </div>
             </Col>

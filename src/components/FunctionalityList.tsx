@@ -35,6 +35,7 @@ import {
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
+import { toApiError } from '../config/http';
 import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
@@ -381,12 +382,16 @@ export default function FunctionalityList({
         projectId: projectId || '',
       };
       console.log('Payload - Save Functionality:', payload);
-      save(payload);
+      await save(payload);
+      message.success(
+        editingFunc ? 'Funcionalidad actualizada correctamente.' : 'Funcionalidad creada correctamente.',
+      );
       setIsModalOpen(false);
       form.resetFields();
       setEditingFunc(null);
     } catch (error) {
       console.error('Validation failed:', error);
+      message.error(toApiError(error).message || 'No se pudo guardar la funcionalidad.');
     }
   };
 

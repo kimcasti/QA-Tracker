@@ -9,6 +9,14 @@ import { bugStatusColors, softTagStyle } from '../theme/statusStyles';
 
 const { Text } = Typography;
 
+function formatOriginLabel(record: QABug) {
+  const showCycleId =
+    record.cycleId &&
+    (record.origin === BugOrigin.REGRESSION_CYCLE || record.origin === BugOrigin.SMOKE_CYCLE);
+
+  return showCycleId ? `${record.origin} - ${record.cycleId}` : record.origin;
+}
+
 export default function BugHistoryView({ projectId }: { projectId?: string }) {
   const { data: bugsData = [], save: saveBug } = useBugs(projectId);
   const bugs = Array.isArray(bugsData) ? bugsData : [];
@@ -164,10 +172,10 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
               ),
               dataIndex: 'origin',
               key: 'origin',
-              width: 170,
-              render: (origin: BugOrigin) => (
+              width: 220,
+              render: (_: BugOrigin, record: QABug) => (
                 <Tag className="m-0 rounded-full bg-slate-100 border-slate-200 text-slate-600">
-                  {origin}
+                  {formatOriginLabel(record)}
                 </Tag>
               ),
             },

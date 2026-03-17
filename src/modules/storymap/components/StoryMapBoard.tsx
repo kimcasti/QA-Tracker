@@ -1,5 +1,5 @@
-import { Button, Card, Tag, Typography } from 'antd';
-import { PlusOutlined, RocketOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Card, Tag, Tooltip, Typography } from 'antd';
+import { EditOutlined, PlusOutlined, RocketOutlined, UserOutlined } from '@ant-design/icons';
 import { createSwapy, type SlotItemMapArray, type Swapy } from 'swapy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,9 +58,12 @@ export default function StoryMapBoard({
   onCreateEpic,
   onCreateStory,
   onCreateFunctionality,
+  onEditRole,
+  onEditEpic,
+  onEditStory,
   onEnsurePrimaryAssociation,
   onSyncPrimaryStoryAfterUnassign,
-  onSaveFunctionality,
+  onMoveFunctionality,
 }: {
   projectId: string;
   roles: StoryMapRoleNode[];
@@ -68,9 +71,12 @@ export default function StoryMapBoard({
   onCreateEpic: (roleId: string) => void;
   onCreateStory: (epicId: string) => void;
   onCreateFunctionality: (storyId: string) => void;
+  onEditRole: (roleId: string, roleName: string) => void;
+  onEditEpic: (epicId: string, epicName: string) => void;
+  onEditStory: (storyId: string, storyName: string) => void;
   onEnsurePrimaryAssociation: (storyId: string, functionalityId: string) => void;
   onSyncPrimaryStoryAfterUnassign: (storyId: string, functionalityId: string) => void;
-  onSaveFunctionality: (func: Functionality) => void;
+  onMoveFunctionality: (functionalityId: string, storyId: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -118,15 +124,15 @@ export default function StoryMapBoard({
   }, [links]);
 
   const funcByIdRef = useRef(funcById);
-  const onSaveRef = useRef(onSaveFunctionality);
+  const onMoveRef = useRef(onMoveFunctionality);
 
   useEffect(() => {
     funcByIdRef.current = funcById;
   }, [funcById]);
 
   useEffect(() => {
-    onSaveRef.current = onSaveFunctionality;
-  }, [onSaveFunctionality]);
+    onMoveRef.current = onMoveFunctionality;
+  }, [onMoveFunctionality]);
 
   useEffect(() => {
     const syncedLinks = storyAssociationsService.syncProjectLinks(
@@ -178,43 +184,91 @@ export default function StoryMapBoard({
     return grouped;
   }, [canonicalSlotItemMap]);
 
-  const normalizeAndPersist = (mapArray: SlotItemMapArray) => {
-    const nextOrder: Record<string, string[]> = {};
-    storyIdsRef.current.forEach(storyId => (nextOrder[storyId] = []));
+  const normalizeAndPersist = async (mapArray: SlotItemMapArray) => {
+    const nextOrderDraft: Record<string, string[]> = {};
+    storyIdsRef.current.forEach(storyId => (nextOrderDraft[storyId] = []));
     const nextStoryByLinkId = new Map<string, string>();
+    const currentLinks = Array.from(linkById.values());
+    const movedLinks: Array<{
+      functionalityId: string;
+      fromStoryId: string;
+      toStoryId: string;
+    }> = [];
 
     for (const { slot, item } of mapArray) {
       const sid = storyIdFromSlot(slot);
       if (isEmptyItem(item)) continue;
-      if (!nextOrder[sid]) nextOrder[sid] = [];
-      nextOrder[sid].push(item);
+      if (!nextOrderDraft[sid]) nextOrderDraft[sid] = [];
+      nextOrderDraft[sid].push(item);
       nextStoryByLinkId.set(item, sid);
     }
 
-    setTasksByStory(nextOrder);
-    taskOrderService.saveProjectOrder(projectId, nextOrder);
-
-    const nextLinks = Array.from(linkById.values()).map(link => {
+    let nextLinks = currentLinks;
+    currentLinks.forEach(link => {
       const nextStoryId = nextStoryByLinkId.get(link.id);
-      return nextStoryId && nextStoryId !== link.storyId ? { ...link, storyId: nextStoryId } : link;
+      if (!nextStoryId || nextStoryId === link.storyId) {
+        return;
+      }
+
+      movedLinks.push({
+        functionalityId: link.functionalityId,
+        fromStoryId: link.storyId,
+        toStoryId: nextStoryId,
+      });
+      nextLinks = storyAssociationsService.moveAssociation(projectId, link.id, nextStoryId);
     });
 
+    const validLinkIdsByStory = new Map<string, string[]>();
+    nextLinks.forEach(link => {
+      const storyLinkIds = validLinkIdsByStory.get(link.storyId) || [];
+      storyLinkIds.push(link.id);
+      validLinkIdsByStory.set(link.storyId, storyLinkIds);
+    });
+
+    const nextOrder: Record<string, string[]> = {};
+    storyIdsRef.current.forEach(storyId => {
+      const validIds = validLinkIdsByStory.get(storyId) || [];
+      const orderedIds = (nextOrderDraft[storyId] || []).filter(id => validIds.includes(id));
+      const missingIds = validIds.filter(id => !orderedIds.includes(id));
+      nextOrder[storyId] = [...orderedIds, ...missingIds];
+    });
+
+    setTasksByStory(nextOrder);
+    taskOrderService.saveProjectOrder(projectId, nextOrder);
     setLinks(nextLinks);
     storyAssociationsService.saveProjectLinks(projectId, nextLinks);
 
-    nextLinks.forEach(link => {
-      const current = funcByIdRef.current.get(link.functionalityId);
-      if (!current) return;
-      if (current.storyId === link.storyId) return;
+    const persistPrimaryMoves = movedLinks
+      .filter((move, index, moves) => {
+        return (
+          index ===
+          moves.findIndex(
+            item =>
+              item.functionalityId === move.functionalityId &&
+              item.toStoryId === move.toStoryId,
+          )
+        );
+      })
+      .filter(move => {
+        const current = funcByIdRef.current.get(move.functionalityId);
+        if (!current) {
+          return false;
+        }
 
-      const sameFunctionalityLinks = nextLinks.filter(
-        item => item.functionalityId === link.functionalityId,
+        const sameFunctionalityLinks = nextLinks.filter(
+          item => item.functionalityId === move.functionalityId,
+        );
+
+        return current.storyId === move.fromStoryId || sameFunctionalityLinks.length === 1;
+      });
+
+    if (persistPrimaryMoves.length > 0) {
+      await Promise.all(
+        persistPrimaryMoves.map(move =>
+          onMoveRef.current(move.functionalityId, move.toStoryId),
+        ),
       );
-
-      if (sameFunctionalityLinks.length === 1) {
-        onSaveRef.current({ ...current, storyId: link.storyId });
-      }
-    });
+    }
   };
 
   const handleAssignExisting = (storyId: string, functionalityId: string) => {
@@ -273,7 +327,7 @@ export default function StoryMapBoard({
       const next = event.slotItemMap.asArray;
       // Swapy can temporarily move placeholder items across stories; normalize by rebuilding
       // a canonical mapping from the resulting order and re-inserting story-specific empties.
-      normalizeAndPersist(next);
+      void normalizeAndPersist(next);
       // The board will re-render based on updated tasksByStory.
     });
 
@@ -310,6 +364,15 @@ export default function StoryMapBoard({
               <span className="font-black text-slate-800 truncate" title={role.name}>
                 {role.name}
               </span>
+              <Tooltip title={t('common.edit')}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  className="shrink-0 text-slate-500"
+                  onClick={() => onEditRole(role.id, role.name)}
+                />
+              </Tooltip>
             </div>
           }
           extra={
@@ -344,6 +407,15 @@ export default function StoryMapBoard({
                     <span className="font-bold text-slate-800 truncate" title={epic.name}>
                       {epic.name}
                     </span>
+                    <Tooltip title={t('common.edit')}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        className="shrink-0 text-slate-500"
+                        onClick={() => onEditEpic(epic.id, epic.name)}
+                      />
+                    </Tooltip>
                   </div>
                 }
                 extra={
@@ -376,6 +448,7 @@ export default function StoryMapBoard({
                               ),
                           )}
                           onCreateFunctionality={onCreateFunctionality}
+                          onEditStory={onEditStory}
                           onAssignExisting={handleAssignExisting}
                           renderItem={(itemId) => {
                             if (isEmptyItem(itemId)) {

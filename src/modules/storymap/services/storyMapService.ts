@@ -26,6 +26,28 @@ function newId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function updateItem<T extends { id: string; projectId: string; name: string }>(
+  key: string,
+  projectId: string,
+  itemId: string,
+  name: string,
+) {
+  const items = readArray<T>(key);
+  let updated: T | null = null;
+
+  const nextItems = items.map(item => {
+    if (item.projectId !== projectId || item.id !== itemId) {
+      return item;
+    }
+
+    updated = { ...item, name: name.trim() };
+    return updated;
+  });
+
+  writeArray(key, nextItems);
+  return updated;
+}
+
 export const storyMapService = {
   getRoles(projectId?: string): Role[] {
     const all = readArray<Role>(LS_KEYS.ROLES);
@@ -38,6 +60,10 @@ export const storyMapService = {
     roles.push(role);
     writeArray(LS_KEYS.ROLES, roles);
     return role;
+  },
+
+  updateRole(projectId: string, roleId: string, name: string) {
+    return updateItem<Role>(LS_KEYS.ROLES, projectId, roleId, name);
   },
 
   getEpics(projectId?: string): Epic[] {
@@ -53,6 +79,10 @@ export const storyMapService = {
     return epic;
   },
 
+  updateEpic(projectId: string, epicId: string, name: string) {
+    return updateItem<Epic>(LS_KEYS.EPICS, projectId, epicId, name);
+  },
+
   getStories(projectId?: string): Story[] {
     const all = readArray<Story>(LS_KEYS.STORIES);
     return projectId ? all.filter(s => s.projectId === projectId) : all;
@@ -64,6 +94,10 @@ export const storyMapService = {
     stories.push(story);
     writeArray(LS_KEYS.STORIES, stories);
     return story;
+  },
+
+  updateStory(projectId: string, storyId: string, name: string) {
+    return updateItem<Story>(LS_KEYS.STORIES, projectId, storyId, name);
   },
 
   getFullStoryMap(projectId: string, functionalities: Functionality[]): StoryMapRoleNode[] {

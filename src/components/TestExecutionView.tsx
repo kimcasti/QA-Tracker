@@ -17,6 +17,7 @@ import {
   Tooltip,
   Divider,
   Checkbox,
+  Popconfirm,
   List,
   Image,
   Tabs,
@@ -41,6 +42,7 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
@@ -49,6 +51,7 @@ import { useModules } from '../modules/settings/hooks/useModules';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
+import { useWorkspace } from '../modules/workspace/hooks/useWorkspace';
 import {
   TestExecution,
   TestResult,
@@ -87,6 +90,8 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data: workspace } = useWorkspace();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: testRunsData, save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId);
   const { data: allTestCases } = useTestCases(projectId);
@@ -96,6 +101,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
+  const activeMembership = workspace?.memberships[0];
+  const canDeleteTestRuns = ['owner', 'qa-lead'].includes(activeMembership?.role?.code || '');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
@@ -114,6 +121,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [currentEvidenceTestCaseId, setCurrentEvidenceTestCaseId] = useState<string | null>(null);
+  const [originalEvidenceRecord, setOriginalEvidenceRecord] = useState<TestRunResult | null>(null);
 
   // Always read the latest record from state, so evidence edits reflect immediately.
   const currentEvidenceRecord = useMemo(() => {
@@ -131,9 +139,44 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return functionalities.find(func => func.id === currentEvidenceRecord.functionalityId) || null;
   }, [currentEvidenceRecord, functionalities]);
 
+  const functionalityIdsWithTestCases = useMemo(() => {
+    return new Set(testCases.map(testCase => testCase.functionalityId).filter(Boolean));
+  }, [testCases]);
+
+  const functionalitiesWithTestCases = useMemo(() => {
+    return functionalities.filter(func => functionalityIdsWithTestCases.has(func.id));
+  }, [functionalities, functionalityIdsWithTestCases]);
+
+  const moduleOptions = useMemo(() => {
+    const validModules = new Set(functionalitiesWithTestCases.map(func => func.module));
+
+    return modulesData
+      .filter(module => validModules.has(module.name))
+      .map(module => ({ label: module.name, value: module.name }));
+  }, [functionalitiesWithTestCases, modulesData]);
+
   const openEvidenceModal = (record: TestRunResult) => {
+    setOriginalEvidenceRecord({ ...record });
     setCurrentEvidenceTestCaseId(record.testCaseId);
     setIsEvidenceModalOpen(true);
+  };
+
+  const closeEvidenceModal = () => {
+    setIsEvidenceModalOpen(false);
+    setCurrentEvidenceTestCaseId(null);
+    setOriginalEvidenceRecord(null);
+  };
+
+  const restoreEvidenceChanges = () => {
+    if (originalEvidenceRecord) {
+      setExecutionResults(prev =>
+        prev.map(result =>
+          result.testCaseId === originalEvidenceRecord.testCaseId ? originalEvidenceRecord : result,
+        ),
+      );
+    }
+
+    closeEvidenceModal();
   };
 
   const handleSaveEvidence = async () => {
@@ -175,17 +218,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       if (syncedBug) {
         updateResult(currentEvidenceRecord.testCaseId, 'linkedBugId', syncedBug.internalBugId);
+        await queryClient.invalidateQueries({
+          queryKey: ['bugs', activeTestRun.projectId],
+        });
       }
     }
 
-    setIsEvidenceModalOpen(false);
-    setCurrentEvidenceTestCaseId(null);
+    closeEvidenceModal();
     message.success('Evidencia guardada correctamente');
   };
 
   const availableFunctionalities = useMemo(() => {
-    return functionalities.filter(f => selectedModules.includes(f.module));
-  }, [selectedModules, functionalities]);
+    return functionalitiesWithTestCases.filter(f => selectedModules.includes(f.module));
+  }, [selectedModules, functionalitiesWithTestCases]);
 
   const groupedFunctionalities = useMemo(() => {
     const groups: Record<string, typeof functionalities> = {};
@@ -205,6 +250,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const handleCreateTestRun = async () => {
     try {
       const values = await form.validateFields();
+      if (selectedFuncIds.length === 0) {
+        message.error('Selecciona al menos una funcionalidad con casos de prueba registrados.');
+        return;
+      }
+
       const newRun: TestRun = {
         id: `TR-${Date.now()}`,
         projectId: projectId || '',
@@ -325,7 +375,24 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const removeTestCase = (tcId: string) => {
-    setExecutionResults(prev => prev.filter(r => r.testCaseId !== tcId));
+    const nextResults = executionResults.filter(result => result.testCaseId !== tcId);
+    setExecutionResults(nextResults);
+    setActiveTestRun(prev => {
+      if (!prev) {
+        return prev;
+      }
+
+      const remainingFunctionalityIds = new Set(nextResults.map(result => result.functionalityId));
+
+      return {
+        ...prev,
+        selectedFunctionalities: prev.selectedFunctionalities.filter(id =>
+          remainingFunctionalityIds.has(id),
+        ),
+        results: nextResults,
+      };
+    });
+    message.success('Caso de prueba descartado de esta ejecución.');
   };
 
   // Filters state
@@ -483,12 +550,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           >
             {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
           </Button>
-          <Button
-            icon={<DeleteOutlined />}
-            size="small"
-            danger
-            onClick={() => void deleteTestRun(record.id)}
-          />
+          {canDeleteTestRuns && (
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
+              danger
+              onClick={() => void deleteTestRun(record.id)}
+            />
+          )}
         </Space>
       ),
     },
@@ -846,6 +915,36 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </Button>
                 ),
               },
+              ...(!isReadOnly
+                ? [
+                    {
+                      title: (
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          ACCIONES
+                        </span>
+                      ),
+                      key: 'actions',
+                      width: '8%',
+                      align: 'center' as const,
+                      render: (_: unknown, record: TestRunResult) => (
+                        <Popconfirm
+                          title="Descartar caso de prueba"
+                          description="Este caso se quitará de esta ejecución."
+                          okText="Descartar"
+                          cancelText="Cancelar"
+                          onConfirm={() => removeTestCase(record.testCaseId)}
+                        >
+                          <Button
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            className="text-rose-500"
+                          />
+                        </Popconfirm>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
           />
         </Card>
@@ -873,22 +972,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         <Modal
           title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
           open={isEvidenceModalOpen}
-          onCancel={() => {
-            setIsEvidenceModalOpen(false);
-            setCurrentEvidenceTestCaseId(null);
-          }}
+          onCancel={restoreEvidenceChanges}
           width={520}
           centered
           footer={[
             <Button
               key="close"
-              onClick={() => {
-                setIsEvidenceModalOpen(false);
-                setCurrentEvidenceTestCaseId(null);
-              }}
+              onClick={restoreEvidenceChanges}
               className="rounded-lg"
             >
-              Cerrar
+              Cancelar
             </Button>,
             !isReadOnly && (
               <Button
@@ -1268,7 +1361,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               className="w-full rounded-lg"
               onChange={setSelectedModules}
               value={selectedModules}
-              options={modulesData.map(m => ({ label: m.name, value: m.name }))}
+              options={moduleOptions}
             />
           </Form.Item>
 
@@ -1340,8 +1433,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       <div className="p-4">
                         <Checkbox.Group
                           className="w-full"
-                          value={selectedFuncIds}
-                          onChange={vals => setSelectedFuncIds(vals as string[])}
+                          value={selectedInModule}
+                          onChange={vals => {
+                            const nextModuleValues = vals as string[];
+                            setSelectedFuncIds(prev => {
+                              const withoutCurrentModule = prev.filter(
+                                id => !moduleFuncIds.includes(id),
+                              );
+                              return [...withoutCurrentModule, ...nextModuleValues];
+                            });
+                          }}
                         >
                           <Row gutter={[12, 12]}>
                             {funcs.map(item => (
@@ -1371,6 +1472,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     </div>
                   );
                 })}
+                {Object.keys(groupedFunctionalities).length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    No hay funcionalidades con casos de prueba registrados en los modulos seleccionados.
+                  </div>
+                )}
               </div>
             </div>
           )}

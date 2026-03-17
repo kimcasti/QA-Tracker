@@ -564,19 +564,7 @@ export default function AboutView({ project }: { project: Project }) {
               </div>
 
               <Row gutter={[20, 20]}>
-                <Col xs={24} md={12}>
-                  <ExecutiveInfoCard
-                    icon={<BulbOutlined className="text-2xl" />}
-                    title="Project Overview"
-                    accent={qaPalette.primary}
-                  >
-                    <Paragraph className="!mb-0 text-base leading-8 text-slate-600">
-                      {project.description ||
-                        'Main enterprise platform for core services and operational quality management.'}
-                    </Paragraph>
-                  </ExecutiveInfoCard>
-                </Col>
-                <Col xs={24} md={12}>
+                <Col xs={24}>
                   <ExecutiveInfoCard
                     icon={<EyeOutlined className="text-2xl" />}
                     title="Purpose and Vision"
@@ -907,7 +895,7 @@ export default function AboutView({ project }: { project: Project }) {
                     </div>
                     <div>
                       <Text className="block text-base font-semibold text-slate-700">
-                        Nueva minuta de reunion
+                        Nueva minuta de reunión
                       </Text>
                       <Text className="text-slate-400">
                         Documenta acuerdos, bloqueos y siguientes pasos.
@@ -947,7 +935,7 @@ export default function AboutView({ project }: { project: Project }) {
       <Modal
         title={
           <span className="text-lg font-bold text-slate-800">
-            Editar Informacion del Proyecto
+            Editar Información del Proyecto
           </span>
         }
         open={isEditProjectModalOpen}
@@ -994,7 +982,7 @@ export default function AboutView({ project }: { project: Project }) {
           <Form.Item name="coreRequirements" label="Requisitos basicos (uno por linea)">
             <Input.TextArea
               rows={5}
-              placeholder="Ej: Autenticacion biometrica&#10;Pasarela de pagos"
+              placeholder="Ej: Autenticación biometrica&#10;Pasarela de pagos"
             />
           </Form.Item>
           <Form.Item name="businessRules" label="Normas empresariales">
@@ -1006,7 +994,7 @@ export default function AboutView({ project }: { project: Project }) {
       <Modal
         title={
           <span className="text-lg font-bold text-slate-800">
-            {selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunion'}
+            {selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunión'}
           </span>
         }
         open={isNoteModalOpen}
@@ -1022,12 +1010,12 @@ export default function AboutView({ project }: { project: Project }) {
         <Form form={noteForm} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item name="date" label="Fecha de la reunion" rules={[{ required: true }]}>
+              <Form.Item name="date" label="Fecha de la reunión" rules={[{ required: true }]}>
                 <DatePicker className="h-11 w-full rounded-2xl" format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="time" label="Hora de la reunion" rules={[{ required: true }]}>
+              <Form.Item name="time" label="Hora de la reunión" rules={[{ required: true }]}>
                 <TimePicker className="h-11 w-full rounded-2xl" format="HH:mm" minuteStep={5} />
               </Form.Item>
             </Col>
@@ -1039,7 +1027,7 @@ export default function AboutView({ project }: { project: Project }) {
               members={slackMembers}
               valueField="fullName"
               extraOptions={participantOptions}
-              placeholder="Selecciona participantes de la reunion"
+              placeholder="Selecciona participantes de la reunión"
               className="rounded-2xl"
               loading={isSlackMembersLoading}
             />
