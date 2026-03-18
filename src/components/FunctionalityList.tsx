@@ -1,6 +1,7 @@
 import {
   Button,
   Card,
+  Checkbox,
   Form,
   Input,
   Modal,
@@ -23,6 +24,7 @@ import {
   UploadOutlined,
   DownloadOutlined,
   FileTextOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { useState, useRef } from 'react';
@@ -36,7 +38,7 @@ import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { toApiError } from '../config/http';
-import { Functionality, TestStatus, TestType, Priority, RiskLevel } from '../types';
+import { Functionality, TestStatus, Priority, RiskLevel } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
@@ -49,6 +51,8 @@ export default function FunctionalityList({
   filter?: 'regression' | 'smoke';
   projectId?: string;
 }) {
+  type QaCoverageFilter = 'core' | 'regression' | 'smoke' | 'recent-change';
+
   const { t } = useTranslation();
   const {
     data: functionalitiesData,
@@ -64,7 +68,7 @@ export default function FunctionalityList({
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
 
   const [moduleFilter, setModuleFilter] = useState<string | null>(null);
-  const [testTypeFilter, setTestTypeFilter] = useState<TestType | null>(null);
+  const [qaCoverageFilter, setQaCoverageFilter] = useState<QaCoverageFilter | null>(null);
   const [statusFilter, setStatusFilter] = useState<TestStatus | null>(null);
 
   const functionalities = allFunctionalities.filter(f => {
@@ -72,11 +76,15 @@ export default function FunctionalityList({
 
     const matchesBaseFilter = !filter || (filter === 'regression' ? f.isRegression : f.isSmoke);
     const matchesModule = !moduleFilter || f.module === moduleFilter;
-    const matchesTestType =
-      !testTypeFilter || (Array.isArray(f.testTypes) && f.testTypes.includes(testTypeFilter));
+    const matchesQaCoverage =
+      !qaCoverageFilter ||
+      (qaCoverageFilter === 'core' && Boolean(f.isCore)) ||
+      (qaCoverageFilter === 'regression' && Boolean(f.isRegression)) ||
+      (qaCoverageFilter === 'smoke' && Boolean(f.isSmoke)) ||
+      (qaCoverageFilter === 'recent-change' && Boolean(f.lastFunctionalChangeAt));
     const matchesStatus = !statusFilter || f.status === statusFilter;
 
-    return matchesBaseFilter && matchesModule && matchesTestType && matchesStatus;
+    return matchesBaseFilter && matchesModule && matchesQaCoverage && matchesStatus;
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -210,35 +218,48 @@ export default function FunctionalityList({
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          PRUEBAS APLICADAS
+          COBERTURA QA
         </span>
       ),
-      dataIndex: 'testTypes',
-      key: 'testTypes',
-      render: (types: TestType[]) => {
-        const typeColors: Record<string, { bg: string; text: string }> = {
-          [TestType.INTEGRATION]: { bg: 'bg-slate-100', text: 'text-blue-600' },
-          [TestType.FUNCTIONAL]: { bg: 'bg-cyan-50', text: 'text-cyan-700' },
-          [TestType.SANITY]: { bg: 'bg-slate-50', text: 'text-slate-700' },
-          [TestType.REGRESSION]: { bg: 'bg-purple-50', text: 'text-purple-700' },
-          [TestType.SMOKE]: { bg: 'bg-orange-50', text: 'text-orange-700' },
-          [TestType.EXPLORATORY]: { bg: 'bg-slate-100', text: 'text-slate-800' },
-          [TestType.UAT]: { bg: 'bg-gray-100', text: 'text-gray-800' },
-        };
+      key: 'qaCoverage',
+      render: (_: unknown, record: Functionality) => {
+        const tags = [
+          record.isCore
+            ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' }
+            : null,
+          record.isRegression
+            ? {
+                key: 'regression',
+                className: 'bg-purple-50 text-purple-700',
+                label: 'Regresión',
+              }
+            : null,
+          record.isSmoke
+            ? { key: 'smoke', className: 'bg-orange-50 text-orange-700', label: 'Smoke' }
+            : null,
+          record.lastFunctionalChangeAt
+            ? {
+                key: 'recent-change',
+                className: 'bg-sky-50 text-sky-700',
+                label: 'Cambio reciente',
+              }
+            : null,
+        ].filter(Boolean) as Array<{ key: string; className: string; label: string }>;
+
+        if (tags.length === 0) {
+          return <span className="text-xs text-slate-400">Sin marcar</span>;
+        }
 
         return (
           <div className="flex flex-wrap gap-1">
-            {types?.map(type => {
-              const config = typeColors[type] || { bg: 'bg-gray-100', text: 'text-gray-600' };
-              return (
-                <span
-                  key={type}
-                  className={`px-2 py-0.5 rounded-md text-[12px] font-medium ${config.bg} ${config.text} border border-transparent`}
-                >
-                  {type}
-                </span>
-              );
-            })}
+            {tags.map(tag => (
+              <span
+                key={tag.key}
+                className={`px-2 py-0.5 rounded-md text-[12px] font-medium border border-transparent ${tag.className}`}
+              >
+                {tag.label}
+              </span>
+            ))}
           </div>
         );
       },
@@ -287,6 +308,19 @@ export default function FunctionalityList({
       key: 'actions',
       render: (_: any, record: Functionality) => (
         <Space>
+          <Tooltip
+            title={
+              record.lastFunctionalChangeAt
+                ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
+                : 'Marcar cambio reciente'
+            }
+          >
+            <Button
+              icon={<HistoryOutlined />}
+              onClick={() => handleMarkRecentChange(record)}
+              className="rounded-lg text-sky-700 border-sky-100 hover:bg-sky-50"
+            />
+          </Tooltip>
           <Tooltip title="Gestionar Casos de Prueba">
             <Button
               icon={<FileTextOutlined />}
@@ -359,6 +393,19 @@ export default function FunctionalityList({
     });
   };
 
+  const handleMarkRecentChange = async (func: Functionality) => {
+    try {
+      await save({
+        ...func,
+        lastFunctionalChangeAt: new Date().toISOString().split('T')[0],
+      });
+      message.success('Cambio reciente marcado correctamente.');
+    } catch (error) {
+      console.error('Recent change mark failed:', error);
+      message.error('No se pudo marcar el cambio reciente.');
+    }
+  };
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -370,15 +417,15 @@ export default function FunctionalityList({
           ? await getNextFunctionalityCode(projectId, values.module)
           : values.id || nextFunctionalityIdPreview);
 
-      const isRegression = values.testTypes?.includes(TestType.REGRESSION) || false;
-      const isSmoke = values.testTypes?.includes(TestType.SMOKE) || false;
-
       const payload = {
         ...editingFunc,
         ...values,
         id: finalId,
-        isRegression,
-        isSmoke,
+        testTypes:
+          values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
+        isCore: Boolean(values.isCore),
+        isRegression: Boolean(values.isRegression),
+        isSmoke: Boolean(values.isSmoke),
         projectId: projectId || '',
       };
       console.log('Payload - Save Functionality:', payload);
@@ -401,11 +448,9 @@ export default function FunctionalityList({
       const updates: Partial<Functionality> = {};
 
       if (values.roles) updates.roles = values.roles;
-      if (values.testTypes) {
-        updates.testTypes = values.testTypes;
-        updates.isRegression = values.testTypes.includes(TestType.REGRESSION);
-        updates.isSmoke = values.testTypes.includes(TestType.SMOKE);
-      }
+      if (typeof values.isCore === 'boolean') updates.isCore = values.isCore;
+      if (typeof values.isRegression === 'boolean') updates.isRegression = values.isRegression;
+      if (typeof values.isSmoke === 'boolean') updates.isSmoke = values.isSmoke;
       if (values.status) updates.status = values.status;
 
       if (Object.keys(updates).length > 0) {
@@ -471,13 +516,22 @@ export default function FunctionalityList({
         }
 
         const formattedFuncs: Functionality[] = importedData.map((item, index) => {
-          const testTypes = Array.isArray(item.testTypes)
-            ? item.testTypes
-            : (item.testTypes?.split(',') || []).map((t: string) => t.trim() as TestType);
-
           const roles = Array.isArray(item.roles)
             ? item.roles
             : (item.roles?.split(',') || []).map((r: string) => r.trim());
+
+          const parseBooleanLike = (value: unknown) => {
+            const normalized = String(value ?? '')
+              .trim()
+              .toLowerCase();
+
+            return (
+              normalized === 'true' ||
+              normalized === 'sí' ||
+              normalized === 'si' ||
+              normalized === 'yes'
+            );
+          };
 
           return {
             id: item.id || `IMP-${Date.now()}-${index}`,
@@ -485,9 +539,14 @@ export default function FunctionalityList({
             module: item.module || 'Importado',
             name: item.name || 'Sin nombre',
             roles: roles.length > 0 ? roles : ['Todos'],
-            testTypes: testTypes.length > 0 ? testTypes : [TestType.FUNCTIONAL],
-            isRegression: testTypes.includes(TestType.REGRESSION),
-            isSmoke: testTypes.includes(TestType.SMOKE),
+            testTypes: [TestType.FUNCTIONAL],
+            isCore: parseBooleanLike(item.isCore ?? item['Core'] ?? item['Es Core']),
+            isRegression: parseBooleanLike(
+              item.isRegression ?? item['Regresión'] ?? item['Regresion'],
+            ),
+            isSmoke: parseBooleanLike(item.isSmoke ?? item['Smoke']),
+            lastFunctionalChangeAt:
+              item.lastFunctionalChangeAt || item['Último Cambio Funcional'] || '',
             deliveryDate: item.deliveryDate || new Date().toISOString().split('T')[0],
             status: (item.status as TestStatus) || TestStatus.BACKLOG,
             priority: (item.priority as Priority) || Priority.MEDIUM,
@@ -526,9 +585,10 @@ export default function FunctionalityList({
         Módulo: f.module || '',
         Funcionalidad: f.name || '',
         Roles: Array.isArray(f.roles) ? f.roles.join(', ') : '',
-        'Tipos de Prueba': Array.isArray(f.testTypes) ? f.testTypes.join(', ') : '',
+        Core: f.isCore ? 'Sí' : 'No',
         Regresión: f.isRegression ? 'Sí' : 'No',
         Smoke: f.isSmoke ? 'Sí' : 'No',
+        'Último Cambio Funcional': f.lastFunctionalChangeAt || '',
         'Fecha Entrega': f.deliveryDate || '',
         Estado: f.status || '',
       }));
@@ -700,15 +760,20 @@ export default function FunctionalityList({
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Tipo de Prueba
+              Cobertura QA
             </span>
             <Select
-              placeholder="Todos los tipos"
+              placeholder="Toda la cobertura"
               className="w-48 h-10"
               allowClear
-              onChange={setTestTypeFilter}
-              value={testTypeFilter}
-              options={Object.values(TestType).map(t => ({ label: t, value: t }))}
+              onChange={setQaCoverageFilter}
+              value={qaCoverageFilter}
+              options={[
+                { label: 'Core', value: 'core' },
+                { label: 'Regresión', value: 'regression' },
+                { label: 'Smoke', value: 'smoke' },
+                { label: 'Cambio reciente', value: 'recent-change' },
+              ]}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -730,7 +795,7 @@ export default function FunctionalityList({
           <Button
             onClick={() => {
               setModuleFilter(null);
-              setTestTypeFilter(null);
+              setQaCoverageFilter(null);
               setStatusFilter(null);
             }}
             className="h-10 rounded-lg text-slate-500"
@@ -801,6 +866,9 @@ export default function FunctionalityList({
             status: TestStatus.BACKLOG,
             priority: Priority.MEDIUM,
             riskLevel: RiskLevel.MEDIUM,
+            isCore: false,
+            isRegression: false,
+            isSmoke: false,
           }}
         >
           <Row gutter={20}>
@@ -849,17 +917,18 @@ export default function FunctionalityList({
             />
           </Form.Item>
 
-          <Form.Item
-            name="testTypes"
-            label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>}
-            rules={[{ required: true }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder="Selecciona las pruebas a aplicar"
-              className="executive-select"
-              options={Object.values(TestType).map(type => ({ label: type, value: type }))}
-            />
+          <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
+            <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
+              <Form.Item name="isCore" valuePropName="checked" noStyle>
+                <Checkbox>Es Core</Checkbox>
+              </Form.Item>
+              <Form.Item name="isRegression" valuePropName="checked" noStyle>
+                <Checkbox>Aplica a Regresión</Checkbox>
+              </Form.Item>
+              <Form.Item name="isSmoke" valuePropName="checked" noStyle>
+                <Checkbox>Aplica a Smoke</Checkbox>
+              </Form.Item>
+            </div>
           </Form.Item>
 
           <Row gutter={20}>
@@ -987,16 +1056,18 @@ export default function FunctionalityList({
             />
           </Form.Item>
 
-          <Form.Item
-            name="testTypes"
-            label={<span className="font-semibold text-slate-600">Pruebas Aplicadas</span>}
-          >
-            <Select
-              mode="multiple"
-              placeholder="Cambiar pruebas para todos..."
-              className="executive-select"
-              options={Object.values(TestType).map(type => ({ label: type, value: type }))}
-            />
+          <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
+            <Space direction="vertical" size={10}>
+              <Form.Item name="isCore" valuePropName="checked" noStyle>
+                <Checkbox>Marcar como Core</Checkbox>
+              </Form.Item>
+              <Form.Item name="isRegression" valuePropName="checked" noStyle>
+                <Checkbox>Marcar para Regresión</Checkbox>
+              </Form.Item>
+              <Form.Item name="isSmoke" valuePropName="checked" noStyle>
+                <Checkbox>Marcar para Smoke</Checkbox>
+              </Form.Item>
+            </Space>
           </Form.Item>
 
           <Form.Item

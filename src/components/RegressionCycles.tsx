@@ -52,14 +52,24 @@ import {
   Severity,
   Environment,
   BugOrigin,
+  Priority,
+  RiskLevel,
+  Functionality,
 } from '../types';
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
-import { syncBugReport } from '../services/bugTrackerService';
+import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import dayjs from 'dayjs';
+import {
+  isPayloadTooLargeError,
+  readFileAsDataUrl,
+  showPayloadTooLargeMessage,
+  validateInlineImageFile,
+} from '../utils/uploadValidation';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
+const RECENT_CHANGE_WINDOW_DAYS = 14;
 
 function normalizeSprintName(value?: string) {
   return value ? value.replace(/^Sprint\s+/i, '').trim() : undefined;
@@ -81,6 +91,13 @@ function serializeTesterValue(value?: string | string[]) {
   return value?.trim() || '';
 }
 
+function isRecentlyChanged(functionality: Functionality) {
+  if (!functionality.lastFunctionalChangeAt) return false;
+
+  const changedAt = dayjs(functionality.lastFunctionalChangeAt);
+  return changedAt.isValid() && dayjs().diff(changedAt, 'day') <= RECENT_CHANGE_WINDOW_DAYS;
+}
+
 export default function RegressionCycles({ projectId }: { projectId?: string }) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -98,10 +115,16 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     useSlackMembers(isModalOpen);
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<RegressionCycle | null>(null);
+  const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
+  const [selectionInitialized, setSelectionInitialized] = useState(false);
+  const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
   const [form] = Form.useForm();
 
   const handleOpenModal = () => {
     setEditingCycle(null);
+    setSelectedFunctionalityIds([]);
+    setSelectionInitialized(false);
+    setSuggestionModuleFilter(undefined);
     form.resetFields();
     // Calculate next Cycle ID
     const nextNumber =
@@ -130,6 +153,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const handleEdit = (cycle: RegressionCycle) => {
     setEditingCycle(cycle);
     setSelectedCycle(cycle); // Show the detail view in the background
+    setSelectedFunctionalityIds([]);
+    setSelectionInitialized(true);
+    setSuggestionModuleFilter(undefined);
     form.setFieldsValue({
       cycleId: cycle.cycleId,
       status: cycle.status,
@@ -173,10 +199,159 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     }
   }, [currentExecution, evidenceForm]);
 
+  useEffect(() => {
+    if (
+      !currentExecution ||
+      currentExecution.result !== TestResult.FAILED ||
+      currentExecution.bugId?.trim() ||
+      !selectedCycle?.projectId
+    ) {
+      return;
+    }
+
+    void previewNextInternalBugId(
+      selectedCycle.projectId,
+      selectedCycle.executions
+        .filter(execution => execution.id !== currentExecution.id)
+        .map(execution => execution.bugId),
+    )
+      .then(nextBugId => {
+        evidenceForm.setFieldValue('bugId', nextBugId);
+      })
+      .catch(() => undefined);
+  }, [currentExecution, evidenceForm, selectedCycle]);
+
   // Filter regression functionalities for new cycles
   const regressionFuncs = Array.isArray(functionalities)
-    ? functionalities.filter(f => f?.testTypes?.includes(TestType.REGRESSION))
+    ? functionalities.filter(f => f?.isRegression || f?.testTypes?.includes(TestType.REGRESSION))
     : [];
+
+  const regressionMandatoryFuncs = regressionFuncs.filter(
+    functionality =>
+      functionality.isCore ||
+      (functionality.priority === Priority.CRITICAL ||
+        functionality.priority === Priority.HIGH ||
+        functionality.riskLevel === RiskLevel.HIGH),
+  );
+
+  const regressionRecommendedFuncs = regressionFuncs.filter(
+    functionality =>
+      !regressionMandatoryFuncs.some(item => item.id === functionality.id) &&
+      isRecentlyChanged(functionality),
+  );
+
+  const regressionOptionalFuncs = regressionFuncs.filter(
+    functionality =>
+      !regressionMandatoryFuncs.some(item => item.id === functionality.id) &&
+      !regressionRecommendedFuncs.some(item => item.id === functionality.id),
+  );
+
+  const regressionModuleOptions = Array.from(
+    new Set(regressionFuncs.map(item => item.module).filter(Boolean)),
+  )
+    .sort((a, b) => a.localeCompare(b))
+    .map(module => ({ label: module, value: module }));
+
+  const filterByModule = (items: Functionality[]) =>
+    suggestionModuleFilter ? items.filter(item => item.module === suggestionModuleFilter) : items;
+
+  useEffect(() => {
+    if (!isModalOpen || editingCycle || selectionInitialized) return;
+
+    const suggestedIds = Array.from(
+      new Set([
+        ...regressionMandatoryFuncs.map(item => item.id),
+        ...regressionRecommendedFuncs.map(item => item.id),
+      ]),
+    );
+
+    setSelectedFunctionalityIds(suggestedIds);
+    setSelectionInitialized(true);
+  }, [
+    editingCycle,
+    isModalOpen,
+    regressionMandatoryFuncs,
+    regressionRecommendedFuncs,
+    selectionInitialized,
+  ]);
+
+  const renderReasonTags = (functionality: Functionality) => {
+    const tags: { label: string; color: string }[] = [];
+
+    if (functionality.isCore) tags.push({ label: 'Core', color: 'blue' });
+    if (functionality.priority === Priority.CRITICAL || functionality.priority === Priority.HIGH) {
+      tags.push({ label: 'Alta prioridad', color: 'gold' });
+    }
+    if (functionality.riskLevel === RiskLevel.HIGH) {
+      tags.push({ label: 'Riesgo alto', color: 'red' });
+    }
+    if (isRecentlyChanged(functionality)) {
+      tags.push({ label: 'Cambio reciente', color: 'green' });
+    }
+
+    return (
+      <Space size={[4, 4]} wrap>
+        {tags.map(tag => (
+          <Tag key={`${functionality.id}-${tag.label}`} color={tag.color} className="m-0">
+            {tag.label}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
+
+  const renderSuggestionSection = (
+    title: string,
+    subtitle: string,
+    colorClassName: string,
+    items: Functionality[],
+  ) => (
+    <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className={`px-4 py-3 border-b border-slate-100 ${colorClassName}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 mb-1">{title}</p>
+            <p className="text-xs text-slate-500 mb-0">{subtitle}</p>
+          </div>
+          <Tag className="m-0">{items.length}</Tag>
+        </div>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="divide-y divide-slate-100">
+          {items.map(item => (
+            <label
+              key={item.id}
+              className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+            >
+              <Checkbox
+                className="mt-1"
+                checked={selectedFunctionalityIds.includes(item.id)}
+                onChange={event => {
+                  setSelectedFunctionalityIds(current =>
+                    event.target.checked
+                      ? Array.from(new Set([...current, item.id]))
+                      : current.filter(id => id !== item.id),
+                  );
+                }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                  <Tag className="m-0">{item.module}</Tag>
+                </div>
+                <div className="mt-2">{renderReasonTags(item)}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-5 text-sm text-slate-400">
+          No hay funcionalidades en esta categoria.
+        </div>
+      )}
+    </div>
+  );
 
   const columns = [
     {
@@ -326,10 +501,19 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         setSelectedCycle(savedCycle);
         message.success('Ciclo actualizado correctamente');
       } else {
+        const selectedFunctionalities = regressionFuncs.filter(f =>
+          selectedFunctionalityIds.includes(f.id),
+        );
+
+        if (selectedFunctionalities.length === 0) {
+          message.error('Selecciona al menos una funcionalidad para el ciclo de regresión.');
+          return;
+        }
+
         // Initialize executions from regression functionalities and their test cases
         const initialExecutions: RegressionExecution[] = [];
 
-        regressionFuncs.forEach(f => {
+        selectedFunctionalities.forEach(f => {
           const fTestCases = testCases.filter(
             tc => tc.functionalityId === f.id && tc.testType === TestType.REGRESSION,
           );
@@ -387,6 +571,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
       setIsModalOpen(false);
       setEditingCycle(null);
+      setSelectedFunctionalityIds([]);
+      setSelectionInitialized(false);
       form.resetFields();
     } catch (error) {
       console.error('Validation failed:', error);
@@ -522,6 +708,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
     return matchesSearch && matchesFilter;
   });
+
+  const functionalityLookup = new Map(functionalities.map(item => [item.id, item] as const));
 
   return (
     <>
@@ -773,7 +961,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   ),
                   dataIndex: 'functionalityName',
                   key: 'name',
-                  render: (n, record) => (
+                  render: (n, record) => {
+                    const functionality = functionalityLookup.get(record.functionalityId);
+
+                    return (
                     <div>
                       <div className="text-slate-800 font-medium">{n}</div>
                       {record.testCaseId && (
@@ -781,8 +972,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                           {record.testCaseTitle}
                         </div>
                       )}
+                      {functionality && <div className="mt-2">{renderReasonTags(functionality)}</div>}
                     </div>
-                  ),
+                    );
+                  },
                 },
                 {
                   title: (
@@ -1206,6 +1399,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         onCancel={() => {
           setIsModalOpen(false);
           setEditingCycle(null);
+          setSelectedFunctionalityIds([]);
+          setSelectionInitialized(false);
         }}
         width={800}
         centered
@@ -1272,12 +1467,14 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 }
               >
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  <span className="text-blue-600 font-bold">{regressionFuncs.length}</span>{' '}
-                  funcionalidades de tipo{' '}
+                  <span className="text-blue-600 font-bold">
+                    {editingCycle ? selectedCycle?.executions?.length || 0 : selectedFunctionalityIds.length}
+                  </span>{' '}
+                  funcionalidades sugeridas/seleccionadas para
                   <Tag color="blue" className="m-0 ml-1">
                     Regresión
-                  </Tag>{' '}
-                  detectadas.
+                  </Tag>
+                  .
                 </div>
               </Form.Item>
             </Col>
@@ -1338,33 +1535,104 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             />
           </Form.Item>
 
-          <div className="mt-4">
-            <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
-              Vista Previa de Funcionalidades
-            </span>
-            <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
-              <Table
-                dataSource={regressionFuncs}
-                rowKey="id"
-                pagination={false}
-                size="small"
-                columns={[
-                  {
-                    title: 'Módulo',
-                    dataIndex: 'module',
-                    key: 'module',
-                    render: m => <span className="text-xs font-medium">{m}</span>,
-                  },
-                  {
-                    title: 'Funcionalidad',
-                    dataIndex: 'name',
-                    key: 'name',
-                    render: n => <span className="text-xs text-slate-500">{n}</span>,
-                  },
-                ]}
-              />
+          {!editingCycle ? (
+            <div className="mt-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <span className="text-[11px] font-bold text-slate-400 uppercase block">
+                  Sugerencia Automatica de Funcionalidades
+                </span>
+                <Space size={8} wrap>
+                  <Button
+                    size="small"
+                    onClick={() =>
+                      setSelectedFunctionalityIds(
+                        Array.from(
+                          new Set([
+                            ...regressionMandatoryFuncs.map(item => item.id),
+                            ...regressionRecommendedFuncs.map(item => item.id),
+                          ]),
+                        ),
+                      )
+                    }
+                  >
+                    Aplicar sugeridas
+                  </Button>
+                  <Button size="small" onClick={() => setSelectedFunctionalityIds([])}>
+                    Limpiar
+                  </Button>
+                  <Select
+                    allowClear
+                    size="small"
+                    placeholder="Filtrar por modulo"
+                    className="min-w-[180px]"
+                    value={suggestionModuleFilter}
+                    onChange={value => setSuggestionModuleFilter(value)}
+                    options={regressionModuleOptions}
+                  />
+                </Space>
+              </div>
+
+              <Space direction="vertical" size={12} className="w-full">
+                {renderSuggestionSection(
+                  'Obligatorias',
+                  'Core de regresión con prioridad o riesgo elevado.',
+                  'bg-blue-50',
+                  filterByModule(regressionMandatoryFuncs),
+                )}
+                {renderSuggestionSection(
+                  'Recomendadas',
+                  'Funcionalidades con cambio reciente para revisar en el ciclo.',
+                  'bg-amber-50',
+                  filterByModule(regressionRecommendedFuncs),
+                )}
+                {renderSuggestionSection(
+                  'Opcionales',
+                  'Cobertura adicional para ampliar el alcance del ciclo.',
+                  'bg-slate-50',
+                  filterByModule(regressionOptionalFuncs),
+                )}
+              </Space>
             </div>
-          </div>
+          ) : (
+            <div className="mt-4">
+              <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
+                Vista Previa de Funcionalidades
+              </span>
+              <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
+                <Table
+                  dataSource={Array.from(
+                    new Map(
+                      (selectedCycle?.executions || []).map(execution => [
+                        execution.functionalityId,
+                        {
+                          id: execution.functionalityId,
+                          module: execution.module,
+                          name: execution.functionalityName,
+                        },
+                      ]),
+                    ).values(),
+                  )}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    {
+                      title: 'Módulo',
+                      dataIndex: 'module',
+                      key: 'module',
+                      render: m => <span className="text-xs font-medium">{m}</span>,
+                    },
+                    {
+                      title: 'Funcionalidad',
+                      dataIndex: 'name',
+                      key: 'name',
+                      render: n => <span className="text-xs text-slate-500">{n}</span>,
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
         </Form>
       </Modal>
 
@@ -1400,7 +1668,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             if (currentExecution.result === TestResult.FAILED) {
               const syncedBug = await syncBugReport({
                 linkedBugId: currentExecution.linkedBugId,
-                externalBugId: values.bugId,
+                internalBugId: values.bugId,
                 title: values.bugTitle,
                 description: values.evidence,
                 severity: values.severity,
@@ -1439,6 +1707,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             message.success('Evidencia guardada correctamente');
           } catch (error) {
             console.error('Error saving evidence:', error);
+            if (isPayloadTooLargeError(error)) {
+              showPayloadTooLargeMessage();
+              return;
+            }
             message.error('Error al guardar la evidencia. Por favor revisa los campos.');
           }
         }}
@@ -1492,12 +1764,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             </Form.Item>
 
             <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="bugId" label="Bug ID (Jira/GitHub)">
-                  <Input placeholder="Ej: BUG-123" className="rounded-lg" disabled={isReadOnly} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
+              <Form.Item name="bugId" hidden>
+                <Input />
+              </Form.Item>
+              <Col span={24}>
                 <Form.Item name="severity" label="Severidad">
                   <Select
                     placeholder="Selecciona severidad"
@@ -1556,11 +1826,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                     showUploadList={false}
                     disabled={isReadOnly}
                     beforeUpload={file => {
-                      const reader = new FileReader();
-                      reader.onload = e => {
-                        setEvidenceImage(e.target?.result as string);
-                      };
-                      reader.readAsDataURL(file);
+                      if (!validateInlineImageFile(file)) return false;
+                      void readFileAsDataUrl(file).then(base64 => {
+                        setEvidenceImage(base64);
+                      });
                       return false;
                     }}
                     className="rounded-xl"

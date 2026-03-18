@@ -28,13 +28,12 @@ import {
   SafetyCertificateOutlined,
   BugOutlined,
 } from '@ant-design/icons';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
-import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { TestResult, Priority, RiskLevel, TestStatus } from '../types';
+import { BugStatus, TestResult, RiskLevel, TestStatus } from '../types';
 import {
   BarChart,
   Bar,
@@ -63,8 +62,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
   const { data: functionalities = [] } = useFunctionalities(projectId);
   const { data: testCases = [] } = useTestCases(projectId);
   const { data: executions = [] } = useExecutions(projectId);
-  const { data: regressionCycles = [] } = useRegressionCycles(projectId);
-  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
+  const { data: bugs = [] } = useBugs(projectId);
 
   const stats = useMemo(() => {
     const totalFuncs = functionalities.length;
@@ -90,13 +88,12 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
     const failedTests = Array.from(lastExecutions.values()).filter(
       ex => ex.result === TestResult.FAILED,
     ).length;
-
-    const bugsCount = [...regressionCycles, ...smokeCycles].reduce(
-      (acc, c) => acc + (c.executions || []).filter(ex => ex.bugId).length,
-      0,
-    );
+    const activeBugs = bugs.filter(bug => bug.status !== BugStatus.RESOLVED);
 
     const highRiskFuncs = functionalities.filter(f => f.riskLevel === RiskLevel.HIGH).length;
+    const coreFuncs = functionalities.filter(f => f.isCore).length;
+    const regressionFuncs = functionalities.filter(f => f.isRegression).length;
+    const smokeFuncs = functionalities.filter(f => f.isSmoke).length;
 
     return {
       totalFuncs,
@@ -107,11 +104,14 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
       executedTests,
       testProgress: totalTests > 0 ? Math.round((executedTests / totalTests) * 100) : 0,
       passRate: executedTests > 0 ? Math.round((passedTests / executedTests) * 100) : 0,
-      bugsCount,
+      bugsCount: activeBugs.length,
       highRiskFuncs,
       failedTests,
+      coreFuncs,
+      regressionFuncs,
+      smokeFuncs,
     };
-  }, [functionalities, testCases, regressionCycles, smokeCycles]);
+  }, [bugs, executions, functionalities, testCases]);
 
   const statusData = [
     { name: 'Completadas', value: stats.completedFuncs, color: '#10b981' },
@@ -134,9 +134,13 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
       ['Progreso Funcional', `${stats.funcProgress}%`],
       ['Total Casos de Prueba', stats.totalTests],
       ['Casos Ejecutados', stats.executedTests],
+      ['Cobertura de Casos', `${stats.testProgress}%`],
       ['Tasa de Aprobación', `${stats.passRate}%`],
-      ['Bugs Encontrados', stats.bugsCount],
+      ['Bugs Activos', stats.bugsCount],
       ['Funcionalidades de Alto Riesgo', stats.highRiskFuncs],
+      ['Funcionalidades Core', stats.coreFuncs],
+      ['Marcadas para Regresión', stats.regressionFuncs],
+      ['Marcadas para Smoke', stats.smokeFuncs],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -155,7 +159,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
             Reporte de Progreso
           </Title>
           <Paragraph type="secondary">
-            Resumen ejecutivo del estado de calidad y avance del proyecto.
+            Resumen ejecutivo del avance funcional y de la calidad por casos de prueba.
           </Paragraph>
         </div>
         <Space>
@@ -201,7 +205,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
             <Statistic
               title={
                 <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">
-                  QA Coverage
+                  Cobertura de Casos
                 </Text>
               }
               value={stats.testProgress}
@@ -240,7 +244,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
             <Statistic
               title={
                 <Text type="secondary" className="text-[11px] font-bold uppercase tracking-wider">
-                  Bugs Totales
+                  Bugs Activos
                 </Text>
               }
               value={stats.bugsCount}
@@ -253,6 +257,23 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
           </Card>
         </Col>
       </Row>
+
+      <Card className="rounded-2xl border-slate-100 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <Text strong className="text-slate-700">
+            Cobertura funcional:
+          </Text>
+          <Tag color="blue" className="rounded-full px-3 py-1 font-medium">
+            Core: {stats.coreFuncs}
+          </Tag>
+          <Tag color="geekblue" className="rounded-full px-3 py-1 font-medium">
+            Regresión: {stats.regressionFuncs}
+          </Tag>
+          <Tag color="orange" className="rounded-full px-3 py-1 font-medium">
+            Smoke: {stats.smokeFuncs}
+          </Tag>
+        </div>
+      </Card>
 
       <Row gutter={20}>
         <Col span={12}>

@@ -2,6 +2,25 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 
+export type ExecutionRecommendationCandidate = {
+  id: string;
+  name: string;
+  module: string;
+  priority: string;
+  riskLevel: string;
+  isCore: boolean;
+  isRegression: boolean;
+  isSmoke: boolean;
+  lastFunctionalChangeAt?: string;
+  roles: string[];
+  testCaseCount: number;
+};
+
+export type ExecutionRecommendation = {
+  functionalityId: string;
+  reason: string;
+};
+
 function getEnvValue(value: unknown) {
   return String(value || '').trim();
 }
@@ -143,6 +162,75 @@ Responde únicamente con un objeto JSON que tenga las llaves: summary, decisions
     };
   } catch (error) {
     console.error('Error improving meeting notes:', error);
+    normalizeGeminiError(error);
+  }
+}
+
+export async function recommendExecutionFunctionalitiesWithAI(input: {
+  testType: string;
+  selectedModules: string[];
+  selectedFunctionalities: ExecutionRecommendationCandidate[];
+  candidateFunctionalities: ExecutionRecommendationCandidate[];
+  maxSuggestions?: number;
+}) {
+  const ai = createGeminiClient();
+  const maxSuggestions = Math.max(1, Math.min(input.maxSuggestions || 5, 5));
+
+  const prompt = `Actua como analista QA senior.
+Necesito sugerencias cortas de funcionalidades adicionales para una ejecucion de pruebas.
+
+Contexto actual:
+- Tipo de prueba: ${input.testType}
+- Modulos seleccionados: ${input.selectedModules.join(', ') || 'Ninguno'}
+- Funcionalidades ya seleccionadas:
+${JSON.stringify(input.selectedFunctionalities, null, 2)}
+
+Candidatas posibles:
+${JSON.stringify(input.candidateFunctionalities, null, 2)}
+
+Reglas:
+- Devuelve maximo ${maxSuggestions} sugerencias.
+- Usa solo functionalityId presentes en "Candidatas posibles".
+- Prioriza impacto por: mismo modulo, cambio reciente, core, riesgo alto, prioridad alta, y afinidad con el tipo de prueba.
+- El motivo debe ser breve, concreto y en espanol.
+- Si no hay candidatas suficientemente relevantes, devuelve un array vacio.
+
+Responde unicamente con JSON valido usando este formato:
+[
+  {
+    "functionalityId": "ID",
+    "reason": "Motivo corto"
+  }
+]`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              functionalityId: { type: Type.STRING },
+              reason: { type: Type.STRING },
+            },
+            required: ['functionalityId', 'reason'],
+          },
+        },
+      },
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error('No se recibió respuesta de la IA');
+    }
+
+    return JSON.parse(text) as ExecutionRecommendation[];
+  } catch (error) {
+    console.error('Error recommending execution functionalities:', error);
     normalizeGeminiError(error);
   }
 }

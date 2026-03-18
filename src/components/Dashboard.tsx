@@ -194,6 +194,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const automatedTests = testCases.filter(item => item.isAutomated).length;
   const automationCoverage =
     testCases.length > 0 ? Math.round((automatedTests / testCases.length) * 100) : 0;
+  const coreFunctionalities = functionalities.filter(item => item.isCore).length;
+  const regressionFunctionalities = functionalities.filter(item => item.isRegression).length;
+  const smokeFunctionalities = functionalities.filter(item => item.isSmoke).length;
 
   const latestExecutionByTestCase = executions
     .filter(execution => execution.testCaseId)
@@ -209,6 +212,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     const latestExecution = latestExecutionByTestCase[testCase.id];
     return latestExecution && latestExecution.result !== TestResult.NOT_EXECUTED;
   }).length;
+  const executionCoveragePercent =
+    testCases.length > 0 ? Math.round((executedTestCasesCount / testCases.length) * 100) : 0;
 
   const notExecutedTestCasesCount = Math.max(testCases.length - executedTestCasesCount, 0);
   const passedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
@@ -264,11 +269,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     },
   ];
 
-  const testTypeUsageCounts = functionalities.reduce<Record<string, number>>((acc, item) => {
-    const uniqueTypes = Array.from(new Set(item.testTypes || []));
-    uniqueTypes.forEach(testType => {
-      acc[testType] = (acc[testType] || 0) + 1;
-    });
+  const testTypeUsageCounts = executions.reduce<Record<string, number>>((acc, execution) => {
+    const testType = execution.testType;
+    if (!testType) {
+      return acc;
+    }
+
+    acc[testType] = (acc[testType] || 0) + 1;
     return acc;
   }, {});
 
@@ -407,19 +414,27 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
-          <SafetyCertificateOutlined style={{ color: qaPalette.functionalityStatus.completed }} />
-          <span>KPIs de calidad</span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
+            <SafetyCertificateOutlined style={{ color: qaPalette.functionalityStatus.completed }} />
+            <span>Calidad por caso de prueba</span>
+          </div>
+          <Text type="secondary" className="text-slate-500">
+            Métricas calculadas a partir de casos de prueba, ejecuciones generales y bugs del
+            proyecto.
+          </Text>
         </div>
 
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Estabilidad regresion"
-              value={`${regressionStability.toFixed(1)}%`}
-              hint="Tasa de exito en ciclos"
+              title="Ejecucion de casos"
+              value={`${executionCoveragePercent}%`}
+              hint={`${executedTestCasesCount} de ${testCases.length} ejecutados`}
               accent={qaPalette.primary}
-              icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
+              icon={
+                <FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />
+              }
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -468,9 +483,70 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       </div>
 
       <div className="space-y-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
+            <HistoryOutlined style={{ color: qaPalette.primary }} />
+            <span>Validación por funcionalidad</span>
+          </div>
+          <Text type="secondary" className="text-slate-500">
+            Métricas calculadas a partir de funcionalidades y ciclos de regresión o smoke.
+          </Text>
+        </div>
+
+        <Row gutter={[20, 20]}>
+          <Col xs={24} sm={12} lg={6}>
+            <KpiCard
+              title="Estabilidad regresion funcional"
+              value={`${regressionStability.toFixed(1)}%`}
+              hint="Tasa de exito en ciclos"
+              accent={qaPalette.primary}
+              icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <KpiCard
+              title="Cobertura regression"
+              value={regressionFunctionalities}
+              hint="Funcionalidades marcadas para regresión"
+              accent={qaPalette.primary}
+              icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <KpiCard
+              title="Cobertura smoke"
+              value={smokeFunctionalities}
+              hint="Funcionalidades marcadas para smoke"
+              accent={qaPalette.functionalityStatus.inProgress}
+              icon={
+                <ThunderboltOutlined
+                  className="text-lg"
+                  style={{ color: qaPalette.functionalityStatus.inProgress }}
+                />
+              }
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <KpiCard
+              title="Core del sistema"
+              value={coreFunctionalities}
+              hint="Funcionalidades críticas del producto"
+              accent={qaPalette.functionalityStatus.completed}
+              icon={
+                <SafetyCertificateOutlined
+                  className="text-lg"
+                  style={{ color: qaPalette.functionalityStatus.completed }}
+                />
+              }
+            />
+          </Col>
+        </Row>
+      </div>
+
+      <div className="space-y-4">
         <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
           <BarChartOutlined style={{ color: qaPalette.primary }} />
-          <span>Estatus de desarrollo</span>
+          <span>Inventario funcional</span>
         </div>
 
         <Row gutter={[20, 20]}>
@@ -535,7 +611,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card">
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <HistoryOutlined style={{ color: qaPalette.primary }} />
-              <span>Pruebas de regresion</span>
+              <span>Regresión funcional</span>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -562,7 +638,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card">
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <ThunderboltOutlined style={{ color: qaPalette.functionalityStatus.inProgress }} />
-              <span>Pruebas de humo</span>
+              <span>Smoke funcional</span>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -589,16 +665,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       <Row gutter={[24, 24]}>
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
-            <div className="mb-4 font-semibold text-slate-800">Ejecutados vs no ejecutados</div>
+            <div className="mb-4 font-semibold text-slate-800">Ejecución de casos</div>
             <div className="relative flex h-48 items-center justify-center">
               <FixedPie data={executionMixData} innerRadius={50} outerRadius={70} />
                 <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className="text-2xl font-bold">
-                    {testCases.length > 0
-                      ? Math.round((executedTestCasesCount / testCases.length) * 100)
-                      : 0}
-                    %
-                  </span>
+                  <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
                   <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
                 </div>
               </div>
@@ -639,7 +710,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
-            <div className="mb-4 font-semibold text-slate-800">Tipos de prueba aplicados</div>
+            <div className="mb-4 font-semibold text-slate-800">Tipos de ejecución registrados</div>
             {appliedTestTypesData.length > 0 ? (
               <div className="space-y-4">
                 <div className="relative flex h-48 items-center justify-center">
@@ -647,7 +718,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                   <div className="absolute inset-0 flex items-center justify-center flex-col">
                     <span className="text-2xl font-bold">{totalAppliedTestTypes}</span>
                     <span className="text-[10px] font-bold uppercase text-slate-400">
-                      Asignaciones
+                      Ejecuciones
                     </span>
                   </div>
                 </div>
@@ -681,7 +752,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               </div>
             ) : (
               <div className="flex h-48 items-center justify-center text-sm text-slate-400">
-                No hay tipos de prueba aplicados
+                No hay tipos de ejecución registrados
               </div>
             )}
           </Card>

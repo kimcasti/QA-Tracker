@@ -26,6 +26,7 @@ import {
   TableOutlined,
   BugOutlined,
   FileSearchOutlined,
+  MinusCircleOutlined,
 } from '@ant-design/icons';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -33,6 +34,7 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { TestResult, TestType, Priority, RiskLevel, BugStatus } from '../types';
 import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -51,6 +53,70 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const [moduleFilter, setModuleFilter] = useState<string | undefined>(undefined);
 
   const modules = Array.from(new Set(functionalities.map(f => f.module)));
+
+  const latestExecutionByTestCase = executions
+    .filter(execution => execution.testCaseId)
+    .sort((left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf())
+    .reduce<Record<string, (typeof executions)[number]>>((acc, execution) => {
+      const testCaseId = execution.testCaseId;
+      if (!testCaseId || acc[testCaseId]) return acc;
+      acc[testCaseId] = execution;
+      return acc;
+    }, {});
+
+  const getCoverageStats = (functionalityId: string) => {
+    const functionalityCases = testCases.filter(tc => tc.functionalityId === functionalityId);
+    const totalCases = functionalityCases.length;
+    const caseExecutions = functionalityCases
+      .map(testCase => latestExecutionByTestCase[testCase.id])
+      .filter(Boolean);
+    const executedCases = caseExecutions.filter(
+      execution => execution.result !== TestResult.NOT_EXECUTED,
+    );
+    const failedCases = caseExecutions.filter(execution => execution.result === TestResult.FAILED);
+    const blockedCases = caseExecutions.filter(execution => execution.result === TestResult.BLOCKED);
+    const passedCases = caseExecutions.filter(execution => execution.result === TestResult.PASSED);
+    const coveragePercent =
+      totalCases > 0 ? Math.round((executedCases.length / totalCases) * 100) : 0;
+
+    let qaStatus: 'SIN_CASOS' | 'NO_EJECUTADO' | 'PARCIAL' | 'BLOQUEADO' | 'FALLIDO' | 'APROBADO' =
+      'SIN_CASOS';
+
+    if (totalCases > 0) {
+      if (executedCases.length === 0) {
+        qaStatus = 'NO_EJECUTADO';
+      } else if (failedCases.length > 0) {
+        qaStatus = 'FALLIDO';
+      } else if (blockedCases.length > 0) {
+        qaStatus = 'BLOQUEADO';
+      } else if (passedCases.length === totalCases) {
+        qaStatus = 'APROBADO';
+      } else {
+        qaStatus = 'PARCIAL';
+      }
+    }
+
+    return {
+      totalCases,
+      executedCases: executedCases.length,
+      coveragePercent,
+      qaStatus,
+    };
+  };
+
+  const getExecutionTypes = (functionalityId: string) => {
+    const functionalityCases = testCases.filter(tc => tc.functionalityId === functionalityId);
+    const types = new Set<TestType>();
+
+    functionalityCases.forEach(testCase => {
+      const latestExecution = latestExecutionByTestCase[testCase.id];
+      if (latestExecution?.testType) {
+        types.add(latestExecution.testType);
+      }
+    });
+
+    return Array.from(types);
+  };
 
   const filteredData = functionalities.filter(f => {
     const matchesSearch =
@@ -90,12 +156,17 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       ),
     },
     {
-      title: <span className="text-[11px] font-bold text-slate-400 uppercase">Tipo de Prueba</span>,
-      dataIndex: 'testTypes',
-      key: 'testTypes',
-      render: (types: TestType[]) => (
+      title: (
+        <span className="text-[11px] font-bold text-slate-400 uppercase">Tipo de Ejecución</span>
+      ),
+      key: 'executionTypes',
+      render: (_: any, record: any) => {
+        const executionTypes = getExecutionTypes(record.id);
+
+        return (
         <Space size={[0, 4]} wrap>
-          {types?.map(t => (
+          {executionTypes.length > 0 ? (
+            executionTypes.map(t => (
             <Tag
               key={t}
               color={
@@ -105,9 +176,13 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
             >
               {t}
             </Tag>
-          ))}
+            ))
+          ) : (
+            <span className="text-slate-300 text-xs">-</span>
+          )}
         </Space>
-      ),
+        );
+      },
     },
     {
       title: (
@@ -151,16 +226,18 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       key: 'test_cases',
       width: 100,
       render: (_: any, record: any) => {
-        const count = testCases.filter(tc => tc.functionalityId === record.id).length;
+        const { totalCases } = getCoverageStats(record.id);
         return (
           <div className="flex items-center gap-2">
-            <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
-              <FileSearchOutlined className={count > 0 ? 'text-emerald-500' : 'text-slate-300'} />
+            <Badge count={totalCases} color={totalCases > 0 ? '#10b981' : '#cbd5e1'} size="small">
+              <FileSearchOutlined
+                className={totalCases > 0 ? 'text-emerald-500' : 'text-slate-300'}
+              />
             </Badge>
             <span
-              className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
+              className={`text-xs font-bold ${totalCases > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
             >
-              {count}
+              {totalCases}
             </span>
           </div>
         );
@@ -198,28 +275,49 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       key: 'status',
       width: 150,
       render: (_: any, record: any) => {
-        const exec = executions.find(e => e.functionalityId === record.id);
-        const result = exec ? exec.result : TestResult.NOT_EXECUTED;
+        const { qaStatus } = getCoverageStats(record.id);
 
         return (
           <div className="flex items-center gap-2">
-            {result === TestResult.PASSED ? (
+            {qaStatus === 'APROBADO' ? (
               <CheckCircleOutlined className="text-emerald-500" />
-            ) : result === TestResult.FAILED ? (
+            ) : qaStatus === 'FALLIDO' ? (
               <CloseCircleOutlined className="text-rose-500" />
+            ) : qaStatus === 'BLOQUEADO' ? (
+              <InfoCircleOutlined className="text-amber-500" />
+            ) : qaStatus === 'PARCIAL' ? (
+              <ClockCircleOutlined className="text-blue-500" />
+            ) : qaStatus === 'SIN_CASOS' ? (
+              <MinusCircleOutlined className="text-slate-300" />
             ) : (
               <ClockCircleOutlined className="text-slate-300" />
             )}
             <span
               className={`font-bold text-xs ${
-                result === TestResult.PASSED
+                qaStatus === 'APROBADO'
                   ? 'text-emerald-600'
-                  : result === TestResult.FAILED
+                  : qaStatus === 'FALLIDO'
                     ? 'text-rose-600'
+                    : qaStatus === 'BLOQUEADO'
+                      ? 'text-amber-600'
+                      : qaStatus === 'PARCIAL'
+                        ? 'text-blue-600'
+                        : qaStatus === 'SIN_CASOS'
+                          ? 'text-slate-400'
                     : 'text-slate-400'
               }`}
             >
-              {result}
+              {qaStatus === 'APROBADO'
+                ? 'Aprobado'
+                : qaStatus === 'FALLIDO'
+                  ? 'Fallido'
+                  : qaStatus === 'BLOQUEADO'
+                    ? 'Bloqueado'
+                    : qaStatus === 'PARCIAL'
+                      ? 'Parcial'
+                      : qaStatus === 'SIN_CASOS'
+                        ? 'Sin casos'
+                        : 'No ejecutado'}
             </span>
           </div>
         );
@@ -230,18 +328,21 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       key: 'coverage',
       width: 150,
       render: (_: any, record: any) => {
-        const exec = executions.find(e => e.functionalityId === record.id);
-        const percent = exec?.executed ? 100 : 0;
+        const { coveragePercent, executedCases, totalCases } = getCoverageStats(record.id);
         return (
           <div className="flex items-center gap-3">
             <Progress
-              percent={percent}
+              percent={coveragePercent}
               size="small"
               showInfo={false}
-              strokeColor={percent === 100 ? '#10b981' : '#cbd5e1'}
+              strokeColor={
+                coveragePercent === 100 ? '#10b981' : coveragePercent > 0 ? '#1677ff' : '#cbd5e1'
+              }
               className="m-0"
             />
-            <span className="text-xs font-bold text-slate-500">{percent}%</span>
+            <span className="text-xs font-bold text-slate-500">
+              {coveragePercent}% ({executedCases}/{totalCases})
+            </span>
           </div>
         );
       },
@@ -256,9 +357,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
 
   const exportMatrix = (format: 'xlsx' | 'csv') => {
     const data = filteredData.map(f => {
-      const tcCount = testCases.filter(tc => tc.functionalityId === f.id).length;
-      const exec = executions.find(e => e.functionalityId === f.id);
-      const coverage = exec?.executed ? '100%' : '0%';
+      const { totalCases, executedCases, coveragePercent, qaStatus } = getCoverageStats(f.id);
 
       const linkedBugs = bugs
         .filter(bug => bug.functionalityId === f.id)
@@ -268,8 +367,21 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       return {
         Módulo: f.module,
         Funcionalidad: f.name,
-        'Casos de Prueba': tcCount,
-        'Porcentaje de Cobertura': coverage,
+        'Casos de Prueba': totalCases,
+        'Casos Ejecutados': executedCases,
+        'Estado QA':
+          qaStatus === 'APROBADO'
+            ? 'Aprobado'
+            : qaStatus === 'FALLIDO'
+              ? 'Fallido'
+              : qaStatus === 'BLOQUEADO'
+                ? 'Bloqueado'
+                : qaStatus === 'PARCIAL'
+                  ? 'Parcial'
+                  : qaStatus === 'SIN_CASOS'
+                    ? 'Sin casos'
+                    : 'No ejecutado',
+        'Porcentaje de Cobertura': `${coveragePercent}%`,
         'Bugs Vinculados': linkedBugs || 'Ninguno',
       };
     });
@@ -309,7 +421,9 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
             Matriz de Cobertura
           </Title>
           <Paragraph type="secondary">
-            Visualización detallada de la trazabilidad y estado de pruebas por funcionalidad.
+            Visualización detallada de la trazabilidad y cobertura de casos por funcionalidad.
+            Esta vista se enfoca en casos de prueba y ejecuciones registradas, no en ciclos de
+            regresión o smoke.
           </Paragraph>
         </div>
         <Dropdown menu={exportMenu} trigger={['click']}>

@@ -58,12 +58,14 @@ import {
   TestType,
   ExecutionStatus,
   Priority,
+  RiskLevel,
   FunctionalityScope,
   Severity,
   TestRun,
   TestRunResult,
   Environment,
   BugOrigin,
+  Functionality,
 } from '../types';
 import {
   labelEnvironment,
@@ -71,11 +73,28 @@ import {
   labelPriority,
   labelTestResult,
 } from '../i18n/labels';
-import { syncBugReport } from '../services/bugTrackerService';
+import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
 import dayjs from 'dayjs';
+import {
+  isPayloadTooLargeError,
+  readFileAsDataUrl,
+  showPayloadTooLargeMessage,
+  validateInlineImageFile,
+} from '../utils/uploadValidation';
+import {
+  getGeminiApiKey,
+  recommendExecutionFunctionalitiesWithAI,
+  type ExecutionRecommendationCandidate,
+} from '../services/geminiService';
 
 const { Text, Title } = Typography;
+
+type AiExecutionSuggestion = {
+  functionalityId: string;
+  reason: string;
+  source: 'ai' | 'rules';
+};
 
 function formatCompactId(value?: string | null, startLength = 6, endLength = 5) {
   if (!value) return '—';
@@ -113,6 +132,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedFuncIds, setSelectedFuncIds] = useState<string[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<AiExecutionSuggestion[]>([]);
+  const [isSuggestingAi, setIsSuggestingAi] = useState(false);
+  const [aiSuggestionMode, setAiSuggestionMode] = useState<'ai' | 'rules' | null>(null);
 
   // Step 2 State (Execution View)
   const [executionResults, setExecutionResults] = useState<TestRunResult[]>([]);
@@ -159,6 +181,21 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setOriginalEvidenceRecord({ ...record });
     setCurrentEvidenceTestCaseId(record.testCaseId);
     setIsEvidenceModalOpen(true);
+
+    if (
+      record.result === TestResult.FAILED &&
+      !record.bugId?.trim() &&
+      activeTestRun?.projectId
+    ) {
+      void previewNextInternalBugId(
+        activeTestRun.projectId,
+        executionResults
+          .filter(item => item.testCaseId !== record.testCaseId)
+          .map(item => item.bugId),
+      ).then(nextBugId => {
+        updateResult(record.testCaseId, 'bugId', nextBugId);
+      });
+    }
   };
 
   const closeEvidenceModal = () => {
@@ -190,47 +227,185 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       return;
     }
 
-    if (
-      currentEvidenceRecord.result === TestResult.FAILED &&
-      activeTestRun &&
-      activeEvidenceFunctionality
-    ) {
-      const syncedBug = await syncBugReport({
-        linkedBugId: currentEvidenceRecord.linkedBugId,
-        externalBugId: currentEvidenceRecord.bugId,
-        title: currentEvidenceRecord.bugTitle,
-        description: currentEvidenceRecord.notes,
-        severity: currentEvidenceRecord.severity,
-        bugLink: currentEvidenceRecord.bugLink,
-        evidenceImage: currentEvidenceRecord.evidenceImage,
-        origin: BugOrigin.GENERAL_EXECUTION,
-        projectId: activeTestRun.projectId,
-        functionalityId: activeEvidenceFunctionality.id,
-        functionalityName: activeEvidenceFunctionality.name,
-        module: activeEvidenceFunctionality.module,
-        sprint: activeTestRun.sprint,
-        reportedBy: activeTestRun.tester,
-        testCaseId: currentEvidenceRecord.testCaseId,
-        testCaseTitle: activeEvidenceTestCase?.title,
-        testRunId: activeTestRun.id,
-        executionId: currentEvidenceRecord.id,
-      });
-
-      if (syncedBug) {
-        updateResult(currentEvidenceRecord.testCaseId, 'linkedBugId', syncedBug.internalBugId);
-        await queryClient.invalidateQueries({
-          queryKey: ['bugs', activeTestRun.projectId],
+    try {
+      if (
+        currentEvidenceRecord.result === TestResult.FAILED &&
+        activeTestRun &&
+        activeEvidenceFunctionality
+      ) {
+        const syncedBug = await syncBugReport({
+          linkedBugId: currentEvidenceRecord.linkedBugId,
+          internalBugId: currentEvidenceRecord.bugId,
+          title: currentEvidenceRecord.bugTitle,
+          description: currentEvidenceRecord.notes,
+          severity: currentEvidenceRecord.severity,
+          bugLink: currentEvidenceRecord.bugLink,
+          evidenceImage: currentEvidenceRecord.evidenceImage,
+          origin: BugOrigin.GENERAL_EXECUTION,
+          projectId: activeTestRun.projectId,
+          functionalityId: activeEvidenceFunctionality.id,
+          functionalityName: activeEvidenceFunctionality.name,
+          module: activeEvidenceFunctionality.module,
+          sprint: activeTestRun.sprint,
+          reportedBy: activeTestRun.tester,
+          testCaseId: currentEvidenceRecord.testCaseId,
+          testCaseTitle: activeEvidenceTestCase?.title,
+          testRunId: activeTestRun.id,
+          executionId: currentEvidenceRecord.id,
         });
-      }
-    }
 
-    closeEvidenceModal();
-    message.success('Evidencia guardada correctamente');
+        if (syncedBug) {
+          updateResult(currentEvidenceRecord.testCaseId, 'linkedBugId', syncedBug.internalBugId);
+          updateResult(currentEvidenceRecord.testCaseId, 'bugId', syncedBug.internalBugId);
+          await queryClient.invalidateQueries({
+            queryKey: ['bugs', activeTestRun.projectId],
+          });
+        }
+      }
+
+      closeEvidenceModal();
+      message.success('Evidencia guardada correctamente');
+    } catch (error) {
+      console.error('Error saving evidence:', error);
+      if (isPayloadTooLargeError(error)) {
+        showPayloadTooLargeMessage();
+        return;
+      }
+      message.error('Error al guardar la evidencia. Por favor revisa los campos.');
+    }
   };
 
   const availableFunctionalities = useMemo(() => {
     return functionalitiesWithTestCases.filter(f => selectedModules.includes(f.module));
   }, [selectedModules, functionalitiesWithTestCases]);
+
+  const selectedTestType = Form.useWatch('testType', form) as TestType | undefined;
+
+  const testCaseCountByFunctionality = useMemo(() => {
+    const counts = new Map<string, number>();
+    testCases.forEach(testCase => {
+      counts.set(
+        testCase.functionalityId,
+        (counts.get(testCase.functionalityId) || 0) + 1,
+      );
+    });
+    return counts;
+  }, [testCases]);
+
+  const functionalityById = useMemo(() => {
+    return new Map(functionalities.map(func => [func.id, func]));
+  }, [functionalities]);
+
+  const selectedFunctionalityModels = useMemo(() => {
+    return selectedFuncIds
+      .map(id => functionalityById.get(id))
+      .filter((item): item is Functionality => Boolean(item));
+  }, [selectedFuncIds, functionalityById]);
+
+  const buildRecommendationCandidate = (func: Functionality): ExecutionRecommendationCandidate => ({
+    id: func.id,
+    name: func.name,
+    module: func.module,
+    priority: func.priority,
+    riskLevel: func.riskLevel,
+    isCore: Boolean(func.isCore),
+    isRegression: Boolean(func.isRegression),
+    isSmoke: Boolean(func.isSmoke),
+    lastFunctionalChangeAt: func.lastFunctionalChangeAt,
+    roles: func.roles || [],
+    testCaseCount: testCaseCountByFunctionality.get(func.id) || 0,
+  });
+
+  const isRecentFunctionalChange = (value?: string) => {
+    if (!value) return false;
+    const parsed = dayjs(value);
+    return parsed.isValid() && dayjs().diff(parsed, 'day') <= 14;
+  };
+
+  const ruleBasedSuggestionPool = useMemo(() => {
+    if (!selectedModules.length) return [];
+
+    const selectedRoleSet = new Set(selectedFunctionalityModels.flatMap(func => func.roles || []));
+
+    const scored = functionalitiesWithTestCases
+      .filter(func => !selectedFuncIds.includes(func.id))
+      .map(func => {
+        let score = 0;
+        const reasons: string[] = [];
+        const sameModule = selectedModules.includes(func.module);
+        const recentChange = isRecentFunctionalChange(func.lastFunctionalChangeAt);
+        const hasHighPriority =
+          func.priority === Priority.HIGH || func.priority === Priority.CRITICAL;
+        const hasHighRisk = func.riskLevel === RiskLevel.HIGH;
+        const sharesRoles = (func.roles || []).some(role => selectedRoleSet.has(role));
+
+        if (sameModule) {
+          score += 4;
+          reasons.push('pertenece a un modulo seleccionado');
+        }
+        if (recentChange) {
+          score += 4;
+          reasons.push('tuvo un cambio reciente');
+        }
+        if (func.isCore) {
+          score += 3;
+          reasons.push('es parte del core');
+        }
+        if (hasHighPriority) {
+          score += 2;
+          reasons.push('tiene prioridad alta');
+        }
+        if (hasHighRisk) {
+          score += 2;
+          reasons.push('presenta riesgo alto');
+        }
+        if (sharesRoles) {
+          score += 1;
+          reasons.push('comparte roles con el flujo seleccionado');
+        }
+
+        if (selectedTestType === TestType.SANITY && func.isCore) {
+          score += 2;
+          reasons.push('encaja bien para una validacion sanity');
+        }
+        if (selectedTestType === TestType.INTEGRATION && (hasHighRisk || recentChange)) {
+          score += 2;
+          reasons.push('podria impactar integraciones relacionadas');
+        }
+        if (
+          selectedTestType === TestType.EXPLORATORY &&
+          (recentChange || hasHighRisk || hasHighPriority)
+        ) {
+          score += 1;
+          reasons.push('vale la pena explorarlo por su nivel de cambio o riesgo');
+        }
+        if (selectedTestType === TestType.UAT && (func.isCore || hasHighPriority)) {
+          score += 1;
+          reasons.push('podria afectar un flujo relevante para negocio');
+        }
+
+        return {
+          func,
+          score,
+          reasons,
+        };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score || a.func.name.localeCompare(b.func.name))
+      .slice(0, 10);
+
+    return scored;
+  }, [
+    functionalitiesWithTestCases,
+    selectedFuncIds,
+    selectedFunctionalityModels,
+    selectedModules,
+    selectedTestType,
+  ]);
+
+  const visibleAiSuggestions = useMemo(() => {
+    return aiSuggestions.filter(suggestion => !selectedFuncIds.includes(suggestion.functionalityId));
+  }, [aiSuggestions, selectedFuncIds]);
 
   const groupedFunctionalities = useMemo(() => {
     const groups: Record<string, typeof functionalities> = {};
@@ -241,11 +416,114 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return groups;
   }, [availableFunctionalities]);
 
+  const executionTestTypeOptions = useMemo(
+    () =>
+      Object.values(TestType)
+        .filter(type => type !== TestType.REGRESSION && type !== TestType.SMOKE)
+        .map(type => ({ label: type, value: type })),
+    [],
+  );
+
   useEffect(() => {
     // Auto-select all functionalities when modules change
     const newIds = availableFunctionalities.map(f => f.id);
     setSelectedFuncIds(newIds);
   }, [availableFunctionalities]);
+
+  useEffect(() => {
+    setAiSuggestions([]);
+    setAiSuggestionMode(null);
+  }, [selectedModules, selectedTestType]);
+
+  const buildRuleBasedSuggestions = () => {
+    return ruleBasedSuggestionPool.slice(0, 5).map(item => ({
+      functionalityId: item.func.id,
+      reason: item.reasons.slice(0, 2).join(' y '),
+      source: 'rules' as const,
+    }));
+  };
+
+  const handleSuggestWithAI = async () => {
+    if (!selectedModules.length) {
+      message.warning('Selecciona al menos un modulo antes de pedir sugerencias.');
+      return;
+    }
+
+    if (ruleBasedSuggestionPool.length === 0) {
+      setAiSuggestions([]);
+      setAiSuggestionMode(null);
+      message.info('No hay candidatas relevantes para sugerir en este momento.');
+      return;
+    }
+
+    const fallbackSuggestions = buildRuleBasedSuggestions();
+
+    if (!getGeminiApiKey()) {
+      setAiSuggestions(fallbackSuggestions);
+      setAiSuggestionMode('rules');
+      message.warning(
+        'No se encontro configuracion de Gemini. Se muestran sugerencias automaticas basadas en reglas.',
+      );
+      return;
+    }
+
+    setIsSuggestingAi(true);
+    try {
+      const response =
+        (await recommendExecutionFunctionalitiesWithAI({
+          testType: selectedTestType || TestType.FUNCTIONAL,
+          selectedModules,
+          selectedFunctionalities: selectedFunctionalityModels.map(buildRecommendationCandidate),
+          candidateFunctionalities: ruleBasedSuggestionPool.map(item =>
+            buildRecommendationCandidate(item.func),
+          ),
+          maxSuggestions: 5,
+        })) || [];
+
+      const allowedIds = new Set(ruleBasedSuggestionPool.map(item => item.func.id));
+      const nextSuggestions = response
+        .filter(item => item?.functionalityId && item?.reason)
+        .filter(item => allowedIds.has(item.functionalityId))
+        .slice(0, 5)
+        .map(item => ({
+          functionalityId: item.functionalityId,
+          reason: item.reason.trim(),
+          source: 'ai' as const,
+        }));
+
+      if (nextSuggestions.length === 0) {
+        setAiSuggestions(fallbackSuggestions);
+        setAiSuggestionMode('rules');
+        message.info('La IA no encontro nuevas candidatas claras. Se muestran sugerencias automaticas.');
+        return;
+      }
+
+      setAiSuggestions(nextSuggestions);
+      setAiSuggestionMode('ai');
+      message.success('Sugerencias con IA listas');
+    } catch (error) {
+      console.error('AI suggestion error:', error);
+      const msg = (error instanceof Error ? error.message : (error as any)?.message) || '';
+      if (msg === 'GEMINI_API_KEY_MISSING') {
+        message.warning(
+          'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar sugerencias con IA.',
+        );
+      } else if (msg === 'GEMINI_API_KEY_INVALID' || msg === 'GEMINI_API_KEY_LEAKED') {
+        message.error('La configuracion actual de Gemini no es valida. Se usaran sugerencias automaticas.');
+      } else {
+        message.warning('No fue posible consultar la IA. Se muestran sugerencias automaticas.');
+      }
+
+      setAiSuggestions(fallbackSuggestions);
+      setAiSuggestionMode('rules');
+    } finally {
+      setIsSuggestingAi(false);
+    }
+  };
+
+  const addSuggestedFunctionality = (functionalityId: string) => {
+    setSelectedFuncIds(prev => Array.from(new Set([...prev, functionalityId])));
+  };
 
   const handleCreateTestRun = async () => {
     try {
@@ -867,16 +1145,20 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       <div className="flex flex-wrap gap-1">
                         <Tag className="m-0 flex items-center gap-1.5 bg-rose-50 border-rose-100 text-rose-600 px-2 py-0.5 rounded-md w-fit">
                           <BugOutlined className="text-[10px]" />
-                          <a
-                            href={
-                              record.bugLink || `https://jira.atlassian.com/browse/${record.bugId}`
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] font-bold text-rose-600 hover:underline truncate max-w-[120px]"
-                          >
-                            {record.bugId}
-                          </a>
+                          {record.bugLink ? (
+                            <a
+                              href={record.bugLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-bold text-rose-600 hover:underline truncate max-w-[120px]"
+                            >
+                              {record.bugId}
+                            </a>
+                          ) : (
+                            <span className="text-[10px] font-bold text-rose-600 truncate max-w-[120px]">
+                              {record.bugId}
+                            </span>
+                          )}
                         </Tag>
                         {record.severity && (
                           <Tag className="m-0 text-[9px] font-black uppercase bg-slate-800 text-white border-none px-1.5 rounded-sm">
@@ -1047,21 +1329,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </div>
 
               <Row gutter={16}>
-                <Col span={12}>
-                  <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
-                    Bug ID (Jira/GitHub)
-                  </Text>
-                  <Input
-                    placeholder="ID del Bug"
-                    value={currentEvidenceRecord.bugId}
-                    disabled={isReadOnly}
-                    onChange={e =>
-                      updateResult(currentEvidenceRecord.testCaseId, 'bugId', e.target.value)
-                    }
-                    className="rounded-lg border-slate-200"
-                  />
-                </Col>
-                <Col span={12}>
+                <Col span={24}>
                   <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
                     Severidad
                   </Text>
@@ -1114,14 +1382,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                           <Upload
                             showUploadList={false}
                             beforeUpload={file => {
-                              const reader = new FileReader();
-                              reader.onload = e =>
+                              if (!validateInlineImageFile(file)) return false;
+                              void readFileAsDataUrl(file).then(base64 =>
                                 updateResult(
                                   currentEvidenceRecord.testCaseId,
                                   'evidenceImage',
-                                  e.target?.result as string,
-                                );
-                              reader.readAsDataURL(file);
+                                  base64,
+                                ),
+                              );
                               return false;
                             }}
                           >
@@ -1137,14 +1405,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       showUploadList={false}
                       disabled={isReadOnly}
                       beforeUpload={file => {
-                        const reader = new FileReader();
-                        reader.onload = e =>
-                          updateResult(
-                            currentEvidenceRecord.testCaseId,
-                            'evidenceImage',
-                            e.target?.result as string,
-                          );
-                        reader.readAsDataURL(file);
+                        if (!validateInlineImageFile(file)) return false;
+                        void readFileAsDataUrl(file).then(base64 =>
+                          updateResult(currentEvidenceRecord.testCaseId, 'evidenceImage', base64),
+                        );
                         return false;
                       }}
                     >
@@ -1287,10 +1551,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
             <Col span={12}>
               <Form.Item name="testType" label="Tipo de Test" rules={[{ required: true }]}>
-                <Select
-                  className="h-10 rounded-lg"
-                  options={Object.values(TestType).map(v => ({ label: v, value: v }))}
-                />
+                <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1372,6 +1633,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   Funcionalidades por Módulo
                 </span>
                 <Space>
+                  <Tooltip title="Analiza el tipo de prueba, los modulos seleccionados y cambios recientes para sugerir funcionalidades relacionadas.">
+                    <Button
+                      size="small"
+                      icon={<ThunderboltOutlined />}
+                      loading={isSuggestingAi}
+                      onClick={() => void handleSuggestWithAI()}
+                      className="rounded-full"
+                    >
+                      Sugerir con IA
+                    </Button>
+                  </Tooltip>
                   <Button
                     size="small"
                     type="link"
@@ -1478,6 +1750,96 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </div>
                 )}
               </div>
+
+              {(visibleAiSuggestions.length > 0 || aiSuggestionMode) && (
+                <Card
+                  className="mt-4 rounded-2xl border border-slate-200 shadow-none"
+                  styles={{ body: { padding: 16 } }}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ThunderboltOutlined className="text-cyan-600" />
+                        <span className="font-semibold text-slate-800">
+                          Funcionalidades sugeridas
+                        </span>
+                        <Tag
+                          className="m-0 rounded-full border-none"
+                          color={aiSuggestionMode === 'ai' ? 'blue' : 'gold'}
+                        >
+                          {aiSuggestionMode === 'ai' ? 'IA' : 'Reglas'}
+                        </Tag>
+                      </div>
+                      <Text type="secondary" className="text-xs">
+                        Recomendaciones complementarias para ampliar el alcance de esta ejecucion.
+                      </Text>
+                    </div>
+                    {visibleAiSuggestions.length > 0 && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() =>
+                          setSelectedFuncIds(prev =>
+                            Array.from(
+                              new Set([
+                                ...prev,
+                                ...visibleAiSuggestions.map(item => item.functionalityId),
+                              ]),
+                            ),
+                          )
+                        }
+                      >
+                        Agregar sugeridas
+                      </Button>
+                    )}
+                  </div>
+
+                  {visibleAiSuggestions.length > 0 ? (
+                    <List
+                      dataSource={visibleAiSuggestions}
+                      split
+                      renderItem={item => {
+                        const functionality = functionalityById.get(item.functionalityId);
+                        if (!functionality) return null;
+
+                        return (
+                          <List.Item
+                            actions={[
+                              <Button
+                                key="add"
+                                size="small"
+                                type="primary"
+                                ghost
+                                onClick={() => addSuggestedFunctionality(item.functionalityId)}
+                              >
+                                Agregar
+                              </Button>,
+                            ]}
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-slate-800">
+                                  {functionality.name}
+                                </span>
+                                <Tag className="m-0 rounded-full border-none bg-slate-100 text-slate-600">
+                                  {functionality.module}
+                                </Tag>
+                              </div>
+                              <Text type="secondary" className="text-xs">
+                                {item.reason}
+                              </Text>
+                            </div>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                      No hay sugerencias adicionales para esta combinacion.
+                    </div>
+                  )}
+                </Card>
+              )}
             </div>
           )}
 

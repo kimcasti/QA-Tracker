@@ -133,12 +133,14 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
                     <Tag className="m-0 rounded-md bg-slate-100 border-slate-200 text-slate-600">
                       {record.internalBugId}
                     </Tag>
-                    <Tag
-                      className="m-0 rounded-md"
-                      style={softTagStyle(qaPalette.functionalityStatus.failed)}
-                    >
-                      {record.externalBugId || 'Sin ID externo'}
-                    </Tag>
+                    {record.externalBugId && (
+                      <Tag
+                        className="m-0 rounded-md"
+                        style={softTagStyle(qaPalette.functionalityStatus.failed)}
+                      >
+                        {record.externalBugId}
+                      </Tag>
+                    )}
                   </div>
                 </div>
               ),

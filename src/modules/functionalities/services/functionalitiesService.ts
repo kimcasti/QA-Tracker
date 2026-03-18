@@ -1,4 +1,4 @@
-import type { Functionality } from '../../../types';
+import { TestType, type Functionality } from '../../../types';
 import {
   priorityFromApi,
   priorityToApi,
@@ -26,12 +26,11 @@ export function buildNextFunctionalityCode(
 ) {
   if (!moduleName) return '';
 
-  const normalizedModuleName = moduleName.trim().toLowerCase();
   const prefix = moduleName.trim().substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   const nextSequence =
     functionalities
-      .filter(item => item.module.trim().toLowerCase() === normalizedModuleName)
+      .filter(item => item.id.startsWith(`${prefix}-`))
       .map(item => {
         const match = item.id.match(new RegExp(`^${prefix}-(\\d+)$`));
         return match ? Number.parseInt(match[1], 10) : 0;
@@ -50,8 +49,10 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     name: document.name,
     roles: (document.personaRoles || []).map(role => role.name),
     testTypes: (document.testTypes || []).map(type => testTypeFromApi(type)),
+    isCore: Boolean(document.isCore),
     isRegression: Boolean(document.isRegression),
     isSmoke: Boolean(document.isSmoke),
+    lastFunctionalChangeAt: document.lastFunctionalChangeAt,
     deliveryDate: document.deliveryDate || '',
     status: testStatusFromApi(document.status),
     priority: priorityFromApi(document.priority),
@@ -110,9 +111,14 @@ export async function saveFunctionality(functionality: Functionality) {
     {
       code: functionality.id,
       name: functionality.name,
-      testTypes: (functionality.testTypes || []).map(testTypeToApi),
+      testTypes: (functionality.testTypes?.length
+        ? functionality.testTypes
+        : [TestType.FUNCTIONAL]
+      ).map(testTypeToApi),
+      isCore: Boolean(functionality.isCore),
       isRegression: functionality.isRegression,
       isSmoke: functionality.isSmoke,
+      lastFunctionalChangeAt: functionality.lastFunctionalChangeAt || null,
       deliveryDate: functionality.deliveryDate || null,
       status: testStatusToApi(functionality.status),
       priority: priorityToApi(functionality.priority),

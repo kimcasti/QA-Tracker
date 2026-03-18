@@ -1,6 +1,7 @@
 ﻿import {
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Dropdown,
@@ -212,6 +213,9 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       riskLevel: RiskLevel.MEDIUM,
       sprint: undefined,
       deliveryDate: undefined,
+      isCore: false,
+      isRegression: false,
+      isSmoke: false,
     });
     setCreateFuncModalOpen(true);
   };
@@ -381,8 +385,9 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               name: values.name,
               roles: ['Todos'],
               testTypes: [TestType.FUNCTIONAL],
-              isRegression: false,
-              isSmoke: false,
+              isCore: Boolean(values.isCore),
+              isRegression: Boolean(values.isRegression),
+              isSmoke: Boolean(values.isSmoke),
               deliveryDate: deliveryDateStr,
               status: TestStatus.BACKLOG,
               priority: values.priority,
@@ -486,6 +491,21 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             <Col span={12}>
               <Form.Item name="deliveryDate" label={t('functionality.delivery_date_optional')}>
                 <DatePicker className="w-full" format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
+                <Space size={16} wrap>
+                  <Form.Item name="isCore" valuePropName="checked" noStyle>
+                    <Checkbox>Es Core</Checkbox>
+                  </Form.Item>
+                  <Form.Item name="isRegression" valuePropName="checked" noStyle>
+                    <Checkbox>Aplica a Regresión</Checkbox>
+                  </Form.Item>
+                  <Form.Item name="isSmoke" valuePropName="checked" noStyle>
+                    <Checkbox>Aplica a Smoke</Checkbox>
+                  </Form.Item>
+                </Space>
               </Form.Item>
             </Col>
           </Row>

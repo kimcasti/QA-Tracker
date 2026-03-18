@@ -54,8 +54,10 @@ export interface Functionality {
   name: string;
   roles: string[];
   testTypes: TestType[];
+  isCore?: boolean;
   isRegression: boolean;
   isSmoke: boolean;
+  lastFunctionalChangeAt?: string;
   deliveryDate: string;
   status: TestStatus;
   priority: Priority;

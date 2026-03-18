@@ -466,7 +466,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
             Reporte de Progreso QA
           </Title>
           <Paragraph type="secondary">
-            Tendencia de calidad y evolucion de las pruebas
+            Tendencia de calidad funcional y evolucion de los ciclos
             {sprint ? ` en ${sprint}` : ' en los ultimos ciclos'}.
           </Paragraph>
         </div>
@@ -652,6 +652,9 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
     const highRisk = filteredFunctionalities.filter(
       item => item.riskLevel === RiskLevel.HIGH,
     ).length;
+    const core = filteredFunctionalities.filter(item => item.isCore).length;
+    const regression = filteredFunctionalities.filter(item => item.isRegression).length;
+    const smoke = filteredFunctionalities.filter(item => item.isSmoke).length;
     const riskTone = getProjectRiskTone(activeBugs.length, highRisk, averagePassRate);
 
     return {
@@ -668,6 +671,9 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
       averagePassRate,
       pendingCycleTests,
       riskTone,
+      core,
+      regression,
+      smoke,
     };
   }, [bugs, functionalities, regressionCycles, smokeCycles, sprint, testCases]);
 
@@ -690,8 +696,8 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
             Reporte de Estado del Proyecto
           </Title>
           <Paragraph type="secondary">
-            Vision global del avance funcional, cobertura y riesgos{sprint ? ` para ${sprint}` : ''}
-            .
+            Vision global del avance funcional, cobertura por casos y riesgos
+            {sprint ? ` para ${sprint}` : ''}.
           </Paragraph>
         </div>
         {sprint && (
@@ -739,6 +745,12 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                 <div className="flex justify-between">
                   <Text type="secondary">Promedio de ciclos:</Text>
                   <Text strong>{stats.averagePassRate}%</Text>
+                </div>
+                <div className="flex justify-between">
+                  <Text type="secondary">Core / Regresión / Smoke:</Text>
+                  <Text strong>
+                    {stats.core} / {stats.regression} / {stats.smoke}
+                  </Text>
                 </div>
                 <div className="flex justify-between">
                   <Text type="secondary">Nivel de riesgo:</Text>
@@ -910,7 +922,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="QA_PROGRESS_REPORT"
           title="Reporte de Progreso QA"
-          description="Tendencias de calidad, evolución de casos y hitos alcanzados en el tiempo."
+          description="Tendencias de calidad funcional por ciclos y evolución de la ejecución."
           format="PDF / EXCEL"
           icon={<LineChartOutlined />}
           selected={selectedVariant === 'QA_PROGRESS_REPORT'}
@@ -919,7 +931,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         <SelectionCard
           type="PROJECT_STATUS_REPORT"
           title="Estado del Proyecto"
-          description="Resumen ejecutivo del avance funcional, riesgos y cobertura global."
+          description="Resumen ejecutivo del avance funcional, cobertura por casos y riesgos."
           format="PDF / WORD"
           icon={<ProjectOutlined />}
           selected={selectedVariant === 'PROJECT_STATUS_REPORT'}

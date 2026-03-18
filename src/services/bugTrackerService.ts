@@ -4,6 +4,7 @@ import { getBugs, saveBug } from '../modules/bugs/services/bugsService';
 
 export interface BugSyncPayload {
   linkedBugId?: string;
+  internalBugId?: string;
   externalBugId?: string;
   title?: string;
   description?: string;
@@ -29,6 +30,29 @@ function normalize(value?: string) {
   return trimmed ? trimmed : undefined;
 }
 
+const INTERNAL_BUG_ID_REGEX = /^BUG-(\d+)$/i;
+
+function formatInternalBugId(sequence: number) {
+  return `BUG-${sequence.toString().padStart(4, '0')}`;
+}
+
+function extractInternalBugSequence(value?: string) {
+  const normalizedValue = normalize(value);
+  if (!normalizedValue) return null;
+
+  const match = normalizedValue.match(INTERNAL_BUG_ID_REGEX);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function getNextInternalBugId(existingIds: Array<string | undefined>) {
+  const maxSequence = existingIds.reduce((currentMax, id) => {
+    const sequence = extractInternalBugSequence(id);
+    return sequence && sequence > currentMax ? sequence : currentMax;
+  }, 0);
+
+  return formatInternalBugId(maxSequence + 1);
+}
+
 function buildLinkedSourceId(payload: BugSyncPayload) {
   return [
     payload.projectId,
@@ -44,11 +68,19 @@ function buildLinkedSourceId(payload: BugSyncPayload) {
 export function shouldSyncBug(
   payload: Pick<
     BugSyncPayload,
-    'linkedBugId' | 'externalBugId' | 'title' | 'description' | 'severity' | 'bugLink' | 'evidenceImage'
+    | 'linkedBugId'
+    | 'internalBugId'
+    | 'externalBugId'
+    | 'title'
+    | 'description'
+    | 'severity'
+    | 'bugLink'
+    | 'evidenceImage'
   >,
 ) {
   return Boolean(
     normalize(payload.linkedBugId) ||
+      normalize(payload.internalBugId) ||
       normalize(payload.externalBugId) ||
       normalize(payload.title) ||
       normalize(payload.description) ||
@@ -56,6 +88,14 @@ export function shouldSyncBug(
       normalize(payload.bugLink) ||
       payload.evidenceImage,
   );
+}
+
+export async function previewNextInternalBugId(
+  projectId: string,
+  draftIds: Array<string | undefined> = [],
+) {
+  const bugs = await getBugs(projectId);
+  return getNextInternalBugId([...bugs.map(bug => bug.internalBugId), ...draftIds]);
 }
 
 export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | null> {
@@ -66,11 +106,13 @@ export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | nu
   const bugs = await getBugs(payload.projectId);
   const linkedSourceId = buildLinkedSourceId(payload);
   const normalizedLinkedBugId = normalize(payload.linkedBugId);
+  const normalizedInternalBugId = normalize(payload.internalBugId);
   const normalizedExternalBugId = normalize(payload.externalBugId);
   const now = dayjs().toISOString();
 
   const existing =
     bugs.find(bug => normalizedLinkedBugId && bug.internalBugId === normalizedLinkedBugId) ||
+    bugs.find(bug => normalizedInternalBugId && bug.internalBugId === normalizedInternalBugId) ||
     bugs.find(bug => bug.linkedSourceId === linkedSourceId) ||
     bugs.find(
       bug =>
@@ -86,7 +128,8 @@ export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | nu
   const bug: QABug = {
     internalBugId:
       existing?.internalBugId ||
-      `BUG-${dayjs().format('YYYYMMDD-HHmmss')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      normalizedInternalBugId ||
+      getNextInternalBugId(bugs.map(item => item.internalBugId)),
     externalBugId: normalizedExternalBugId,
     title:
       normalize(payload.title) ||

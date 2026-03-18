@@ -3,8 +3,10 @@ export interface FunctionalityDto {
   code: string;
   name: string;
   testTypes?: string[];
+  isCore?: boolean;
   isRegression?: boolean;
   isSmoke?: boolean;
+  lastFunctionalChangeAt?: string;
   deliveryDate?: string;
   status?: string;
   priority?: string;
