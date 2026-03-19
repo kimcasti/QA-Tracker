@@ -48,6 +48,7 @@ import { MeetingNote, Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 
 const { Title, Text, Paragraph } = Typography;
+const RECENT_NOTES_LIMIT = 4;
 
 type NoteFormValues = {
   date: Dayjs;
@@ -180,6 +181,7 @@ export default function AboutView({ project }: { project: Project }) {
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isViewNoteModalOpen, setIsViewNoteModalOpen] = useState(false);
+  const [isAllNotesModalOpen, setIsAllNotesModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
   const [isImproving, setIsImproving] = useState(false);
 
@@ -236,6 +238,21 @@ export default function AboutView({ project }: { project: Project }) {
       (left, right) => dayjs(right.date).valueOf() - dayjs(left.date).valueOf(),
     )[0].date;
   }, [meetingNotes]);
+
+  const sortedMeetingNotes = useMemo(
+    () =>
+      [...meetingNotes].sort((left, right) => {
+        const leftDateTime = dayjs(`${left.date} ${left.time || '00:00'}`);
+        const rightDateTime = dayjs(`${right.date} ${right.time || '00:00'}`);
+        return rightDateTime.valueOf() - leftDateTime.valueOf();
+      }),
+    [meetingNotes],
+  );
+
+  const recentMeetingNotes = useMemo(
+    () => sortedMeetingNotes.slice(0, RECENT_NOTES_LIMIT),
+    [sortedMeetingNotes],
+  );
 
   const projectStatusMeta = useMemo(() => {
     const statusMap = {
@@ -776,6 +793,18 @@ export default function AboutView({ project }: { project: Project }) {
                 />
               </div>
 
+              {meetingNotes.length > RECENT_NOTES_LIMIT && (
+                <div className="-mt-2 flex justify-end">
+                  <Button
+                    type="link"
+                    className="px-0 font-medium"
+                    onClick={() => setIsAllNotesModalOpen(true)}
+                  >
+                    Ver todas las minutas
+                  </Button>
+                </div>
+              )}
+
               <Row gutter={[12, 12]}>
                 <Col span={12}>
                   <MeetingInsightCard
@@ -797,10 +826,7 @@ export default function AboutView({ project }: { project: Project }) {
 
               <div className="space-y-4">
                 {meetingNotes.length > 0 ? (
-                  meetingNotes
-                    .slice()
-                    .sort((left, right) => dayjs(right.date).valueOf() - dayjs(left.date).valueOf())
-                    .map(note => {
+                  recentMeetingNotes.map(note => {
                       const noteParticipants = splitParticipants(note.participants);
                       return (
                         <Card
@@ -1085,6 +1111,109 @@ export default function AboutView({ project }: { project: Project }) {
             </div>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title={<span className="text-lg font-bold text-slate-800">Historial de minutas</span>}
+        open={isAllNotesModalOpen}
+        onCancel={() => setIsAllNotesModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setIsAllNotesModalOpen(false)}>
+            Cerrar
+          </Button>,
+        ]}
+        width={860}
+        centered
+        destroyOnHidden
+      >
+        <div className="mt-4 max-h-[70vh] space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+          {sortedMeetingNotes.length > 0 ? (
+            sortedMeetingNotes.map(note => {
+              const noteParticipants = splitParticipants(note.participants);
+              return (
+                <Card
+                  key={`history-${note.id}`}
+                  hoverable
+                  variant="borderless"
+                  className="rounded-[24px] border border-slate-100 bg-white/90"
+                  styles={{ body: { padding: 18 } }}
+                  onClick={() => {
+                    setIsAllNotesModalOpen(false);
+                    renderNoteDetails(note);
+                  }}
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <Tag
+                        variant="filled"
+                        className="rounded-full px-3 py-1 font-semibold"
+                        style={{
+                          color: qaPalette.primary,
+                          backgroundColor: softSurface(qaPalette.primary),
+                        }}
+                      >
+                        General
+                      </Tag>
+                      <Text className="text-xs text-slate-400">{note.date}</Text>
+                    </div>
+
+                    <div>
+                      <Title level={5} className="!mb-2 !text-slate-900">
+                        Reunion de Avance Semanal
+                      </Title>
+                      <Space size={12} wrap className="text-sm text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <ClockCircleOutlined />
+                          {note.time}
+                        </span>
+                      </Space>
+                    </div>
+
+                    <Avatar.Group size="small" max={{ count: 4 }}>
+                      {noteParticipants.map(participant => (
+                        <Avatar
+                          key={`${note.id}-history-${participant}`}
+                          src={participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl}
+                          style={{
+                            background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
+                          }}
+                        >
+                          {getInitials(participant)}
+                        </Avatar>
+                      ))}
+                    </Avatar.Group>
+
+                    <Space size={[8, 8]} wrap>
+                      {note.aiSummary && (
+                        <Tag
+                          variant="filled"
+                          className="rounded-full px-3 py-1"
+                          style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}
+                        >
+                          IA
+                        </Tag>
+                      )}
+                      {noteParticipants.slice(0, 3).map(participant => (
+                        <Tag
+                          key={`${note.id}-history-tag-${participant}`}
+                          variant="filled"
+                          className="rounded-full px-3 py-1 text-slate-500"
+                        >
+                          {participant}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                </Card>
+              );
+            })
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="No hay minutas registradas todavía."
+            />
+          )}
+        </div>
       </Modal>
 
       <Modal
