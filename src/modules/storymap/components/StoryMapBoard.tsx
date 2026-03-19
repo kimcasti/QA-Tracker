@@ -1,5 +1,12 @@
 import { Button, Card, Tag, Tooltip, Typography } from 'antd';
-import { EditOutlined, PlusOutlined, RocketOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  CaretDownOutlined,
+  CaretRightOutlined,
+  EditOutlined,
+  PlusOutlined,
+  RocketOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { createSwapy, type SlotItemMapArray, type Swapy } from 'swapy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +58,10 @@ function storyIdFromSlot(slotId: string) {
   return slotId.split('::')[0];
 }
 
+function collapsedRolesStorageKey(projectId: string) {
+  return `qa-tracker:storymap:collapsed-roles:${projectId}`;
+}
+
 export default function StoryMapBoard({
   projectId,
   roles,
@@ -100,6 +111,18 @@ export default function StoryMapBoard({
   const [links, setLinks] = useState<StoryFunctionalityLink[]>(() =>
     storyAssociationsService.getProjectLinks(projectId)
   );
+  const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') {
+      return {};
+    }
+
+    try {
+      const rawValue = window.localStorage.getItem(collapsedRolesStorageKey(projectId));
+      return rawValue ? (JSON.parse(rawValue) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const storyIdsRef = useRef(storyIdsInRenderOrder);
   useEffect(() => {
@@ -109,7 +132,45 @@ export default function StoryMapBoard({
   useEffect(() => {
     setTasksByStory(taskOrderService.getProjectOrder(projectId));
     setLinks(storyAssociationsService.getProjectLinks(projectId));
+    if (typeof window === 'undefined') {
+      setCollapsedRoles({});
+      return;
+    }
+
+    try {
+      const rawValue = window.localStorage.getItem(collapsedRolesStorageKey(projectId));
+      setCollapsedRoles(rawValue ? (JSON.parse(rawValue) as Record<string, boolean>) : {});
+    } catch {
+      setCollapsedRoles({});
+    }
   }, [projectId]);
+
+  useEffect(() => {
+    setCollapsedRoles(prev => {
+      const next: Record<string, boolean> = {};
+      roles.forEach(role => {
+        if (prev[role.id]) {
+          next[role.id] = true;
+        }
+      });
+      return next;
+    });
+  }, [roles]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        collapsedRolesStorageKey(projectId),
+        JSON.stringify(collapsedRoles),
+      );
+    } catch {
+      // Ignore storage issues and keep the UI responsive.
+    }
+  }, [collapsedRoles, projectId]);
 
   const funcById = useMemo(() => {
     const m = new Map<string, Functionality>();
@@ -343,6 +404,17 @@ export default function StoryMapBoard({
     swapyRef.current?.update();
   }, [canonicalSlotItemMap]);
 
+  useEffect(() => {
+    swapyRef.current?.update();
+  }, [collapsedRoles]);
+
+  const toggleRoleCollapsed = (roleId: string) => {
+    setCollapsedRoles(prev => ({
+      ...prev,
+      [roleId]: !prev[roleId],
+    }));
+  };
+
   return (
     <div ref={containerRef} className="space-y-6">
       {roles.map(role => (
@@ -357,6 +429,15 @@ export default function StoryMapBoard({
           }}
           title={
             <div className="flex items-center gap-2 min-w-0">
+              <Button
+                type="text"
+                size="small"
+                className="shrink-0 text-slate-500"
+                icon={
+                  collapsedRoles[role.id] ? <CaretRightOutlined /> : <CaretDownOutlined />
+                }
+                onClick={() => toggleRoleCollapsed(role.id)}
+              />
               <Tag color="blue" className="m-0 text-[10px] font-black uppercase">
                 {t('storymap.role')}
               </Tag>
@@ -364,6 +445,9 @@ export default function StoryMapBoard({
               <span className="font-black text-slate-800 truncate" title={role.name}>
                 {role.name}
               </span>
+              <Text type="secondary" className="text-xs whitespace-nowrap">
+                {role.epics.length}
+              </Text>
               <Tooltip title={t('common.edit')}>
                 <Button
                   type="text"
@@ -386,92 +470,94 @@ export default function StoryMapBoard({
             </Button>
           }
         >
-          <div className="space-y-6">
-            {role.epics.map((epic) => (
-              <Card
-                key={epic.id}
-                size="small"
-                variant="borderless"
-                className={`rounded-2xl qa-story-surface shadow-none border-l-4 ${epicAccentClass(epic.id)}`}
-                style={{ background: `linear-gradient(180deg, ${qaPalette.storyMapCard} 0%, ${softSurface(qaPalette.storyMapBorder)} 100%)` }}
-                styles={{
-                  header: { padding: '8px 12px' },
-                  body: { padding: 12 },
-                }}
-                title={
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Tag color="orange" className="m-0 text-[10px] font-black uppercase">
-                      {t('storymap.epic')}
-                    </Tag>
-                    <RocketOutlined style={{ color: qaPalette.storyMapBorder }} />
-                    <span className="font-bold text-slate-800 truncate" title={epic.name}>
-                      {epic.name}
-                    </span>
-                    <Tooltip title={t('common.edit')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        className="shrink-0 text-slate-500"
-                        onClick={() => onEditEpic(epic.id, epic.name)}
-                      />
-                    </Tooltip>
-                  </div>
-                }
-                extra={
-                  <Button
-                    size="small"
-                    icon={<PlusOutlined />}
-                    onClick={() => onCreateStory(epic.id)}
-                    className="rounded-lg"
-                  >
-                    {t('storymap.new_story')}
-                  </Button>
-                }
-              >
-                <div className="flex gap-6 overflow-x-auto pb-1">
-                  {epic.stories.length === 0 ? (
-                    <Text type="secondary" className="text-xs">{t('storymap.no_stories')}</Text>
-                  ) : (
-                    epic.stories.map(story => (
-                      <div key={story.id} className="w-[360px] min-w-[360px]">
-                        <StoryColumn
-                          storyId={story.id}
-                          storyName={story.name}
-                          slots={slotsByStory[story.id] || [{ slotId: `${story.id}::0`, itemId: emptyId(story.id) }]}
-                          availableFunctionalities={functionalities.filter(
-                            functionality =>
-                              !links.some(
-                                link =>
-                                  link.storyId === story.id &&
-                                  link.functionalityId === functionality.id,
-                              ),
-                          )}
-                          onCreateFunctionality={onCreateFunctionality}
-                          onEditStory={onEditStory}
-                          onAssignExisting={handleAssignExisting}
-                          renderItem={(itemId) => {
-                            if (isEmptyItem(itemId)) {
-                              return <TaskPlaceholderCard />;
-                            }
-                            const link = linkById.get(itemId);
-                            const f = link ? funcById.get(link.functionalityId) : undefined;
-                            return (
-                              <TaskCard
-                                projectId={projectId}
-                                functionality={f}
-                                onUnassign={() => handleUnassign(itemId)}
-                              />
-                            );
-                          }}
+          {collapsedRoles[role.id] ? null : (
+            <div className="space-y-6">
+              {role.epics.map((epic) => (
+                <Card
+                  key={epic.id}
+                  size="small"
+                  variant="borderless"
+                  className={`rounded-2xl qa-story-surface shadow-none border-l-4 ${epicAccentClass(epic.id)}`}
+                  style={{ background: `linear-gradient(180deg, ${qaPalette.storyMapCard} 0%, ${softSurface(qaPalette.storyMapBorder)} 100%)` }}
+                  styles={{
+                    header: { padding: '8px 12px' },
+                    body: { padding: 12 },
+                  }}
+                  title={
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Tag color="orange" className="m-0 text-[10px] font-black uppercase">
+                        {t('storymap.epic')}
+                      </Tag>
+                      <RocketOutlined style={{ color: qaPalette.storyMapBorder }} />
+                      <span className="font-bold text-slate-800 truncate" title={epic.name}>
+                        {epic.name}
+                      </span>
+                      <Tooltip title={t('common.edit')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          className="shrink-0 text-slate-500"
+                          onClick={() => onEditEpic(epic.id, epic.name)}
                         />
-                      </div>
-                    ))
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
+                      </Tooltip>
+                    </div>
+                  }
+                  extra={
+                    <Button
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => onCreateStory(epic.id)}
+                      className="rounded-lg"
+                    >
+                      {t('storymap.new_story')}
+                    </Button>
+                  }
+                >
+                  <div className="flex gap-6 overflow-x-auto pb-1">
+                    {epic.stories.length === 0 ? (
+                      <Text type="secondary" className="text-xs">{t('storymap.no_stories')}</Text>
+                    ) : (
+                      epic.stories.map(story => (
+                        <div key={story.id} className="w-[360px] min-w-[360px]">
+                          <StoryColumn
+                            storyId={story.id}
+                            storyName={story.name}
+                            slots={slotsByStory[story.id] || [{ slotId: `${story.id}::0`, itemId: emptyId(story.id) }]}
+                            availableFunctionalities={functionalities.filter(
+                              functionality =>
+                                !links.some(
+                                  link =>
+                                    link.storyId === story.id &&
+                                    link.functionalityId === functionality.id,
+                                ),
+                            )}
+                            onCreateFunctionality={onCreateFunctionality}
+                            onEditStory={onEditStory}
+                            onAssignExisting={handleAssignExisting}
+                            renderItem={(itemId) => {
+                              if (isEmptyItem(itemId)) {
+                                return <TaskPlaceholderCard />;
+                              }
+                              const link = linkById.get(itemId);
+                              const f = link ? funcById.get(link.functionalityId) : undefined;
+                              return (
+                                <TaskCard
+                                  projectId={projectId}
+                                  functionality={f}
+                                  onUnassign={() => handleUnassign(itemId)}
+                                />
+                              );
+                            }}
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </Card>
       ))}
     </div>
