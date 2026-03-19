@@ -35,7 +35,9 @@
     "automated": "Automated",
     "execution_type": "Execution Type",
     "import": "Import",
-    "export": "Export"
+    "export": "Export",
+    "yes": "Yes",
+    "no": "No"
   },
   "projects": {
     "title": "Project Management",
@@ -69,5 +71,37 @@
     "export_word": "Export to Word",
     "qa_coverage": "QA Coverage",
     "risk_indicators": "Risk Indicators"
+  },
+  "calendar": {
+    "title": "Project Calendar",
+    "description": "Plan tests, meetings, demos, and other project events.",
+    "new_event": "New Event",
+    "edit_event": "Edit Event",
+    "events_for": "Events for",
+    "no_events_for_day": "No events for this day.",
+    "confirm_delete_title": "Delete this event?",
+    "confirm_delete_content": "This action cannot be undone. The event will be permanently deleted.",
+    "event_saved_success": "Event saved successfully.",
+    "event_saved_error": "Error saving the event.",
+    "event_deleted_success": "Event deleted successfully.",
+    "event_deleted_error": "Error deleting the event.",
+    "form": {
+      "event_type": "Event Type",
+      "title": "Title",
+      "title_required": "Please enter a title.",
+      "date": "Date",
+      "time": "Time",
+      "owner": "Owner",
+      "owner_placeholder": "e.g., George",
+      "attendees": "Attendees",
+      "attendees_placeholder": "List of attendees or teams",
+      "test_type": "Test Type",
+      "priority": "Priority",
+      "sprint": "Sprint",
+      "scope": "Scope",
+      "modules": "Impact Modules",
+      "modules_placeholder": "Type and press Enter to add modules",
+      "description": "Description / Notes"
+    }
   }
 }
