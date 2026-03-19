@@ -6,6 +6,7 @@ export interface TestCycleExecutionDto {
   executed?: boolean;
   date?: string;
   result?: string;
+  executionMode?: string;
   evidence?: string;
   evidenceImage?: string;
   bugTitle?: string;
@@ -24,6 +25,7 @@ export interface TestCycleExecutionDto {
   testCase?: {
     documentId: string;
     title: string;
+    isAutomated?: boolean;
   };
 }
 

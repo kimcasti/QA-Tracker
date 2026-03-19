@@ -1,4 +1,4 @@
-import type { RegressionCycle, RegressionExecution } from '../../../types';
+import { ExecutionMode, type RegressionCycle, type RegressionExecution } from '../../../types';
 import {
   cycleStatusFromApi,
   cycleStatusToApi,
@@ -6,6 +6,8 @@ import {
   cycleTypeToApi,
   environmentFromApi,
   environmentToApi,
+  executionModeFromApi,
+  executionModeToApi,
   severityFromApi,
   severityToApi,
   testResultFromApi,
@@ -39,6 +41,9 @@ function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
     module: document.moduleName || '',
     functionalityName: document.functionalityName || '',
     testCaseTitle: document.testCase?.title || document.testCaseTitle,
+    executionMode:
+      executionModeFromApi(document.executionMode) ||
+      (document.testCase?.isAutomated ? ExecutionMode.AUTOMATED : ExecutionMode.MANUAL),
     executed: Boolean(document.executed),
     date: document.date,
     result: testResultFromApi(document.result),
@@ -120,6 +125,7 @@ async function syncExecutions(
         executed: execution.executed,
         date: execution.date || null,
         result: testResultToApi(execution.result),
+        executionMode: executionModeToApi(execution.executionMode),
         evidence: execution.evidence || null,
         evidenceImage: execution.evidenceImage || null,
         bugTitle: execution.bugTitle || null,

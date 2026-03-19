@@ -51,6 +51,7 @@ import {
   RegressionExecution,
   Severity,
   Environment,
+  ExecutionMode,
   BugOrigin,
   Priority,
   RiskLevel,
@@ -96,6 +97,10 @@ function isRecentlyChanged(functionality: Functionality) {
 
   const changedAt = dayjs(functionality.lastFunctionalChangeAt);
   return changedAt.isValid() && dayjs().diff(changedAt, 'day') <= RECENT_CHANGE_WINDOW_DAYS;
+}
+
+function getExecutionModeLabel(mode?: ExecutionMode) {
+  return mode || ExecutionMode.MANUAL;
 }
 
 export default function RegressionCycles({ projectId }: { projectId?: string }) {
@@ -181,6 +186,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
 
   const isReadOnly = selectedCycle?.status === 'FINALIZADA';
+  const isFailureEvidenceRequired = currentExecution?.result === TestResult.FAILED;
 
   // Sync form values when currentExecution changes
   useEffect(() => {
@@ -386,6 +392,23 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          ESTADO
+        </span>
+      ),
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: RegressionCycle['status']) => (
+        <Tag
+          color={status === 'FINALIZADA' ? 'green' : 'blue'}
+          className="rounded-full px-3 py-[2px] font-semibold border-0"
+        >
+          {status === 'FINALIZADA' ? 'Finalizado' : 'En progreso'}
+        </Tag>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
           TOTAL TEST
         </span>
       ),
@@ -527,6 +550,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 testCaseTitle: tc.title,
                 module: f.module,
                 functionalityName: f.name,
+                executionMode: tc.isAutomated ? ExecutionMode.AUTOMATED : ExecutionMode.MANUAL,
                 executed: false,
                 result: TestResult.NOT_EXECUTED,
                 date: undefined,
@@ -539,6 +563,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               functionalityId: f.id,
               module: f.module,
               functionalityName: f.name,
+              executionMode: ExecutionMode.MANUAL,
               executed: false,
               result: TestResult.NOT_EXECUTED,
             });
@@ -584,7 +609,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     executionId: string,
     updates: Partial<RegressionExecution>,
   ) => {
-    const cycle = cycles.find(c => c.id === cycleId);
+    const cycle =
+      selectedCycle?.id === cycleId ? selectedCycle : cycles.find(c => c.id === cycleId);
     if (!cycle) return;
 
     const updatedExecutions = cycle.executions.map(ex =>
@@ -648,6 +674,22 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       return;
     }
 
+    const incompleteFailedExecution = (cycle.executions || []).find(
+      execution =>
+        execution.result === TestResult.FAILED &&
+        (!execution.evidence?.trim() || !execution.bugTitle?.trim() || !execution.severity),
+    );
+
+    if (incompleteFailedExecution) {
+      message.error(
+        `Completa la evidencia de ${incompleteFailedExecution.testCaseId || incompleteFailedExecution.functionalityId} antes de finalizar el ciclo.`,
+      );
+      setSelectedCycle(cycle);
+      setCurrentExecution(incompleteFailedExecution);
+      setEvidenceModalOpen(true);
+      return;
+    }
+
     const updatedCycle: RegressionCycle = {
       ...cycle,
       status: 'FINALIZADA',
@@ -708,6 +750,17 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
     return matchesSearch && matchesFilter;
   });
+
+  const automatedExecutionsCount = (selectedCycle?.executions || []).filter(
+    execution => getExecutionModeLabel(execution.executionMode) === ExecutionMode.AUTOMATED,
+  ).length;
+  const manualExecutionsCount = Math.max(
+    (selectedCycle?.executions || []).length - automatedExecutionsCount,
+    0,
+  );
+  const automationRate = selectedCycle?.totalTests
+    ? Math.round((automatedExecutionsCount / selectedCycle.totalTests) * 100)
+    : 0;
 
   const functionalityLookup = new Map(functionalities.map(item => [item.id, item] as const));
 
@@ -814,6 +867,21 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 >
                   Execute All
                 </Button>
+              )}
+              {selectedCycle.totalTests > 0 && (
+                <div className="ml-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2">
+                  <Tag color="blue" className="m-0 rounded-full px-3 py-1 font-semibold">
+                    Automatizadas {automatedExecutionsCount}/{selectedCycle.totalTests}
+                  </Tag>
+                  <Tag className="m-0 rounded-full px-3 py-1 font-semibold">
+                    Manuales {manualExecutionsCount}
+                  </Tag>
+                  {automationRate === 100 && (
+                    <Tag color="green" className="m-0 rounded-full px-3 py-1 font-semibold">
+                      Todo automatizado
+                    </Tag>
+                  )}
+                </div>
               )}
             </Space>
           </div>
@@ -980,6 +1048,32 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 {
                   title: (
                     <span className="text-[11px] font-bold text-slate-400 uppercase">
+                      EJECUCIÓN
+                    </span>
+                  ),
+                  dataIndex: 'executionMode',
+                  key: 'executionMode',
+                  render: (executionMode, record) => (
+                    <Select
+                      value={getExecutionModeLabel(executionMode)}
+                      onChange={val =>
+                        updateExecution(selectedCycle.id, record.id, {
+                          executionMode: val,
+                        })
+                      }
+                      className="w-36"
+                      variant="borderless"
+                      disabled={isReadOnly}
+                      options={[
+                        { label: ExecutionMode.AUTOMATED, value: ExecutionMode.AUTOMATED },
+                        { label: ExecutionMode.MANUAL, value: ExecutionMode.MANUAL },
+                      ]}
+                    />
+                  ),
+                },
+                {
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">
                       EJECUTADO
                     </span>
                   ),
@@ -1027,12 +1121,30 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                     <div className="flex flex-col gap-1">
                       <Select
                         value={result}
-                        onChange={val =>
-                          updateExecution(selectedCycle.id, record.id, {
+                        onChange={async val => {
+                          const nextExecution: RegressionExecution = {
+                            ...record,
                             result: val,
                             executed: val !== TestResult.NOT_EXECUTED,
-                          })
-                        }
+                            date:
+                              val !== TestResult.NOT_EXECUTED
+                                ? dayjs().format('YYYY-MM-DD')
+                                : record.date,
+                          };
+
+                          await updateExecution(selectedCycle.id, record.id, {
+                            result: val,
+                            executed: val !== TestResult.NOT_EXECUTED,
+                          });
+
+                          if (val === TestResult.FAILED) {
+                            setCurrentExecution(nextExecution);
+                            setEvidenceModalOpen(true);
+                            message.info(
+                              'Adjunta evidencia y registra el bug para completar la prueba fallida.',
+                            );
+                          }
+                        }}
                         className="w-32"
                         variant="borderless"
                         disabled={isReadOnly}
@@ -1129,14 +1241,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                         </div>
                       ) : (
                         <div
-                          className="flex items-center gap-1 text-slate-400"
+                          className={`flex items-center gap-1 ${record.result === TestResult.FAILED ? 'text-red-500' : 'text-slate-400'}`}
                           onClick={e => {
                             e.stopPropagation();
                             setCurrentExecution(record);
                             setEvidenceModalOpen(true);
                           }}
                         >
-                          <PlusOutlined /> <span>Note</span>
+                          <PlusOutlined />{' '}
+                          <span>{record.result === TestResult.FAILED ? 'Requerida' : 'Note'}</span>
                         </div>
                       )}
                     </div>
@@ -1452,6 +1565,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <Form.Item
                 name="sprint"
                 label={<span className="font-semibold text-slate-600">Sprint</span>}
+                rules={[{ required: true }]}
               >
                 <Select
                   placeholder="Selecciona Sprint"
@@ -1650,11 +1764,6 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               return;
             }
             const values = await evidenceForm.validateFields();
-            if (currentExecution.result === TestResult.FAILED && !values.bugTitle?.trim()) {
-              message.error('El titulo del bug es obligatorio para pruebas fallidas.');
-              return;
-            }
-
             const evidencePayload = {
               evidence: values.evidence,
               evidenceImage: evidenceImage,
@@ -1740,6 +1849,11 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             <Form.Item
               name="evidence"
               label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
+              rules={
+                isFailureEvidenceRequired
+                  ? [{ required: true, message: 'Las notas de ejecución son obligatorias.' }]
+                  : undefined
+              }
             >
               <Input.TextArea
                 rows={4}
@@ -1755,7 +1869,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               </span>
             </Divider>
 
-            <Form.Item name="bugTitle" label="Titulo del bug">
+            <Form.Item
+              name="bugTitle"
+              label="Titulo del bug"
+              rules={
+                isFailureEvidenceRequired
+                  ? [{ required: true, message: 'El titulo del bug es obligatorio.' }]
+                  : undefined
+              }
+            >
               <Input
                 placeholder="Resume el error detectado"
                 className="rounded-lg"
@@ -1768,7 +1890,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <Input />
               </Form.Item>
               <Col span={24}>
-                <Form.Item name="severity" label="Severidad">
+                <Form.Item
+                  name="severity"
+                  label="Severidad"
+                  rules={
+                    isFailureEvidenceRequired
+                      ? [{ required: true, message: 'La severidad es obligatoria.' }]
+                      : undefined
+                  }
+                >
                   <Select
                     placeholder="Selecciona severidad"
                     className="rounded-lg"
