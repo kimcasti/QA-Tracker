@@ -54,7 +54,7 @@ import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { BugStatus, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
+import { BugStatus, ExecutionMode, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
 import { exportToPdf } from '../utils/reportUtils';
 
 const { Title, Text, Paragraph } = Typography;
@@ -90,6 +90,18 @@ const getCycleTypeLabel = (cycle: RegressionCycle) => {
 
 const getExecutedCount = (cycle: RegressionCycle) =>
   Math.max(cycle.totalTests - cycle.pending - cycle.blocked, 0);
+
+const getExecutionModeLabel = (mode?: ExecutionMode) => mode || ExecutionMode.MANUAL;
+
+const getAutomatedCount = (cycle: RegressionCycle) =>
+  cycle.executions.filter(
+    execution => getExecutionModeLabel(execution.executionMode) === ExecutionMode.AUTOMATED,
+  ).length;
+
+const getManualCount = (cycle: RegressionCycle) => Math.max(cycle.executions.length - getAutomatedCount(cycle), 0);
+
+const getAutomationRate = (cycle: RegressionCycle) =>
+  cycle.totalTests > 0 ? Math.round((getAutomatedCount(cycle) / cycle.totalTests) * 100) : 0;
 
 const getPercent = (value: number, total: number) =>
   total > 0 ? Math.round((value / total) * 100) : 0;
@@ -199,6 +211,9 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
 
   const executedTests = getExecutedCount(cycle);
   const executionCoverage = getPercent(executedTests, cycle.totalTests);
+  const automatedCount = getAutomatedCount(cycle);
+  const manualCount = getManualCount(cycle);
+  const automationRate = getAutomationRate(cycle);
   const stabilityTone = getPassRateTone(cycle.passRate);
   const riskTone = getCycleRiskTone(cycle.failed, executedTests, activeCycleBugs.length);
 
@@ -265,7 +280,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
       </div>
 
       <Row gutter={24}>
-        <Col span={8}>
+        <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
               title="Tasa de aprobacion"
@@ -276,7 +291,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
             <Progress percent={cycle.passRate} showInfo={false} strokeColor="#10b981" />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
               title="Total pruebas"
@@ -288,7 +303,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
             </Text>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
               title="Bugs encontrados"
@@ -297,6 +312,19 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
             />
             <Text type="secondary" className="text-xs">
               Bugs vinculados al ciclo
+            </Text>
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
+            <Statistic
+              title="Ejecucion automatizada"
+              value={automationRate}
+              suffix="%"
+              valueStyle={{ color: '#2563eb', fontWeight: 800 }}
+            />
+            <Text type="secondary" className="text-xs">
+              {automatedCount} automatizadas / {manualCount} manuales
             </Text>
           </Card>
         </Col>
@@ -352,6 +380,16 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
           columns={[
             { title: 'Funcionalidad', dataIndex: 'functionalityName', key: 'name' },
             { title: 'Modulo', dataIndex: 'module', key: 'module' },
+            {
+              title: 'Ejecucion',
+              dataIndex: 'executionMode',
+              key: 'executionMode',
+              render: mode => (
+                <Tag color={getExecutionModeLabel(mode) === ExecutionMode.AUTOMATED ? 'blue' : 'default'}>
+                  {getExecutionModeLabel(mode)}
+                </Tag>
+              ),
+            },
             {
               title: 'Resultado',
               dataIndex: 'result',
@@ -412,6 +450,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
         passRate: cycle.passRate,
         totalTests: cycle.totalTests,
         executed: getExecutedCount(cycle),
+        automationRate: getAutomationRate(cycle),
       })),
     [filteredCycles],
   );
@@ -421,13 +460,14 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
     const lastCycle = filteredCycles[filteredCycles.length - 1];
 
     if (!firstCycle || !lastCycle) {
-      return {
-        casesGrowth: 0,
-        failureReduction: 0,
-        executionVelocity: 0,
-        latestExecutionCoverage: 0,
-      };
-    }
+        return {
+          casesGrowth: 0,
+          failureReduction: 0,
+          executionVelocity: 0,
+          latestExecutionCoverage: 0,
+          averageAutomationRate: 0,
+        };
+      }
 
     const firstExecutionCoverage = getPercent(getExecutedCount(firstCycle), firstCycle.totalTests);
     const latestExecutionCoverage = getPercent(getExecutedCount(lastCycle), lastCycle.totalTests);
@@ -440,6 +480,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
       ),
       executionVelocity: calculatePercentChange(latestExecutionCoverage, firstExecutionCoverage),
       latestExecutionCoverage,
+      averageAutomationRate: average(filteredCycles.map(cycle => getAutomationRate(cycle))),
     };
   }, [filteredCycles]);
 
@@ -552,6 +593,16 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                   strokeColor="#f59e0b"
                 />
               </div>
+              <div>
+                <div className="flex justify-between mb-2">
+                  <Text strong>Promedio automatizado</Text>
+                  <Text>{evolutionMetrics.averageAutomationRate}%</Text>
+                </div>
+                <Progress
+                  percent={evolutionMetrics.averageAutomationRate}
+                  strokeColor="#2563eb"
+                />
+              </div>
             </div>
           </Card>
         </Col>
@@ -642,6 +693,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
     const activeBugs = filteredBugs.filter(bug => bug.status !== BugStatus.RESOLVED);
     const finalizedCycles = filteredCycles.filter(cycle => cycle.status === 'FINALIZADA');
     const averagePassRate = average(finalizedCycles.map(cycle => cycle.passRate));
+    const averageAutomationRate = average(filteredCycles.map(cycle => getAutomationRate(cycle)));
     const pendingCycleTests = filteredCycles.reduce(
       (sum, cycle) => sum + cycle.pending + cycle.blocked,
       0,
@@ -669,6 +721,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
       activeBugsCount: activeBugs.length,
       cycleCount: filteredCycles.length,
       averagePassRate,
+      averageAutomationRate,
       pendingCycleTests,
       riskTone,
       core,
@@ -745,6 +798,10 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                 <div className="flex justify-between">
                   <Text type="secondary">Promedio de ciclos:</Text>
                   <Text strong>{stats.averagePassRate}%</Text>
+                </div>
+                <div className="flex justify-between">
+                  <Text type="secondary">Promedio automatizado:</Text>
+                  <Text strong>{stats.averageAutomationRate}%</Text>
                 </div>
                 <div className="flex justify-between">
                   <Text type="secondary">Core / Regresión / Smoke:</Text>
