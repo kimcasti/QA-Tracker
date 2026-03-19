@@ -20,6 +20,41 @@ import { getModules, getRoles, getSprints } from '../../settings/services/settin
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { FunctionalityDto } from '../types/api';
 
+export function normalizeDateOnly(value?: string | null) {
+  if (!value) return '';
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  const slashMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const first = Number.parseInt(slashMatch[1], 10);
+    const second = Number.parseInt(slashMatch[2], 10);
+    const year = slashMatch[3];
+
+    if (first > 12) {
+      return `${year}-${slashMatch[2].padStart(2, '0')}-${slashMatch[1].padStart(2, '0')}`;
+    }
+
+    if (second > 12) {
+      return `${year}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
+    }
+
+    return `${year}-${slashMatch[2].padStart(2, '0')}-${slashMatch[1].padStart(2, '0')}`;
+  }
+
+  const parsedDate = new Date(trimmedValue);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return trimmedValue;
+  }
+
+  return parsedDate.toISOString().split('T')[0];
+}
+
 export function buildNextFunctionalityCode(
   moduleName: string,
   functionalities: Array<Pick<Functionality, 'id' | 'module'>>,
@@ -52,8 +87,8 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     isCore: Boolean(document.isCore),
     isRegression: Boolean(document.isRegression),
     isSmoke: Boolean(document.isSmoke),
-    lastFunctionalChangeAt: document.lastFunctionalChangeAt,
-    deliveryDate: document.deliveryDate || '',
+    lastFunctionalChangeAt: normalizeDateOnly(document.lastFunctionalChangeAt),
+    deliveryDate: normalizeDateOnly(document.deliveryDate),
     status: testStatusFromApi(document.status),
     priority: priorityFromApi(document.priority),
     riskLevel: riskFromApi(document.riskLevel),
@@ -118,8 +153,8 @@ export async function saveFunctionality(functionality: Functionality) {
       isCore: Boolean(functionality.isCore),
       isRegression: functionality.isRegression,
       isSmoke: functionality.isSmoke,
-      lastFunctionalChangeAt: functionality.lastFunctionalChangeAt || null,
-      deliveryDate: functionality.deliveryDate || null,
+      lastFunctionalChangeAt: normalizeDateOnly(functionality.lastFunctionalChangeAt) || null,
+      deliveryDate: normalizeDateOnly(functionality.deliveryDate) || null,
       status: testStatusToApi(functionality.status),
       priority: priorityToApi(functionality.priority),
       riskLevel: riskToApi(functionality.riskLevel),

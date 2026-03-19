@@ -24,6 +24,11 @@ export enum TestResult {
   NOT_EXECUTED = 'No Ejecutado',
 }
 
+export enum ExecutionMode {
+  MANUAL = 'Manual',
+  AUTOMATED = 'Automatizada',
+}
+
 export enum ProjectStatus {
   ACTIVE = 'Active',
   PAUSED = 'Paused',
@@ -110,6 +115,15 @@ export enum FunctionalityScope {
   PARTIAL = 'Parcial',
 }
 
+export enum CalendarEventType {
+  TEST = 'Prueba',
+  CLIENT_MEETING = 'Reunión con cliente',
+  DEMO = 'Demo',
+  ONBOARDING = 'Inducción',
+  FOLLOW_UP = 'Seguimiento',
+  REMINDER = 'Recordatorio',
+}
+
 export enum BugOrigin {
   GENERAL_EXECUTION = 'General Execution',
   REGRESSION_CYCLE = 'Regression Cycle',
@@ -132,15 +146,19 @@ export enum Environment {
 export interface TestPlan {
   id: string;
   projectId: string;
+  eventType: CalendarEventType;
   title: string;
-  scope: FunctionalityScope;
-  impactModules: string[];
-  sprint: string;
-  testType: TestType;
-  priority: Priority;
+  scope?: FunctionalityScope;
+  impactModules?: string[];
+  sprint?: string;
+  testType?: TestType;
+  priority?: Priority;
   jiraId?: string;
   description: string;
   date: string;
+  time?: string;
+  attendees?: string;
+  owner?: string;
 }
 
 export interface TestExecution {
@@ -218,6 +236,7 @@ export interface RegressionExecution {
   module: string;
   functionalityName: string;
   testCaseTitle?: string; // New: For display
+  executionMode?: ExecutionMode;
   executed: boolean;
   date?: string;
   result: TestResult;

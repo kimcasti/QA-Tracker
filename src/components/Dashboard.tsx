@@ -1,5 +1,5 @@
-import React from 'react';
-import { Card, Col, Progress, Row, Statistic, Table, Tag, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { Card, Col, DatePicker, Progress, Row, Statistic, Table, Tag, Typography } from 'antd';
 import {
   BarChartOutlined,
   BugOutlined,
@@ -12,9 +12,10 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { normalizeDateOnly } from '../modules/functionalities/services/functionalitiesService';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
@@ -44,6 +45,14 @@ const TEST_TYPE_COLORS: Record<TestType, string> = {
   [TestType.EXPLORATORY]: '#F89A44',
   [TestType.UAT]: qaPalette.functionalityStatus.postMvp,
 };
+
+function parseDeliveryDate(value?: string | null) {
+  const normalizedValue = normalizeDateOnly(value);
+  if (!normalizedValue) return null;
+
+  const parsedDate = dayjs(normalizedValue);
+  return parsedDate.isValid() ? parsedDate : null;
+}
 
 function FixedPie({
   data,
@@ -146,6 +155,9 @@ function MetricCard({
 }
 
 export default function Dashboard({ projectId }: { projectId?: string }) {
+  const [deliveryDateRange, setDeliveryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
+    null,
+  );
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
   const { data: regressionCyclesData } = useRegressionCycles(projectId);
@@ -222,6 +234,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const failedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
     execution => execution.result === TestResult.FAILED,
   ).length;
+  const passFailTotal = passedTestCasesCount + failedTestCasesCount;
+  const passFailChartData = [
+    { name: 'Aprobados', value: passedTestCasesCount, color: qaPalette.functionalityStatus.completed },
+    { name: 'Fallidos', value: failedTestCasesCount, color: qaPalette.functionalityStatus.failed },
+  ].filter(item => item.value > 0);
+  const passedPercent = passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
+  const failedPercent = passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
 
   const latestFinalRegressionCycle = regressionCycles.find(cycle => cycle.status === 'FINALIZADA');
   const latestFinalSmokeCycle = smokeCycles.find(cycle => cycle.status === 'FINALIZADA');
@@ -290,18 +309,44 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const totalAppliedTestTypes = appliedTestTypesData.reduce((sum, item) => sum + item.value, 0);
 
-  const moduleCounts = functionalities.reduce<Record<string, number>>((acc, item) => {
-    acc[item.module] = (acc[item.module] || 0) + 1;
-    return acc;
-  }, {});
-
-  const moduleData = Object.entries(moduleCounts)
-    .map(([name, count]) => ({
+  const moduleData = Object.entries(
+    functionalities.reduce<
+      Record<
+        string,
+        {
+          totalCount: number;
+          completedCount: number;
+        }
+      >
+    >((acc, item) => {
+      const current = acc[item.module] || { totalCount: 0, completedCount: 0 };
+      current.totalCount += 1;
+      if (item.status === TestStatus.COMPLETED) {
+        current.completedCount += 1;
+      }
+      acc[item.module] = current;
+      return acc;
+    }, {}),
+  )
+    .map(([name, summary]) => ({
       name,
-      count,
-      percent: totalFunctionalities > 0 ? Math.round((count / totalFunctionalities) * 100) : 0,
+      totalCount: summary.totalCount,
+      completedCount: summary.completedCount,
+      percent:
+        summary.totalCount > 0
+          ? Math.round((summary.completedCount / summary.totalCount) * 100)
+          : 0,
     }))
-    .sort((left, right) => right.count - left.count);
+    .sort(
+      (left, right) =>
+        right.totalCount - left.totalCount ||
+        right.completedCount - left.completedCount ||
+        left.name.localeCompare(right.name),
+    );
+
+  const totalCompletedByModules = moduleData.reduce((sum, item) => sum + item.completedCount, 0);
+  const globalModuleProgress =
+    totalFunctionalities > 0 ? Math.round((totalCompletedByModules / totalFunctionalities) * 100) : 0;
 
   const getModuleAccent = (name: string) => {
     const lower = name.toLowerCase();
@@ -328,26 +373,58 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const sprintByName = new Map(sprints.map(sprint => [sprint.name, sprint]));
 
-  const tableData = functionalities
-    .filter(item => dayjs(item.deliveryDate).isValid())
-    .sort((left, right) => dayjs(right.deliveryDate).valueOf() - dayjs(left.deliveryDate).valueOf())
-    .slice(0, 5)
-    .map(item => {
-      const sprint = item.sprint ? sprintByName.get(item.sprint) : undefined;
-      const deliveryLabel = dayjs(item.deliveryDate).format('DD/MM/YYYY');
-      const period =
+  /*
+
         sprint && dayjs(sprint.startDate).isValid() && dayjs(sprint.endDate).isValid()
           ? `${deliveryLabel} · ${sprint.name}`
           : deliveryLabel;
 
-      return {
-        key: item.id,
-        period,
-        name: item.name,
-        status: item.status,
-        quality: 100,
-      };
-    });
+  */
+  const normalizedBaseTableData = useMemo(
+    () =>
+      functionalities
+        .map(item => {
+          const parsedDeliveryDate = parseDeliveryDate(item.deliveryDate);
+          if (!parsedDeliveryDate) return null;
+
+          const sprint = item.sprint ? sprintByName.get(item.sprint) : undefined;
+          const deliveryLabel = parsedDeliveryDate.format('DD/MM/YYYY');
+          const period =
+            sprint && dayjs(sprint.startDate).isValid() && dayjs(sprint.endDate).isValid()
+              ? `${deliveryLabel} · ${sprint.name}`
+              : deliveryLabel;
+
+          return {
+            key: item.id,
+            deliveryDate: parsedDeliveryDate.format('YYYY-MM-DD'),
+            period,
+            name: item.name,
+            status: item.status,
+            quality: 100,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .sort(
+          (left, right) => dayjs(right.deliveryDate).valueOf() - dayjs(left.deliveryDate).valueOf(),
+        ),
+    [functionalities, sprintByName],
+  );
+
+  const tableData = useMemo(() => {
+    const [startDate, endDate] = deliveryDateRange || [];
+
+    return normalizedBaseTableData
+      .filter(item => {
+        if (!startDate && !endDate) return true;
+
+        const deliveryDate = dayjs(item.deliveryDate).startOf('day').valueOf();
+        const startsAt = startDate ? startDate.startOf('day').valueOf() : Number.NEGATIVE_INFINITY;
+        const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
+
+        return deliveryDate >= startsAt && deliveryDate <= endsAt;
+      })
+      .slice(0, 5);
+  }, [deliveryDateRange, normalizedBaseTableData]);
 
   const tableColumns = [
     {
@@ -679,32 +756,53 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
             <div className="mb-4 font-semibold text-slate-800">Aprobados vs fallidos</div>
-            <div className="flex h-48 items-end justify-around pb-4">
-              <div className="flex flex-col items-center">
-                <div className="mb-2 text-xs font-bold uppercase text-slate-400">Passed</div>
-                <div
-                  className="w-12 rounded-t-lg"
-                  style={{
-                    backgroundColor: qaPalette.functionalityStatus.completed,
-                    height: `${testCases.length > 0 ? (passedTestCasesCount / testCases.length) * 100 : 0}%`,
-                    minHeight: '4px',
-                  }}
-                />
-                <div className="mt-2 text-xs font-semibold text-slate-600">{passedTestCasesCount}</div>
+            {passFailTotal > 0 ? (
+              <div className="space-y-4">
+                <div className="relative flex h-48 items-center justify-center">
+                  <FixedPie data={passFailChartData} innerRadius={52} outerRadius={72} />
+                  <div className="absolute inset-0 flex items-center justify-center flex-col">
+                    <span className="text-2xl font-bold text-slate-800">{passFailTotal}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">
+                      Ejecutadas
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-left">
+                  <div className="rounded-xl border border-slate-100 px-4 py-3">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: qaPalette.functionalityStatus.completed }}
+                      />
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Aprobados
+                      </span>
+                    </div>
+                    <div className="text-xl font-bold text-slate-800">{passedTestCasesCount}</div>
+                    <div className="text-xs text-slate-500">{passedPercent}% del total</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 px-4 py-3">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: qaPalette.functionalityStatus.failed }}
+                      />
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Fallidos
+                      </span>
+                    </div>
+                    <div className="text-xl font-bold text-slate-800">{failedTestCasesCount}</div>
+                    <div className="text-xs text-slate-500">{failedPercent}% del total</div>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col items-center">
-                <div className="mb-2 text-xs font-bold uppercase text-slate-400">Failed</div>
-                <div
-                  className="w-12 rounded-t-lg"
-                  style={{
-                    backgroundColor: qaPalette.functionalityStatus.failed,
-                    height: `${testCases.length > 0 ? (failedTestCasesCount / testCases.length) * 100 : 0}%`,
-                    minHeight: '4px',
-                  }}
-                />
-                <div className="mt-2 text-xs font-semibold text-slate-600">{failedTestCasesCount}</div>
+            ) : (
+              <div className="flex h-48 items-center justify-center text-sm text-slate-400">
+                No hay resultados ejecutados
               </div>
-            </div>
+            )}
           </Card>
         </Col>
 
@@ -763,6 +861,17 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <Col xs={24} lg={16}>
           <Card
             title="Funcionalidades por fecha de entrega"
+            extra={
+              <DatePicker.RangePicker
+                value={deliveryDateRange}
+                allowClear
+                format="DD/MM/YYYY"
+                placeholder={['Desde', 'Hasta']}
+                onChange={dates =>
+                  setDeliveryDateRange((dates as [Dayjs | null, Dayjs | null]) || null)
+                }
+              />
+            }
             variant="borderless"
             className="rounded-2xl qa-surface-card"
           >
@@ -771,6 +880,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               dataSource={tableData}
               pagination={false}
               className="executive-table"
+              scroll={{ x: 'max-content', y: 360 }}
             />
           </Card>
         </Col>
@@ -783,37 +893,49 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           >
             <div className="space-y-4">
               {moduleData.length > 0 ? (
-                moduleData.slice(0, 3).map(item => {
+                <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+                  {moduleData.map(item => {
                   const accent = getModuleAccent(item.name);
                   return (
                     <div
                       key={item.name}
-                      className="flex items-center justify-between rounded-xl border p-4"
+                      className="rounded-xl border p-4"
                       style={{
                         backgroundColor: softSurface(accent),
                         borderColor: softSurface(accent),
                       }}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
-                          {getModuleIcon(item.name)}
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-800">{item.name}</div>
-                          <div className="text-xs" style={{ color: accent }}>
-                            {item.percent}%
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                            {getModuleIcon(item.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-800">{item.name}</div>
+                            <div className="text-xs" style={{ color: accent }}>
+                              {item.completedCount} de {item.totalCount} completas
+                            </div>
                           </div>
                         </div>
+                        <div
+                          className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.7)' }}
+                        >
+                          {item.percent}%
+                        </div>
                       </div>
-                      <div
-                        className="rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
-                        style={{ backgroundColor: softSurface(accent) }}
-                      >
-                        {item.count}
-                      </div>
+                      <Progress
+                        percent={item.percent}
+                        showInfo={false}
+                        strokeColor={accent}
+                        trailColor="rgba(148, 163, 184, 0.18)"
+                        size={{ height: 8 }}
+                        className="mt-4"
+                      />
                     </div>
                   );
-                })
+                  })}
+                </div>
               ) : (
                 <div className="py-10 text-center italic text-slate-400">
                   No hay datos de modulos
@@ -822,11 +944,16 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
               <div className="mt-6 border-t border-slate-100 pt-4">
                 <div className="mb-2 flex justify-between text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <span>System uptime</span>
-                  <span className="text-slate-800">99.98%</span>
+                  <span>Avance global</span>
+                  <span className="text-slate-800">
+                    {totalCompletedByModules}/{totalFunctionalities}
+                  </span>
+                </div>
+                <div className="mb-3 text-sm font-medium text-slate-700">
+                  {globalModuleProgress}% de funcionalidades completadas
                 </div>
                 <Progress
-                  percent={99.98}
+                  percent={globalModuleProgress}
                   showInfo={false}
                   strokeColor={qaPalette.functionalityStatus.completed}
                   railColor={qaPalette.border}
