@@ -197,3 +197,26 @@
   background: color-mix(in srgb, var(--qa-color-status-backlog, #8EA1B3) 16%, white) !important;
   color: var(--qa-color-status-backlog, #8EA1B3) !important;
 }
+
+/* Ajustes de tamaño para los botones de los pickers (Hoy / Aceptar) */
+.ant-picker-footer {
+  padding: 6px 12px !important;
+  display: flex !important;
+  gap: 8px !important;
+  justify-content: flex-end;
+}
+.ant-picker-footer .ant-btn {
+  padding: 4px 12px !important;
+  height: 26px !important;
+  font-size: 12px !important;
+  min-width: auto !important;
+  line-height: 1.4;
+}
+.ant-picker-footer .ant-btn-primary {
+  color: white !important;
+  font-weight: 500;
+}
+.ant-picker-footer .ant-btn:hover {
+  opacity: 0.9;
+}
+

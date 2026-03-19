@@ -3,6 +3,7 @@ import {
   BugOrigin,
   BugStatus,
   Environment,
+  ExecutionMode,
   ExecutionStatus,
   FunctionalityScope,
   Priority,
@@ -192,6 +193,24 @@ export function testResultFromApi(result?: string) {
       blocked: TestResult.BLOCKED,
       not_executed: TestResult.NOT_EXECUTED,
     }[result || ''] || TestResult.NOT_EXECUTED
+  );
+}
+
+export function executionModeToApi(mode?: ExecutionMode) {
+  if (!mode) return undefined;
+
+  return {
+    [ExecutionMode.MANUAL]: 'manual',
+    [ExecutionMode.AUTOMATED]: 'automated',
+  }[mode];
+}
+
+export function executionModeFromApi(mode?: string) {
+  return (
+    {
+      manual: ExecutionMode.MANUAL,
+      automated: ExecutionMode.AUTOMATED,
+    }[mode || ''] || undefined
   );
 }
 

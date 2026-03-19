@@ -38,7 +38,7 @@ import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { toApiError } from '../config/http';
-import { Functionality, TestStatus, Priority, RiskLevel } from '../types';
+import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';

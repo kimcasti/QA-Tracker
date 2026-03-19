@@ -35,7 +35,9 @@
     "automated": "Automatizado",
     "execution_type": "Tipo de Ejecución",
     "import": "Importar",
-    "export": "Exportar"
+    "export": "Exportar",
+    "yes": "Sí",
+    "no": "No"
   },
   "projects": {
     "title": "Gestión de Proyectos",
@@ -69,5 +71,37 @@
     "export_word": "Exportar a Word",
     "qa_coverage": "Cobertura QA",
     "risk_indicators": "Indicadores de Riesgo"
+  },
+  "calendar": {
+    "title": "Calendario del Proyecto",
+    "description": "Planifica pruebas, reuniones, demos y otros eventos del proyecto.",
+    "new_event": "Nuevo Evento",
+    "edit_event": "Editar Evento",
+    "events_for": "Eventos para",
+    "no_events_for_day": "No hay eventos para este día.",
+    "confirm_delete_title": "¿Eliminar este evento?",
+    "confirm_delete_content": "Esta acción no se puede deshacer. El evento se eliminará permanentemente.",
+    "event_saved_success": "Evento guardado con éxito.",
+    "event_saved_error": "Error al guardar el evento.",
+    "event_deleted_success": "Evento eliminado con éxito.",
+    "event_deleted_error": "Error al eliminar el evento.",
+    "form": {
+      "event_type": "Tipo de Evento",
+      "title": "Título",
+      "title_required": "Por favor, introduce un título.",
+      "date": "Fecha",
+      "time": "Hora",
+      "owner": "Responsable",
+      "owner_placeholder": "Ej: Jorge",
+      "attendees": "Participantes",
+      "attendees_placeholder": "Lista de participantes o equipos",
+      "test_type": "Tipo de Prueba",
+      "priority": "Prioridad",
+      "sprint": "Sprint",
+      "scope": "Alcance",
+      "modules": "Módulos de Impacto",
+      "modules_placeholder": "Escribe y presiona Enter para agregar módulos",
+      "description": "Descripción / Notas"
+    }
   }
 }
