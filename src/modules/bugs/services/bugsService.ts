@@ -21,6 +21,13 @@ import { getFunctionalities } from '../../functionalities/services/functionaliti
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { BugDto } from '../types/api';
 
+function extractCycleIdFromLinkedSourceId(linkedSourceId?: string) {
+  if (!linkedSourceId) return undefined;
+  const parts = linkedSourceId.split('::');
+  const cycleId = parts[2];
+  return cycleId && cycleId !== 'no-cycle' ? cycleId : undefined;
+}
+
 function mapBug(document: BugDto): QABug {
   return {
     internalBugId: document.internalBugId,
@@ -36,7 +43,7 @@ function mapBug(document: BugDto): QABug {
     functionalityName: document.functionality?.name || document.functionalityName || '',
     module: document.moduleName || '',
     sprint: document.sprint?.name,
-    cycleId: document.testCycle?.code,
+    cycleId: document.testCycle?.code || extractCycleIdFromLinkedSourceId(document.linkedSourceId),
     detectedAt: document.detectedAt,
     reportedBy: document.reportedBy,
     status: bugStatusFromApi(document.status),
@@ -66,10 +73,14 @@ export async function saveBug(bug: QABug) {
     throw new Error(`Project ${bug.projectId} is not available in the workspace.`);
   }
 
-  const [functionalities, sprints, testCases, documents] = await Promise.all([
+  const [functionalities, sprints, testCases, testCycles, documents] = await Promise.all([
     getFunctionalities(bug.projectId),
     getSprints(bug.projectId),
     getTestCases(bug.projectId),
+    listDocuments<any>('/api/test-cycles', {
+      'filters[project][documentId][$eq]': context.documentId,
+      ...(bug.cycleId ? { 'filters[code][$eq]': bug.cycleId } : {}),
+    }),
     listDocuments<BugDto>('/api/bugs', {
       'filters[internalBugId][$eq]': bug.internalBugId,
       'filters[project][documentId][$eq]': context.documentId,
@@ -81,6 +92,7 @@ export async function saveBug(bug: QABug) {
   const testCase = testCases.find(
     item => item.id === bug.testCaseId || item.title === bug.testCaseTitle,
   );
+  const testCycle = testCycles.find((item: { code?: string }) => item.code === bug.cycleId);
 
   const saved = await upsertDocument<BugDto>('/api/bugs', documents[0]?.documentId || null, {
     internalBugId: bug.internalBugId,
@@ -103,6 +115,7 @@ export async function saveBug(bug: QABug) {
     functionality: relation(functionality?.id),
     sprint: relation(sprint?.id),
     testCase: relation(testCase?.id),
+    testCycle: relation(testCycle?.documentId),
   });
 
   return mapBug(saved);
