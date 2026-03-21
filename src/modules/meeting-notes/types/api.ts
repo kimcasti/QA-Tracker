@@ -1,5 +1,6 @@
 export interface MeetingNoteDto {
   documentId: string;
+  title: string;
   date: string;
   time: string;
   participants: string;

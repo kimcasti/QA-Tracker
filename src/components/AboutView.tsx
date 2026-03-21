@@ -25,6 +25,7 @@ import {
   CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  CopyOutlined,
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
@@ -43,7 +44,12 @@ import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
 import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import type { SlackMember } from '../modules/slack-members/types/model';
-import { getGeminiApiKey, improveMeetingNotesWithAI } from '../services/geminiService';
+import {
+  analyzeProjectWithAI,
+  generateProjectWireframeBrief,
+  getGeminiApiKey,
+  improveMeetingNotesWithAI,
+} from '../services/geminiService';
 import { MeetingNote, Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 
@@ -51,6 +57,7 @@ const { Title, Text, Paragraph } = Typography;
 const RECENT_NOTES_LIMIT = 4;
 
 type NoteFormValues = {
+  title: string;
   date: Dayjs;
   time: Dayjs;
   participants: string[];
@@ -97,6 +104,23 @@ function normalizeRules(businessRules?: string) {
     .split('\n')
     .map(rule => rule.trim())
     .filter(Boolean);
+}
+
+function getMeetingNoteTitle(note: Pick<MeetingNote, 'title' | 'date'>) {
+  return note.title?.trim() || `Minuta del ${note.date}`;
+}
+
+function getMeetingNoteExcerpt(notes?: string, maxLength = 140) {
+  const normalized = (notes || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return 'Sin notas registradas todavia.';
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
 }
 
 function ExecutiveInfoCard({
@@ -182,8 +206,14 @@ export default function AboutView({ project }: { project: Project }) {
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isViewNoteModalOpen, setIsViewNoteModalOpen] = useState(false);
   const [isAllNotesModalOpen, setIsAllNotesModalOpen] = useState(false);
+  const [isProjectAiModalOpen, setIsProjectAiModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
   const [isImproving, setIsImproving] = useState(false);
+  const [projectAiLoadingMode, setProjectAiLoadingMode] = useState<
+    'analysis' | 'wireframe' | null
+  >(null);
+  const [projectAiModalTitle, setProjectAiModalTitle] = useState('');
+  const [projectAiModalContent, setProjectAiModalContent] = useState('');
 
   const [projectForm] = Form.useForm();
   const [noteForm] = Form.useForm<NoteFormValues>();
@@ -248,6 +278,12 @@ export default function AboutView({ project }: { project: Project }) {
       }),
     [meetingNotes],
   );
+
+  const hasProjectContext =
+    Boolean(project.purpose?.trim()) ||
+    Boolean(project.description?.trim()) ||
+    Boolean(project.businessRules?.trim()) ||
+    Boolean(project.coreRequirements?.length);
 
   const recentMeetingNotes = useMemo(
     () => sortedMeetingNotes.slice(0, RECENT_NOTES_LIMIT),
@@ -314,10 +350,98 @@ export default function AboutView({ project }: { project: Project }) {
     }
   };
 
+  const openProjectAiResult = (title: string, content: string) => {
+    setProjectAiModalTitle(title);
+    setProjectAiModalContent(content);
+    setIsProjectAiModalOpen(true);
+  };
+
+  const handleCopyProjectAiContent = async () => {
+    if (!projectAiModalContent.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(projectAiModalContent);
+      message.success('Contenido copiado');
+    } catch (error) {
+      console.error('Copy failed:', error);
+      message.error('No se pudo copiar el contenido');
+    }
+  };
+
+  const handleGenerateProjectAi = async (mode: 'analysis' | 'wireframe') => {
+    if (!getGeminiApiKey()) {
+      message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar esta accion.');
+      return;
+    }
+
+    if (!hasProjectContext) {
+      message.warning(
+        'Completa al menos objetivo, descripcion, requisitos o normas antes de generar contenido con IA.',
+      );
+      return;
+    }
+
+    setProjectAiLoadingMode(mode);
+
+    try {
+      const input = {
+        name: project.name,
+        description: project.description,
+        purpose: project.purpose,
+        coreRequirements: project.coreRequirements || [],
+        businessRules: project.businessRules,
+      };
+
+      if (mode === 'analysis') {
+        const insights = await analyzeProjectWithAI(input);
+        if (!insights) return;
+
+        await saveProject({
+          ...project,
+          aiProjectInsights: insights,
+        });
+
+        openProjectAiResult('Analisis del proyecto con IA', insights);
+        message.success('Analisis generado y guardado en el proyecto');
+        return;
+      }
+
+      const brief = await generateProjectWireframeBrief(input);
+      if (!brief) return;
+
+      await saveProject({
+        ...project,
+        aiWireframeBrief: brief,
+      });
+
+      openProjectAiResult('Brief de wireframe', brief);
+      message.success('Brief generado y guardado en el proyecto');
+    } catch (error) {
+      console.error('Project AI generation failed:', error);
+      const anyErr = error as Error;
+      const code = anyErr?.message || '';
+
+      if (code === 'GEMINI_API_KEY_INVALID') {
+        message.error('La API key de Gemini no es valida.');
+        return;
+      }
+
+      if (code === 'GEMINI_API_KEY_LEAKED') {
+        message.error('La API key de Gemini fue reportada como expuesta. Genera una nueva.');
+        return;
+      }
+
+      message.error('No se pudo generar el contenido con IA.');
+    } finally {
+      setProjectAiLoadingMode(null);
+    }
+  };
+
   const handleAddNote = () => {
     setSelectedNote(null);
     noteForm.resetFields();
     noteForm.setFieldsValue({
+      title: '',
       date: dayjs(),
       time: dayjs().startOf('hour'),
       participants: [],
@@ -329,6 +453,7 @@ export default function AboutView({ project }: { project: Project }) {
   const handleEditNote = (note: MeetingNote) => {
     setSelectedNote(note);
     noteForm.setFieldsValue({
+      title: note.title,
       date: dayjs(note.date),
       time: dayjs(`2000-01-01T${note.time}`),
       participants: splitParticipants(note.participants),
@@ -344,6 +469,7 @@ export default function AboutView({ project }: { project: Project }) {
       const note: MeetingNote = {
         id: selectedNote?.id || `note-${Date.now()}`,
         projectId: project.id,
+        title: values.title.trim(),
         date: values.date.format('YYYY-MM-DD'),
         time: values.time.format('HH:mm'),
         participants: values.participants.join(', '),
@@ -389,6 +515,7 @@ export default function AboutView({ project }: { project: Project }) {
           : {
               id: `note-${Date.now()}`,
               projectId: project.id,
+              title: formValues.title || '',
               date: formValues.date?.format?.('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
               time: formValues.time?.format?.('HH:mm') || dayjs().format('HH:mm'),
               participants: (formValues.participants || []).join(', '),
@@ -592,6 +719,153 @@ export default function AboutView({ project }: { project: Project }) {
                         'Define aqui el objetivo estrategico del proyecto y la vision que guia al equipo.'}
                     </Paragraph>
                   </ExecutiveInfoCard>
+                </Col>
+              </Row>
+
+              <Row gutter={[20, 20]}>
+                <Col xs={24}>
+                  <Card
+                    variant="borderless"
+                    className="rounded-[28px] qa-surface-card"
+                    styles={{ body: { padding: 28 } }}
+                  >
+                    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
+                          style={{ color: '#6d28d9' }}
+                        >
+                          <RobotOutlined className="text-xl" />
+                        </div>
+                        <div>
+                          <Title level={4} className="!mb-0 !text-slate-900">
+                            Insights con IA y brief de wireframe
+                          </Title>
+                          <Text className="text-slate-400">
+                            Reutiliza el analisis del proyecto y el prompt listo para herramientas de
+                            wireframing.
+                          </Text>
+                        </div>
+                      </div>
+
+                      <Space size={12} wrap>
+                        <Button
+                          icon={<BulbOutlined />}
+                          loading={projectAiLoadingMode === 'analysis'}
+                          disabled={projectAiLoadingMode === 'wireframe'}
+                          onClick={() => void handleGenerateProjectAi('analysis')}
+                          className="rounded-2xl"
+                        >
+                          Analizar con IA
+                        </Button>
+                        <Button
+                          icon={<FileTextOutlined />}
+                          loading={projectAiLoadingMode === 'wireframe'}
+                          disabled={projectAiLoadingMode === 'analysis'}
+                          onClick={() => void handleGenerateProjectAi('wireframe')}
+                          className="rounded-2xl"
+                        >
+                          Generar brief
+                        </Button>
+                      </Space>
+                    </div>
+
+                    <Row gutter={[20, 20]}>
+                      <Col xs={24} lg={12}>
+                        <Card
+                          variant="borderless"
+                          className="h-full rounded-[24px] border border-slate-100 bg-white/90"
+                          styles={{ body: { padding: 22 } }}
+                        >
+                          <div className="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                              <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-600">
+                                Analisis del proyecto
+                              </Text>
+                              <div className="mt-1 text-sm text-slate-400">
+                                Riesgos, vacios y recomendaciones accionables
+                              </div>
+                            </div>
+                            {project.aiProjectInsights && (
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() =>
+                                  openProjectAiResult(
+                                    'Analisis del proyecto con IA',
+                                    project.aiProjectInsights || '',
+                                  )
+                                }
+                              >
+                                Ver
+                              </Button>
+                            )}
+                          </div>
+
+                          {project.aiProjectInsights ? (
+                            <Paragraph
+                              className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600"
+                              ellipsis={{ rows: 7, expandable: false }}
+                            >
+                              {project.aiProjectInsights}
+                            </Paragraph>
+                          ) : (
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="Aun no has generado el analisis del proyecto."
+                            />
+                          )}
+                        </Card>
+                      </Col>
+
+                      <Col xs={24} lg={12}>
+                        <Card
+                          variant="borderless"
+                          className="h-full rounded-[24px] border border-slate-100 bg-white/90"
+                          styles={{ body: { padding: 22 } }}
+                        >
+                          <div className="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                              <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600">
+                                Brief de wireframe
+                              </Text>
+                              <div className="mt-1 text-sm text-slate-400">
+                                Texto listo para copiar en Stitch u otra herramienta
+                              </div>
+                            </div>
+                            {project.aiWireframeBrief && (
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() =>
+                                  openProjectAiResult(
+                                    'Brief de wireframe',
+                                    project.aiWireframeBrief || '',
+                                  )
+                                }
+                              >
+                                Ver
+                              </Button>
+                            )}
+                          </div>
+
+                          {project.aiWireframeBrief ? (
+                            <Paragraph
+                              className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600"
+                              ellipsis={{ rows: 7, expandable: false }}
+                            >
+                              {project.aiWireframeBrief}
+                            </Paragraph>
+                          ) : (
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="Aun no has generado el brief de wireframe."
+                            />
+                          )}
+                        </Card>
+                      </Col>
+                    </Row>
+                  </Card>
                 </Col>
               </Row>
 
@@ -854,7 +1128,7 @@ export default function AboutView({ project }: { project: Project }) {
 
                             <div>
                               <Title level={5} className="!mb-2 !text-slate-900">
-                                Reunion de Avance Semanal
+                                {getMeetingNoteTitle(note)}
                               </Title>
                               <Space size={12} wrap className="text-sm text-slate-500">
                                 <span className="inline-flex items-center gap-1">
@@ -862,6 +1136,12 @@ export default function AboutView({ project }: { project: Project }) {
                                   {note.time}
                                 </span>
                               </Space>
+                              <Paragraph
+                                className="!mb-0 !mt-3 text-sm leading-6 text-slate-500"
+                                ellipsis={{ rows: 2, expandable: false }}
+                              >
+                                {getMeetingNoteExcerpt(note.notes)}
+                              </Paragraph>
                             </div>
 
                             <Avatar.Group size="small" max={{ count: 3 }}>
@@ -1018,6 +1298,42 @@ export default function AboutView({ project }: { project: Project }) {
       </Modal>
 
       <Modal
+        title={<span className="text-lg font-bold text-slate-800">{projectAiModalTitle}</span>}
+        open={isProjectAiModalOpen}
+        onCancel={() => setIsProjectAiModalOpen(false)}
+        width={920}
+        centered
+        destroyOnHidden
+        footer={[
+          <Button
+            key="copy"
+            icon={<CopyOutlined />}
+            onClick={() => void handleCopyProjectAiContent()}
+          >
+            Copiar
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setIsProjectAiModalOpen(false)}>
+            Cerrar
+          </Button>,
+        ]}
+      >
+        <div className="mt-4 space-y-4">
+          <Alert
+            type="info"
+            showIcon
+            className="rounded-2xl"
+            message="Resultado reutilizable"
+            description="Este contenido queda asociado al proyecto actual para que puedas reabrirlo y copiarlo cuando lo necesites."
+          />
+          <div className="max-h-[68vh] overflow-y-auto rounded-3xl border border-slate-100 bg-slate-50/70 p-6">
+            <Paragraph className="!mb-0 whitespace-pre-wrap leading-8 text-slate-700">
+              {projectAiModalContent}
+            </Paragraph>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         title={
           <span className="text-lg font-bold text-slate-800">
             {selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunión'}
@@ -1034,6 +1350,18 @@ export default function AboutView({ project }: { project: Project }) {
         destroyOnHidden
       >
         <Form form={noteForm} layout="vertical" className="mt-4">
+          <Form.Item
+            name="title"
+            label="Titulo de la minuta"
+            rules={[{ required: true, message: 'Ingresa un titulo para la minuta' }]}
+          >
+            <Input
+              className="h-11 rounded-2xl"
+              placeholder="Ej: Reunion de avance semanal"
+              maxLength={120}
+            />
+          </Form.Item>
+
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item name="date" label="Fecha de la reunión" rules={[{ required: true }]}>
@@ -1159,7 +1487,7 @@ export default function AboutView({ project }: { project: Project }) {
 
                     <div>
                       <Title level={5} className="!mb-2 !text-slate-900">
-                        Reunion de Avance Semanal
+                        {getMeetingNoteTitle(note)}
                       </Title>
                       <Space size={12} wrap className="text-sm text-slate-500">
                         <span className="inline-flex items-center gap-1">
@@ -1167,6 +1495,12 @@ export default function AboutView({ project }: { project: Project }) {
                           {note.time}
                         </span>
                       </Space>
+                      <Paragraph
+                        className="!mb-0 !mt-3 text-sm leading-6 text-slate-500"
+                        ellipsis={{ rows: 2, expandable: false }}
+                      >
+                        {getMeetingNoteExcerpt(note.notes)}
+                      </Paragraph>
                     </div>
 
                     <Avatar.Group size="small" max={{ count: 4 }}>
@@ -1271,7 +1605,7 @@ export default function AboutView({ project }: { project: Project }) {
                 </div>
                 <div>
                   <Title level={4} className="!mb-1 !text-slate-900">
-                    Minuta de Reunion
+                    {getMeetingNoteTitle(selectedNote)}
                   </Title>
                   <Space size={16} wrap className="text-sm text-slate-400">
                     <span className="inline-flex items-center gap-2">

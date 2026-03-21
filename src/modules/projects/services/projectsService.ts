@@ -26,6 +26,8 @@ function mapProject(document: WorkspaceDto['projects'][number]): Project {
     purpose: document.purpose || '',
     coreRequirements: document.coreRequirements || [],
     businessRules: document.businessRules || '',
+    aiProjectInsights: document.aiProjectInsights || '',
+    aiWireframeBrief: document.aiWireframeBrief || '',
   };
 }
 
@@ -59,6 +61,8 @@ export async function saveProject(project: Project) {
     purpose: project.purpose || '',
     coreRequirements: project.coreRequirements || [],
     businessRules: project.businessRules || '',
+    aiProjectInsights: project.aiProjectInsights || '',
+    aiWireframeBrief: project.aiWireframeBrief || '',
   });
 
   invalidateWorkspaceCache();

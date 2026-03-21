@@ -1,0 +1,339 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - button "arrow-left" [ref=e7] [cursor=pointer]:
+        - img "arrow-left" [ref=e9]:
+          - img [ref=e10]
+      - generic [ref=e13]:
+        - img "QA Tracker" [ref=e14]
+        - generic [ref=e15]:
+          - generic [ref=e16]: QA Tracker
+          - generic [ref=e17]: Playwright Flow 87508471 - v1.0.0
+    - button "P pw_87508471 pw_87508471@mailinator.com en down" [ref=e19]:
+      - generic [ref=e21]: P
+      - generic [ref=e22]:
+        - strong [ref=e24]: pw_87508471
+        - generic [ref=e25]: pw_87508471@mailinator.com
+      - generic [ref=e26]:
+        - generic [ref=e27]: en
+        - img "down" [ref=e29]:
+          - img [ref=e30]
+  - generic [ref=e32]:
+    - complementary [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - img "QA Workspace" [ref=e37]
+            - generic [ref=e38]:
+              - generic [ref=e39]: QA Workspace
+              - generic [ref=e40]: Playwright Flow 87508471
+          - button "menu-fold" [ref=e41] [cursor=pointer]:
+            - img "menu-fold" [ref=e43]:
+              - img [ref=e44]
+        - generic [ref=e46]:
+          - menu [ref=e47]:
+            - menuitem "appstore Dashboard" [ref=e48] [cursor=pointer]:
+              - img "appstore" [ref=e49]:
+                - img [ref=e50]
+              - generic [ref=e52]: Dashboard
+            - menuitem "database Functionalities" [ref=e53] [cursor=pointer]:
+              - img "database" [ref=e54]:
+                - img [ref=e55]
+              - generic [ref=e57]: Functionalities
+            - menuitem "apartment Story Map" [ref=e58] [cursor=pointer]:
+              - img "apartment" [ref=e59]:
+                - img [ref=e60]
+              - generic [ref=e62]: Story Map
+            - menuitem "check-circle Test Execution" [ref=e63] [cursor=pointer]:
+              - img "check-circle" [ref=e64]:
+                - img [ref=e65]
+              - generic [ref=e68]: Test Execution
+            - menuitem "calendar Calendar" [ref=e69] [cursor=pointer]:
+              - img "calendar" [ref=e70]:
+                - img [ref=e71]
+              - generic [ref=e73]: Calendar
+            - menuitem "history Regression Control" [ref=e74] [cursor=pointer]:
+              - img "history" [ref=e75]:
+                - img [ref=e76]
+              - generic [ref=e78]: Regression Control
+            - menuitem "thunderbolt Smoke Control" [ref=e79] [cursor=pointer]:
+              - img "thunderbolt" [ref=e80]:
+                - img [ref=e81]
+              - generic [ref=e83]: Smoke Control
+            - menuitem "bar-chart Reports" [ref=e84] [cursor=pointer]:
+              - img "bar-chart" [ref=e85]:
+                - img [ref=e86]
+              - generic [ref=e88]: Reports
+            - menuitem "database Coverage Matrix" [ref=e89] [cursor=pointer]:
+              - img "database" [ref=e90]:
+                - img [ref=e91]
+              - generic [ref=e93]: Coverage Matrix
+            - menuitem "setting Settings" [ref=e94] [cursor=pointer]:
+              - img "setting" [ref=e95]:
+                - img [ref=e96]
+              - generic [ref=e98]: Settings
+            - menuitem "info-circle About" [ref=e99] [cursor=pointer]:
+              - img "info-circle" [ref=e100]:
+                - img [ref=e101]
+              - generic [ref=e104]: About
+          - button "logout Exit Project" [ref=e106] [cursor=pointer]:
+            - img "logout" [ref=e108]:
+              - img [ref=e109]
+            - generic [ref=e111]: Exit Project
+    - main [ref=e112]:
+      - generic [ref=e114]:
+        - generic [ref=e115]:
+          - heading "Dashboard" [level=2] [ref=e116]
+          - generic [ref=e117]: Monitoreo del estado de calidad, cobertura y ciclos del proyecto.
+        - generic [ref=e118]:
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - img "safety-certificate" [ref=e121]:
+                - img [ref=e122]
+              - generic [ref=e124]: Calidad por caso de prueba
+            - text: Métricas calculadas a partir de casos de prueba, ejecuciones generales y bugs del proyecto.
+          - generic [ref=e125]:
+            - generic [ref=e129]:
+              - generic [ref=e130]:
+                - text: Ejecucion de casos
+                - generic [ref=e131]: 50%
+                - generic [ref=e132]: 2 de 4 ejecutados
+              - img "file-search" [ref=e134]:
+                - img [ref=e135]
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - text: Cobertura de casos
+                - generic [ref=e142]: 100.0%
+                - generic [ref=e143]: 2 de 2 funcionalidades
+              - img "file-search" [ref=e145]:
+                - img [ref=e146]
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - text: Bugs activos
+                - generic [ref=e153]: "5"
+                - generic [ref=e154]: 2 criticos
+              - img "bug" [ref=e156]:
+                - img [ref=e157]
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - text: Automatizacion
+                - generic [ref=e165]: 0%
+                - generic [ref=e166]: 0 de 4 casos
+              - img "thunderbolt" [ref=e168]:
+                - img [ref=e169]
+        - generic [ref=e171]:
+          - generic [ref=e172]:
+            - generic [ref=e173]:
+              - img "history" [ref=e174]:
+                - img [ref=e175]
+              - generic [ref=e177]: Validación por funcionalidad
+            - text: Métricas calculadas a partir de funcionalidades y ciclos de regresión o smoke.
+          - generic [ref=e178]:
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - text: Estabilidad regresion funcional
+                - generic [ref=e184]: 0.0%
+                - generic [ref=e185]: Tasa de exito en ciclos
+              - img "history" [ref=e187]:
+                - img [ref=e188]
+            - generic [ref=e193]:
+              - generic [ref=e194]:
+                - text: Cobertura regression
+                - generic [ref=e195]: "2"
+                - generic [ref=e196]: Funcionalidades marcadas para regresión
+              - img "history" [ref=e198]:
+                - img [ref=e199]
+            - generic [ref=e204]:
+              - generic [ref=e205]:
+                - text: Cobertura smoke
+                - generic [ref=e206]: "2"
+                - generic [ref=e207]: Funcionalidades marcadas para smoke
+              - img "thunderbolt" [ref=e209]:
+                - img [ref=e210]
+            - generic [ref=e215]:
+              - generic [ref=e216]:
+                - text: Core del sistema
+                - generic [ref=e217]: "0"
+                - generic [ref=e218]: Funcionalidades críticas del producto
+              - img "safety-certificate" [ref=e220]:
+                - img [ref=e221]
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - img "bar-chart" [ref=e225]:
+              - img [ref=e226]
+            - generic [ref=e228]: Inventario funcional
+          - generic [ref=e229]:
+            - generic [ref=e232]:
+              - generic [ref=e233]:
+                - generic [ref=e235]: Backlog
+                - generic [ref=e236]:
+                  - img "database" [ref=e238]:
+                    - img [ref=e239]
+                  - generic [ref=e241]: "0"
+              - progressbar [ref=e242]
+            - generic [ref=e247]:
+              - generic [ref=e248]:
+                - generic [ref=e250]: En desarrollo
+                - generic [ref=e251]:
+                  - img "thunderbolt" [ref=e253]:
+                    - img [ref=e254]
+                  - generic [ref=e256]: "2"
+              - progressbar [ref=e257]
+            - generic [ref=e263]:
+              - generic [ref=e264]:
+                - generic [ref=e266]: Completadas
+                - generic [ref=e267]:
+                  - img "check-circle" [ref=e269]:
+                    - img [ref=e270]
+                  - generic [ref=e272]: "0"
+              - progressbar [ref=e273]
+            - generic [ref=e278]:
+              - generic [ref=e279]:
+                - generic [ref=e281]: MVP
+                - generic [ref=e282]:
+                  - img "safety-certificate" [ref=e284]:
+                    - img [ref=e285]
+                  - generic [ref=e287]: "0"
+              - progressbar [ref=e288]
+        - generic [ref=e291]:
+          - generic [ref=e294]:
+            - generic [ref=e295]:
+              - img "history" [ref=e296]:
+                - img [ref=e297]
+              - generic [ref=e299]: Regresión funcional
+            - generic [ref=e300]:
+              - generic [ref=e301]:
+                - application [ref=e303]
+                - generic [ref=e311]: 0%
+              - generic [ref=e312]:
+                - generic [ref=e315]: "Aprobados: 0"
+                - generic [ref=e318]: "Fallidos: 2"
+                - generic [ref=e321]: "Restante: 0"
+          - generic [ref=e324]:
+            - generic [ref=e325]:
+              - img "thunderbolt" [ref=e326]:
+                - img [ref=e327]
+              - generic [ref=e329]: Smoke funcional
+            - generic [ref=e330]:
+              - generic [ref=e331]:
+                - application [ref=e333]
+                - generic [ref=e341]: 0%
+              - generic [ref=e342]:
+                - generic [ref=e345]: "Exitosos: 0"
+                - generic [ref=e348]: "Bloqueantes: 2"
+                - generic [ref=e351]: "Pendientes: 0"
+        - generic [ref=e352]:
+          - generic [ref=e355]:
+            - generic [ref=e356]: Ejecución de casos
+            - generic [ref=e357]:
+              - application [ref=e359]
+              - generic [ref=e369]:
+                - generic [ref=e370]: 50%
+                - generic [ref=e371]: Ejecucion
+          - generic [ref=e374]:
+            - generic [ref=e375]: Aprobados vs fallidos
+            - generic [ref=e376]:
+              - generic [ref=e377]:
+                - application [ref=e379]
+                - generic [ref=e389]:
+                  - generic [ref=e390]: "2"
+                  - generic [ref=e391]: Ejecutadas
+              - generic [ref=e392]:
+                - generic [ref=e393]:
+                  - generic [ref=e395]: Aprobados
+                  - generic [ref=e396]: "1"
+                  - generic [ref=e397]: 50% del total
+                - generic [ref=e398]:
+                  - generic [ref=e401]: Fallidos
+                  - generic [ref=e402]: "1"
+                  - generic [ref=e403]: 50% del total
+          - generic [ref=e406]:
+            - generic [ref=e407]: Tipos de ejecución registrados
+            - generic [ref=e408]:
+              - generic [ref=e409]:
+                - application [ref=e411]
+                - generic [ref=e418]:
+                  - generic [ref=e419]: "2"
+                  - generic [ref=e420]: Ejecuciones
+              - generic [ref=e422]:
+                - generic [ref=e425]: Funcional
+                - generic [ref=e426]: 100% (2)
+        - generic [ref=e427]:
+          - generic [ref=e429]:
+            - generic [ref=e431]:
+              - generic [ref=e432]: Funcionalidades por fecha de entrega
+              - generic [ref=e434]:
+                - textbox "Desde" [ref=e436]
+                - generic "to" [ref=e438]:
+                  - img "swap-right" [ref=e439]:
+                    - img [ref=e440]
+                - textbox "Hasta" [ref=e443]
+                - generic:
+                  - img "calendar":
+                    - img
+            - generic [ref=e449]:
+              - table [ref=e451]:
+                - rowgroup [ref=e457]:
+                  - row "Fecha / Periodo Funcionalidad Estado Calidad" [ref=e458]:
+                    - columnheader "Fecha / Periodo" [ref=e459]
+                    - columnheader "Funcionalidad" [ref=e460]
+                    - columnheader "Estado" [ref=e461]
+                    - columnheader "Calidad" [ref=e462]
+              - table [ref=e464]:
+                - rowgroup [ref=e465]:
+                  - text: Fecha / Periodo Funcionalidad Estado Calidad
+                  - row "16/03/2026 · Legacy Agregar plan medico En desarrollo thunderbolt 100%" [ref=e466]:
+                    - cell "16/03/2026 · Legacy" [ref=e467]
+                    - cell "Agregar plan medico" [ref=e468]
+                    - cell "En desarrollo" [ref=e469]:
+                      - generic [ref=e470]: En desarrollo
+                    - cell "thunderbolt 100%" [ref=e471]:
+                      - generic [ref=e472]:
+                        - img "thunderbolt" [ref=e473]:
+                          - img [ref=e474]
+                        - generic [ref=e476]: 100%
+                  - row "16/03/2026 · Legacy Desactivar y activar usuario En desarrollo thunderbolt 100%" [ref=e477]:
+                    - cell "16/03/2026 · Legacy" [ref=e478]
+                    - cell "Desactivar y activar usuario" [ref=e479]
+                    - cell "En desarrollo" [ref=e480]:
+                      - generic [ref=e481]: En desarrollo
+                    - cell "thunderbolt 100%" [ref=e482]:
+                      - generic [ref=e483]:
+                        - img "thunderbolt" [ref=e484]:
+                          - img [ref=e485]
+                        - generic [ref=e487]: 100%
+          - generic [ref=e489]:
+            - generic [ref=e492]: Funcionalidades por modulos
+            - generic [ref=e494]:
+              - generic [ref=e495]:
+                - generic [ref=e496]:
+                  - generic [ref=e497]:
+                    - generic [ref=e498]:
+                      - img "check-circle" [ref=e500]:
+                        - img [ref=e501]
+                      - generic [ref=e503]:
+                        - generic [ref=e504]: Pacientes
+                        - generic [ref=e505]: 0 de 1 completas
+                    - generic [ref=e506]: 0%
+                  - progressbar [ref=e507]
+                - generic [ref=e510]:
+                  - generic [ref=e511]:
+                    - generic [ref=e512]:
+                      - img "bar-chart" [ref=e514]:
+                        - img [ref=e515]
+                      - generic [ref=e517]:
+                        - generic [ref=e518]: Usuarios
+                        - generic [ref=e519]: 0 de 1 completas
+                    - generic [ref=e520]: 0%
+                  - progressbar [ref=e521]
+              - generic [ref=e524]:
+                - generic [ref=e525]:
+                  - generic [ref=e526]: Avance global
+                  - generic [ref=e527]: 0/2
+                - generic [ref=e528]: 0% de funcionalidades completadas
+                - progressbar [ref=e529]
+        - generic [ref=e532]: QA Enterprise Division 2024
+```

@@ -261,9 +261,30 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
                 key={`${bug.internalBugId}-${idx}`}
                 title={`${bug.severity || 'Sin severidad'}: ${bug.bugLink || 'Sin link'}`}
               >
-                <Tag color="magenta" icon={<BugOutlined />} className="m-0 text-[10px] cursor-help">
-                  {bug.internalBugId}
-                </Tag>
+                {bug.bugLink ? (
+                  <a
+                    href={bug.bugLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={event => event.stopPropagation()}
+                  >
+                    <Tag
+                      color="magenta"
+                      icon={<BugOutlined />}
+                      className="m-0 cursor-pointer text-[10px]"
+                    >
+                      {bug.internalBugId}
+                    </Tag>
+                  </a>
+                ) : (
+                  <Tag
+                    color="magenta"
+                    icon={<BugOutlined />}
+                    className="m-0 cursor-help text-[10px]"
+                  >
+                    {bug.internalBugId}
+                  </Tag>
+                )}
               </Tooltip>
             ))}
           </Space>

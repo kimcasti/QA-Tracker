@@ -220,3 +220,16 @@
   opacity: 0.9;
 }
 
+.calendar-time-picker-popup .ant-picker-footer {
+  padding: 10px 14px !important;
+  gap: 12px !important;
+  align-items: center !important;
+}
+
+.calendar-time-picker-popup .ant-picker-now {
+  margin-inline-end: 10px !important;
+}
+
+.calendar-time-picker-popup .ant-picker-ok {
+  margin-inline-start: 0 !important;
+}

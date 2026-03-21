@@ -130,16 +130,46 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    <Tag className="m-0 rounded-md bg-slate-100 border-slate-200 text-slate-600">
-                      {record.internalBugId}
-                    </Tag>
-                    {record.externalBugId && (
-                      <Tag
-                        className="m-0 rounded-md"
-                        style={softTagStyle(qaPalette.functionalityStatus.failed)}
+                    {record.bugLink ? (
+                      <a
+                        href={record.bugLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={event => event.stopPropagation()}
                       >
-                        {record.externalBugId}
+                        <Tag className="m-0 cursor-pointer rounded-md border-slate-200 bg-slate-100 text-slate-600">
+                          {record.internalBugId}
+                        </Tag>
+                      </a>
+                    ) : (
+                      <Tag className="m-0 rounded-md bg-slate-100 border-slate-200 text-slate-600">
+                        {record.internalBugId}
                       </Tag>
+                    )}
+                    {record.externalBugId && (
+                      record.bugLink ? (
+                        <a
+                          key={`${record.internalBugId}-external`}
+                          href={record.bugLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={event => event.stopPropagation()}
+                        >
+                          <Tag
+                            className="m-0 cursor-pointer rounded-md"
+                            style={softTagStyle(qaPalette.functionalityStatus.failed)}
+                          >
+                            {record.externalBugId}
+                          </Tag>
+                        </a>
+                      ) : (
+                        <Tag
+                          className="m-0 rounded-md"
+                          style={softTagStyle(qaPalette.functionalityStatus.failed)}
+                        >
+                          {record.externalBugId}
+                        </Tag>
+                      )
                     )}
                   </div>
                 </div>

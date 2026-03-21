@@ -28,6 +28,30 @@ function extractCycleIdFromLinkedSourceId(linkedSourceId?: string) {
   return cycleId && cycleId !== 'no-cycle' ? cycleId : undefined;
 }
 
+function dedupeBugsByIdentity(bugs: QABug[]) {
+  const unique = new Map<string, QABug>();
+
+  for (const bug of bugs) {
+    const key =
+      bug.internalBugId ||
+      bug.externalBugId ||
+      bug.linkedSourceId ||
+      [
+        bug.projectId,
+        bug.cycleId || 'no-cycle',
+        bug.testCaseId || 'no-test-case',
+        bug.functionalityId || 'no-functionality',
+        bug.title || 'no-title',
+      ].join('::');
+
+    if (!unique.has(key)) {
+      unique.set(key, bug);
+    }
+  }
+
+  return Array.from(unique.values());
+}
+
 function mapBug(document: BugDto): QABug {
   return {
     internalBugId: document.internalBugId,
@@ -64,7 +88,7 @@ export async function getBugs(projectId?: string) {
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
-  return documents.map(mapBug);
+  return dedupeBugsByIdentity(documents.map(mapBug));
 }
 
 export async function saveBug(bug: QABug) {

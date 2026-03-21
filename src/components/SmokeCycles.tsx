@@ -70,7 +70,14 @@ const { RangePicker } = DatePicker;
 const RECENT_CHANGE_WINDOW_DAYS = 14;
 
 function normalizeSprintName(value?: string) {
-  return value ? value.replace(/^Sprint\s+/i, '').trim() : undefined;
+  return value?.trim() || undefined;
+}
+
+function normalizeSprintKey(value?: string) {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^sprint\s*/i, '');
 }
 
 function parseTesterValue(value?: string) {
@@ -94,6 +101,13 @@ function isRecentlyChanged(functionality: Functionality) {
 
   const changedAt = dayjs(functionality.lastFunctionalChangeAt);
   return changedAt.isValid() && dayjs().diff(changedAt, 'day') <= RECENT_CHANGE_WINDOW_DAYS;
+}
+
+function hasFunctionalTestCases(
+  functionalityId: string,
+  functionalityIdsWithTestCases: Set<string>,
+) {
+  return functionalityIdsWithTestCases.has(functionalityId);
 }
 
 export default function SmokeCycles({ projectId }: { projectId?: string }) {
@@ -180,6 +194,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
 
   const isReadOnly = selectedCycle?.status === 'FINALIZADA';
+  const isFailureEvidenceRequired = currentExecution?.result === TestResult.FAILED;
 
   // Sync form values when currentExecution changes
   useEffect(() => {
@@ -239,6 +254,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       !smokeRecommendedFuncs.some(item => item.id === functionality.id),
   );
 
+  const functionalityIdsWithTestCases = new Set(
+    testCases.map(item => item.functionalityId).filter(Boolean),
+  );
+
   const smokeModuleOptions = Array.from(new Set(smokeFuncs.map(item => item.module).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b))
     .map(module => ({ label: module, value: module }));
@@ -295,7 +314,20 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             <p className="text-sm font-semibold text-slate-800 mb-1">{title}</p>
             <p className="text-xs text-slate-500 mb-0">{subtitle}</p>
           </div>
-          <Tag className="m-0">{items.length}</Tag>
+          <Space size={8} wrap>
+            {items.filter(item => !hasFunctionalTestCases(item.id, functionalityIdsWithTestCases))
+              .length > 0 && (
+              <Tag color="orange" className="m-0">
+                Sin casos:{' '}
+                {
+                  items.filter(
+                    item => !hasFunctionalTestCases(item.id, functionalityIdsWithTestCases),
+                  ).length
+                }
+              </Tag>
+            )}
+            <Tag className="m-0">{items.length}</Tag>
+          </Space>
         </div>
       </div>
 
@@ -321,6 +353,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-slate-800">{item.name}</span>
                   <Tag className="m-0">{item.module}</Tag>
+                  {!hasFunctionalTestCases(item.id, functionalityIdsWithTestCases) && (
+                    <Tag color="orange" className="m-0">
+                      Sin casos de prueba
+                    </Tag>
+                  )}
                 </div>
                 <div className="mt-2">{renderReasonTags(item)}</div>
               </div>
@@ -492,38 +529,18 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           return;
         }
 
-        // Initialize executions from smoke functionalities and their test cases
+        // Smoke cycles are executed by functionality, not by individual test case.
         const initialExecutions: RegressionExecution[] = [];
 
         selectedFunctionalities.forEach(f => {
-          const fTestCases = testCases.filter(
-            tc => tc.functionalityId === f.id && tc.testType === TestType.SMOKE,
-          );
-
-          if (fTestCases.length > 0) {
-            fTestCases.forEach(tc => {
-              initialExecutions.push({
-                id: Math.random().toString(36).substr(2, 9),
-                functionalityId: f.id,
-                testCaseId: tc.id,
-                testCaseTitle: tc.title,
-                module: f.module,
-                functionalityName: f.name,
-                executed: false,
-                result: TestResult.NOT_EXECUTED,
-              });
-            });
-          } else {
-            // Fallback to functionality if no specific smoke test cases
-            initialExecutions.push({
-              id: Math.random().toString(36).substr(2, 9),
-              functionalityId: f.id,
-              module: f.module,
-              functionalityName: f.name,
-              executed: false,
-              result: TestResult.NOT_EXECUTED,
-            });
-          }
+          initialExecutions.push({
+            id: Math.random().toString(36).substr(2, 9),
+            functionalityId: f.id,
+            module: f.module,
+            functionalityName: f.name,
+            executed: false,
+            result: TestResult.NOT_EXECUTED,
+          });
         });
 
         const newCycle: RegressionCycle = {
@@ -629,6 +646,22 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       return;
     }
 
+    const incompleteFailedExecution = (cycle.executions || []).find(
+      execution =>
+        execution.result === TestResult.FAILED &&
+        (!execution.evidence?.trim() || !execution.bugTitle?.trim() || !execution.severity),
+    );
+
+    if (incompleteFailedExecution) {
+      message.error(
+        'No puedes finalizar el ciclo mientras exista una prueba fallida sin notas, titulo del bug o severidad.',
+      );
+      setSelectedCycle(cycle);
+      setCurrentExecution(incompleteFailedExecution);
+      setEvidenceModalOpen(true);
+      return;
+    }
+
     const updatedCycle: RegressionCycle = {
       ...cycle,
       status: 'FINALIZADA',
@@ -645,7 +678,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       (c.cycleId || '').toLowerCase().includes(searchText.toLowerCase()) ||
       (c.note || '').toLowerCase().includes(searchText.toLowerCase());
 
-    const matchesSprint = !sprintFilter || c.sprint === sprintFilter;
+    const matchesSprint =
+      !sprintFilter || normalizeSprintKey(c.sprint) === normalizeSprintKey(sprintFilter);
 
     const matchesDate =
       !dateRange ||
@@ -917,7 +951,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 {
                   title: (
                     <span className="text-[11px] font-bold text-slate-400 uppercase">
-                      FUNCIONALIDAD / CASO
+                      FUNCIONALIDAD
                     </span>
                   ),
                   dataIndex: 'functionalityName',
@@ -926,15 +960,12 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                     const functionality = functionalityLookup.get(record.functionalityId);
 
                     return (
-                    <div>
-                      <div className="text-slate-800 font-medium">{n}</div>
-                      {record.testCaseId && (
-                        <div className="mt-0.5 text-[11px] text-slate-500 italic">
-                          {record.testCaseTitle}
-                        </div>
-                      )}
-                      {functionality && <div className="mt-2">{renderReasonTags(functionality)}</div>}
-                    </div>
+                      <div>
+                        <div className="text-slate-800 font-medium">{n}</div>
+                        {functionality && (
+                          <div className="mt-2">{renderReasonTags(functionality)}</div>
+                        )}
+                      </div>
                     );
                   },
                 },
@@ -1413,6 +1444,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               <Form.Item
                 name="sprint"
                 label={<span className="font-semibold text-slate-600">Sprint</span>}
+                rules={[{ required: true, message: 'Selecciona un sprint' }]}
               >
                 <Select
                   placeholder="Selecciona Sprint"
@@ -1610,10 +1642,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           try {
             if (currentExecution && selectedCycle) {
               const values = await evidenceForm.validateFields();
-              if (currentExecution.result === TestResult.FAILED && !values.bugTitle?.trim()) {
-                message.error('El titulo del bug es obligatorio para pruebas fallidas.');
-                return;
-              }
 
               const evidencePayload = {
                 evidence: values.evidence,
@@ -1642,8 +1670,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   sprint: selectedCycle.sprint,
                   cycleId: selectedCycle.cycleId,
                   reportedBy: selectedCycle.tester,
-                  testCaseId: currentExecution.testCaseId,
-                  testCaseTitle: currentExecution.testCaseTitle,
                   executionId: currentExecution.id,
                 });
                 linkedBugId = syncedBug?.internalBugId;
@@ -1739,6 +1765,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             <Form.Item
               name="evidence"
               label={<span className="font-semibold text-slate-600">Notas / Observaciones</span>}
+              rules={
+                isFailureEvidenceRequired
+                  ? [{ required: true, message: 'Las notas de ejecucion son obligatorias.' }]
+                  : undefined
+              }
             >
               <Input.TextArea
                 rows={4}
@@ -1754,7 +1785,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </span>
             </Divider>
 
-            <Form.Item name="bugTitle" label="Titulo del bug">
+            <Form.Item
+              name="bugTitle"
+              label="Titulo del bug"
+              rules={
+                isFailureEvidenceRequired
+                  ? [{ required: true, message: 'El titulo del bug es obligatorio.' }]
+                  : undefined
+              }
+            >
               <Input
                 placeholder="Resume el error detectado"
                 className="rounded-lg"
@@ -1767,7 +1806,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 <Input />
               </Form.Item>
               <Col span={24}>
-                <Form.Item name="severity" label="Severidad">
+                <Form.Item
+                  name="severity"
+                  label="Severidad"
+                  rules={
+                    isFailureEvidenceRequired
+                      ? [{ required: true, message: 'La severidad es obligatoria.' }]
+                      : undefined
+                  }
+                >
                   <Select
                     placeholder="Selecciona severidad"
                     className="rounded-lg"

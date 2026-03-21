@@ -22,6 +22,8 @@ function mapProject(document: WorkspaceDto['projects'][number]): Project {
     purpose: document.purpose || '',
     coreRequirements: document.coreRequirements || [],
     businessRules: document.businessRules || '',
+    aiProjectInsights: document.aiProjectInsights || '',
+    aiWireframeBrief: document.aiWireframeBrief || '',
   };
 }
 

@@ -160,6 +160,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     if (!currentEvidenceRecord) return null;
     return functionalities.find(func => func.id === currentEvidenceRecord.functionalityId) || null;
   }, [currentEvidenceRecord, functionalities]);
+  const isFailureEvidenceRequired = currentEvidenceRecord?.result === TestResult.FAILED;
 
   const functionalityIdsWithTestCases = useMemo(() => {
     return new Set(testCases.map(testCase => testCase.functionalityId).filter(Boolean));
@@ -221,9 +222,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     if (
       currentEvidenceRecord.result === TestResult.FAILED &&
-      !currentEvidenceRecord.bugTitle?.trim()
+      (!currentEvidenceRecord.notes?.trim() ||
+        !currentEvidenceRecord.bugTitle?.trim() ||
+        !currentEvidenceRecord.severity)
     ) {
-      message.error('El titulo del bug es obligatorio para pruebas fallidas.');
+      message.error(
+        'Para pruebas fallidas son obligatorias las notas de ejecucion, el titulo del bug y la severidad.',
+      );
       return;
     }
 
@@ -585,6 +590,22 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const handleSaveExecution = async (status: ExecutionStatus) => {
     if (!activeTestRun) return;
+
+    if (status === ExecutionStatus.FINAL) {
+      const incompleteFailedRecord = executionResults.find(
+        result =>
+          result.result === TestResult.FAILED &&
+          (!result.notes?.trim() || !result.bugTitle?.trim() || !result.severity),
+      );
+
+      if (incompleteFailedRecord) {
+        message.error(
+          'No puedes finalizar la ejecucion mientras exista una prueba fallida sin notas, titulo del bug o severidad.',
+        );
+        openEvidenceModal(incompleteFailedRecord);
+        return;
+      }
+    }
 
     const updatedRun: TestRun = {
       ...activeTestRun,
@@ -1293,6 +1314,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
               <div>
                 <Text className="text-sm font-semibold text-slate-700 block mb-2">
+                  {isFailureEvidenceRequired ? '* ' : ''}
                   Notas de Ejecución
                 </Text>
                 <Input.TextArea
@@ -1315,6 +1337,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
               <div>
                 <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
+                  {isFailureEvidenceRequired ? '* ' : ''}
                   Titulo del Bug
                 </Text>
                 <Input
@@ -1331,6 +1354,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <Row gutter={16}>
                 <Col span={24}>
                   <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
+                    {isFailureEvidenceRequired ? '* ' : ''}
                     Severidad
                   </Text>
                   <Select

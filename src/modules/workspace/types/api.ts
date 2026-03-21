@@ -32,6 +32,8 @@ export interface WorkspaceProjectDto {
   purpose?: string;
   coreRequirements?: string[];
   businessRules?: string;
+  aiProjectInsights?: string;
+  aiWireframeBrief?: string;
   organization?: {
     documentId: string;
     name: string;

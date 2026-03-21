@@ -234,3 +234,142 @@ Responde unicamente con JSON valido usando este formato:
     normalizeGeminiError(error);
   }
 }
+
+type ProjectInsightInput = {
+  name: string;
+  description?: string;
+  purpose?: string;
+  coreRequirements?: string[];
+  businessRules?: string;
+};
+
+function buildProjectContext(input: ProjectInsightInput) {
+  return `Proyecto: ${input.name}
+Descripcion general: ${input.description || 'No definida'}
+Objetivo del proyecto:
+${input.purpose || 'No definido'}
+
+Requisitos basicos:
+${(input.coreRequirements || []).join('\n') || 'No definidos'}
+
+Normas empresariales:
+${input.businessRules || 'No definidas'}`;
+}
+
+export async function analyzeProjectWithAI(input: ProjectInsightInput) {
+  const ai = createGeminiClient();
+
+  const prompt = `Actua como consultor senior de gestion de proyectos y QA.
+Analiza la siguiente informacion del proyecto y devuelve recomendaciones utiles en espanol.
+
+${buildProjectContext(input)}
+
+Necesito una respuesta en Markdown con estas secciones exactas:
+## Resumen ejecutivo
+## Desafios probables
+## Riesgos y dependencias
+## Vacios de definicion
+## Recomendaciones de gestion
+## Sugerencias QA
+## Preguntas para validar con el cliente
+
+Reglas:
+- Se concreto y accionable.
+- Enfatiza hallazgos que ayuden a planificar, priorizar y alinear al equipo.
+- No inventes integraciones tecnicas no mencionadas.
+- Si falta informacion, dilo como supuesto o pregunta abierta.
+
+Responde solo con Markdown.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error('No se recibio respuesta de la IA');
+    }
+
+    return text.trim();
+  } catch (error) {
+    console.error('Error analyzing project with AI:', error);
+    normalizeGeminiError(error);
+  }
+}
+
+export async function generateProjectWireframeBrief(input: ProjectInsightInput) {
+  const ai = createGeminiClient();
+
+  const coreRequirements = (input.coreRequirements || []).join('\n') || 'No definidos';
+  const businessRules = input.businessRules || 'No definidas';
+  const description = input.description || 'No definida';
+  const purpose = input.purpose || 'No definido';
+
+  const prompt = `Act as a senior product designer and UX strategist.
+Using the real project information below, generate a reusable wireframe brief in Markdown.
+The result must keep a structure similar to a multi-screen low-fidelity wireframe request, but it must adapt to the actual project context instead of forcing generic screens.
+
+Project context:
+- Project name: ${input.name}
+- General description: ${description}
+- Project goal: ${purpose}
+- Core requirements:
+${coreRequirements}
+- Business rules:
+${businessRules}
+
+Return the answer in Spanish, but keep the final block "Wireframe prompt listo para pegar" written in English so it can be pasted directly into Stitch or a similar wireframing tool.
+
+Necesito una respuesta en Markdown con estas secciones exactas:
+## Objetivo del wireframe
+## Usuarios principales
+## Escenas principales sugeridas
+## Contenido clave por escena
+## Componentes sugeridos
+## Flujo recomendado entre escenas
+## Consideraciones de negocio
+## Wireframe prompt listo para pegar
+
+Reglas:
+- Propone entre 4 y 7 escenas principales.
+- Las escenas deben ser sencillas, editables y pensadas para una primera version.
+- No fuerces modulos que no tengan relacion con el proyecto.
+- Deduce las pantallas mas relevantes segun descripcion, objetivo, requisitos y normas empresariales.
+- Prioriza estructura, layout, jerarquia de informacion y flujo de usuario.
+- Evita sobrecargar cada escena con demasiados widgets, KPIs o formularios.
+- En "Escenas principales sugeridas" incluye para cada escena: nombre, objetivo y acciones principales.
+- En "Contenido clave por escena" indica los bloques o datos que deberia tener cada pantalla.
+- En "Flujo recomendado entre escenas" explica como se conectan las pantallas principales.
+- Si falta contexto, completa con supuestos razonables, pero sin inventar integraciones muy especificas.
+
+Reglas especificas para "Wireframe prompt listo para pegar":
+- Debe parecerse estructuralmente a un prompt de multi-screen low-fidelity wireframe set.
+- Debe pedir varias escenas principales sencillas, no una sola pantalla compleja.
+- Debe mencionar explicitamente el nombre real del proyecto.
+- Debe incorporar el contexto del proyecto y adaptar las pantallas al dominio detectado.
+- Debe pedir low-fidelity wireframes, grayscale, sketch-style or rough SaaS wireframe.
+- Debe pedir simple boxes, placeholders, labels y una composicion clara.
+- Debe indicar que solo incluya las opciones mas relevantes para luego seguir editando.
+- Debe cerrar con un goal similar a: continue refining the product structure and make UI adjustments later.
+
+Responde solo con Markdown.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: prompt }] }],
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error('No se recibio respuesta de la IA');
+    }
+
+    return text.trim();
+  } catch (error) {
+    console.error('Error generating wireframe brief with AI:', error);
+    normalizeGeminiError(error);
+  }
+}

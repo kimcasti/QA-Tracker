@@ -28,6 +28,7 @@ function mapMeetingNote(document: MeetingNoteDto): MeetingNote {
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
+    title: document.title || '',
     date: document.date,
     time: normalizeMeetingNoteTime(document.time).slice(0, 5),
     participants: document.participants || '',
@@ -58,6 +59,7 @@ export async function saveMeetingNote(note: MeetingNote) {
 
   const documentId = note.id.startsWith('note-') ? null : note.id;
   const saved = await upsertDocument<MeetingNoteDto>('/api/meeting-notes', documentId, {
+    title: note.title,
     date: note.date,
     time: normalizeMeetingNoteTime(note.time),
     participants: note.participants,

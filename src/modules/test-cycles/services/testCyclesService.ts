@@ -28,9 +28,25 @@ import { getTestCases } from '../../test-cases/services/testCasesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCycleDto, TestCycleExecutionDto } from '../types/api';
 
-function normalizeSprintName(value?: string | null) {
+function normalizeSprintKey(value?: string | null) {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^sprint\s*/i, '');
+}
+
+function findSprintByValue(
+  sprints: Array<{ id: string; name: string }>,
+  value?: string | null,
+) {
   if (!value) return undefined;
-  return value.replace(/^Sprint\s+/i, '').trim();
+
+  const raw = value.trim();
+  const normalized = normalizeSprintKey(raw);
+
+  return sprints.find(
+    item => item.name === raw || normalizeSprintKey(item.name) === normalized,
+  );
 }
 
 function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
@@ -178,8 +194,7 @@ export async function saveTestCycle(cycle: RegressionCycle) {
   }
 
   const sprints = await getSprints(cycle.projectId);
-  const normalizedSprintName = normalizeSprintName(cycle.sprint);
-  const sprint = sprints.find(item => item.name === normalizedSprintName);
+  const sprint = findSprintByValue(sprints, cycle.sprint);
   const documents = await listDocuments<TestCycleDto>('/api/test-cycles', {
     'filters[project][documentId][$eq]': context.documentId,
     'filters[code][$eq]': cycle.cycleId,

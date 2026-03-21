@@ -49,6 +49,8 @@ export interface Project {
   purpose?: string;
   coreRequirements?: string[];
   businessRules?: string;
+  aiProjectInsights?: string;
+  aiWireframeBrief?: string;
 }
 
 export interface Functionality {
@@ -297,6 +299,7 @@ export interface Module {
 export interface MeetingNote {
   id: string;
   projectId: string;
+  title: string;
   date: string;
   time: string;
   participants: string;
