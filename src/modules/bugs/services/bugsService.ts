@@ -91,6 +91,14 @@ export async function getBugs(projectId?: string) {
   return dedupeBugsByIdentity(documents.map(mapBug));
 }
 
+export async function getAllBugInternalIds() {
+  const documents = await listDocuments<BugDto>('/api/bugs', {
+    sort: 'detectedAt:desc',
+  });
+
+  return documents.map(document => document.internalBugId).filter(Boolean);
+}
+
 export async function saveBug(bug: QABug) {
   const context = await findProjectContext(bug.projectId);
   if (!context) {

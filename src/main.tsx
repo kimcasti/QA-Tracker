@@ -8,6 +8,9 @@ import './i18n/i18n';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { queryClient } from './config/query';
 import { AuthSessionProvider } from './modules/auth/context/AuthSessionProvider';
+import { cleanupUnusedLegacyLocalStorage } from './services/localStorageMaintenance';
+
+cleanupUnusedLegacyLocalStorage();
 
 createRoot(document.getElementById('root')!).render(
   <LanguageProvider>

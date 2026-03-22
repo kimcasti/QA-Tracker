@@ -1,5 +1,10 @@
 import { Functionality, TestExecution, TestResult, TestStatus, TestType, RegressionCycle, ExecutionStatus, TestPlan, Project, ProjectStatus, Priority, RiskLevel, TestCase, QABug } from '../types';
 
+/**
+ * @deprecated Legacy localStorage persistence retained only for migration support.
+ * Do not use this service in new code.
+ */
+
 const STORAGE_KEYS = {
   PROJECTS: 'qa_tracker_projects',
   FUNCTIONALITIES: 'qa_tracker_functionalities',

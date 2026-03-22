@@ -1,25 +1,36 @@
 import type { Functionality } from '../../../types';
-import type { Epic, Role, Story, StoryMapRoleNode } from '../types';
+import type { Epic, Role, Story, StoryMapRoleNode, StoryMapSnapshot } from '../types';
+import { storyAssociationsService } from './storyAssociationsService';
+import { taskOrderService } from './taskOrderService';
 
-const LS_KEYS = {
-  ROLES: 'qa_roles',
-  EPICS: 'qa_epics',
-  STORIES: 'qa_stories',
-} as const;
+const storyMapStore = {
+  roles: [] as Role[],
+  epics: [] as Epic[],
+  stories: [] as Story[],
+};
 
-function readArray<T>(key: string): T[] {
-  const raw = localStorage.getItem(key);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function readRoles() {
+  return storyMapStore.roles;
 }
 
-function writeArray<T>(key: string, items: T[]) {
-  localStorage.setItem(key, JSON.stringify(items));
+function writeRoles(items: Role[]) {
+  storyMapStore.roles = items;
+}
+
+function readEpics() {
+  return storyMapStore.epics;
+}
+
+function writeEpics(items: Epic[]) {
+  storyMapStore.epics = items;
+}
+
+function readStories() {
+  return storyMapStore.stories;
+}
+
+function writeStories(items: Story[]) {
+  storyMapStore.stories = items;
 }
 
 function newId(prefix: string) {
@@ -27,12 +38,13 @@ function newId(prefix: string) {
 }
 
 function updateItem<T extends { id: string; projectId: string; name: string }>(
-  key: string,
+  readItems: () => T[],
+  writeItems: (items: T[]) => void,
   projectId: string,
   itemId: string,
   name: string,
 ) {
-  const items = readArray<T>(key);
+  const items = readItems();
   let updated: T | null = null;
 
   const nextItems = items.map(item => {
@@ -44,60 +56,82 @@ function updateItem<T extends { id: string; projectId: string; name: string }>(
     return updated;
   });
 
-  writeArray(key, nextItems);
+  writeItems(nextItems);
   return updated;
 }
 
 export const storyMapService = {
   getRoles(projectId?: string): Role[] {
-    const all = readArray<Role>(LS_KEYS.ROLES);
+    const all = readRoles();
     return projectId ? all.filter(r => r.projectId === projectId) : all;
   },
 
   createRole(projectId: string, name: string): Role {
     const role: Role = { id: newId('ROLE'), projectId, name: name.trim() };
-    const roles = readArray<Role>(LS_KEYS.ROLES);
+    const roles = readRoles();
     roles.push(role);
-    writeArray(LS_KEYS.ROLES, roles);
+    writeRoles(roles);
     return role;
   },
 
   updateRole(projectId: string, roleId: string, name: string) {
-    return updateItem<Role>(LS_KEYS.ROLES, projectId, roleId, name);
+    return updateItem<Role>(readRoles, writeRoles, projectId, roleId, name);
   },
 
   getEpics(projectId?: string): Epic[] {
-    const all = readArray<Epic>(LS_KEYS.EPICS);
+    const all = readEpics();
     return projectId ? all.filter(e => e.projectId === projectId) : all;
   },
 
   createEpic(projectId: string, roleId: string, name: string): Epic {
     const epic: Epic = { id: newId('EPIC'), projectId, roleId, name: name.trim() };
-    const epics = readArray<Epic>(LS_KEYS.EPICS);
+    const epics = readEpics();
     epics.push(epic);
-    writeArray(LS_KEYS.EPICS, epics);
+    writeEpics(epics);
     return epic;
   },
 
   updateEpic(projectId: string, epicId: string, name: string) {
-    return updateItem<Epic>(LS_KEYS.EPICS, projectId, epicId, name);
+    return updateItem<Epic>(readEpics, writeEpics, projectId, epicId, name);
   },
 
   getStories(projectId?: string): Story[] {
-    const all = readArray<Story>(LS_KEYS.STORIES);
+    const all = readStories();
     return projectId ? all.filter(s => s.projectId === projectId) : all;
   },
 
   createStory(projectId: string, epicId: string, name: string): Story {
     const story: Story = { id: newId('STORY'), projectId, epicId, name: name.trim() };
-    const stories = readArray<Story>(LS_KEYS.STORIES);
+    const stories = readStories();
     stories.push(story);
-    writeArray(LS_KEYS.STORIES, stories);
+    writeStories(stories);
     return story;
   },
 
   updateStory(projectId: string, storyId: string, name: string) {
-    return updateItem<Story>(LS_KEYS.STORIES, projectId, storyId, name);
+    return updateItem<Story>(readStories, writeStories, projectId, storyId, name);
+  },
+
+  getProjectSnapshot(projectId: string): StoryMapSnapshot {
+    return {
+      roles: storyMapService.getRoles(projectId),
+      epics: storyMapService.getEpics(projectId),
+      stories: storyMapService.getStories(projectId),
+      links: storyAssociationsService.getProjectLinks(projectId),
+      taskOrder: taskOrderService.getProjectOrder(projectId),
+    };
+  },
+
+  hydrateProjectSnapshot(projectId: string, snapshot?: StoryMapSnapshot | null) {
+    const roles = readRoles().filter(item => item.projectId !== projectId);
+    const epics = readEpics().filter(item => item.projectId !== projectId);
+    const stories = readStories().filter(item => item.projectId !== projectId);
+
+    writeRoles([...roles, ...((snapshot?.roles || []) as Role[])]);
+    writeEpics([...epics, ...((snapshot?.epics || []) as Epic[])]);
+    writeStories([...stories, ...((snapshot?.stories || []) as Story[])]);
+    storyAssociationsService.hydrateProjectLinks(projectId, snapshot?.links || []);
+    taskOrderService.hydrateProjectOrder(projectId, snapshot?.taskOrder || {});
   },
 
   getFullStoryMap(projectId: string, functionalities: Functionality[]): StoryMapRoleNode[] {

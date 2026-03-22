@@ -44,6 +44,7 @@ import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
 import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import type { SlackMember } from '../modules/slack-members/types/model';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   analyzeProjectWithAI,
   generateProjectWireframeBrief,
@@ -190,6 +191,7 @@ function MeetingInsightCard({
 }
 
 export default function AboutView({ project }: { project: Project }) {
+  const { isViewer } = useWorkspaceAccess();
   const { save: saveProject } = useProjects();
   const {
     data: meetingNotes = [],
@@ -697,14 +699,16 @@ export default function AboutView({ project }: { project: Project }) {
                   </div>
                 </div>
 
-                <Button
-                  type="primary"
-                  icon={<EditOutlined />}
-                  onClick={handleEditProject}
-                  className="h-12 rounded-2xl px-6 font-semibold"
-                >
-                  Editar proyecto
-                </Button>
+                {!isViewer && (
+                  <Button
+                    type="primary"
+                    icon={<EditOutlined />}
+                    onClick={handleEditProject}
+                    className="h-12 rounded-2xl px-6 font-semibold"
+                  >
+                    Editar proyecto
+                  </Button>
+                )}
               </div>
 
               <Row gutter={[20, 20]}>
@@ -748,26 +752,28 @@ export default function AboutView({ project }: { project: Project }) {
                         </div>
                       </div>
 
-                      <Space size={12} wrap>
-                        <Button
-                          icon={<BulbOutlined />}
-                          loading={projectAiLoadingMode === 'analysis'}
-                          disabled={projectAiLoadingMode === 'wireframe'}
-                          onClick={() => void handleGenerateProjectAi('analysis')}
-                          className="rounded-2xl"
-                        >
-                          Analizar con IA
-                        </Button>
-                        <Button
-                          icon={<FileTextOutlined />}
-                          loading={projectAiLoadingMode === 'wireframe'}
-                          disabled={projectAiLoadingMode === 'analysis'}
-                          onClick={() => void handleGenerateProjectAi('wireframe')}
-                          className="rounded-2xl"
-                        >
-                          Generar brief
-                        </Button>
-                      </Space>
+                      {!isViewer && (
+                        <Space size={12} wrap>
+                          <Button
+                            icon={<BulbOutlined />}
+                            loading={projectAiLoadingMode === 'analysis'}
+                            disabled={projectAiLoadingMode === 'wireframe'}
+                            onClick={() => void handleGenerateProjectAi('analysis')}
+                            className="rounded-2xl"
+                          >
+                            Analizar con IA
+                          </Button>
+                          <Button
+                            icon={<FileTextOutlined />}
+                            loading={projectAiLoadingMode === 'wireframe'}
+                            disabled={projectAiLoadingMode === 'analysis'}
+                            onClick={() => void handleGenerateProjectAi('wireframe')}
+                            className="rounded-2xl"
+                          >
+                            Generar brief
+                          </Button>
+                        </Space>
+                      )}
                     </div>
 
                     <Row gutter={[20, 20]}>
@@ -1059,12 +1065,14 @@ export default function AboutView({ project }: { project: Project }) {
                     <Text className="text-slate-400">Seguimiento de conversaciones y acuerdos</Text>
                   </div>
                 </div>
-                <Button
-                  type="text"
-                  icon={<PlusOutlined />}
-                  onClick={handleAddNote}
-                  className="rounded-2xl"
-                />
+                {!isViewer && (
+                  <Button
+                    type="text"
+                    icon={<PlusOutlined />}
+                    onClick={handleAddNote}
+                    className="rounded-2xl"
+                  />
+                )}
               </div>
 
               {meetingNotes.length > RECENT_NOTES_LIMIT && (
@@ -1184,6 +1192,7 @@ export default function AboutView({ project }: { project: Project }) {
                     })
                 ) : null}
 
+                {!isViewer && (
                 <button
                   type="button"
                   onClick={handleAddNote}
@@ -1209,6 +1218,7 @@ export default function AboutView({ project }: { project: Project }) {
                     </div>
                   </div>
                 </button>
+                )}
               </div>
 
               <div
@@ -1245,7 +1255,7 @@ export default function AboutView({ project }: { project: Project }) {
           </span>
         }
         open={isEditProjectModalOpen}
-        onOk={handleSaveProject}
+        onOk={!isViewer ? handleSaveProject : undefined}
         onCancel={() => setIsEditProjectModalOpen(false)}
         width={760}
         centered
@@ -1253,8 +1263,9 @@ export default function AboutView({ project }: { project: Project }) {
         cancelText="Cancelar"
         forceRender
         destroyOnHidden
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={projectForm} layout="vertical" className="mt-4">
+        <Form form={projectForm} layout="vertical" className="mt-4" disabled={isViewer}>
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
@@ -1340,7 +1351,7 @@ export default function AboutView({ project }: { project: Project }) {
           </span>
         }
         open={isNoteModalOpen}
-        onOk={handleSaveNote}
+        onOk={!isViewer ? handleSaveNote : undefined}
         onCancel={() => setIsNoteModalOpen(false)}
         width={860}
         centered
@@ -1348,8 +1359,9 @@ export default function AboutView({ project }: { project: Project }) {
         cancelText="Cancelar"
         forceRender
         destroyOnHidden
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={noteForm} layout="vertical" className="mt-4">
+        <Form form={noteForm} layout="vertical" className="mt-4" disabled={isViewer}>
           <Form.Item
             name="title"
             label="Titulo de la minuta"
@@ -1407,16 +1419,18 @@ export default function AboutView({ project }: { project: Project }) {
               <div className="flex w-full items-center justify-between gap-3">
                 <span>Notas de la reunion</span>
                 <Space size={8}>
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<RobotOutlined />}
-                    onClick={handleImproveWithAI}
-                    loading={isImproving}
-                    className="rounded-full text-[10px] font-bold h-7"
-                  >
-                    Mejorar con IA
-                  </Button>
+                  {!isViewer && (
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<RobotOutlined />}
+                      onClick={handleImproveWithAI}
+                      loading={isImproving}
+                      className="rounded-full text-[10px] font-bold h-7"
+                    >
+                      Mejorar con IA
+                    </Button>
+                  )}
                 </Space>
               </div>
             }
@@ -1555,33 +1569,37 @@ export default function AboutView({ project }: { project: Project }) {
         open={isViewNoteModalOpen}
         onCancel={() => setIsViewNoteModalOpen(false)}
         footer={[
-          <Button
-            key="edit"
-            type="primary"
-            onClick={() => {
-              if (!selectedNote) return;
-              handleEditNote(selectedNote);
-            }}
-          >
-            Editar minuta
-          </Button>,
-          <Button
-            key="delete"
-            danger
-            onClick={() => {
-              if (!selectedNote) return;
-              Modal.confirm({
-                title: 'Eliminar minuta',
-                content: 'Esta accion no se puede deshacer.',
-                onOk: async () => {
-                  await deleteMeetingNote(selectedNote.id);
-                  setIsViewNoteModalOpen(false);
-                },
-              });
-            }}
-          >
-            Eliminar
-          </Button>,
+          ...(!isViewer
+            ? [
+                <Button
+                  key="edit"
+                  type="primary"
+                  onClick={() => {
+                    if (!selectedNote) return;
+                    handleEditNote(selectedNote);
+                  }}
+                >
+                  Editar minuta
+                </Button>,
+                <Button
+                  key="delete"
+                  danger
+                  onClick={() => {
+                    if (!selectedNote) return;
+                    Modal.confirm({
+                      title: 'Eliminar minuta',
+                      content: 'Esta accion no se puede deshacer.',
+                      onOk: async () => {
+                        await deleteMeetingNote(selectedNote.id);
+                        setIsViewNoteModalOpen(false);
+                      },
+                    });
+                  }}
+                >
+                  Eliminar
+                </Button>,
+              ]
+            : []),
           <Button key="close" onClick={() => setIsViewNoteModalOpen(false)}>
             Cerrar
           </Button>,

@@ -110,3 +110,77 @@ export const exportToPdf = async (elementId: string, filename: string) => {
   pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
   pdf.save(`${filename}.pdf`);
 };
+
+async function captureElementAsCanvas(elementId: string) {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    throw new Error(`Element ${elementId} not found`);
+  }
+
+  return html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor: '#ffffff',
+  });
+}
+
+export const exportReportAsImage = async (elementId: string, filename: string) => {
+  const canvas = await captureElementAsCanvas(elementId);
+  const imageUrl = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.href = imageUrl;
+  link.download = `${filename}.png`;
+  link.click();
+};
+
+export const printReportCapture = async (elementId: string, title: string) => {
+  const canvas = await captureElementAsCanvas(elementId);
+  const imageUrl = canvas.toDataURL('image/png');
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+
+  if (!printWindow) {
+    throw new Error('PRINT_WINDOW_BLOCKED');
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 24px;
+            background: #ffffff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+          }
+          img {
+            width: 100%;
+            max-width: 1100px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+          }
+          @media print {
+            body {
+              padding: 0;
+            }
+            img {
+              max-width: 100%;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <img src="${imageUrl}" alt="${title}" />
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+
+  setTimeout(() => {
+    printWindow.print();
+  }, 250);
+};

@@ -30,27 +30,37 @@ function normalize(value?: string) {
   return trimmed ? trimmed : undefined;
 }
 
-const INTERNAL_BUG_ID_REGEX = /^BUG-(\d+)$/i;
+const INTERNAL_BUG_ID_REGEX = /^(?:([A-Z0-9]+)-)?BUG-(\d+)$/i;
 
-function formatInternalBugId(sequence: number) {
-  return `BUG-${sequence.toString().padStart(4, '0')}`;
+function buildProjectBugPrefix(projectId: string) {
+  const raw = (projectId || '').trim().toUpperCase();
+  const preferredChunk = raw.split('-').find(chunk => /[A-Z]/.test(chunk)) || raw;
+  const normalized = preferredChunk.replace(/[^A-Z0-9]/g, '').slice(0, 5);
+
+  return normalized || 'PRJ';
 }
 
-function extractInternalBugSequence(value?: string) {
+function formatInternalBugId(projectId: string, sequence: number) {
+  return `${buildProjectBugPrefix(projectId)}-BUG-${sequence.toString().padStart(4, '0')}`;
+}
+
+function extractInternalBugSequence(value?: string, projectId?: string) {
   const normalizedValue = normalize(value);
   if (!normalizedValue) return null;
 
   const match = normalizedValue.match(INTERNAL_BUG_ID_REGEX);
-  return match ? Number.parseInt(match[1], 10) : null;
+  if (!match) return null;
+
+  return Number.parseInt(match[2], 10);
 }
 
-function getNextInternalBugId(existingIds: Array<string | undefined>) {
+function getNextInternalBugId(projectId: string, existingIds: Array<string | undefined>) {
   const maxSequence = existingIds.reduce((currentMax, id) => {
-    const sequence = extractInternalBugSequence(id);
+    const sequence = extractInternalBugSequence(id, projectId);
     return sequence && sequence > currentMax ? sequence : currentMax;
   }, 0);
 
-  return formatInternalBugId(maxSequence + 1);
+  return formatInternalBugId(projectId, maxSequence + 1);
 }
 
 function buildLinkedSourceId(payload: BugSyncPayload) {
@@ -95,7 +105,7 @@ export async function previewNextInternalBugId(
   draftIds: Array<string | undefined> = [],
 ) {
   const bugs = await getBugs(projectId);
-  return getNextInternalBugId([...bugs.map(bug => bug.internalBugId), ...draftIds]);
+  return getNextInternalBugId(projectId, [...bugs.map(bug => bug.internalBugId), ...draftIds]);
 }
 
 export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | null> {
@@ -129,7 +139,7 @@ export async function syncBugReport(payload: BugSyncPayload): Promise<QABug | nu
     internalBugId:
       existing?.internalBugId ||
       normalizedInternalBugId ||
-      getNextInternalBugId(bugs.map(item => item.internalBugId)),
+      getNextInternalBugId(payload.projectId, bugs.map(item => item.internalBugId)),
     externalBugId: normalizedExternalBugId,
     title:
       normalize(payload.title) ||

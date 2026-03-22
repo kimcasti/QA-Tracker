@@ -11,8 +11,50 @@ interface CreateProjectModalProps {
   onCancel: () => void;
 }
 
+const PROJECT_KEY_FALLBACK_PREFIX = 'PROJ';
+
+function buildProjectKeyPrefix(name: string) {
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .trim()
+    .toUpperCase();
+
+  if (!normalized) {
+    return PROJECT_KEY_FALLBACK_PREFIX;
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+
+  if (words.length > 1) {
+    return words
+      .slice(0, 4)
+      .map(word => word[0])
+      .join('')
+      .slice(0, 6);
+  }
+
+  return words[0].slice(0, 6) || PROJECT_KEY_FALLBACK_PREFIX;
+}
+
+function buildProjectKey(name: string, existingKeys: string[]) {
+  const prefix = buildProjectKeyPrefix(name);
+  const existing = new Set(existingKeys.map(key => key.toUpperCase()));
+
+  let nextKey = '';
+
+  do {
+    const timeChunk = Date.now().toString(36).toUpperCase();
+    const randomChunk = Math.random().toString(36).slice(2, 6).toUpperCase();
+    nextKey = `${prefix}-${timeChunk}-${randomChunk}`;
+  } while (existing.has(nextKey));
+
+  return nextKey;
+}
+
 export default function CreateProjectModal({ open, onCancel }: CreateProjectModalProps) {
-  const { save: saveProject, isSaving } = useProjects();
+  const { data: projects = [], save: saveProject, isSaving } = useProjects();
   const {
     data: slackMembers = [],
     isLoading: isSlackMembersLoading,
@@ -36,9 +78,13 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
     const normalizedMembers = (values.teamMembers || [])
       .map(member => member.trim())
       .filter(Boolean);
+    const projectKey = buildProjectKey(
+      normalizedName,
+      projects.map(project => project.id),
+    );
 
     const newProject: Project = {
-      id: `P${Date.now()}`,
+      id: projectKey,
       name: normalizedName,
       description: values.description.trim(),
       version: values.version.trim(),

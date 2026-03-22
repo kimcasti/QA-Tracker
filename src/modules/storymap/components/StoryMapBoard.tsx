@@ -8,6 +8,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { createSwapy, type SlotItemMapArray, type Swapy } from 'swapy';
+import type { SwapEvent } from 'swapy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
@@ -16,8 +17,8 @@ import type { StoryMapRoleNode } from '../types';
 import { taskOrderService } from '../services/taskOrderService';
 import {
   storyAssociationsService,
-  type StoryFunctionalityLink,
 } from '../services/storyAssociationsService';
+import type { StoryFunctionalityLink } from '../types';
 import { StoryColumn } from './StoryColumn';
 import { TaskCard, TaskPlaceholderCard } from './TaskCard';
 
@@ -62,10 +63,58 @@ function collapsedRolesStorageKey(projectId: string) {
   return `qa-tracker:storymap:collapsed-roles:${projectId}`;
 }
 
+function buildNormalizedTaskOrder(
+  storyIds: string[],
+  links: StoryFunctionalityLink[],
+  sourceOrder: Record<string, string[]>,
+) {
+  const validLinkIdsByStory = new Map<string, string[]>();
+
+  links.forEach(link => {
+    const storyLinkIds = validLinkIdsByStory.get(link.storyId) || [];
+    if (!storyLinkIds.includes(link.id)) {
+      storyLinkIds.push(link.id);
+    }
+    validLinkIdsByStory.set(link.storyId, storyLinkIds);
+  });
+
+  const seenItemIds = new Set<string>();
+  const nextOrder: Record<string, string[]> = {};
+
+  storyIds.forEach(storyId => {
+    const validIds = validLinkIdsByStory.get(storyId) || [];
+    const validIdSet = new Set(validIds);
+    const orderedIds: string[] = [];
+
+    (sourceOrder[storyId] || []).forEach(itemId => {
+      if (seenItemIds.has(itemId) || !validIdSet.has(itemId)) {
+        return;
+      }
+
+      orderedIds.push(itemId);
+      seenItemIds.add(itemId);
+    });
+
+    validIds.forEach(itemId => {
+      if (seenItemIds.has(itemId)) {
+        return;
+      }
+
+      orderedIds.push(itemId);
+      seenItemIds.add(itemId);
+    });
+
+    nextOrder[storyId] = orderedIds;
+  });
+
+  return nextOrder;
+}
+
 export default function StoryMapBoard({
   projectId,
   roles,
   functionalities,
+  readOnly = false,
   onCreateEpic,
   onCreateStory,
   onCreateFunctionality,
@@ -75,10 +124,12 @@ export default function StoryMapBoard({
   onEnsurePrimaryAssociation,
   onSyncPrimaryStoryAfterUnassign,
   onMoveFunctionality,
+  onStructureChange,
 }: {
   projectId: string;
   roles: StoryMapRoleNode[];
   functionalities: Functionality[];
+  readOnly?: boolean;
   onCreateEpic: (roleId: string) => void;
   onCreateStory: (epicId: string) => void;
   onCreateFunctionality: (storyId: string) => void;
@@ -88,10 +139,14 @@ export default function StoryMapBoard({
   onEnsurePrimaryAssociation: (storyId: string, functionalityId: string) => void;
   onSyncPrimaryStoryAfterUnassign: (storyId: string, functionalityId: string) => void;
   onMoveFunctionality: (functionalityId: string, storyId: string) => Promise<void>;
+  onStructureChange?: () => void;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const swapyRef = useRef<Swapy | null>(null);
+  const isDraggingRef = useRef(false);
+  const pendingSwapyUpdateRef = useRef(false);
+  const latestSwapRef = useRef<SwapEvent | null>(null);
 
   const storyIdsInRenderOrder = useMemo(() => {
     const ids: string[] = [];
@@ -204,31 +259,26 @@ export default function StoryMapBoard({
     setLinks(syncedLinks);
 
     setTasksByStory(prev => {
-      const next: Record<string, string[]> = {};
-      const linkIdsByStory = new Map<string, string[]>();
-
-      syncedLinks.forEach(link => {
-        const storyLinks = linkIdsByStory.get(link.storyId) || [];
-        storyLinks.push(link.id);
-        linkIdsByStory.set(link.storyId, storyLinks);
-      });
-
-      storyIdsInRenderOrder.forEach(storyId => {
-        const validIds = linkIdsByStory.get(storyId) || [];
-        const orderedIds = (prev[storyId] || []).filter(id => validIds.includes(id));
-        const missingIds = validIds.filter(id => !orderedIds.includes(id));
-        next[storyId] = [...orderedIds, ...missingIds];
-      });
+      const next = buildNormalizedTaskOrder(storyIdsInRenderOrder, syncedLinks, prev);
 
       taskOrderService.saveProjectOrder(projectId, next);
+      onStructureChange?.();
       return next;
     });
-  }, [functionalities, projectId, storyIdsInRenderOrder]);
+  }, [functionalities, onStructureChange, projectId, storyIdsInRenderOrder]);
 
   const canonicalSlotItemMap = useMemo<SlotItemMapArray>(() => {
     const map: SlotItemMapArray = [];
+    const seenItemIds = new Set<string>();
     for (const storyId of storyIdsInRenderOrder) {
-      const tasks = (tasksByStory[storyId] || []).filter(id => linkById.has(id));
+      const tasks = (tasksByStory[storyId] || []).filter(id => {
+        if (!linkById.has(id) || seenItemIds.has(id)) {
+          return false;
+        }
+
+        seenItemIds.add(id);
+        return true;
+      });
       const items = [...tasks, emptyId(storyId)];
       items.forEach((itemId, idx) => map.push({ slot: `${storyId}::${idx}`, item: itemId }));
     }
@@ -245,12 +295,15 @@ export default function StoryMapBoard({
     return grouped;
   }, [canonicalSlotItemMap]);
 
-  const normalizeAndPersist = async (mapArray: SlotItemMapArray) => {
+  const normalizeAndPersist = async (
+    mapArray: SlotItemMapArray,
+    explicitMove?: Pick<SwapEvent, 'draggingItem' | 'fromSlot' | 'toSlot'>,
+  ) => {
     const nextOrderDraft: Record<string, string[]> = {};
     storyIdsRef.current.forEach(storyId => (nextOrderDraft[storyId] = []));
-    const nextStoryByLinkId = new Map<string, string>();
     const currentLinks = Array.from(linkById.values());
     const movedLinks: Array<{
+      linkId: string;
       functionalityId: string;
       fromStoryId: string;
       toStoryId: string;
@@ -261,43 +314,105 @@ export default function StoryMapBoard({
       if (isEmptyItem(item)) continue;
       if (!nextOrderDraft[sid]) nextOrderDraft[sid] = [];
       nextOrderDraft[sid].push(item);
-      nextStoryByLinkId.set(item, sid);
     }
 
-    let nextLinks = currentLinks;
-    currentLinks.forEach(link => {
-      const nextStoryId = nextStoryByLinkId.get(link.id);
-      if (!nextStoryId || nextStoryId === link.storyId) {
-        return;
+    let nextLinks = currentLinks.map(link => ({ ...link }));
+
+    if (
+      explicitMove &&
+      !isEmptyItem(explicitMove.draggingItem) &&
+      explicitMove.fromSlot !== explicitMove.toSlot
+    ) {
+      const link = currentLinks.find(item => item.id === explicitMove.draggingItem);
+      const fromStoryId = storyIdFromSlot(explicitMove.fromSlot);
+      const toStoryId = storyIdFromSlot(explicitMove.toSlot);
+
+      if (link && fromStoryId !== toStoryId) {
+        movedLinks.push({
+          linkId: link.id,
+          functionalityId: link.functionalityId,
+          fromStoryId,
+          toStoryId,
+        });
+        nextLinks = storyAssociationsService.moveAssociation(projectId, link.id, toStoryId);
+      }
+    } else {
+      const nextStoryByLinkId = new Map<string, string>();
+
+      mapArray.forEach(({ slot, item }) => {
+        if (!isEmptyItem(item)) {
+          nextStoryByLinkId.set(item, storyIdFromSlot(slot));
+        }
+      });
+
+      currentLinks.forEach(link => {
+        const nextStoryId = nextStoryByLinkId.get(link.id);
+        if (!nextStoryId || nextStoryId === link.storyId) {
+          return;
+        }
+
+        const currentLinkExists = nextLinks.some(item => item.id === link.id);
+        if (!currentLinkExists) {
+          return;
+        }
+
+        movedLinks.push({
+          linkId: link.id,
+          functionalityId: link.functionalityId,
+          fromStoryId: link.storyId,
+          toStoryId: nextStoryId,
+        });
+
+        nextLinks = nextLinks
+          .map(item => (item.id === link.id ? { ...item, storyId: nextStoryId } : item))
+          .filter((item, index, all) => {
+            if (item.storyId !== nextStoryId || item.functionalityId !== link.functionalityId) {
+              return true;
+            }
+
+            return (
+              index ===
+              all.findIndex(
+                candidate =>
+                  candidate.storyId === nextStoryId &&
+                  candidate.functionalityId === link.functionalityId &&
+                  candidate.id === link.id,
+              )
+            );
+          });
+      });
+    }
+
+    storyAssociationsService.saveProjectLinks(projectId, nextLinks);
+
+    const nextOrder = buildNormalizedTaskOrder(
+      storyIdsRef.current,
+      nextLinks,
+      nextOrderDraft,
+    );
+
+    movedLinks.forEach(move => {
+      storyIdsRef.current.forEach(storyId => {
+        nextOrder[storyId] = (nextOrder[storyId] || []).filter(itemId => itemId !== move.linkId);
+      });
+
+      if (!nextOrder[move.toStoryId]) {
+        nextOrder[move.toStoryId] = [];
       }
 
-      movedLinks.push({
-        functionalityId: link.functionalityId,
-        fromStoryId: link.storyId,
-        toStoryId: nextStoryId,
-      });
-      nextLinks = storyAssociationsService.moveAssociation(projectId, link.id, nextStoryId);
-    });
-
-    const validLinkIdsByStory = new Map<string, string[]>();
-    nextLinks.forEach(link => {
-      const storyLinkIds = validLinkIdsByStory.get(link.storyId) || [];
-      storyLinkIds.push(link.id);
-      validLinkIdsByStory.set(link.storyId, storyLinkIds);
-    });
-
-    const nextOrder: Record<string, string[]> = {};
-    storyIdsRef.current.forEach(storyId => {
-      const validIds = validLinkIdsByStory.get(storyId) || [];
-      const orderedIds = (nextOrderDraft[storyId] || []).filter(id => validIds.includes(id));
-      const missingIds = validIds.filter(id => !orderedIds.includes(id));
-      nextOrder[storyId] = [...orderedIds, ...missingIds];
+      if (
+        nextLinks.some(item => item.id === move.linkId) &&
+        !nextOrder[move.toStoryId].includes(move.linkId)
+      ) {
+        nextOrder[move.toStoryId] = [...nextOrder[move.toStoryId], move.linkId];
+      }
     });
 
     setTasksByStory(nextOrder);
     taskOrderService.saveProjectOrder(projectId, nextOrder);
     setLinks(nextLinks);
     storyAssociationsService.saveProjectLinks(projectId, nextLinks);
+    onStructureChange?.();
 
     const persistPrimaryMoves = movedLinks
       .filter((move, index, moves) => {
@@ -332,6 +447,16 @@ export default function StoryMapBoard({
     }
   };
 
+  const flushSwapyUpdate = () => {
+    if (isDraggingRef.current) {
+      pendingSwapyUpdateRef.current = true;
+      return;
+    }
+
+    pendingSwapyUpdateRef.current = false;
+    swapyRef.current?.update();
+  };
+
   const handleAssignExisting = (storyId: string, functionalityId: string) => {
     const link = storyAssociationsService.ensureAssociation(projectId, storyId, functionalityId);
     const nextLinks = storyAssociationsService.getProjectLinks(projectId);
@@ -339,12 +464,12 @@ export default function StoryMapBoard({
     onEnsurePrimaryAssociation(storyId, functionalityId);
 
     setTasksByStory(prev => {
-      const next = { ...prev };
-      if (!next[storyId]) next[storyId] = [];
-      if (!next[storyId].includes(link.id)) {
-        next[storyId] = [...next[storyId], link.id];
-      }
+      const next = buildNormalizedTaskOrder(storyIdsRef.current, nextLinks, {
+        ...prev,
+        [storyId]: [...(prev[storyId] || []), link.id],
+      });
       taskOrderService.saveProjectOrder(projectId, next);
+      onStructureChange?.();
       return next;
     });
   };
@@ -364,6 +489,7 @@ export default function StoryMapBoard({
         next[sid] = (prev[sid] || []).filter(id => id !== linkId);
       });
       taskOrderService.saveProjectOrder(projectId, next);
+      onStructureChange?.();
       return next;
     });
   };
@@ -374,7 +500,7 @@ export default function StoryMapBoard({
 
     const swapy = createSwapy(containerRef.current, {
       animation: 'dynamic',
-      enabled: true,
+      enabled: !readOnly,
       swapMode: 'drop',
       dragAxis: 'both',
       manualSwap: true,
@@ -383,29 +509,59 @@ export default function StoryMapBoard({
 
     swapyRef.current = swapy;
 
+    swapy.onSwapStart(() => {
+      isDraggingRef.current = true;
+      latestSwapRef.current = null;
+    });
+
+    swapy.onSwap((event) => {
+      latestSwapRef.current = event;
+    });
+
     swapy.onSwapEnd((event) => {
+      isDraggingRef.current = false;
+      if (pendingSwapyUpdateRef.current) {
+        requestAnimationFrame(() => {
+          flushSwapyUpdate();
+        });
+      }
       if (!event.hasChanged) return;
       const next = event.slotItemMap.asArray;
-      // Swapy can temporarily move placeholder items across stories; normalize by rebuilding
-      // a canonical mapping from the resulting order and re-inserting story-specific empties.
-      void normalizeAndPersist(next);
-      // The board will re-render based on updated tasksByStory.
+      const explicitMove = latestSwapRef.current
+        ? {
+            draggingItem: latestSwapRef.current.draggingItem,
+            fromSlot: latestSwapRef.current.fromSlot,
+            toSlot: latestSwapRef.current.toSlot,
+          }
+        : undefined;
+      latestSwapRef.current = null;
+      // Swapy fires onSwapEnd before it finishes its own DOM cleanup animation.
+      // Defer React persistence by two animation frames so the library can settle
+      // before we re-render the board and refresh slot/item bindings.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          void normalizeAndPersist(next, explicitMove);
+        });
+      });
     });
 
     return () => {
+      isDraggingRef.current = false;
+      pendingSwapyUpdateRef.current = false;
+      latestSwapRef.current = null;
       swapy.destroy();
       swapyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, readOnly]);
 
   // When DOM changes (slots count), refresh swapy.
   useEffect(() => {
-    swapyRef.current?.update();
+    flushSwapyUpdate();
   }, [canonicalSlotItemMap]);
 
   useEffect(() => {
-    swapyRef.current?.update();
+    flushSwapyUpdate();
   }, [collapsedRoles]);
 
   const toggleRoleCollapsed = (roleId: string) => {
@@ -448,26 +604,30 @@ export default function StoryMapBoard({
               <Text type="secondary" className="text-xs whitespace-nowrap">
                 {role.epics.length}
               </Text>
-              <Tooltip title={t('common.edit')}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  className="shrink-0 text-slate-500"
-                  onClick={() => onEditRole(role.id, role.name)}
-                />
-              </Tooltip>
+              {!readOnly && (
+                <Tooltip title={t('common.edit')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    className="shrink-0 text-slate-500"
+                    onClick={() => onEditRole(role.id, role.name)}
+                  />
+                </Tooltip>
+              )}
             </div>
           }
           extra={
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => onCreateEpic(role.id)}
-              className="rounded-lg"
-            >
-              {t('storymap.new_epic')}
-            </Button>
+            !readOnly ? (
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => onCreateEpic(role.id)}
+                className="rounded-lg"
+              >
+                {t('storymap.new_epic')}
+              </Button>
+            ) : null
           }
         >
           {collapsedRoles[role.id] ? null : (
@@ -492,26 +652,30 @@ export default function StoryMapBoard({
                       <span className="font-bold text-slate-800 truncate" title={epic.name}>
                         {epic.name}
                       </span>
-                      <Tooltip title={t('common.edit')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EditOutlined />}
-                          className="shrink-0 text-slate-500"
-                          onClick={() => onEditEpic(epic.id, epic.name)}
-                        />
-                      </Tooltip>
+                      {!readOnly && (
+                        <Tooltip title={t('common.edit')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            className="shrink-0 text-slate-500"
+                            onClick={() => onEditEpic(epic.id, epic.name)}
+                          />
+                        </Tooltip>
+                      )}
                     </div>
                   }
                   extra={
-                    <Button
-                      size="small"
-                      icon={<PlusOutlined />}
-                      onClick={() => onCreateStory(epic.id)}
-                      className="rounded-lg"
-                    >
-                      {t('storymap.new_story')}
-                    </Button>
+                    !readOnly ? (
+                      <Button
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={() => onCreateStory(epic.id)}
+                        className="rounded-lg"
+                      >
+                        {t('storymap.new_story')}
+                      </Button>
+                    ) : null
                   }
                 >
                   <div className="flex gap-6 overflow-x-auto pb-1">
@@ -535,6 +699,7 @@ export default function StoryMapBoard({
                             onCreateFunctionality={onCreateFunctionality}
                             onEditStory={onEditStory}
                             onAssignExisting={handleAssignExisting}
+                            readOnly={readOnly}
                             renderItem={(itemId) => {
                               if (isEmptyItem(itemId)) {
                                 return <TaskPlaceholderCard />;
@@ -545,7 +710,8 @@ export default function StoryMapBoard({
                                 <TaskCard
                                   projectId={projectId}
                                   functionality={f}
-                                  onUnassign={() => handleUnassign(itemId)}
+                                  readOnly={readOnly}
+                                  onUnassign={!readOnly ? () => handleUnassign(itemId) : undefined}
                                 />
                               );
                             }}

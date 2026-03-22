@@ -15,6 +15,11 @@ import {
 } from '../types';
 import { storageService } from './storageService';
 
+/**
+ * @deprecated Legacy migration layer retained only as a temporary fallback.
+ * Do not use this service in new code.
+ */
+
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const API_IDENTIFIER = (import.meta.env.VITE_API_IDENTIFIER || '').trim();
 const API_PASSWORD = (import.meta.env.VITE_API_PASSWORD || '').trim();

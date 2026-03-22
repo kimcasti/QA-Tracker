@@ -31,6 +31,7 @@ import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemb
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestPlans } from '../modules/test-plans/hooks/useTestPlans';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   CalendarEventType,
   FunctionalityScope,
@@ -69,6 +70,7 @@ function splitPeople(value?: string) {
 
 export default function TestPlanView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
+  const { isViewer } = useWorkspaceAccess();
   const { data: plansData, save: savePlan, delete: deletePlan } = useTestPlans(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -250,15 +252,27 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
             Organiza pruebas, reuniones con cliente, demos, inducciones y recordatorios del
             proyecto en una sola agenda.
           </Text>
+          {isViewer && (
+            <Space size={[8, 8]} wrap>
+              <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                Solo lectura
+              </Tag>
+              <Text type="secondary">
+                Puedes consultar la agenda, pero no crear ni modificar eventos.
+              </Text>
+            </Space>
+          )}
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={openNewEventModal}
-          className="rounded-lg h-10 px-6 bg-indigo-600 hover:bg-indigo-700"
-        >
-          Nuevo evento
-        </Button>
+        {!isViewer && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openNewEventModal}
+            className="rounded-lg h-10 px-6 bg-indigo-600 hover:bg-indigo-700"
+          >
+            Nuevo evento
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -311,21 +325,29 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
         onCancel={closeEventModal}
         width={760}
         centered
-        footer={[
-          <Button key="cancel" onClick={closeEventModal}>
-            Cancelar
-          </Button>,
-          editingPlan ? (
-            <Button key="delete" danger icon={<DeleteOutlined />} onClick={handleDeleteEvent}>
-              Eliminar
-            </Button>
-          ) : null,
-          <Button key="ok" type="primary" onClick={handleSaveEvent}>
-            {editingPlan ? 'Guardar cambios' : 'Guardar evento'}
-          </Button>,
-        ]}
+        footer={
+          isViewer
+            ? [
+                <Button key="close" onClick={closeEventModal}>
+                  Cerrar
+                </Button>,
+              ]
+            : [
+                <Button key="cancel" onClick={closeEventModal}>
+                  Cancelar
+                </Button>,
+                editingPlan ? (
+                  <Button key="delete" danger icon={<DeleteOutlined />} onClick={handleDeleteEvent}>
+                    Eliminar
+                  </Button>
+                ) : null,
+                <Button key="ok" type="primary" onClick={handleSaveEvent}>
+                  {editingPlan ? 'Guardar cambios' : 'Guardar evento'}
+                </Button>,
+              ]
+        }
       >
-        <Form form={planForm} layout="vertical" className="mt-4">
+        <Form form={planForm} layout="vertical" className="mt-4" disabled={isViewer}>
           <Row gutter={16}>
             <Col span={14}>
               <Form.Item name="title" label="Título" rules={[{ required: true }]}>

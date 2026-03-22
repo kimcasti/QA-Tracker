@@ -37,6 +37,7 @@ import { UserMenu } from './components/UserMenu';
 import StoryMapPage from './modules/storymap/components/StoryMapPage';
 import PersonalNotesPage from './modules/personal-notes/components/PersonalNotesPage';
 import { useProjects } from './modules/projects/hooks/useProjects';
+import { useWorkspaceAccess } from './modules/workspace/hooks/useWorkspaceAccess';
 import type { Project } from './types';
 import { useTranslation } from 'react-i18next';
 import { appBranding } from './assets/branding';
@@ -218,6 +219,7 @@ function WorkspaceApp({
 }) {
   const { t } = useTranslation();
   const { message } = AntdApp.useApp();
+  const { isViewer, activeRoleName } = useWorkspaceAccess();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects();
@@ -378,8 +380,10 @@ function WorkspaceApp({
             email={currentUser.email}
             userDisplayName={userDisplayName}
             userInitial={userInitial}
+            roleLabel={activeRoleName || undefined}
             onLogout={handleLogout}
             onOpenNotes={handleOpenNotes}
+            isViewer={isViewer}
           />
         </div>
       </Header>
@@ -449,14 +453,18 @@ function WorkspaceApp({
               </div>
             </div>
           </div>
-          <UserMenu
-            email={currentUser.email}
-            userDisplayName={userDisplayName}
-            userInitial={userInitial}
-            onLogout={handleLogout}
-            onOpenNotes={() => message.info('Ya estas en la vista de notas.')}
-            notesActive
-          />
+          <div className="flex items-center gap-4">
+            <UserMenu
+              email={currentUser.email}
+              userDisplayName={userDisplayName}
+              userInitial={userInitial}
+              roleLabel={activeRoleName || undefined}
+              onLogout={handleLogout}
+              onOpenNotes={() => message.info('Ya estas en la vista de notas.')}
+              notesActive
+              isViewer={isViewer}
+            />
+          </div>
         </Header>
         <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto p-8">
           <div className="qa-workspace-canvas mx-auto w-full max-w-7xl">
@@ -524,8 +532,10 @@ function WorkspaceApp({
                 email={currentUser.email}
                 userDisplayName={userDisplayName}
                 userInitial={userInitial}
+                roleLabel={activeRoleName || undefined}
                 onLogout={handleLogout}
                 onOpenNotes={handleOpenNotes}
+                isViewer={isViewer}
               />
             </div>
           </Header>
@@ -557,6 +567,11 @@ function WorkspaceApp({
                       <span className="text-[10px] text-slate-400 font-medium truncate">
                         {routedProject.name}
                       </span>
+                      {activeRoleName && (
+                        <span className="mt-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                          {activeRoleName}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -618,3 +633,5 @@ function WorkspaceApp({
 
   return <Navigate to="/" replace />;
 }
+
+

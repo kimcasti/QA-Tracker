@@ -27,6 +27,7 @@ import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { Sprint, Role, Module } from '../types';
 import dayjs from 'dayjs';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -37,6 +38,7 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ projectId }) => {
+  const { isViewer } = useWorkspaceAccess();
   const { data: sprints = [], save: saveSprint, delete: deleteSprint } = useSprints(projectId);
   const { data: roles = [], save: saveRole, delete: deleteRole } = useRoles(projectId);
   const { data: modules = [], save: saveModule, delete: deleteModule } = useModules(projectId);
@@ -122,7 +124,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       key: 'actions',
       render: (_: any, record: Sprint) => (
         <Space>
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
+          {!isViewer ? (
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
+          ) : null}
         </Space>
       ),
     },
@@ -141,10 +145,18 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       key: 'actions',
       render: (_: any, record: Role) => (
         <Space>
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-          <Popconfirm title="¿Eliminar rol?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {!isViewer ? (
+            <>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                onClick={() => handleOpenModal(record)}
+              />
+              <Popconfirm title="¿Eliminar rol?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          ) : null}
         </Space>
       ),
     },
@@ -163,10 +175,18 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       key: 'actions',
       render: (_: any, record: Module) => (
         <Space>
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-          <Popconfirm title="¿Eliminar módulo?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {!isViewer ? (
+            <>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                onClick={() => handleOpenModal(record)}
+              />
+              <Popconfirm title="¿Eliminar módulo?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          ) : null}
         </Space>
       ),
     },
@@ -190,14 +210,16 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 Administra los periodos de trabajo y ciclos de desarrollo del proyecto.
               </Text>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => handleOpenModal()}
-              className="bg-blue-600"
-            >
-              Nuevo Sprint
-            </Button>
+            {!isViewer ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenModal()}
+                className="bg-blue-600"
+              >
+                Nuevo Sprint
+              </Button>
+            ) : null}
           </div>
           <Table
             columns={sprintColumns}
@@ -226,14 +248,16 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 Define los roles de usuario que interactúan con las funcionalidades del sistema.
               </Text>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => handleOpenModal()}
-              className="bg-blue-600"
-            >
-              Nuevo Rol
-            </Button>
+            {!isViewer ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenModal()}
+                className="bg-blue-600"
+              >
+                Nuevo Rol
+              </Button>
+            ) : null}
           </div>
           <Table
             columns={roleColumns}
@@ -262,14 +286,16 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 Organiza las funcionalidades del sistema por módulos lógicos.
               </Text>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => handleOpenModal()}
-              className="bg-blue-600"
-            >
-              Nuevo Módulo
-            </Button>
+            {!isViewer ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenModal()}
+                className="bg-blue-600"
+              >
+                Nuevo Módulo
+              </Button>
+            ) : null}
           </div>
           <Table
             columns={moduleColumns}
@@ -369,9 +395,11 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
           <div className="flex justify-end gap-2 mt-6">
             <Button onClick={() => setIsModalVisible(false)}>Cancelar</Button>
-            <Button type="primary" htmlType="submit" className="bg-blue-600">
-              Guardar
-            </Button>
+            {!isViewer ? (
+              <Button type="primary" htmlType="submit" className="bg-blue-600">
+                Guardar
+              </Button>
+            ) : null}
           </div>
         </Form>
       </Modal>

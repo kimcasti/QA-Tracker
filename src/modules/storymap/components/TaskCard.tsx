@@ -29,10 +29,12 @@ export function TaskPlaceholderCard() {
 export function TaskCard({
   projectId,
   functionality,
+  readOnly = false,
   onUnassign,
 }: {
   projectId?: string;
   functionality?: Functionality;
+  readOnly?: boolean;
   onUnassign?: () => void;
 }) {
   const { t } = useTranslation();
@@ -97,7 +99,10 @@ export function TaskCard({
     <div className="rounded-xl qa-story-surface px-3 py-2 shadow-sm hover:shadow transition-shadow">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div data-swapy-handle className="cursor-grab text-slate-400 hover:text-slate-600">
+          <div
+            data-swapy-handle={!readOnly ? true : undefined}
+            className={readOnly ? 'text-slate-300' : 'cursor-grab text-slate-400 hover:text-slate-600'}
+          >
             <DragOutlined />
           </div>
           <div className="min-w-0 w-full">
@@ -155,7 +160,7 @@ export function TaskCard({
             )}
           </div>
         </div>
-        {onUnassign && (
+        {!readOnly && onUnassign && (
           <Button
             type="text"
             size="small"

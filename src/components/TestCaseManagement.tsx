@@ -25,6 +25,7 @@ import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
 
 const { TextArea } = Input;
@@ -50,6 +51,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     save,
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
+  const { isViewer } = useWorkspaceAccess();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
@@ -208,15 +210,19 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       width: 150,
       render: (_: any, record: TestCase) => (
         <Space size="middle">
-          <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
-          <Popconfirm
-            title="¿Estás seguro de eliminar este caso de prueba?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {!isViewer ? (
+            <>
+              <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
+              <Popconfirm
+                title="¿Estás seguro de eliminar este caso de prueba?"
+                onConfirm={() => handleDelete(record.id)}
+                okText="Sí"
+                cancelText="No"
+              >
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          ) : null}
         </Space>
       ),
     },
@@ -232,17 +238,21 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       }
       extra={
         <Space>
-          <Button
-            icon={<ThunderboltOutlined />}
-            onClick={handleGenerateAI}
-            loading={isGenerating}
-            className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
-          >
-            Generar con IA
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
-            Nuevo Caso de Prueba
-          </Button>
+          {!isViewer ? (
+            <>
+              <Button
+                icon={<ThunderboltOutlined />}
+                onClick={handleGenerateAI}
+                loading={isGenerating}
+                className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
+              >
+                Generar con IA
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
+                Nuevo Caso de Prueba
+              </Button>
+            </>
+          ) : null}
         </Space>
       }
       className="shadow-sm"
@@ -334,7 +344,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               valuePropName="checked"
               className="col-span-2"
             >
-              <Switch checkedChildren="Sí" unCheckedChildren="No" />
+              <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
             </Form.Item>
 
             <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
@@ -366,9 +376,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           <Form.Item className="mb-0 mt-4 flex justify-end">
             <Space>
               <Button onClick={handleCancel}>Cancelar</Button>
-              <Button type="primary" htmlType="submit">
-                {editingTestCase ? 'Actualizar' : 'Crear'}
-              </Button>
+              {!isViewer ? (
+                <Button type="primary" htmlType="submit">
+                  {editingTestCase ? 'Actualizar' : 'Crear'}
+                </Button>
+              ) : null}
             </Space>
           </Form.Item>
         </Form>

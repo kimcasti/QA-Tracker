@@ -23,12 +23,10 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
-  FileExcelOutlined,
-  FilePdfOutlined,
   FileTextOutlined,
-  FileWordOutlined,
   FilterOutlined,
   LineChartOutlined,
+  PrinterOutlined,
   ProjectOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
@@ -55,7 +53,6 @@ import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionC
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { BugStatus, ExecutionMode, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
-import { exportToPdf } from '../utils/reportUtils';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -903,20 +900,36 @@ export default function Reports({ projectId }: { projectId: string }) {
 
   const handleExportPdf = async () => {
     try {
-      await exportToPdf(
-        'report-content',
-        `Reporte_${selectedVariant}_${dayjs().format('YYYYMMDD')}`,
-      );
-      message.success('Reporte exportado correctamente');
+      document.body.classList.add('report-print-mode');
+
+      const cleanupPrintMode = () => {
+        document.body.classList.remove('report-print-mode');
+        window.removeEventListener('afterprint', cleanupPrintMode);
+      };
+
+      window.addEventListener('afterprint', cleanupPrintMode);
+      window.print();
+
+      window.setTimeout(() => {
+        cleanupPrintMode();
+      }, 1200);
     } catch (error) {
-      message.error('Error al exportar el reporte');
+      message.error('Error al preparar la impresion del reporte');
+    }
+  };
+
+  const handlePrintReport = async () => {
+    try {
+      await handleExportPdf();
+    } catch {
+      message.error('Error al preparar la impresion del reporte');
     }
   };
 
   if (view === 'REPORT') {
     return (
-      <div className="max-w-6xl mx-auto space-y-6 pb-12">
-        <div className="flex items-center justify-between">
+      <div className="report-page-shell max-w-6xl mx-auto space-y-6 pb-12">
+        <div className="report-print-toolbar flex items-center justify-between">
           <Button
             icon={<ArrowLeftOutlined />}
             onClick={() => setView('CONFIG')}
@@ -925,19 +938,13 @@ export default function Reports({ projectId }: { projectId: string }) {
             Volver a configuracion
           </Button>
           <Space>
-            <Button icon={<FileWordOutlined />} className="rounded-xl border-slate-200">
-              Word
-            </Button>
-            <Button icon={<FileExcelOutlined />} className="rounded-xl border-slate-200">
-              Excel
-            </Button>
             <Button
               type="primary"
-              icon={<FilePdfOutlined />}
-              onClick={handleExportPdf}
-              className="rounded-xl bg-rose-600 hover:bg-rose-700 border-none"
+              icon={<PrinterOutlined />}
+              onClick={handlePrintReport}
+              className="rounded-xl border-none bg-[#0f4d7a] hover:bg-[#13608f]"
             >
-              Exportar PDF
+              Imprimir / Guardar PDF
             </Button>
           </Space>
         </div>

@@ -28,6 +28,7 @@ import { toApiError } from '../../../config/http';
 import { qaPalette, softSurface } from '../../../theme/palette';
 import { useAuthSession } from '../../auth/context/AuthSessionProvider';
 import { useWorkspace } from '../../workspace/hooks/useWorkspace';
+import { useWorkspaceAccess } from '../../workspace/hooks/useWorkspaceAccess';
 import { usePersonalNotes } from '../hooks/usePersonalNotes';
 import type { PersonalNote } from '../types/model';
 
@@ -52,6 +53,7 @@ export default function PersonalNotesPage() {
   const { message } = AntdApp.useApp();
   const { user } = useAuthSession();
   const { data: workspace } = useWorkspace();
+  const { isViewer } = useWorkspaceAccess();
   const { data: personalNotes = [], isLoading, error, save, isSaving } = usePersonalNotes();
   const [editingNote, setEditingNote] = useState<PersonalNote | null>(null);
   const [form] = Form.useForm<PersonalNoteFormValues>();
@@ -146,15 +148,27 @@ export default function PersonalNotesPage() {
             <Paragraph className="!mb-0 max-w-3xl text-base text-slate-500">
               Lleva el registro diario de tus actividades QA dentro de {organizationName}. Estas notas son solo tuyas y no dependen del proyecto activo.
             </Paragraph>
+            {isViewer && (
+              <Space size={[8, 8]} wrap>
+                <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                  Solo lectura
+                </Tag>
+                <Text className="text-slate-500">
+                  Puedes consultar tu historial, pero no crear ni editar notas con este rol.
+                </Text>
+              </Space>
+            )}
           </div>
-          <Button
-            type="primary"
-            icon={<PlusCircleOutlined />}
-            className="h-11 rounded-2xl px-5 font-semibold"
-            onClick={resetForm}
-          >
-            Agregar nota
-          </Button>
+          {!isViewer && (
+            <Button
+              type="primary"
+              icon={<PlusCircleOutlined />}
+              className="h-11 rounded-2xl px-5 font-semibold"
+              onClick={resetForm}
+            >
+              Agregar nota
+            </Button>
+          )}
         </div>
       </div>
 
@@ -187,6 +201,7 @@ export default function PersonalNotesPage() {
               <Form
                 form={form}
                 layout="vertical"
+                disabled={isViewer}
                 initialValues={{
                   activityDate: dayjs(),
                   title: '',
@@ -224,21 +239,23 @@ export default function PersonalNotesPage() {
                   />
                 </Form.Item>
 
-                <div className="flex gap-3">
-                  <Button
-                    type="primary"
-                    onClick={handleSave}
-                    loading={isSaving}
-                    className="h-11 flex-1 rounded-2xl font-semibold"
-                  >
-                    {editingNote ? 'Guardar cambios' : 'Guardar actividad'}
-                  </Button>
-                  {editingNote && (
-                    <Button onClick={resetForm} className="h-11 rounded-2xl px-5">
-                      Cancelar
+                {!isViewer && (
+                  <div className="flex gap-3">
+                    <Button
+                      type="primary"
+                      onClick={handleSave}
+                      loading={isSaving}
+                      className="h-11 flex-1 rounded-2xl font-semibold"
+                    >
+                      {editingNote ? 'Guardar cambios' : 'Guardar actividad'}
                     </Button>
-                  )}
-                </div>
+                    {editingNote && (
+                      <Button onClick={resetForm} className="h-11 rounded-2xl px-5">
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                )}
               </Form>
             </Card>
 
@@ -348,12 +365,14 @@ export default function PersonalNotesPage() {
                           </Title>
                         </div>
 
-                        <Button
-                          type="text"
-                          icon={<EditOutlined />}
-                          className="rounded-xl text-slate-500"
-                          onClick={() => handleEdit(note)}
-                        />
+                        {!isViewer && (
+                          <Button
+                            type="text"
+                            icon={<EditOutlined />}
+                            className="rounded-xl text-slate-500"
+                            onClick={() => handleEdit(note)}
+                          />
+                        )}
                       </div>
 
                       <Paragraph className="!mb-0 whitespace-pre-wrap leading-7 text-slate-600">

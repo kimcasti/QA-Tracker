@@ -1,30 +1,9 @@
 import type { Functionality } from '../../../types';
-
-const LS_KEY = 'qa_story_functionality_links';
-
-export interface StoryFunctionalityLink {
-  id: string;
-  storyId: string;
-  functionalityId: string;
-}
+import type { StoryFunctionalityLink } from '../types';
 
 type AssociationStore = Record<string, StoryFunctionalityLink[]>;
 
-function readStore(): AssociationStore {
-  const raw = localStorage.getItem(LS_KEY);
-  if (!raw) return {};
-
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStore(store: AssociationStore) {
-  localStorage.setItem(LS_KEY, JSON.stringify(store));
-}
+const associationStore: AssociationStore = {};
 
 function newLinkId() {
   return `LINK-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -38,16 +17,34 @@ function sameLink(left: StoryFunctionalityLink, right: StoryFunctionalityLink) {
   );
 }
 
+function dedupeLinks(links: StoryFunctionalityLink[]) {
+  const seenIds = new Set<string>();
+  const seenPairs = new Set<string>();
+
+  return links.filter(link => {
+    const pairKey = `${link.storyId}::${link.functionalityId}`;
+    if (seenIds.has(link.id) || seenPairs.has(pairKey)) {
+      return false;
+    }
+
+    seenIds.add(link.id);
+    seenPairs.add(pairKey);
+    return true;
+  });
+}
+
 export const storyAssociationsService = {
   getProjectLinks(projectId: string): StoryFunctionalityLink[] {
-    const store = readStore();
-    return store[projectId] || [];
+    return associationStore[projectId] || [];
   },
 
   saveProjectLinks(projectId: string, links: StoryFunctionalityLink[]) {
-    const store = readStore();
-    store[projectId] = links;
-    writeStore(store);
+    associationStore[projectId] = dedupeLinks(links);
+  },
+
+  hydrateProjectLinks(projectId: string, links: StoryFunctionalityLink[]) {
+    storyAssociationsService.saveProjectLinks(projectId, links);
+    return links;
   },
 
   ensureAssociation(projectId: string, storyId: string, functionalityId: string) {
@@ -87,18 +84,23 @@ export const storyAssociationsService = {
       return links;
     }
 
-    const duplicate = links.find(
-      item =>
-        item.id !== linkId &&
-        item.storyId === storyId &&
-        item.functionalityId === link.functionalityId,
-    );
+    const movedLinks = links.map(item => (item.id === linkId ? { ...item, storyId } : item));
+    const nextLinks = movedLinks.filter((item, index) => {
+      if (item.storyId !== storyId || item.functionalityId !== link.functionalityId) {
+        return true;
+      }
 
-    if (duplicate) {
-      return storyAssociationsService.removeAssociation(projectId, linkId);
-    }
+      return (
+        index ===
+        movedLinks.findIndex(
+          candidate =>
+            candidate.storyId === storyId &&
+            candidate.functionalityId === link.functionalityId &&
+            candidate.id === linkId,
+        )
+      );
+    });
 
-    const nextLinks = links.map(item => (item.id === linkId ? { ...item, storyId } : item));
     storyAssociationsService.saveProjectLinks(projectId, nextLinks);
     return nextLinks;
   },
@@ -110,26 +112,27 @@ export const storyAssociationsService = {
   ): StoryFunctionalityLink[] {
     const validStoryIdsSet = new Set(validStoryIds);
     const validFunctionalityIds = new Set(functionalities.map(item => item.id));
-    const existingLinks = storyAssociationsService.getProjectLinks(projectId);
-
-    const normalizedLinks = existingLinks.filter(
+    const existingLinks = dedupeLinks(
+      storyAssociationsService.getProjectLinks(projectId).filter(
       link =>
         validStoryIdsSet.has(link.storyId) && validFunctionalityIds.has(link.functionalityId),
+      ),
     );
 
-    const nextLinks = [...normalizedLinks];
+    const nextLinks = [...existingLinks];
 
     functionalities.forEach(functionality => {
       if (!functionality.storyId || !validStoryIdsSet.has(functionality.storyId)) {
         return;
       }
 
+      const hasAnyLink = nextLinks.some(link => link.functionalityId === functionality.id);
       const alreadyLinked = nextLinks.some(
         link =>
           link.storyId === functionality.storyId && link.functionalityId === functionality.id,
       );
 
-      if (!alreadyLinked) {
+      if (!alreadyLinked && !hasAnyLink) {
         nextLinks.push({
           id: newLinkId(),
           storyId: functionality.storyId,

@@ -28,9 +28,11 @@ import {
 } from '../../functionalities/services/functionalitiesService';
 import { useModules } from '../../settings/hooks/useModules';
 import { useSprints } from '../../settings/hooks/useSprints';
+import { useWorkspaceAccess } from '../../workspace/hooks/useWorkspaceAccess';
 import { storyMapService } from '../services/storyMapService';
 import { storyAssociationsService } from '../services/storyAssociationsService';
 import { storyMapExportService } from '../services/storyMapExportService';
+import { getProjectStoryMap, saveProjectStoryMap } from '../services/projectStoryMapService';
 import type { StoryMapRoleNode } from '../types';
 import StoryMapBoard from './StoryMapBoard';
 import { StoryMapErrorBoundary } from './StoryMapErrorBoundary';
@@ -41,6 +43,7 @@ const { Title, Text } = Typography;
 export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const { message } = AntdApp.useApp();
+  const { isViewer } = useWorkspaceAccess();
   const {
     data: functionalitiesData,
     save: saveFunctionality,
@@ -75,10 +78,45 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     setFullMap(storyMapService.getFullStoryMap(projectId, functionalities));
   };
 
+  const persistStoryMapSnapshot = async () => {
+    if (!projectId) return;
+    await saveProjectStoryMap(projectId, storyMapService.getProjectSnapshot(projectId));
+  };
+
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, functionalitiesData]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getProjectStoryMap(projectId)
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        storyMapService.hydrateProjectSnapshot(projectId, snapshot);
+        reload();
+      })
+      .catch((error) => {
+        console.error('Story Map load snapshot error:', error);
+        if (!cancelled) {
+          storyMapService.hydrateProjectSnapshot(projectId, null);
+          reload();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const ensurePrimaryAssociation = async (storyId: string, functionalityId: string) => {
     const func = functionalities.find(f => f.id === functionalityId);
@@ -93,6 +131,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       const updated: Functionality = { ...func, storyId };
       await saveFunctionality(updated);
       await refetchFunctionalities();
+      await persistStoryMapSnapshot();
       message.success(t('storymap.assign_success', { id: func.id }));
     } catch (error) {
       console.error('Story Map assign functionality error:', error);
@@ -118,6 +157,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       const updated: Functionality = { ...func, storyId: nextPrimaryStoryId };
       await saveFunctionality(updated);
       await refetchFunctionalities();
+      await persistStoryMapSnapshot();
       message.success(t('storymap.unassign_success', { id: func.id }));
     } catch (error) {
       console.error('Story Map unassign functionality error:', error);
@@ -229,6 +269,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     try {
       await saveFunctionality({ ...functionality, storyId });
       await refetchFunctionalities();
+      await persistStoryMapSnapshot();
     } catch (error) {
       console.error('Story Map move functionality error:', error);
       reload();
@@ -260,6 +301,16 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           <Text type="secondary" className="text-slate-500">
             {t('storymap.subtitle')}
           </Text>
+          {isViewer && (
+            <Space size={[8, 8]} wrap>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
+                Solo lectura
+              </span>
+              <Text type="secondary">
+                Puedes explorar el Story Map, pero no crear, editar ni reorganizar elementos.
+              </Text>
+            </Space>
+          )}
         </div>
         <Space>
           <Dropdown
@@ -316,6 +367,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             <Button className="rounded-lg h-10 px-6">{t('common.export')}</Button>
           </Dropdown>
 
+          {!isViewer && (
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -324,10 +376,11 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
                 roleForm.resetFields();
                 setRoleModalOpen(true);
               }}
-            className="rounded-lg h-10 px-6"
-          >
-            {t('storymap.new_role')}
-          </Button>
+              className="rounded-lg h-10 px-6"
+            >
+              {t('storymap.new_role')}
+            </Button>
+          )}
         </Space>
       </div>
 
@@ -351,6 +404,10 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               onEnsurePrimaryAssociation={ensurePrimaryAssociation}
               onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
               onMoveFunctionality={handleMoveFunctionality}
+              onStructureChange={() => {
+                void persistStoryMapSnapshot();
+              }}
+              readOnly={isViewer}
             />
           </StoryMapErrorBoundary>
         )}
@@ -363,7 +420,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           setCreateFuncModalOpen(false);
           setCreateFuncStoryId(null);
         }}
-        onOk={async () => {
+        onOk={!isViewer ? async () => {
           try {
             const values = await funcForm.validateFields();
             if (!createFuncStoryId) {
@@ -399,6 +456,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             const saved = await saveFunctionality(payload);
             storyAssociationsService.ensureAssociation(projectId, createFuncStoryId, saved.id);
             await refetchFunctionalities();
+            await persistStoryMapSnapshot();
             setCreateFuncModalOpen(false);
             setCreateFuncStoryId(null);
             funcForm.resetFields();
@@ -411,12 +469,13 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
                 : 'No se pudo crear la funcionalidad. Revisa que el ID generado no esté repetido y que el módulo y sprint sean válidos.';
             message.error(errorMessage);
           }
-        }}
+        } : undefined}
         okText={t('common.create')}
         cancelText={t('common.cancel')}
         centered
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={funcForm} layout="vertical">
+        <Form form={funcForm} layout="vertical" disabled={isViewer}>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="name" label={t('functionality.name')} rules={[{ required: true }]}>
@@ -519,24 +578,26 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         title={editingRoleId ? t('storymap.edit_role_title') : t('storymap.create_role_title')}
         open={roleModalOpen}
         onCancel={closeRoleModal}
-        onOk={async () => {
+        onOk={!isViewer ? async () => {
           const values = await roleForm.validateFields();
           if (editingRoleId) {
             storyMapService.updateRole(projectId, editingRoleId, values.name);
           } else {
             storyMapService.createRole(projectId, values.name);
           }
+          await persistStoryMapSnapshot();
           closeRoleModal();
           reload();
           message.success(
             editingRoleId ? t('storymap.edit_role_success') : t('storymap.create_role_success'),
           );
-        }}
+        } : undefined}
         okText={editingRoleId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={roleForm} layout="vertical">
+        <Form form={roleForm} layout="vertical" disabled={isViewer}>
           <Form.Item
             name="name"
             label={t('common.name')}
@@ -551,7 +612,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         title={editingEpicId ? t('storymap.edit_epic_title') : t('storymap.create_epic_title')}
         open={epicModalOpen}
         onCancel={closeEpicModal}
-        onOk={async () => {
+        onOk={!isViewer ? async () => {
           const values = await epicForm.validateFields();
           if (!editingEpicId && !activeRoleId) {
             message.error(t('storymap.error_no_role'));
@@ -562,17 +623,19 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           } else {
             storyMapService.createEpic(projectId, activeRoleId!, values.name);
           }
+          await persistStoryMapSnapshot();
           closeEpicModal();
           reload();
           message.success(
             editingEpicId ? t('storymap.edit_epic_success') : t('storymap.create_epic_success'),
           );
-        }}
+        } : undefined}
         okText={editingEpicId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={epicForm} layout="vertical">
+        <Form form={epicForm} layout="vertical" disabled={isViewer}>
           <Form.Item
             name="name"
             label={t('common.name')}
@@ -587,7 +650,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
         title={editingStoryId ? t('storymap.edit_story_title') : t('storymap.create_story_title')}
         open={storyModalOpen}
         onCancel={closeStoryModal}
-        onOk={async () => {
+        onOk={!isViewer ? async () => {
           const values = await storyForm.validateFields();
           if (!editingStoryId && !activeEpicId) {
             message.error(t('storymap.error_no_epic'));
@@ -598,6 +661,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           } else {
             storyMapService.createStory(projectId, activeEpicId!, values.name);
           }
+          await persistStoryMapSnapshot();
           closeStoryModal();
           reload();
           message.success(
@@ -605,12 +669,13 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               ? t('storymap.edit_story_success')
               : t('storymap.create_story_success'),
           );
-        }}
+        } : undefined}
         okText={editingStoryId ? t('common.save') : t('common.create')}
         cancelText={t('common.cancel')}
         centered
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
-        <Form form={storyForm} layout="vertical">
+        <Form form={storyForm} layout="vertical" disabled={isViewer}>
           <Form.Item
             name="name"
             label={t('common.name')}

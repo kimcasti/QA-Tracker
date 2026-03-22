@@ -37,6 +37,7 @@ import {
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { toApiError } from '../config/http';
 import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
@@ -64,6 +65,7 @@ export default function FunctionalityList({
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
+  const { isViewer } = useWorkspaceAccess();
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
 
@@ -308,19 +310,6 @@ export default function FunctionalityList({
       key: 'actions',
       render: (_: any, record: Functionality) => (
         <Space>
-          <Tooltip
-            title={
-              record.lastFunctionalChangeAt
-                ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
-                : 'Marcar cambio reciente'
-            }
-          >
-            <Button
-              icon={<HistoryOutlined />}
-              onClick={() => handleMarkRecentChange(record)}
-              className="rounded-lg text-sky-700 border-sky-100 hover:bg-sky-50"
-            />
-          </Tooltip>
           <Tooltip title="Gestionar Casos de Prueba">
             <Button
               icon={<FileTextOutlined />}
@@ -331,17 +320,34 @@ export default function FunctionalityList({
               className="rounded-lg text-blue-600 border-blue-100 hover:bg-blue-50"
             />
           </Tooltip>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            className="rounded-lg"
-          />
-          <Button
-            icon={<DeleteOutlined />}
-            danger
-            onClick={() => handleDelete(record.id)}
-            className="rounded-lg"
-          />
+          {!isViewer ? (
+            <>
+              <Tooltip
+                title={
+                  record.lastFunctionalChangeAt
+                    ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
+                    : 'Marcar cambio reciente'
+                }
+              >
+                <Button
+                  icon={<HistoryOutlined />}
+                  onClick={() => handleMarkRecentChange(record)}
+                  className="rounded-lg text-sky-700 border-sky-100 hover:bg-sky-50"
+                />
+              </Tooltip>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => handleEdit(record)}
+                className="rounded-lg"
+              />
+              <Button
+                icon={<DeleteOutlined />}
+                danger
+                onClick={() => handleDelete(record.id)}
+                className="rounded-lg"
+              />
+            </>
+          ) : null}
         </Space>
       ),
     },
@@ -657,29 +663,33 @@ export default function FunctionalityList({
           <Button icon={<UploadOutlined />} onClick={handleExport} className="rounded-lg h-10">
             Exportar
           </Button>
-          <Upload beforeUpload={handleImport} showUploadList={false} accept=".xlsx,.xls,.txt">
-            <Button icon={<DownloadOutlined />} className="rounded-lg h-10">
-              Importar
-            </Button>
-          </Upload>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingFunc(null);
-              setNextFunctionalityIdPreview('');
-              form.resetFields();
-              form.setFieldsValue({
-                status: TestStatus.BACKLOG,
-                priority: Priority.MEDIUM,
-                riskLevel: RiskLevel.MEDIUM,
-              });
-              setIsModalOpen(true);
-            }}
-            className="rounded-lg h-10 px-6"
-          >
-            Nueva Funcionalidad
-          </Button>
+          {!isViewer ? (
+            <>
+              <Upload beforeUpload={handleImport} showUploadList={false} accept=".xlsx,.xls,.txt">
+                <Button icon={<DownloadOutlined />} className="rounded-lg h-10">
+                  Importar
+                </Button>
+              </Upload>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setEditingFunc(null);
+                  setNextFunctionalityIdPreview('');
+                  form.resetFields();
+                  form.setFieldsValue({
+                    status: TestStatus.BACKLOG,
+                    priority: Priority.MEDIUM,
+                    riskLevel: RiskLevel.MEDIUM,
+                  });
+                  setIsModalOpen(true);
+                }}
+                className="rounded-lg h-10 px-6"
+              >
+                Nueva Funcionalidad
+              </Button>
+            </>
+          ) : null}
         </Space>
       </div>
 
@@ -822,7 +832,7 @@ export default function FunctionalityList({
           </div>
         }
         extra={
-          selectedRowKeys.length > 0 && (
+          !isViewer && selectedRowKeys.length > 0 && (
             <Button
               onClick={() => setIsBulkModalOpen(true)}
               className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
@@ -833,7 +843,7 @@ export default function FunctionalityList({
         }
       >
         <Table
-          rowSelection={rowSelection}
+          rowSelection={isViewer ? undefined : rowSelection}
           columns={columns}
           dataSource={functionalities}
           rowKey="id"
@@ -849,13 +859,14 @@ export default function FunctionalityList({
           </span>
         }
         open={isModalOpen}
-        onOk={handleSave}
+        onOk={isViewer ? undefined : handleSave}
         onCancel={() => setIsModalOpen(false)}
         width={650}
         centered
         okText="Guardar"
         cancelText="Cancelar"
         className="executive-modal"
+        okButtonProps={{ disabled: isViewer }}
       >
         <Form
           form={form}
@@ -1031,13 +1042,14 @@ export default function FunctionalityList({
           </span>
         }
         open={isBulkModalOpen}
-        onOk={handleBulkSave}
+        onOk={isViewer ? undefined : handleBulkSave}
         onCancel={() => setIsBulkModalOpen(false)}
         width={500}
         centered
         okText="Actualizar Todo"
         cancelText="Cancelar"
         className="executive-modal"
+        okButtonProps={{ disabled: isViewer }}
       >
         <Typography.Paragraph type="secondary" className="mb-4">
           Selecciona solo los campos que deseas actualizar para todas las funcionalidades

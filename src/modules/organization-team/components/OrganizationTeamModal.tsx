@@ -130,6 +130,8 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
   } = useOrganizationTeam(open);
 
   const canManage = data?.canManage ?? false;
+  const isOwner = data?.currentMembership.roleCode === 'owner';
+  const canManageOrganizationAccess = canManage && isOwner;
   const availableRoles = data?.availableRoles ?? [];
   const primaryInviteRole =
     availableRoles.find(role => role.code === 'qa-engineer')?.documentId ||
@@ -228,7 +230,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       title: 'Rol',
       key: 'role',
       render: (_, member) =>
-        canManage && member.status === 'active' ? (
+        canManageOrganizationAccess && member.status === 'active' ? (
           <Select
             value={member.role?.documentId}
             options={availableRoles.map(role => ({
@@ -255,11 +257,15 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       key: 'actions',
       align: 'right',
       render: (_, member) => {
-        if (!canManage || member.isCurrentUser) {
+        if (member.isCurrentUser) {
           return <Text type="secondary">Sin acciones</Text>;
         }
 
         if (member.status === 'inactive') {
+          if (!canManage) {
+            return <Text type="secondary">Sin acciones</Text>;
+          }
+
           return (
             <Popconfirm
               title="Reactivar acceso"
@@ -273,6 +279,10 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
               </Button>
             </Popconfirm>
           );
+        }
+
+        if (!canManageOrganizationAccess) {
+          return <Text type="secondary">Solo Owner</Text>;
         }
 
         return (
@@ -413,7 +423,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
                 ),
               }}
             >
-              {canManage ? 'Owner / Admin' : 'Solo lectura'}
+              {isOwner ? 'Owner' : canManage ? 'QA Lead' : 'Solo lectura'}
             </Tag>
           </div>
 
@@ -423,6 +433,13 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
               type="info"
               showIcon
               message="Solo Owner y QA Lead pueden gestionar miembros e invitaciones."
+            />
+          ) : !canManageOrganizationAccess ? (
+            <Alert
+              className="mt-5"
+              type="info"
+              showIcon
+              message="Solo el Owner puede invitar, cambiar roles y desactivar accesos."
             />
           ) : (
             <Card size="small" className="mt-5 rounded-[20px]" styles={{ body: { padding: 20 } }}>

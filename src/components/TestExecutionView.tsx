@@ -51,7 +51,7 @@ import { useModules } from '../modules/settings/hooks/useModules';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
-import { useWorkspace } from '../modules/workspace/hooks/useWorkspace';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   TestExecution,
   TestResult,
@@ -110,7 +110,7 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: workspace } = useWorkspace();
+  const { data: workspace, activeMembership, isViewer } = useWorkspaceAccess();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: testRunsData, save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId);
   const { data: allTestCases } = useTestCases(projectId);
@@ -120,7 +120,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
-  const activeMembership = workspace?.memberships[0];
   const canDeleteTestRuns = ['owner', 'qa-lead'].includes(activeMembership?.role?.code || '');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -863,7 +862,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   ];
 
   if (activeTestRun) {
-    const isReadOnly = activeTestRun.status === ExecutionStatus.FINAL;
+    const isReadOnly = activeTestRun.status === ExecutionStatus.FINAL || isViewer;
 
     const filteredExecutionResults = executionResults.filter(r => {
       const tc = testCases.find(t => t.id === r.testCaseId);
@@ -916,7 +915,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </div>
           </Space>
           <Space>
-            {!isReadOnly && (
+            {!isReadOnly && !isViewer && (
               <Button icon={<EditOutlined />} className="rounded-lg">
                 Editar Info
               </Button>
@@ -924,7 +923,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <Button icon={<ExportOutlined />} onClick={handleExportReport} className="rounded-lg">
               Export Report
             </Button>
-            {!isReadOnly && (
+            {!isReadOnly && !isViewer && (
               <Button
                 type="primary"
                 icon={<ThunderboltOutlined />}
@@ -1251,7 +1250,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             ]}
           />
         </Card>
-        {!isReadOnly && (
+        {!isReadOnly && !isViewer && (
           <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
             <Button
               icon={<SaveOutlined />}
@@ -1467,14 +1466,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             automatizadas.
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setIsModalOpen(true)}
-          className="rounded-lg h-10 px-6"
-        >
-          Crear Ejecución de Pruebas
-        </Button>
+        {!isViewer ? (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setIsModalOpen(true)}
+            className="rounded-lg h-10 px-6"
+          >
+            Crear Ejecución de Pruebas
+          </Button>
+        ) : null}
       </div>
 
       <Tabs
@@ -1550,9 +1551,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           <Button key="cancel" onClick={() => setIsModalOpen(false)}>
             Cancelar
           </Button>,
-          <Button key="create" type="primary" onClick={handleCreateTestRun}>
-            Crear Ejecución de Pruebas
-          </Button>,
+          ...(!isViewer
+            ? [
+                <Button key="create" type="primary" onClick={handleCreateTestRun}>
+                  Crear Ejecución de Pruebas
+                </Button>,
+              ]
+            : []),
         ]}
       >
         <Form

@@ -37,7 +37,7 @@ import dayjs from 'dayjs';
 import { appBranding } from '../assets/branding';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { OrganizationTeamModal } from '../modules/organization-team/components/OrganizationTeamModal';
-import { useWorkspace } from '../modules/workspace/hooks/useWorkspace';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { renameActiveOrganization } from '../modules/workspace/services/workspaceService';
 import { Project, ProjectStatus } from '../types';
 import { qaBrand, qaPalette, softSurface } from '../theme/palette';
@@ -96,16 +96,16 @@ export default function ProjectManagement({
   onOpenCreateModal,
 }: ProjectManagementProps) {
   const { data: projects = [] } = useProjects();
-  const { data: workspace } = useWorkspace();
+  const { data: workspace, activeMembership, isViewer, canManageCycleConfig } =
+    useWorkspaceAccess();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectFilter>(ALL_PROJECTS_FILTER);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isEditOrganizationModalOpen, setIsEditOrganizationModalOpen] = useState(false);
   const [organizationForm] = Form.useForm<{ name: string }>();
-  const activeMembership = workspace?.memberships[0];
   const activeOrganization = activeMembership?.organization;
-  const canEditOrganization = ['owner', 'qa-lead'].includes(activeMembership?.role?.code || '');
+  const canEditOrganization = canManageCycleConfig;
 
   const renameOrganizationMutation = useMutation({
     mutationFn: renameActiveOrganization,
@@ -236,6 +236,16 @@ export default function ProjectManagement({
                 <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
                   Administra los proyectos de tu organización.
                 </Paragraph>
+                {isViewer && (
+                  <Space size={[8, 8]} wrap className="mt-4">
+                    <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                      Solo lectura
+                    </Tag>
+                    <Text className="text-slate-500">
+                      Tu rol Viewer puede consultar proyectos y mÃ©tricas, pero no crear ni editar.
+                    </Text>
+                  </Space>
+                )}
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Button
@@ -243,18 +253,21 @@ export default function ProjectManagement({
                     size="large"
                     icon={<PlusOutlined />}
                     onClick={onOpenCreateModal}
+                    disabled={isViewer}
                     className="h-12 rounded-2xl px-6 text-base font-semibold"
                   >
                     Nuevo proyecto
                   </Button>
-                  <Button
-                    size="large"
-                    icon={<TeamOutlined />}
-                    onClick={() => setIsTeamModalOpen(true)}
-                    className="h-12 rounded-2xl px-6 text-base font-semibold"
-                  >
-                    Crear equipo de trabajo
-                  </Button>
+                  {!isViewer ? (
+                    <Button
+                      size="large"
+                      icon={<TeamOutlined />}
+                      onClick={() => setIsTeamModalOpen(true)}
+                      className="h-12 rounded-2xl px-6 text-base font-semibold"
+                    >
+                      Crear equipo de trabajo
+                    </Button>
+                  ) : null}
                 </div>
               </Col>
 
@@ -372,18 +385,22 @@ export default function ProjectManagement({
             {filteredProjects.map(project => {
               const statusMeta = PROJECT_STATUS_META[project.status];
               const teamMemberCount = project.teamMembers?.length || 0;
-              const menuItems: MenuProps['items'] = [
-                {
-                  key: 'open',
-                  label: 'Abrir proyecto',
-                  icon: <FolderOpenOutlined />,
-                },
-                {
-                  key: 'edit',
-                  label: 'Editar proyecto',
-                  icon: <EditOutlined />,
-                },
-              ];
+                  const menuItems: MenuProps['items'] = [
+                    {
+                      key: 'open',
+                      label: 'Abrir proyecto',
+                      icon: <FolderOpenOutlined />,
+                    },
+                    ...(!isViewer
+                      ? [
+                          {
+                            key: 'edit',
+                            label: 'Editar proyecto',
+                            icon: <EditOutlined />,
+                          },
+                        ]
+                      : []),
+                  ];
 
               return (
                 <Col xs={24} md={12} xl={8} key={project.id}>
@@ -453,7 +470,7 @@ export default function ProjectManagement({
                             items: menuItems,
                             onClick: info => {
                               info.domEvent.stopPropagation();
-                              if (info.key === 'edit') {
+                              if (info.key === 'edit' && !isViewer) {
                                 onEditProject(project);
                                 return;
                               }
@@ -502,15 +519,17 @@ export default function ProjectManagement({
                       </div>
 
                       <div className="mt-6 flex items-center gap-3">
-                        <Button
-                          onClick={event => {
-                            event.stopPropagation();
-                            onEditProject(project);
-                          }}
-                          className="h-11 flex-1 rounded-2xl border-slate-200 font-semibold"
-                        >
-                          Editar
-                        </Button>
+                        {!isViewer ? (
+                          <Button
+                            onClick={event => {
+                              event.stopPropagation();
+                              onEditProject(project);
+                            }}
+                            className="h-11 flex-1 rounded-2xl border-slate-200 font-semibold"
+                          >
+                            Editar
+                          </Button>
+                        ) : null}
                         <Button
                           type="primary"
                           icon={<ArrowRightOutlined />}
@@ -539,14 +558,16 @@ export default function ProjectManagement({
               description="No se encontraron proyectos con los filtros actuales."
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             >
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={onOpenCreateModal}
-                className="rounded-2xl px-5 font-semibold"
-              >
-                Crear proyecto
-              </Button>
+                        {!isViewer ? (
+                          <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={onOpenCreateModal}
+                            className="rounded-2xl px-5 font-semibold"
+                          >
+                            Crear proyecto
+                          </Button>
+                        ) : null}
             </Empty>
           </Card>
         )}

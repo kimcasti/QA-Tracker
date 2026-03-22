@@ -233,3 +233,54 @@
 .calendar-time-picker-popup .ant-picker-ok {
   margin-inline-start: 0 !important;
 }
+
+@media print {
+  body.report-print-mode {
+    background: #ffffff !important;
+  }
+
+  body.report-print-mode * {
+    visibility: hidden !important;
+  }
+
+  body.report-print-mode .report-page-shell,
+  body.report-print-mode .report-page-shell * {
+    visibility: visible !important;
+  }
+
+  body.report-print-mode .report-page-shell {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.report-print-mode .report-print-toolbar {
+    display: none !important;
+  }
+
+  body.report-print-mode #report-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.report-print-mode .ant-card,
+  body.report-print-mode .qa-surface-card,
+  body.report-print-mode .qa-soft-panel {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  body.report-print-mode .recharts-responsive-container {
+    min-height: 260px !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 14mm;
+  }
+}

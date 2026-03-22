@@ -44,6 +44,7 @@ import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemb
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   RegressionCycle,
   TestResult,
@@ -99,6 +100,19 @@ function serializeTesterValue(value?: string | string[]) {
   return value?.trim() || '';
 }
 
+function summarizeTesterValue(value?: string) {
+  const testers = parseTesterValue(value);
+  if (testers.length === 0) return null;
+  if (testers.length === 1) {
+    return { label: testers[0], tooltip: testers[0] };
+  }
+
+  return {
+    label: `${testers.length} testers`,
+    tooltip: testers.join(', '),
+  };
+}
+
 function isRecentlyChanged(functionality: Functionality) {
   if (!functionality.lastFunctionalChangeAt) return false;
 
@@ -124,6 +138,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
+  const { isViewer, canManageCycleConfig } = useWorkspaceAccess();
 
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -199,7 +214,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const [evidenceForm] = Form.useForm();
   const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
 
-  const isReadOnly = selectedCycle?.status === 'FINALIZADA';
+  const isReadOnly = selectedCycle?.status === 'FINALIZADA' || isViewer;
   const isFailureEvidenceRequired = currentExecution?.result === TestResult.FAILED;
 
   // Sync form values when currentExecution changes
@@ -531,13 +546,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           >
             Ver Detalle
           </Button>
-          <Button
-            icon={<SettingOutlined />}
-            onClick={() => handleEdit(record)}
-            className="rounded-lg border-slate-200 text-slate-600"
-          >
-            Editar
-          </Button>
+          {canManageCycleConfig && !isViewer ? (
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => handleEdit(record)}
+              className="rounded-lg border-slate-200 text-slate-600"
+            >
+              Editar
+            </Button>
+          ) : null}
         </Space>
       ),
     },
@@ -700,6 +717,11 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   };
 
   const handleReopenCycle = async (cycle: RegressionCycle) => {
+    if (!canManageCycleConfig) {
+      message.error('Solo Owner y QA Lead pueden reabrir ciclos.');
+      return;
+    }
+
     const updatedCycle: RegressionCycle = {
       ...cycle,
       status: 'EN_PROGRESO',
@@ -776,11 +798,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 className="rounded-xl h-10 w-10 flex items-center justify-center border-slate-200"
               />
               <div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 [&>span]:hidden">
                   <Tag
                     color={selectedCycle.status === 'FINALIZADA' ? 'green' : 'blue'}
-                    className={`rounded-full px-3 font-bold uppercase text-[10px] ${!isReadOnly ? 'cursor-pointer hover:opacity-80' : ''} transition-opacity`}
-                    onClick={!isReadOnly ? () => handleEdit(selectedCycle) : undefined}
+                    className={`rounded-full px-3 font-bold uppercase text-[10px] ${!isReadOnly && canManageCycleConfig ? 'cursor-pointer hover:opacity-80' : ''} transition-opacity`}
+                    onClick={
+                      !isReadOnly && canManageCycleConfig
+                        ? () => handleEdit(selectedCycle)
+                        : undefined
+                    }
                   >
                     {selectedCycle.status === 'FINALIZADA' ? 'Finalizada' : 'En Progreso'}
                   </Tag>
@@ -805,19 +831,50 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 <Paragraph type="secondary" className="!m-0">
                   {selectedCycle.note}
                 </Paragraph>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                    <span className="font-semibold text-slate-500">Sprint:</span>{' '}
+                    {selectedCycle.sprint || 'Sin Sprint'}
+                  </Tag>
+                  {(() => {
+                    const testerSummary = summarizeTesterValue(selectedCycle.tester);
+                    if (!testerSummary) return null;
+
+                    return (
+                      <Tooltip title={testerSummary.tooltip}>
+                        <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                          <span className="font-semibold text-slate-500">Tester:</span>{' '}
+                          {testerSummary.label}
+                        </Tag>
+                      </Tooltip>
+                    );
+                  })()}
+                  {selectedCycle.environment && (
+                    <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Entorno:</span>{' '}
+                      {selectedCycle.environment}
+                    </Tag>
+                  )}
+                  {selectedCycle.buildVersion && (
+                    <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Build:</span>{' '}
+                      {selectedCycle.buildVersion}
+                    </Tag>
+                  )}
+                </div>
               </div>
             </div>
             <Space size="middle">
-              {isReadOnly && (
+              {isReadOnly && canManageCycleConfig && !isViewer && (
                 <Button
                   icon={<RollbackOutlined />}
-              onClick={() => void handleReopenCycle(selectedCycle)}
+                  onClick={() => void handleReopenCycle(selectedCycle)}
                   className="rounded-xl h-11 px-4 border-slate-200 text-slate-600 font-semibold"
                 >
                   Reabrir Ciclo
                 </Button>
               )}
-              {!isReadOnly && (
+              {!isReadOnly && canManageCycleConfig && !isViewer && (
                 <Button
                   icon={<SettingOutlined />}
                   onClick={() => handleEdit(selectedCycle)}
@@ -833,7 +890,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               >
                 Export Report
               </Button>
-              {!isReadOnly && (
+              {!isReadOnly && !isViewer && (
                 <Tooltip
                   title={
                     selectedCycle.pending > 0 ? 'Ejecute todos los casos antes de finalizar' : ''
@@ -857,7 +914,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   </span>
                 </Tooltip>
               )}
-              {!isReadOnly && (
+              {!isReadOnly && !isViewer && (
                 <Button
                   type="primary"
                   icon={<BarChartOutlined />}
@@ -1266,7 +1323,18 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <Paragraph type="secondary">
                 Gestión y seguimiento de ejecuciones históricas de calidad.
               </Paragraph>
+              {isViewer && (
+                <Space size={[8, 8]} wrap>
+                  <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                    Solo lectura
+                  </Tag>
+                  <Text type="secondary">
+                    Puedes consultar ciclos y resultados, pero no editar ni ejecutar acciones.
+                  </Text>
+                </Space>
+              )}
             </div>
+            {!isViewer && (
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -1276,6 +1344,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             >
               Nuevo Ciclo de Regresión
             </Button>
+            )}
           </div>
 
           {latestCycle && (
@@ -1505,7 +1574,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           </span>
         }
         open={isModalOpen}
-        onOk={handleSave}
+        onOk={!isViewer ? handleSave : undefined}
         onCancel={() => {
           setIsModalOpen(false);
           setEditingCycle(null);
@@ -1517,6 +1586,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         okText={editingCycle ? 'Guardar Cambios' : 'Crear Ciclo y Comenzar'}
         cancelText="Cancelar"
         className="executive-modal"
+        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
       >
         <Form
           form={form}

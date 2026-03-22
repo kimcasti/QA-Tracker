@@ -51,6 +51,7 @@ export interface Project {
   businessRules?: string;
   aiProjectInsights?: string;
   aiWireframeBrief?: string;
+  storyMapData?: import('./modules/storymap/types').StoryMapSnapshot;
 }
 
 export interface Functionality {

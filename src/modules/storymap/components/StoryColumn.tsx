@@ -12,6 +12,7 @@ export function StoryColumn({
   storyName,
   slots,
   availableFunctionalities,
+  readOnly = false,
   onCreateFunctionality,
   onEditStory,
   onAssignExisting,
@@ -21,6 +22,7 @@ export function StoryColumn({
   storyName: string;
   slots: { slotId: string; itemId: string }[];
   availableFunctionalities: Functionality[];
+  readOnly?: boolean;
   onCreateFunctionality: (storyId: string) => void;
   onEditStory: (storyId: string, storyName: string) => void;
   onAssignExisting: (storyId: string, functionalityId: string) => void;
@@ -54,14 +56,16 @@ export function StoryColumn({
           <span className="font-bold text-slate-800 truncate" title={storyName}>
             {storyName}
           </span>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            className="shrink-0 text-slate-500"
-            title={t('common.edit')}
-            onClick={() => onEditStory(storyId, storyName)}
-          />
+          {!readOnly && (
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              className="shrink-0 text-slate-500"
+              title={t('common.edit')}
+              onClick={() => onEditStory(storyId, storyName)}
+            />
+          )}
         </div>
       }
       extra={<Tag className="m-0 text-[10px] uppercase font-bold">{Math.max(0, slots.length - 1)}</Tag>}
@@ -86,21 +90,25 @@ export function StoryColumn({
 
         <div className="pt-2 border-t border-slate-100">
           <Space wrap className="w-full">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              className="rounded-lg"
-              onClick={() => onCreateFunctionality(storyId)}
-            >
-              {t('storymap.create_functionality')}
-            </Button>
-            <Button
-              className="rounded-lg"
-              onClick={() => setShowAssociate(v => !v)}
-              disabled={options.length === 0}
-            >
-              {t('storymap.associate_existing')}
-            </Button>
+            {!readOnly && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  className="rounded-lg"
+                  onClick={() => onCreateFunctionality(storyId)}
+                >
+                  {t('storymap.create_functionality')}
+                </Button>
+                <Button
+                  className="rounded-lg"
+                  onClick={() => setShowAssociate(v => !v)}
+                  disabled={options.length === 0}
+                >
+                  {t('storymap.associate_existing')}
+                </Button>
+              </>
+            )}
           </Space>
 
           {showAssociate && (

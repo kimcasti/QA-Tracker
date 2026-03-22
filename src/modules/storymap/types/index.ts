@@ -18,6 +18,20 @@ export interface Story {
   name: string;
 }
 
+export interface StoryFunctionalityLink {
+  id: string;
+  storyId: string;
+  functionalityId: string;
+}
+
+export interface StoryMapSnapshot {
+  roles: Role[];
+  epics: Epic[];
+  stories: Story[];
+  links: StoryFunctionalityLink[];
+  taskOrder: Record<string, string[]>;
+}
+
 export interface StoryMapStoryNode extends Story {
   functionalities: { id: string; name: string; module: string }[];
 }
@@ -29,4 +43,3 @@ export interface StoryMapEpicNode extends Epic {
 export interface StoryMapRoleNode extends Role {
   epics: StoryMapEpicNode[];
 }
-
