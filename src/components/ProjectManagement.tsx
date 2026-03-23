@@ -529,17 +529,6 @@ export default function ProjectManagement({
                       </div>
 
                       <div className="mt-6 flex items-center gap-3">
-                        {!isViewer ? (
-                          <Button
-                            onClick={event => {
-                              event.stopPropagation();
-                              onEditProject(project);
-                            }}
-                            className="h-11 flex-1 rounded-2xl border-slate-200 font-semibold"
-                          >
-                            Editar
-                          </Button>
-                        ) : null}
                         <Button
                           type="primary"
                           icon={<ArrowRightOutlined />}

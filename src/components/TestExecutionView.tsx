@@ -76,6 +76,7 @@ import {
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
 import dayjs from 'dayjs';
+import type { FilterValue } from 'antd/es/table/interface';
 import {
   isPayloadTooLargeError,
   readFileAsDataUrl,
@@ -89,6 +90,13 @@ import {
 } from '../services/geminiService';
 
 const { Text, Title } = Typography;
+
+type NativeExecutionTableFilterState = {
+  status: React.Key[] | null;
+  sprint: React.Key[] | null;
+  testType: React.Key[] | null;
+  environment: React.Key[] | null;
+};
 
 type AiExecutionSuggestion = {
   functionalityId: string;
@@ -694,14 +702,64 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   // Filters state
-  const [statusFilter, setStatusFilter] = useState<ExecutionStatus | null>(null);
-  const [sprintFilter, setSprintFilter] = useState<string | null>(null);
-
-  const filteredRuns = testRuns.filter(run => {
-    const matchesStatus = !statusFilter || run.status === statusFilter;
-    const matchesSprint = !sprintFilter || run.sprint === sprintFilter;
-    return matchesStatus && matchesSprint;
+  const [tableFilters, setTableFilters] = useState<NativeExecutionTableFilterState>({
+    status: null,
+    sprint: null,
+    testType: null,
+    environment: null,
   });
+
+  const nativeStatusFilters = useMemo(
+    () =>
+      Object.values(ExecutionStatus).map(status => ({
+        text: labelExecutionStatus(status, t),
+        value: status,
+      })),
+    [t],
+  );
+
+  const nativeSprintFilters = useMemo(
+    () =>
+      Array.from(new Set(testRuns.map(run => run.sprint).filter(Boolean)))
+        .sort((left, right) => String(left).localeCompare(String(right)))
+        .map(sprint => ({
+          text: String(sprint),
+          value: String(sprint),
+        })),
+    [testRuns],
+  );
+
+  const nativeTestTypeFilters = useMemo(
+    () =>
+      Array.from(new Set(testRuns.map(run => run.testType).filter(Boolean))).map(testType => ({
+        text: String(testType),
+        value: String(testType),
+      })),
+    [testRuns],
+  );
+
+  const nativeEnvironmentFilters = useMemo(
+    () =>
+      Array.from(new Set(testRuns.map(run => run.environment).filter(Boolean))).map(environment => ({
+        text: labelEnvironment(environment as Environment, t),
+        value: String(environment),
+      })),
+    [testRuns, t],
+  );
+
+  const hasActiveNativeTableFilters = useMemo(
+    () => Object.values(tableFilters).some(value => Array.isArray(value) && value.length > 0),
+    [tableFilters],
+  );
+
+  const clearNativeTableFilters = () => {
+    setTableFilters({
+      status: null,
+      sprint: null,
+      testType: null,
+      environment: null,
+    });
+  };
 
   const columns = [
     {
@@ -736,6 +794,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       dataIndex: 'testType',
       key: 'testType',
       width: 140,
+      filters: nativeTestTypeFilters,
+      filteredValue: tableFilters.testType,
+      onFilter: (value: boolean | React.Key, record: TestRun) =>
+        record.testType === String(value),
       render: (type: string) => (
         <Tag className="m-0 text-[10px] font-semibold uppercase bg-slate-100 border-slate-200 text-slate-600">
           {type}
@@ -751,6 +813,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       dataIndex: 'sprint',
       key: 'sprint',
       width: 140,
+      filters: nativeSprintFilters,
+      filteredValue: tableFilters.sprint,
+      onFilter: (value: boolean | React.Key, record: TestRun) => record.sprint === String(value),
     },
     {
       title: (
@@ -773,6 +838,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       dataIndex: 'environment',
       key: 'environment',
       width: 160,
+      filters: nativeEnvironmentFilters,
+      filteredValue: tableFilters.environment,
+      onFilter: (value: boolean | React.Key, record: TestRun) =>
+        record.environment === String(value),
       render: (env: Environment | undefined) =>
         env ? (
           <Tag className="m-0 text-[10px] font-semibold bg-slate-100 border-slate-200 text-slate-600">
@@ -791,6 +860,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       dataIndex: 'status',
       key: 'status',
       width: 120,
+      filters: nativeStatusFilters,
+      filteredValue: tableFilters.status,
+      onFilter: (value: boolean | React.Key, record: TestRun) => record.status === String(value),
       render: (status: ExecutionStatus) => (
         <Tag
           color={status === ExecutionStatus.FINAL ? 'blue' : 'orange'}
@@ -860,6 +932,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
     },
   ];
+
+  const handleNativeTableChange = (filters: Record<string, FilterValue | null>) => {
+    setTableFilters({
+      status: (filters.status as React.Key[] | null) || null,
+      sprint: (filters.sprint as React.Key[] | null) || null,
+      testType: (filters.testType as React.Key[] | null) || null,
+      environment: (filters.environment as React.Key[] | null) || null,
+    });
+  };
 
   if (activeTestRun) {
     const isReadOnly = activeTestRun.status === ExecutionStatus.FINAL || isViewer;
@@ -1486,48 +1567,33 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             label: 'Historial de Ejecuciones',
             children: (
               <div className="space-y-6">
-                <Card className="rounded-2xl shadow-sm border-slate-100">
-                  <div className="flex flex-wrap gap-4 items-end">
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        Estado
-                      </span>
-                      <Select
-                        placeholder="Todos"
-                        className="w-40 h-10"
-                        allowClear
-                        onChange={setStatusFilter}
-                        options={Object.values(ExecutionStatus).map(s => ({
-                          label: labelExecutionStatus(s, t),
-                          value: s,
-                        }))}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        Sprint
-                      </span>
-                      <Select
-                        placeholder="Todos"
-                        className="w-40 h-10"
-                        allowClear
-                        onChange={setSprintFilter}
-                        options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                      />
-                    </div>
-                  </div>
-                </Card>
-
                 <Card
                   className="rounded-2xl shadow-sm border-slate-100"
-                  title={<span className="text-slate-800 font-bold">Historial de Ejecuciones</span>}
+                  title={
+                    <div className="flex flex-col gap-1">
+                      <span className="text-slate-800 font-bold">Historial de Ejecuciones</span>
+                      <span className="text-xs text-slate-400">
+                        Usa los filtros nativos de la tabla en estado, sprint, tipo de test y environment.
+                      </span>
+                    </div>
+                  }
+                  extra={
+                    <Button
+                      onClick={clearNativeTableFilters}
+                      disabled={!hasActiveNativeTableFilters}
+                      className="rounded-lg h-9 px-4 text-slate-500"
+                    >
+                      Limpiar filtros tabla
+                    </Button>
+                  }
                 >
                   <Table
                     columns={columns}
-                    dataSource={filteredRuns}
+                    dataSource={testRuns}
                     rowKey="id"
                     className="executive-table"
                     scroll={{ x: 'max-content' }}
+                    onChange={(_, filters) => handleNativeTableChange(filters)}
                   />
                 </Card>
               </div>

@@ -37,6 +37,7 @@ import {
   RollbackOutlined,
 } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
+import type { FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
@@ -132,6 +133,13 @@ function hasFunctionalTestCases(
 }
 
 export default function RegressionCycles({ projectId }: { projectId?: string }) {
+  type NativeCycleTableFilterState = {
+    cycleId: React.Key[] | null;
+    date: React.Key[] | null;
+    sprint: React.Key[] | null;
+    status: React.Key[] | null;
+  };
+
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { data: cyclesData, save } = useRegressionCycles(projectId);
@@ -202,9 +210,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     });
     setIsModalOpen(true);
   };
-  const [searchText, setSearchText] = useState('');
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
-  const [sprintFilter, setSprintFilter] = useState<string | undefined>(undefined);
+  const [tableFilters, setTableFilters] = useState<NativeCycleTableFilterState>({
+    cycleId: null,
+    date: null,
+    sprint: null,
+    status: null,
+  });
   const [detailSearch, setDetailSearch] = useState('');
   const [detailFilter, setDetailFilter] = useState<'ALL' | 'FAILED'>('ALL');
 
@@ -410,6 +421,24 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     </div>
   );
 
+  const nativeSprintFilters = Array.from(
+    new Set(
+      [...sprintsData.map(sprint => sprint.name), ...cycles.map(cycle => cycle.sprint)].filter(
+        Boolean,
+      ),
+    ),
+  )
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .map(sprint => ({
+      text: String(sprint),
+      value: String(sprint),
+    }));
+
+  const nativeStatusFilters = [
+    { text: 'Finalizado', value: 'FINALIZADA' },
+    { text: 'En progreso', value: 'EN_PROGRESO' },
+  ];
+
   const columns = [
     {
       title: (
@@ -417,6 +446,40 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       ),
       dataIndex: 'cycleId',
       key: 'cycleId',
+      filteredValue: tableFilters.cycleId,
+      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+        <div className="w-64 p-3" onKeyDown={event => event.stopPropagation()}>
+          <Input
+            autoFocus
+            placeholder="Buscar ciclo..."
+            value={(selectedKeys[0] as string) || ''}
+            onChange={event =>
+              setSelectedKeys(event.target.value ? [event.target.value] : [])
+            }
+            onPressEnter={() => confirm()}
+            className="h-9 rounded-lg"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button type="primary" size="small" onClick={() => confirm()}>
+              Aplicar
+            </Button>
+            <Button
+              size="small"
+              onClick={() => {
+                clearFilters?.();
+                confirm();
+              }}
+            >
+              Limpiar
+            </Button>
+          </div>
+        </div>
+      ),
+      filterIcon: filtered => (
+        <SearchOutlined className={filtered ? 'text-blue-500' : 'text-slate-300'} />
+      ),
+      onFilter: (value: boolean | React.Key, record: RegressionCycle) =>
+        (record.cycleId || '').toLowerCase().includes(String(value).toLowerCase()),
       render: (text: string, record: RegressionCycle) => (
         <Button
           type="link"
@@ -433,6 +496,57 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       ),
       dataIndex: 'date',
       key: 'date',
+      filteredValue: tableFilters.date,
+      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => {
+        const serializedValue = (selectedKeys[0] as string) || '';
+        const [start, end] = serializedValue.split('|');
+        const rangeValue =
+          start && end ? ([dayjs(start), dayjs(end)] as [dayjs.Dayjs, dayjs.Dayjs]) : null;
+
+        return (
+          <div className="w-72 p-3" onKeyDown={event => event.stopPropagation()}>
+            <RangePicker
+              className="w-full"
+              value={rangeValue}
+              onChange={value => {
+                if (value?.[0] && value?.[1]) {
+                  setSelectedKeys([
+                    `${value[0].startOf('day').toISOString()}|${value[1].endOf('day').toISOString()}`,
+                  ]);
+                  return;
+                }
+
+                setSelectedKeys([]);
+              }}
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <Button type="primary" size="small" onClick={() => confirm()}>
+                Aplicar
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  clearFilters?.();
+                  confirm();
+                }}
+              >
+                Limpiar
+              </Button>
+            </div>
+          </div>
+        );
+      },
+      onFilter: (value: boolean | React.Key, record: RegressionCycle) => {
+        const [start, end] = String(value).split('|');
+        if (!start || !end || !record.date) return true;
+
+        const currentDate = dayjs(record.date);
+        return (
+          currentDate.isValid() &&
+          currentDate.isAfter(dayjs(start).subtract(1, 'millisecond')) &&
+          currentDate.isBefore(dayjs(end).add(1, 'millisecond'))
+        );
+      },
       render: (date: string) => (
         <div className="flex flex-col">
           <span className="text-slate-700 font-medium">{dayjs(date).format('DD MMM')}</span>
@@ -443,11 +557,29 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          SPRINT
+        </span>
+      ),
+      dataIndex: 'sprint',
+      key: 'sprint',
+      filters: nativeSprintFilters,
+      filteredValue: tableFilters.sprint,
+      onFilter: (value: boolean | React.Key, record: RegressionCycle) =>
+        normalizeSprintKey(record.sprint) === normalizeSprintKey(String(value)),
+      render: (sprint?: string) => sprint || '—',
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
           ESTADO
         </span>
       ),
       dataIndex: 'status',
       key: 'status',
+      filters: nativeStatusFilters,
+      filteredValue: tableFilters.status,
+      onFilter: (value: boolean | React.Key, record: RegressionCycle) =>
+        record.status === String(value),
       render: (status: RegressionCycle['status']) => (
         <Tag
           color={status === 'FINALIZADA' ? 'green' : 'blue'}
@@ -559,6 +691,15 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       ),
     },
   ];
+
+  const handleNativeTableChange = (filters: Record<string, FilterValue | null>) => {
+    setTableFilters({
+      cycleId: (filters.cycleId as React.Key[] | null) || null,
+      date: (filters.date as React.Key[] | null) || null,
+      sprint: (filters.sprint as React.Key[] | null) || null,
+      status: (filters.status as React.Key[] | null) || null,
+    });
+  };
 
   const handleSave = async () => {
     try {
@@ -732,34 +873,18 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     message.success('Ciclo reabierto (EN PROGRESO)');
   };
 
-  const filteredCycles = (Array.isArray(cycles) ? cycles : []).filter(c => {
-    if (!c) return false;
-    const matchesSearch =
-      (c.cycleId || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (c.note || '').toLowerCase().includes(searchText.toLowerCase());
+  const hasActiveNativeTableFilters = Object.values(tableFilters).some(
+    value => Array.isArray(value) && value.length > 0,
+  );
 
-    const matchesSprint =
-      !sprintFilter || normalizeSprintKey(c.sprint) === normalizeSprintKey(sprintFilter);
-
-    const matchesDate =
-      !dateRange ||
-      !dateRange[0] ||
-      !dateRange[1] ||
-      (c.date &&
-        dayjs(c.date).isValid() &&
-        dayjs(c.date).isAfter(dateRange[0].subtract(1, 'day')) &&
-        dayjs(c.date).isBefore(dateRange[1].add(1, 'day')));
-
-    return matchesSearch && matchesSprint && matchesDate;
-  });
-
-  const sprintOptions = Array.from(new Set(cycles.map(c => c.sprint).filter(Boolean)))
-    .sort((a, b) => {
-      const numA = parseInt(a?.match(/\d+/)?.[0] || '0', 10);
-      const numB = parseInt(b?.match(/\d+/)?.[0] || '0', 10);
-      return numB - numA;
-    })
-    .map(s => ({ value: s, label: s }));
+  const clearNativeTableFilters = () => {
+    setTableFilters({
+      cycleId: null,
+      date: null,
+      sprint: null,
+      status: null,
+    });
+  };
 
   const filteredExecutions = (selectedCycle?.executions || []).filter(ex => {
     if (!ex) return false;
@@ -1490,71 +1615,29 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             </div>
           )}
 
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <Row gutter={16} align="bottom">
-              <Col span={8}>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Rango de Fecha
-                  </span>
-                  <RangePicker
-                    className="w-full h-10 rounded-lg"
-                    value={dateRange}
-                    onChange={val => setDateRange(val as any)}
-                  />
-                </div>
-              </Col>
-              <Col span={6}>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Sprint
-                  </span>
-                  <Select
-                    placeholder="Todos los Sprints"
-                    className="w-full h-10 rounded-lg"
-                    allowClear
-                    value={sprintFilter}
-                    onChange={setSprintFilter}
-                    options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                  />
-                </div>
-              </Col>
-              <Col span={6}>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Buscar Ciclo
-                  </span>
-                  <Input
-                    prefix={<SearchOutlined className="text-slate-400" />}
-                    placeholder="ID del ciclo..."
-                    className="h-10 rounded-lg"
-                    value={searchText}
-                    onChange={e => setSearchText(e.target.value)}
-                  />
-                </div>
-              </Col>
-              <Col span={4}>
-                <Button
-                  className="h-10 w-full rounded-lg text-slate-500"
-                  onClick={() => {
-                    setSearchText('');
-                    setDateRange(null);
-                    setSprintFilter(undefined);
-                  }}
-                >
-                  Limpiar
-                </Button>
-              </Col>
-            </Row>
-          </Card>
-
           <Card
             className="rounded-2xl border-slate-100 shadow-sm"
-            title={<span className="text-slate-800 font-bold">Historial de Ciclos</span>}
+            title={
+              <div className="flex flex-col gap-1">
+                <span className="text-slate-800 font-bold">Historial de Ciclos</span>
+                <span className="text-xs text-slate-400">
+                  Usa los filtros nativos en ciclo, fecha, sprint y estado.
+                </span>
+              </div>
+            }
+            extra={
+              <Button
+                onClick={clearNativeTableFilters}
+                disabled={!hasActiveNativeTableFilters}
+                className="rounded-lg h-9 px-4 text-slate-500"
+              >
+                Limpiar filtros tabla
+              </Button>
+            }
           >
             <Table
               columns={columns}
-              dataSource={filteredCycles}
+              dataSource={cycles}
               rowKey="id"
               pagination={{
                 pageSize: 5,
@@ -1562,6 +1645,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   `Mostrando ${range[0]}-${range[1]} de ${total} registros`,
               }}
               className="executive-table"
+              onChange={(_, filters) => handleNativeTableChange(filters)}
             />
           </Card>
         </div>

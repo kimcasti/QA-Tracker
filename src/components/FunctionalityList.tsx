@@ -43,6 +43,7 @@ import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../typ
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
+import type { FilterValue } from 'antd/es/table/interface';
 import * as XLSX from 'xlsx';
 
 export default function FunctionalityList({
@@ -52,7 +53,14 @@ export default function FunctionalityList({
   filter?: 'regression' | 'smoke';
   projectId?: string;
 }) {
-  type QaCoverageFilter = 'core' | 'regression' | 'smoke' | 'recent-change';
+  type NativeTableFilterState = {
+    module: React.Key[] | null;
+    priority: React.Key[] | null;
+    riskLevel: React.Key[] | null;
+    roles: React.Key[] | null;
+    qaCoverage: React.Key[] | null;
+    status: React.Key[] | null;
+  };
 
   const { t } = useTranslation();
   const {
@@ -69,25 +77,104 @@ export default function FunctionalityList({
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
 
-  const [moduleFilter, setModuleFilter] = useState<string | null>(null);
-  const [qaCoverageFilter, setQaCoverageFilter] = useState<QaCoverageFilter | null>(null);
-  const [statusFilter, setStatusFilter] = useState<TestStatus | null>(null);
+  const [tableFilters, setTableFilters] = useState<NativeTableFilterState>({
+    module: null,
+    priority: null,
+    riskLevel: null,
+    roles: null,
+    qaCoverage: null,
+    status: null,
+  });
 
   const functionalities = allFunctionalities.filter(f => {
     if (!f) return false;
 
-    const matchesBaseFilter = !filter || (filter === 'regression' ? f.isRegression : f.isSmoke);
-    const matchesModule = !moduleFilter || f.module === moduleFilter;
-    const matchesQaCoverage =
-      !qaCoverageFilter ||
-      (qaCoverageFilter === 'core' && Boolean(f.isCore)) ||
-      (qaCoverageFilter === 'regression' && Boolean(f.isRegression)) ||
-      (qaCoverageFilter === 'smoke' && Boolean(f.isSmoke)) ||
-      (qaCoverageFilter === 'recent-change' && Boolean(f.lastFunctionalChangeAt));
-    const matchesStatus = !statusFilter || f.status === statusFilter;
-
-    return matchesBaseFilter && matchesModule && matchesQaCoverage && matchesStatus;
+    return !filter || (filter === 'regression' ? f.isRegression : f.isSmoke);
   });
+
+  const nativeModuleFilters = React.useMemo(
+    () =>
+      Array.from(new Set(allFunctionalities.map(item => item?.module).filter(Boolean)))
+        .sort((left, right) => String(left).localeCompare(String(right)))
+        .map(module => ({
+          text: String(module),
+          value: String(module),
+        })),
+    [allFunctionalities],
+  );
+
+  const nativeRoleFilters = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allFunctionalities.flatMap(item =>
+            Array.isArray(item?.roles) ? item.roles.filter(Boolean) : [],
+          ),
+        ),
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .map(role => ({
+          text: role,
+          value: role,
+        })),
+    [allFunctionalities],
+  );
+
+  const nativePriorityFilters = React.useMemo(
+    () =>
+      Object.values(Priority).map(priority => ({
+        text: labelPriority(priority, t),
+        value: priority,
+      })),
+    [t],
+  );
+
+  const nativeRiskFilters = React.useMemo(
+    () =>
+      Object.values(RiskLevel).map(risk => ({
+        text: labelRisk(risk, t),
+        value: risk,
+      })),
+    [t],
+  );
+
+  const nativeStatusFilters = React.useMemo(
+    () =>
+      Object.values(TestStatus).map(status => ({
+        text: labelTestStatus(status, t),
+        value: status,
+      })),
+    [t],
+  );
+
+  const nativeQaCoverageFilters = React.useMemo(
+    () => [
+      { text: 'Core', value: 'core' },
+      { text: 'Regresión', value: 'regression' },
+      { text: 'Smoke', value: 'smoke' },
+      { text: 'Cambio reciente', value: 'recent-change' },
+    ],
+    [],
+  );
+
+  const hasActiveNativeTableFilters = React.useMemo(
+    () =>
+      Object.values(tableFilters).some(
+        value => Array.isArray(value) && value.length > 0,
+      ),
+    [tableFilters],
+  );
+
+  const clearNativeTableFilters = () => {
+    setTableFilters({
+      module: null,
+      priority: null,
+      riskLevel: null,
+      roles: null,
+      qaCoverage: null,
+      status: null,
+    });
+  };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -146,6 +233,11 @@ export default function FunctionalityList({
       ),
       dataIndex: 'module',
       key: 'module',
+      filters: nativeModuleFilters,
+      filterSearch: true,
+      filteredValue: tableFilters.module,
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        record.module === String(value),
     },
     {
       title: (
@@ -164,6 +256,9 @@ export default function FunctionalityList({
       ),
       dataIndex: 'priority',
       key: 'priority',
+      filters: nativePriorityFilters,
+      filteredValue: tableFilters.priority,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
       render: (priority: Priority) => {
         const colors = {
           [Priority.CRITICAL]: 'text-magenta-600 bg-magenta-50',
@@ -188,6 +283,9 @@ export default function FunctionalityList({
       ),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
+      filters: nativeRiskFilters,
+      filteredValue: tableFilters.riskLevel,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
       render: (risk: RiskLevel) => {
         const colors = {
           [RiskLevel.HIGH]: 'text-red-700',
@@ -210,6 +308,11 @@ export default function FunctionalityList({
       ),
       dataIndex: 'roles',
       key: 'roles',
+      filters: nativeRoleFilters,
+      filterSearch: true,
+      filteredValue: tableFilters.roles,
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        Array.isArray(record.roles) && record.roles.includes(String(value)),
       render: (roles: string[]) => (
         <div className="flex items-center gap-2 text-slate-600">
           <Users size={16} className="text-slate-400" />
@@ -224,6 +327,13 @@ export default function FunctionalityList({
         </span>
       ),
       key: 'qaCoverage',
+      filters: nativeQaCoverageFilters,
+      filteredValue: tableFilters.qaCoverage,
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        (value === 'core' && Boolean(record.isCore)) ||
+        (value === 'regression' && Boolean(record.isRegression)) ||
+        (value === 'smoke' && Boolean(record.isSmoke)) ||
+        (value === 'recent-change' && Boolean(record.lastFunctionalChangeAt)),
       render: (_: unknown, record: Functionality) => {
         const tags = [
           record.isCore
@@ -274,6 +384,9 @@ export default function FunctionalityList({
       ),
       dataIndex: 'status',
       key: 'status',
+      filters: nativeStatusFilters,
+      filteredValue: tableFilters.status,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
       render: (status: TestStatus) => {
         const config = {
           [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
@@ -478,6 +591,19 @@ export default function FunctionalityList({
   const rowSelection = {
     selectedRowKeys,
     onChange: onSelectChange,
+  };
+
+  const handleNativeTableChange = (
+    filters: Record<string, FilterValue | null>,
+  ) => {
+    setTableFilters({
+      module: (filters.module as React.Key[] | null) || null,
+      priority: (filters.priority as React.Key[] | null) || null,
+      riskLevel: (filters.riskLevel as React.Key[] | null) || null,
+      roles: (filters.roles as React.Key[] | null) || null,
+      qaCoverage: (filters.qaCoverage as React.Key[] | null) || null,
+      status: (filters.status as React.Key[] | null) || null,
+    });
   };
 
   const handleImport = (file: File) => {
@@ -752,94 +878,47 @@ export default function FunctionalityList({
         </Col>
       </Row>
 
-      {/* Filters Card */}
-      <Card className="rounded-2xl shadow-sm border-slate-100">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Filtrar por Módulo
-            </span>
-            <Select
-              placeholder="Todos los módulos"
-              className="w-48 h-10"
-              allowClear
-              onChange={setModuleFilter}
-              value={moduleFilter}
-              options={modulesData.map(m => ({ label: m.name, value: m.name }))}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Cobertura QA
-            </span>
-            <Select
-              placeholder="Toda la cobertura"
-              className="w-48 h-10"
-              allowClear
-              onChange={setQaCoverageFilter}
-              value={qaCoverageFilter}
-              options={[
-                { label: 'Core', value: 'core' },
-                { label: 'Regresión', value: 'regression' },
-                { label: 'Smoke', value: 'smoke' },
-                { label: 'Cambio reciente', value: 'recent-change' },
-              ]}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Estado
-            </span>
-            <Select
-              placeholder="Todos los estados"
-              className="w-48 h-10"
-              allowClear
-              onChange={setStatusFilter}
-              value={statusFilter}
-              options={Object.values(TestStatus).map(s => ({
-                label: labelTestStatus(s, t),
-                value: s,
-              }))}
-            />
-          </div>
-          <Button
-            onClick={() => {
-              setModuleFilter(null);
-              setQaCoverageFilter(null);
-              setStatusFilter(null);
-            }}
-            className="h-10 rounded-lg text-slate-500"
-          >
-            Limpiar Filtros
-          </Button>
-        </div>
-      </Card>
-
       {/* Table Card */}
       <Card
         className="rounded-2xl shadow-sm border-slate-100"
         title={
-          <div className="flex items-center gap-3">
-            <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
-            {selectedRowKeys.length > 0 && (
-              <Tag
-                color="blue"
-                className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold"
-              >
-                {selectedRowKeys.length} seleccionadas
-              </Tag>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
+                {selectedRowKeys.length > 0 && (
+                  <Tag
+                    color="blue"
+                    className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold"
+                  >
+                    {selectedRowKeys.length} seleccionadas
+                  </Tag>
+                )}
+              </div>
+              <span className="text-xs text-slate-400">
+                Usa los filtros nativos en los encabezados de la tabla.
+              </span>
+            </div>
           </div>
         }
         extra={
-          !isViewer && selectedRowKeys.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={() => setIsBulkModalOpen(true)}
-              className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+              onClick={clearNativeTableFilters}
+              disabled={!hasActiveNativeTableFilters}
+              className="rounded-lg h-9 px-4 text-slate-500"
             >
-              <EditOutlined /> Edición Masiva
+              Limpiar filtros tabla
             </Button>
-          )
+            {!isViewer && selectedRowKeys.length > 0 && (
+              <Button
+                onClick={() => setIsBulkModalOpen(true)}
+                className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+              >
+                <EditOutlined /> Edición Masiva
+              </Button>
+            )}
+          </div>
         }
       >
         <Table
@@ -849,6 +928,7 @@ export default function FunctionalityList({
           rowKey="id"
           className="executive-table"
           pagination={{ pageSize: 10 }}
+          onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>
 
