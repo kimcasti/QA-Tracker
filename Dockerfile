@@ -15,7 +15,9 @@ ENV VITE_USE_SERVICE_AUTH=$VITE_USE_SERVICE_AUTH
 
 COPY package.json package-lock.json* yarn.lock* ./
 
-RUN if [ -f package-lock.json ]; then npm ci; else yarn install --frozen-lockfile; fi
+# Railway/Linux can fail resolving Rollup optional native packages with `npm ci`.
+# `npm install --include=optional` is more reliable for this frontend build image.
+RUN if [ -f package-lock.json ]; then npm install --include=optional; else yarn install --frozen-lockfile; fi
 
 COPY . .
 
