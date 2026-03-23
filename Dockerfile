@@ -22,6 +22,9 @@ RUN if [ -f package-lock.json ]; then npm install --include=optional; else yarn 
 # Force Rollup native binary for Railway's Linux GNU environment.
 RUN npm install @rollup/rollup-linux-x64-gnu --no-save
 
+# Force Lightning CSS native binary for Railway's Linux GNU environment.
+RUN npm install lightningcss-linux-x64-gnu --no-save
+
 COPY . .
 
 RUN npm run build
