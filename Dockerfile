@@ -19,6 +19,9 @@ COPY package.json package-lock.json* yarn.lock* ./
 # `npm install --include=optional` is more reliable for this frontend build image.
 RUN if [ -f package-lock.json ]; then npm install --include=optional; else yarn install --frozen-lockfile; fi
 
+# Force Rollup native binary for Railway's Linux GNU environment.
+RUN npm install @rollup/rollup-linux-x64-gnu --no-save
+
 COPY . .
 
 RUN npm run build
