@@ -41,6 +41,7 @@ const { Paragraph, Text, Title } = Typography;
 interface OrganizationTeamModalProps {
   open: boolean;
   onCancel: () => void;
+  workspaceProjectDocumentId?: string | null;
 }
 
 const ROLE_META: Record<OrganizationTeamRoleCode, { label: string; color: string }> = {
@@ -108,7 +109,11 @@ function StatusTag({
   );
 }
 
-export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalProps) {
+export function OrganizationTeamModal({
+  open,
+  onCancel,
+  workspaceProjectDocumentId,
+}: OrganizationTeamModalProps) {
   const [form] = Form.useForm<{ email: string; roleDocumentId: string }>();
   const {
     data,
@@ -148,6 +153,7 @@ export function OrganizationTeamModal({ open, onCancel }: OrganizationTeamModalP
       await inviteMember({
         email: values.email.trim().toLowerCase(),
         roleDocumentId: values.roleDocumentId,
+        workspaceProjectDocumentId: workspaceProjectDocumentId || undefined,
       });
       message.success('Invitacion creada');
       form.setFieldValue('email', '');

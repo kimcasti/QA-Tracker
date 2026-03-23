@@ -9,6 +9,7 @@ export async function getOrganizationTeam() {
 export async function inviteOrganizationMember(input: {
   email: string;
   roleDocumentId: string;
+  workspaceProjectDocumentId?: string;
 }) {
   const response = await Http.post<OrganizationTeamData>('/api/organization-team/invitations', {
     data: input,

@@ -51,6 +51,7 @@ interface ProjectManagementProps {
 }
 
 const ALL_PROJECTS_FILTER = 'ALL';
+const SELECTED_PROJECT_STORAGE_KEY = 'qa_tracker_selected_project_id';
 
 type ProjectFilter = ProjectStatus | typeof ALL_PROJECTS_FILTER;
 
@@ -150,6 +151,15 @@ export default function ProjectManagement({
       return matchesSearch && matchesStatus;
     });
   }, [projects, searchTerm, statusFilter]);
+
+  const workspaceProjectDocumentId = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+
+    const selectedProjectId = window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
+    if (!selectedProjectId) return null;
+
+    return projects.find(project => project.id === selectedProjectId)?.id || null;
+  }, [projects, isTeamModalOpen]);
 
   const handleSaveOrganizationName = async () => {
     try {
@@ -573,7 +583,11 @@ export default function ProjectManagement({
         )}
       </div>
 
-      <OrganizationTeamModal open={isTeamModalOpen} onCancel={() => setIsTeamModalOpen(false)} />
+      <OrganizationTeamModal
+        open={isTeamModalOpen}
+        onCancel={() => setIsTeamModalOpen(false)}
+        workspaceProjectDocumentId={workspaceProjectDocumentId}
+      />
       <Modal
         open={isEditOrganizationModalOpen}
         title="Editar organización"
