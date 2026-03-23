@@ -13,19 +13,13 @@ ENV VITE_API_IDENTIFIER=$VITE_API_IDENTIFIER
 ENV VITE_API_PASSWORD=$VITE_API_PASSWORD
 ENV VITE_USE_SERVICE_AUTH=$VITE_USE_SERVICE_AUTH
 
-COPY package.json package-lock.json* yarn.lock* ./
-
-# Railway/Linux can fail resolving Rollup optional native packages with `npm ci`.
-# `npm install --include=optional` is more reliable for this frontend build image.
-RUN if [ -f package-lock.json ]; then npm install --include=optional; else yarn install --frozen-lockfile; fi
-
-# Force Rollup native binary for Railway's Linux GNU environment.
-RUN npm install @rollup/rollup-linux-x64-gnu --no-save
-
-# Force Lightning CSS native binary for Railway's Linux GNU environment.
-RUN npm install lightningcss-linux-x64-gnu --no-save
-
 COPY . .
+
+RUN rm -rf node_modules package-lock.json
+
+# Recreate a clean Linux dependency tree inside the container so native optional
+# packages like Rollup and Lightning CSS resolve correctly on Railway.
+RUN npm install
 
 RUN npm run build
 
