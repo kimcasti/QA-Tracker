@@ -223,7 +223,7 @@ export function OrganizationTeamModal({
   };
 
   const handleCopyInvitationLink = async (invitation: OrganizationTeamInvitation) => {
-    const invitationUrl = buildInvitationUrl(invitation.documentId);
+    const invitationUrl = invitation.acceptUrl || buildInvitationUrl(invitation.documentId);
 
     if (!invitationUrl) {
       message.error('No fue posible generar el enlace de invitacion.');
@@ -596,6 +596,16 @@ export function OrganizationTeamModal({
               </Text>
             </div>
           </div>
+
+          {data?.invitationEmailHealth?.summary ? (
+            <Alert
+              className="mb-4"
+              type={data.invitationEmailHealth.manualShareRecommended ? 'warning' : 'info'}
+              showIcon
+              message="Estado del correo de invitaciones"
+              description={data.invitationEmailHealth.summary}
+            />
+          ) : null}
 
           <Table
             rowKey="documentId"

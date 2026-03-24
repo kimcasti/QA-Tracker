@@ -26,6 +26,7 @@ export interface OrganizationTeamMember {
 export interface OrganizationTeamInvitation {
   documentId: string;
   email: string;
+  acceptUrl?: string;
   organizationId: string;
   role: OrganizationTeamRole | null;
   invitedBy?: {
@@ -45,6 +46,10 @@ export interface OrganizationTeamData {
   currentMembership: {
     documentId: string;
     roleCode: OrganizationTeamRoleCode | string;
+  };
+  invitationEmailHealth?: {
+    manualShareRecommended: boolean;
+    summary?: string;
   };
   canManage: boolean;
   availableRoles: OrganizationTeamRole[];
