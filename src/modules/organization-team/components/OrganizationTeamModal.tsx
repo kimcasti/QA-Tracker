@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  CopyOutlined,
   MailOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -107,6 +108,17 @@ function StatusTag({
       {meta.label}
     </Tag>
   );
+}
+
+function buildInvitationUrl(invitationDocumentId: string) {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const invitationUrl = new URL(window.location.origin);
+  invitationUrl.searchParams.set('invitation', invitationDocumentId);
+  invitationUrl.searchParams.set('mode', 'signup');
+  return invitationUrl.toString();
 }
 
 export function OrganizationTeamModal({
@@ -207,6 +219,26 @@ export function OrganizationTeamModal({
       message.success(`Invitacion cancelada para ${invitation.email}`);
     } catch (cancelError) {
       message.error(toApiError(cancelError).message);
+    }
+  };
+
+  const handleCopyInvitationLink = async (invitation: OrganizationTeamInvitation) => {
+    const invitationUrl = buildInvitationUrl(invitation.documentId);
+
+    if (!invitationUrl) {
+      message.error('No fue posible generar el enlace de invitacion.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(invitationUrl);
+      message.success(`Enlace copiado para ${invitation.email}`);
+    } catch (copyError) {
+      message.error(
+        copyError instanceof Error
+          ? copyError.message
+          : 'No fue posible copiar el enlace de invitacion.',
+      );
     }
   };
 
@@ -337,31 +369,39 @@ export function OrganizationTeamModal({
       key: 'actions',
       align: 'right',
       render: (_, invitation) => {
-        if (!canManage) {
-          return <Text type="secondary">Sin acciones</Text>;
-        }
-
         return (
           <Space size="small">
             <Button
               type="text"
-              icon={<ReloadOutlined />}
-              onClick={() => handleResend(invitation)}
-              loading={isResendingInvitation}
+              icon={<CopyOutlined />}
+              onClick={() => handleCopyInvitationLink(invitation)}
             >
-              Reenviar
+              Copiar enlace
             </Button>
-            <Popconfirm
-              title="Cancelar invitacion"
-              description={`Se cancelara la invitacion para ${invitation.email}.`}
-              okText="Cancelar invitacion"
-              cancelText="Volver"
-              onConfirm={() => handleCancelInvitation(invitation)}
-            >
-              <Button danger type="text" icon={<StopOutlined />} loading={isCancellingInvitation}>
-                Cancelar
+            {!canManage ? <Text type="secondary">Sin mas acciones</Text> : null}
+            {canManage ? (
+              <Button
+                type="text"
+                icon={<ReloadOutlined />}
+                onClick={() => handleResend(invitation)}
+                loading={isResendingInvitation}
+              >
+                Reenviar
               </Button>
-            </Popconfirm>
+            ) : null}
+            {canManage ? (
+              <Popconfirm
+                title="Cancelar invitacion"
+                description={`Se cancelara la invitacion para ${invitation.email}.`}
+                okText="Cancelar invitacion"
+                cancelText="Volver"
+                onConfirm={() => handleCancelInvitation(invitation)}
+              >
+                <Button danger type="text" icon={<StopOutlined />} loading={isCancellingInvitation}>
+                  Cancelar
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
         );
       },
@@ -550,6 +590,11 @@ export function OrganizationTeamModal({
             <Text type="secondary">
               Historial operativo de invitaciones abiertas, expiradas o canceladas.
             </Text>
+            <div className="mt-2">
+              <Text type="secondary">
+                Si el correo no llega, copia el enlace publico y compartelo manualmente.
+              </Text>
+            </div>
           </div>
 
           <Table
