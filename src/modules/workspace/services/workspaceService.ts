@@ -6,6 +6,7 @@ import type { WorkspaceDto } from '../types/api';
 import type { ProjectContext, Workspace, WorkspaceMembership } from '../types/model';
 
 let workspaceCache: Workspace | null = null;
+let workspacePromise: Promise<Workspace> | null = null;
 let projectContextCache: Record<string, ProjectContext> = {};
 
 function mapProject(document: WorkspaceDto['projects'][number]): Project {
@@ -41,29 +42,40 @@ export async function getWorkspace() {
     return workspaceCache;
   }
 
-  const response = await Http.get<WorkspaceDto>('/api/me/workspace');
-  projectContextCache = Object.fromEntries(
-    (response.data.projects || []).map(project => [
-      project.key,
-      {
-        documentId: project.documentId,
-        organizationDocumentId: project.organization?.documentId,
-        organizationName: project.organization?.name,
-      } satisfies ProjectContext,
-    ]),
-  );
-  const workspace: Workspace = {
-    user: response.data.user,
-    memberships: (response.data.memberships || []).map(mapMembership),
-    projects: (response.data.projects || []).map(mapProject),
-  };
+  if (!workspacePromise) {
+    workspacePromise = Http.get<WorkspaceDto>('/api/me/workspace')
+      .then(response => {
+        projectContextCache = Object.fromEntries(
+          (response.data.projects || []).map(project => [
+            project.key,
+            {
+              documentId: project.documentId,
+              organizationDocumentId: project.organization?.documentId,
+              organizationName: project.organization?.name,
+            } satisfies ProjectContext,
+          ]),
+        );
 
-  workspaceCache = workspace;
-  return workspace;
+        const workspace: Workspace = {
+          user: response.data.user,
+          memberships: (response.data.memberships || []).map(mapMembership),
+          projects: (response.data.projects || []).map(mapProject),
+        };
+
+        workspaceCache = workspace;
+        return workspace;
+      })
+      .finally(() => {
+        workspacePromise = null;
+      });
+  }
+
+  return workspacePromise;
 }
 
 export function invalidateWorkspaceCache() {
   workspaceCache = null;
+  workspacePromise = null;
   projectContextCache = {};
 }
 

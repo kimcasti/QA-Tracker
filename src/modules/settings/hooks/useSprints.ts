@@ -9,6 +9,7 @@ export function useSprints(projectId?: string) {
     queryKey: ['settings', 'sprints', projectId],
     queryFn: () => getSprints(projectId),
     enabled: Boolean(projectId),
+    staleTime: 60_000,
   });
 
   const saveMutation = useMutation({

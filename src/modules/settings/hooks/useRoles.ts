@@ -9,6 +9,7 @@ export function useRoles(projectId?: string) {
     queryKey: ['settings', 'roles', projectId],
     queryFn: () => getRoles(projectId),
     enabled: Boolean(projectId),
+    staleTime: 60_000,
   });
 
   const saveMutation = useMutation({

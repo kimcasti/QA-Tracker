@@ -5,5 +5,6 @@ export function useWorkspace() {
   return useQuery({
     queryKey: ['workspace'],
     queryFn: getWorkspace,
+    staleTime: 60_000,
   });
 }

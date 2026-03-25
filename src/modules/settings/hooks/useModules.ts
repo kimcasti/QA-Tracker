@@ -9,6 +9,7 @@ export function useModules(projectId?: string) {
     queryKey: ['settings', 'modules', projectId],
     queryFn: () => getModules(projectId),
     enabled: Boolean(projectId),
+    staleTime: 60_000,
   });
 
   const saveMutation = useMutation({

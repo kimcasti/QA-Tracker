@@ -16,6 +16,7 @@ export function useFunctionalities(projectId?: string) {
     queryKey,
     queryFn: () => getFunctionalities(projectId),
     enabled: Boolean(projectId),
+    staleTime: 60_000,
   });
 
   const saveMutation = useMutation({
