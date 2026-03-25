@@ -16,7 +16,6 @@ export function useFunctionalities(projectId?: string) {
     queryKey,
     queryFn: () => getFunctionalities(projectId),
     enabled: Boolean(projectId),
-    refetchOnMount: 'always',
   });
 
   const saveMutation = useMutation({
@@ -39,9 +38,6 @@ export function useFunctionalities(projectId?: string) {
         next[existingIndex] = savedFunctionality;
         return next;
       });
-
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.refetchQueries({ queryKey, type: 'active' });
     },
   });
 

@@ -24,7 +24,6 @@ import { labelPriority, labelRisk } from '../../../i18n/labels';
 import { useFunctionalities } from '../../functionalities/hooks/useFunctionalities';
 import {
   buildNextFunctionalityCode,
-  getNextFunctionalityCode,
 } from '../../functionalities/services/functionalitiesService';
 import { useModules } from '../../settings/hooks/useModules';
 import { useSprints } from '../../settings/hooks/useSprints';
@@ -47,7 +46,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const {
     data: functionalitiesData,
     save: saveFunctionality,
-    refetch: refetchFunctionalities,
   } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -130,7 +128,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     try {
       const updated: Functionality = { ...func, storyId };
       await saveFunctionality(updated);
-      await refetchFunctionalities();
       await persistStoryMapSnapshot();
       message.success(t('storymap.assign_success', { id: func.id }));
     } catch (error) {
@@ -156,7 +153,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     try {
       const updated: Functionality = { ...func, storyId: nextPrimaryStoryId };
       await saveFunctionality(updated);
-      await refetchFunctionalities();
       await persistStoryMapSnapshot();
       message.success(t('storymap.unassign_success', { id: func.id }));
     } catch (error) {
@@ -225,23 +221,7 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
       return;
     }
 
-    let cancelled = false;
-
     setNextFunctionalityIdPreview(buildNextFunctionalityCode(selectedModule, functionalities));
-
-    getNextFunctionalityCode(projectId, selectedModule)
-      .then(nextId => {
-        if (!cancelled) {
-          setNextFunctionalityIdPreview(nextId);
-        }
-      })
-      .catch(error => {
-        console.error('Story Map next functionality id error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [createFuncModalOpen, functionalities, projectId, selectedModule]);
 
   const openCreateFunctionality = (storyId: string) => {
@@ -268,7 +248,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
 
     try {
       await saveFunctionality({ ...functionality, storyId });
-      await refetchFunctionalities();
       await persistStoryMapSnapshot();
     } catch (error) {
       console.error('Story Map move functionality error:', error);
@@ -429,8 +408,8 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             }
 
             const newId =
-              (projectId && values.module
-                ? await getNextFunctionalityCode(projectId, values.module)
+              (values.module
+                ? buildNextFunctionalityCode(values.module, functionalities)
                 : '') || nextFunctionalityIdPreview;
             const deliveryDateStr = values.deliveryDate
               ? values.deliveryDate.format('YYYY-MM-DD')
@@ -455,7 +434,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
 
             const saved = await saveFunctionality(payload);
             storyAssociationsService.ensureAssociation(projectId, createFuncStoryId, saved.id);
-            await refetchFunctionalities();
             await persistStoryMapSnapshot();
             setCreateFuncModalOpen(false);
             setCreateFuncStoryId(null);

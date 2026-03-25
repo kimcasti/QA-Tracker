@@ -9,6 +9,7 @@ import {
   updateOrganizationMemberRole,
 } from '../services/organizationTeamService';
 import type { OrganizationTeamData } from '../types/model';
+import { invalidateWorkspaceCache } from '../../workspace/services/workspaceService';
 
 const ORGANIZATION_TEAM_QUERY_KEY = ['organization-team'];
 
@@ -23,6 +24,7 @@ export function useOrganizationTeam(enabled = true) {
 
   const syncTeamState = (data: OrganizationTeamData) => {
     queryClient.setQueryData(ORGANIZATION_TEAM_QUERY_KEY, data);
+    invalidateWorkspaceCache();
     queryClient.invalidateQueries({ queryKey: ['workspace'] });
   };
 

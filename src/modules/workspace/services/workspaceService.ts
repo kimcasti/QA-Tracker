@@ -6,6 +6,7 @@ import type { WorkspaceDto } from '../types/api';
 import type { ProjectContext, Workspace, WorkspaceMembership } from '../types/model';
 
 let workspaceCache: Workspace | null = null;
+let projectContextCache: Record<string, ProjectContext> = {};
 
 function mapProject(document: WorkspaceDto['projects'][number]): Project {
   return {
@@ -41,6 +42,16 @@ export async function getWorkspace() {
   }
 
   const response = await Http.get<WorkspaceDto>('/api/me/workspace');
+  projectContextCache = Object.fromEntries(
+    (response.data.projects || []).map(project => [
+      project.key,
+      {
+        documentId: project.documentId,
+        organizationDocumentId: project.organization?.documentId,
+        organizationName: project.organization?.name,
+      } satisfies ProjectContext,
+    ]),
+  );
   const workspace: Workspace = {
     user: response.data.user,
     memberships: (response.data.memberships || []).map(mapMembership),
@@ -53,6 +64,7 @@ export async function getWorkspace() {
 
 export function invalidateWorkspaceCache() {
   workspaceCache = null;
+  projectContextCache = {};
 }
 
 export async function renameActiveOrganization(name: string) {
@@ -72,16 +84,9 @@ export async function getActiveOrganizationDocumentId() {
 }
 
 export async function findProjectContext(projectId: string): Promise<ProjectContext | null> {
-  const response = await Http.get<WorkspaceDto>('/api/me/workspace');
-  const project = (response.data.projects || []).find(item => item.key === projectId);
-
-  if (!project) {
-    return null;
+  if (!projectContextCache[projectId]) {
+    await getWorkspace();
   }
 
-  return {
-    documentId: project.documentId,
-    organizationDocumentId: project.organization?.documentId,
-    organizationName: project.organization?.name,
-  };
+  return projectContextCache[projectId] || null;
 }

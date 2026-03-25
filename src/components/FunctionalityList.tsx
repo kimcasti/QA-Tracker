@@ -32,7 +32,6 @@ import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import {
   buildNextFunctionalityCode,
-  getNextFunctionalityCode,
 } from '../modules/functionalities/services/functionalitiesService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
@@ -474,26 +473,9 @@ export default function FunctionalityList({
       return;
     }
 
-    let cancelled = false;
-
     const fallbackId = buildNextFunctionalityCode(selectedModule, allFunctionalities);
     setNextFunctionalityIdPreview(fallbackId);
     form.setFieldsValue({ id: fallbackId });
-
-    getNextFunctionalityCode(projectId, selectedModule)
-      .then(nextId => {
-        if (!cancelled) {
-          setNextFunctionalityIdPreview(nextId);
-          form.setFieldsValue({ id: nextId });
-        }
-      })
-      .catch(error => {
-        console.error('Functionality next id error:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [allFunctionalities, editingFunc, form, isModalOpen, projectId, selectedModule]);
 
   const handleEdit = (func: Functionality) => {
@@ -529,11 +511,10 @@ export default function FunctionalityList({
     try {
       const values = await form.validateFields();
 
-      // Ensure ID is generated if empty (though it's required and auto-filled)
       const finalId =
         editingFunc?.id ||
-        (projectId && values.module
-          ? await getNextFunctionalityCode(projectId, values.module)
+        (values.module
+          ? buildNextFunctionalityCode(values.module, allFunctionalities)
           : values.id || nextFunctionalityIdPreview);
 
       const payload = {
