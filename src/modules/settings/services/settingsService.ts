@@ -51,7 +51,7 @@ export async function getModules(projectId?: string) {
   const resolvedProjectId = projectId ? requireProjectId(projectId) : null;
   const context = resolvedProjectId ? await findProjectContext(resolvedProjectId) : null;
   const documents = await listDocuments<ProjectModuleDto>('/api/project-modules', {
-    populate: 'project',
+    'populate[project][fields][0]': 'key',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
@@ -87,7 +87,7 @@ export async function getRoles(projectId?: string) {
   const resolvedProjectId = projectId ? requireProjectId(projectId) : null;
   const context = resolvedProjectId ? await findProjectContext(resolvedProjectId) : null;
   const documents = await listDocuments<ProjectRoleDto>('/api/project-persona-roles', {
-    populate: 'project',
+    'populate[project][fields][0]': 'key',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
@@ -127,7 +127,7 @@ export async function getSprints(projectId?: string) {
   const resolvedProjectId = projectId ? requireProjectId(projectId) : null;
   const context = resolvedProjectId ? await findProjectContext(resolvedProjectId) : null;
   const documents = await listDocuments<SprintDto>('/api/sprints', {
-    populate: 'project',
+    'populate[project][fields][0]': 'key',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 

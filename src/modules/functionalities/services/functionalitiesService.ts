@@ -12,7 +12,6 @@ import {
 import {
   deleteDocument,
   listDocuments,
-  populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
@@ -100,7 +99,10 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
 export async function getFunctionalities(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<FunctionalityDto>('/api/functionalities', {
-    ...populateParams(['project', 'module', 'personaRoles', 'sprint']),
+    'populate[project][fields][0]': 'key',
+    'populate[module][fields][0]': 'name',
+    'populate[personaRoles][fields][0]': 'name',
+    'populate[sprint][fields][0]': 'name',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
