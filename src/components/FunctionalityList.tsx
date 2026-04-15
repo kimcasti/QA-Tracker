@@ -32,6 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import {
   buildNextFunctionalityCode,
+  getNextFunctionalityCode,
 } from '../modules/functionalities/services/functionalitiesService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
@@ -52,6 +53,9 @@ export default function FunctionalityList({
   filter?: 'regression' | 'smoke';
   projectId?: string;
 }) {
+  const valuesLooksLikeFunctionalityDuplicate = (value?: string) =>
+    String(value || '').toLowerCase().includes('already exists in this project');
+
   type NativeTableFilterState = {
     module: React.Key[] | null;
     priority: React.Key[] | null;
@@ -473,10 +477,36 @@ export default function FunctionalityList({
       return;
     }
 
-    const fallbackId = buildNextFunctionalityCode(selectedModule, allFunctionalities);
-    setNextFunctionalityIdPreview(fallbackId);
-    form.setFieldsValue({ id: fallbackId });
+    void syncNextFunctionalityId(selectedModule);
   }, [allFunctionalities, editingFunc, form, isModalOpen, projectId, selectedModule]);
+
+  const syncNextFunctionalityId = async (moduleName: string) => {
+    if (!moduleName) {
+      setNextFunctionalityIdPreview('');
+      form.setFieldsValue({ id: '' });
+      return '';
+    }
+
+    const fallbackId = buildNextFunctionalityCode(moduleName, allFunctionalities);
+
+    if (!projectId) {
+      setNextFunctionalityIdPreview(fallbackId);
+      form.setFieldsValue({ id: fallbackId });
+      return fallbackId;
+    }
+
+    try {
+      const nextId = await getNextFunctionalityCode(projectId, moduleName);
+      setNextFunctionalityIdPreview(nextId || fallbackId);
+      form.setFieldsValue({ id: nextId || fallbackId });
+      return nextId || fallbackId;
+    } catch (error) {
+      console.error('Next functionality code sync failed:', error);
+      setNextFunctionalityIdPreview(fallbackId);
+      form.setFieldsValue({ id: fallbackId });
+      return fallbackId;
+    }
+  };
 
   const handleEdit = (func: Functionality) => {
     setEditingFunc(func);
@@ -511,11 +541,11 @@ export default function FunctionalityList({
     try {
       const values = await form.validateFields();
 
-      const finalId =
-        editingFunc?.id ||
-        (values.module
-          ? buildNextFunctionalityCode(values.module, allFunctionalities)
-          : values.id || nextFunctionalityIdPreview);
+      const finalId = editingFunc?.id
+        ? editingFunc.id
+        : values.module
+          ? await syncNextFunctionalityId(values.module)
+          : values.id || nextFunctionalityIdPreview;
 
       const payload = {
         ...editingFunc,
@@ -538,7 +568,22 @@ export default function FunctionalityList({
       setEditingFunc(null);
     } catch (error) {
       console.error('Validation failed:', error);
-      message.error(toApiError(error).message || 'No se pudo guardar la funcionalidad.');
+      const apiError = toApiError(error);
+      const duplicateCodeError =
+        !editingFunc &&
+        valuesLooksLikeFunctionalityDuplicate(apiError.message) &&
+        Boolean(form.getFieldValue('module'));
+
+      if (duplicateCodeError) {
+        const moduleName = form.getFieldValue('module');
+        const nextId = await syncNextFunctionalityId(moduleName);
+        message.warning(
+          `Ese ID ya estaba ocupado. Actualicé el consecutivo al siguiente disponible: ${nextId}.`,
+        );
+        return;
+      }
+
+      message.error(apiError.message || 'No se pudo guardar la funcionalidad.');
     }
   };
 
@@ -736,10 +781,8 @@ export default function FunctionalityList({
   };
 
   const handleValuesChange = (changedValues: any) => {
-    if (!editingFunc && changedValues.module && projectId) {
-      const fallbackId = buildNextFunctionalityCode(changedValues.module, allFunctionalities);
-      setNextFunctionalityIdPreview(fallbackId);
-      form.setFieldsValue({ id: fallbackId });
+    if (!editingFunc && changedValues.module) {
+      void syncNextFunctionalityId(changedValues.module);
     }
   };
 

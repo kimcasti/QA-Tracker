@@ -120,13 +120,7 @@ export async function saveFunctionality(functionality: Functionality) {
     throw new Error(`Project ${functionality.projectId} is not available in the workspace.`);
   }
 
-  const [documents, modules, roles, sprints] = await Promise.all([
-    functionality.documentId
-      ? Promise.resolve([])
-      : listDocuments<FunctionalityDto>('/api/functionalities', {
-          'filters[project][documentId][$eq]': context.documentId,
-          'filters[code][$eq]': functionality.id,
-        }),
+  const [modules, roles, sprints] = await Promise.all([
     getModules(functionality.projectId),
     getRoles(functionality.projectId),
     getSprints(functionality.projectId),
@@ -138,13 +132,9 @@ export async function saveFunctionality(functionality: Functionality) {
     .filter(item => functionality.roles.includes(item.name))
     .map(item => ({ documentId: item.id }));
 
-  if (!functionality.documentId && documents[0]?.documentId) {
-    throw new Error(`Functionality code ${functionality.id} already exists in this project.`);
-  }
-
   const saved = await upsertDocument<FunctionalityDto>(
     '/api/functionalities',
-    functionality.documentId || documents[0]?.documentId || null,
+    functionality.documentId || null,
     {
       code: functionality.id,
       name: functionality.name,
