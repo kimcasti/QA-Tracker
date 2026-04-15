@@ -121,6 +121,16 @@ function buildInvitationUrl(invitationDocumentId: string) {
   return invitationUrl.toString();
 }
 
+async function copyInvitationLink(invitation: OrganizationTeamInvitation) {
+  const invitationUrl = invitation.acceptUrl || buildInvitationUrl(invitation.documentId);
+
+  if (!invitationUrl) {
+    throw new Error('No fue posible generar el enlace de invitacion.');
+  }
+
+  await navigator.clipboard.writeText(invitationUrl);
+}
+
 export function OrganizationTeamModal({
   open,
   onCancel,
@@ -149,6 +159,7 @@ export function OrganizationTeamModal({
   const canManage = data?.canManage ?? false;
   const isOwner = data?.currentMembership.roleCode === 'owner';
   const canManageOrganizationAccess = canManage && isOwner;
+  const manualShareMode = data?.invitationEmailHealth?.manualShareRecommended ?? false;
   const availableRoles = data?.availableRoles ?? [];
   const primaryInviteRole =
     availableRoles.find(role => role.code === 'qa-engineer')?.documentId ||
@@ -161,13 +172,40 @@ export function OrganizationTeamModal({
   }, [form, open, primaryInviteRole]);
 
   const handleInvite = async (values: { email: string; roleDocumentId: string }) => {
+    const normalizedEmail = values.email.trim().toLowerCase();
+
     try {
-      await inviteMember({
-        email: values.email.trim().toLowerCase(),
+      const teamData = await inviteMember({
+        email: normalizedEmail,
         roleDocumentId: values.roleDocumentId,
         workspaceProjectDocumentId: workspaceProjectDocumentId || undefined,
       });
-      message.success('Invitacion creada');
+      const shouldShareManually =
+        teamData.invitationEmailHealth?.manualShareRecommended ?? manualShareMode;
+
+      if (shouldShareManually) {
+        const createdInvitation = teamData.invitations.find(
+          invitation =>
+            invitation.status === 'pending' && invitation.email.trim().toLowerCase() === normalizedEmail,
+        );
+
+        if (createdInvitation) {
+          try {
+            await copyInvitationLink(createdInvitation);
+            message.success(`Invitacion creada. Enlace copiado para ${normalizedEmail}`);
+          } catch (copyError) {
+            message.success('Invitacion creada. Copia el enlace desde la tabla de invitaciones.');
+            if (copyError instanceof Error) {
+              message.info(copyError.message);
+            }
+          }
+        } else {
+          message.success('Invitacion creada. Copia el enlace desde la tabla de invitaciones.');
+        }
+      } else {
+        message.success('Invitacion creada');
+      }
+
       form.setFieldValue('email', '');
     } catch (inviteError) {
       message.error(toApiError(inviteError).message);
@@ -223,15 +261,8 @@ export function OrganizationTeamModal({
   };
 
   const handleCopyInvitationLink = async (invitation: OrganizationTeamInvitation) => {
-    const invitationUrl = invitation.acceptUrl || buildInvitationUrl(invitation.documentId);
-
-    if (!invitationUrl) {
-      message.error('No fue posible generar el enlace de invitacion.');
-      return;
-    }
-
     try {
-      await navigator.clipboard.writeText(invitationUrl);
+      await copyInvitationLink(invitation);
       message.success(`Enlace copiado para ${invitation.email}`);
     } catch (copyError) {
       message.error(
@@ -379,7 +410,7 @@ export function OrganizationTeamModal({
               Copiar enlace
             </Button>
             {!canManage ? <Text type="secondary">Sin mas acciones</Text> : null}
-            {canManage ? (
+            {canManage && !manualShareMode ? (
               <Button
                 type="text"
                 icon={<ReloadOutlined />}
@@ -543,7 +574,7 @@ export function OrganizationTeamModal({
                       loading={isInviting}
                       className="h-10 w-full rounded-2xl"
                     >
-                      Invitar
+                      {manualShareMode ? 'Crear invitacion' : 'Invitar'}
                     </Button>
                   </Form.Item>
                 </div>
@@ -592,7 +623,9 @@ export function OrganizationTeamModal({
             </Text>
             <div className="mt-2">
               <Text type="secondary">
-                Si el correo no llega, copia el enlace publico y compartelo manualmente.
+                {manualShareMode
+                  ? 'Las invitaciones se crean para compartir el enlace publico manualmente.'
+                  : 'Si el correo no llega, copia el enlace publico y compartelo manualmente.'}
               </Text>
             </div>
           </div>
