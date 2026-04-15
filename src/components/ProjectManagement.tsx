@@ -97,8 +97,12 @@ export default function ProjectManagement({
   onOpenCreateModal,
 }: ProjectManagementProps) {
   const { data: projects = [] } = useProjects();
-  const { data: workspace, activeMembership, isViewer, canManageCycleConfig } =
-    useWorkspaceAccess();
+  const {
+    data: workspace,
+    activeMembership,
+    isViewer,
+    canManageCycleConfig,
+  } = useWorkspaceAccess();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectFilter>(ALL_PROJECTS_FILTER);
@@ -252,7 +256,7 @@ export default function ProjectManagement({
                       Solo lectura
                     </Tag>
                     <Text className="text-slate-500">
-                      Tu rol Viewer puede consultar proyectos y mÃ©tricas, pero no crear ni editar.
+                      Tu rol Viewer puede consultar proyectos y métricas, pero no crear ni editar.
                     </Text>
                   </Space>
                 )}
@@ -275,7 +279,7 @@ export default function ProjectManagement({
                       onClick={() => setIsTeamModalOpen(true)}
                       className="h-12 rounded-2xl px-6 text-base font-semibold"
                     >
-                      Crear equipo de trabajo
+                      Gestionar equipo de trabajo
                     </Button>
                   ) : null}
                 </div>
@@ -395,22 +399,22 @@ export default function ProjectManagement({
             {filteredProjects.map(project => {
               const statusMeta = PROJECT_STATUS_META[project.status];
               const teamMemberCount = project.teamMembers?.length || 0;
-                  const menuItems: MenuProps['items'] = [
-                    {
-                      key: 'open',
-                      label: 'Abrir proyecto',
-                      icon: <FolderOpenOutlined />,
-                    },
-                    ...(!isViewer
-                      ? [
-                          {
-                            key: 'edit',
-                            label: 'Editar proyecto',
-                            icon: <EditOutlined />,
-                          },
-                        ]
-                      : []),
-                  ];
+              const menuItems: MenuProps['items'] = [
+                {
+                  key: 'open',
+                  label: 'Abrir proyecto',
+                  icon: <FolderOpenOutlined />,
+                },
+                ...(!isViewer
+                  ? [
+                      {
+                        key: 'edit',
+                        label: 'Editar proyecto',
+                        icon: <EditOutlined />,
+                      },
+                    ]
+                  : []),
+              ];
 
               return (
                 <Col xs={24} md={12} xl={8} key={project.id}>
@@ -557,16 +561,16 @@ export default function ProjectManagement({
               description="No se encontraron proyectos con los filtros actuales."
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             >
-                        {!isViewer ? (
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={onOpenCreateModal}
-                            className="rounded-2xl px-5 font-semibold"
-                          >
-                            Crear proyecto
-                          </Button>
-                        ) : null}
+              {!isViewer ? (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={onOpenCreateModal}
+                  className="rounded-2xl px-5 font-semibold"
+                >
+                  Crear proyecto
+                </Button>
+              ) : null}
             </Empty>
           </Card>
         )}

@@ -7,6 +7,7 @@ import {
   fetchCurrentUser,
   getStoredAuthUser,
   login as loginRequest,
+  setStoredAuthUser,
   signup as signupRequest,
 } from '../services/authService';
 import type { AuthUser, LoginInput, SignupInput } from '../types/model';
@@ -78,6 +79,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
     const handleAuthCleared = () => {
       invalidateWorkspaceCache();
       clearWorkspaceSelection();
+      setStoredAuthUser(null);
       setUser(null);
       setStatus('unauthenticated');
       queryClient.clear();

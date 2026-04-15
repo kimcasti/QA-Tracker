@@ -11,6 +11,8 @@ import { apiIdentifier, apiPassword, apiUrl, useServiceAuth } from '..';
 
 const JWT_STORAGE_KEY = 'qa_tracker_api_jwt';
 const AUTH_CLEARED_EVENT = 'qa-tracker-auth-cleared';
+export const ACTIVE_MEMBERSHIP_REQUIRED_MESSAGE =
+  'An active organization membership is required.';
 
 export interface ApiError {
   error?: {
@@ -83,6 +85,20 @@ export function toApiError(error: unknown) {
   };
 }
 
+export function isActiveMembershipRequiredError(error: unknown) {
+  if (!isAxiosError<ApiError>(error)) {
+    return false;
+  }
+
+  const message =
+    error.response?.data?.error?.message || error.response?.data?.message || error.message;
+
+  return (
+    error.response?.status === HttpStatusCode.Forbidden &&
+    message === ACTIVE_MEMBERSHIP_REQUIRED_MESSAGE
+  );
+}
+
 export function isDomainBackendError<T = any, D = any>(error: unknown): error is AxiosError<T, D> {
   return isAxiosError(error) && error.response?.status === HttpStatusCode.UnprocessableEntity;
 }
@@ -150,7 +166,10 @@ Http.interceptors.request.use(async config => withAuthHeader(config));
 Http.interceptors.response.use(
   response => response,
   (error: AxiosResponseError) => {
-    if (error.response?.status === HttpStatusCode.Unauthorized) {
+    if (
+      error.response?.status === HttpStatusCode.Unauthorized ||
+      isActiveMembershipRequiredError(error)
+    ) {
       clearStoredToken();
     }
 
@@ -166,6 +185,13 @@ Http.interceptors.response.use(
 PublicHttp.interceptors.response.use(
   response => response,
   (error: AxiosResponseError) => {
+    if (
+      error.response?.status === HttpStatusCode.Unauthorized ||
+      isActiveMembershipRequiredError(error)
+    ) {
+      clearStoredToken();
+    }
+
     if (isAxiosError(error)) {
       const requestUrl = error.config?.url ?? 'unknown URL';
       console.error(`Public API request failed for ${requestUrl}:`, error);

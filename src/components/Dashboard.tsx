@@ -1,11 +1,24 @@
 import { useMemo, useState } from 'react';
-import { Card, Col, DatePicker, Progress, Row, Statistic, Table, Tag, Typography } from 'antd';
+import {
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Progress,
+  Row,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import {
   BarChartOutlined,
   BugOutlined,
   CheckCircleFilled,
   CloudFilled,
   DatabaseFilled,
+  DownloadOutlined,
   FileSearchOutlined,
   HistoryOutlined,
   SafetyCertificateOutlined,
@@ -13,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import dayjs, { type Dayjs } from 'dayjs';
+import * as XLSX from 'xlsx';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { normalizeDateOnly } from '../modules/functionalities/services/functionalitiesService';
@@ -422,8 +436,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
 
         return deliveryDate >= startsAt && deliveryDate <= endsAt;
-      })
-      .slice(0, 5);
+      });
   }, [deliveryDateRange, normalizedBaseTableData]);
 
   const tableColumns = [
@@ -478,6 +491,46 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       ),
     },
   ];
+
+  const exportTableData = () => {
+    if (!tableData.length) {
+      message.info('No hay funcionalidades filtradas para exportar.');
+      return;
+    }
+
+    const exportRows = tableData.map(item => ({
+      'Fecha / Periodo': item.period,
+      Funcionalidad: item.name,
+      Estado: item.status,
+      Calidad: `${item.quality}%`,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const [startDate, endDate] = deliveryDateRange || [];
+    const rangeLabel = startDate || endDate
+      ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
+      : 'Todas';
+    const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
+
+    try {
+      const csv = XLSX.utils.sheet_to_csv(worksheet);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${fileName}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      message.success('Lista exportada en CSV.');
+    } catch (error) {
+      console.error('Dashboard export error:', error);
+      message.error('No fue posible exportar la lista filtrada.');
+    }
+  };
 
   return (
     <div className="space-y-8 pb-10">
@@ -862,15 +915,24 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           <Card
             title="Funcionalidades por fecha de entrega"
             extra={
-              <DatePicker.RangePicker
-                value={deliveryDateRange}
-                allowClear
-                format="DD/MM/YYYY"
-                placeholder={['Desde', 'Hasta']}
-                onChange={dates =>
-                  setDeliveryDateRange((dates as [Dayjs | null, Dayjs | null]) || null)
-                }
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <DatePicker.RangePicker
+                  value={deliveryDateRange}
+                  allowClear
+                  format="DD/MM/YYYY"
+                  placeholder={['Desde', 'Hasta']}
+                  onChange={dates =>
+                    setDeliveryDateRange((dates as [Dayjs | null, Dayjs | null]) || null)
+                  }
+                />
+                <Button
+                  icon={<DownloadOutlined />}
+                  disabled={!tableData.length}
+                  onClick={exportTableData}
+                >
+                  Exportar lista
+                </Button>
+              </div>
             }
             variant="borderless"
             className="rounded-2xl qa-surface-card"
