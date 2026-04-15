@@ -6,6 +6,8 @@ export interface WorkspaceMembership {
     documentId: string;
     name: string;
     slug: string;
+    plan?: 'starter' | 'growth' | 'enterprise';
+    status?: 'active' | 'inactive';
   };
   role?: {
     documentId: string;
@@ -20,10 +22,21 @@ export interface WorkspaceUser {
   email?: string;
 }
 
+export interface WorkspaceProjectQuota {
+  plan?: 'starter' | 'growth' | 'enterprise';
+  currentCount: number;
+  limit: number | null;
+  allowedByRole: boolean;
+  canCreate: boolean;
+  limitReached: boolean;
+  upgradePriceMonthlyUsd: number;
+}
+
 export interface Workspace {
   user?: WorkspaceUser;
   memberships: WorkspaceMembership[];
   projects: Project[];
+  projectQuota?: WorkspaceProjectQuota;
 }
 
 export interface ProjectContext {

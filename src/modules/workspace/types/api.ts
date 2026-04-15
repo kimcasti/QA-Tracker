@@ -10,6 +10,8 @@ export interface WorkspaceMembershipDto {
     documentId: string;
     name: string;
     slug: string;
+    plan?: 'starter' | 'growth' | 'enterprise';
+    status?: 'active' | 'inactive';
   };
   role?: {
     documentId: string;
@@ -40,8 +42,19 @@ export interface WorkspaceProjectDto {
   };
 }
 
+export interface WorkspaceProjectQuotaDto {
+  plan?: 'starter' | 'growth' | 'enterprise';
+  currentCount: number;
+  limit: number | null;
+  allowedByRole: boolean;
+  canCreate: boolean;
+  limitReached: boolean;
+  upgradePriceMonthlyUsd: number;
+}
+
 export interface WorkspaceDto {
   user?: WorkspaceUserDto;
   memberships: WorkspaceMembershipDto[];
   projects: WorkspaceProjectDto[];
+  projectQuota?: WorkspaceProjectQuotaDto;
 }

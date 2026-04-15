@@ -3,7 +3,12 @@ import { Http } from '../../../config/http';
 import type { Project } from '../../../types';
 import { projectStatusFromApi } from '../../shared/services/enumMappers';
 import type { WorkspaceDto } from '../types/api';
-import type { ProjectContext, Workspace, WorkspaceMembership } from '../types/model';
+import type {
+  ProjectContext,
+  Workspace,
+  WorkspaceMembership,
+  WorkspaceProjectQuota,
+} from '../types/model';
 
 let workspaceCache: Workspace | null = null;
 let workspacePromise: Promise<Workspace> | null = null;
@@ -37,6 +42,22 @@ function mapMembership(membership: WorkspaceDto['memberships'][number]): Workspa
   };
 }
 
+function mapProjectQuota(projectQuota?: WorkspaceDto['projectQuota']): WorkspaceProjectQuota | undefined {
+  if (!projectQuota) {
+    return undefined;
+  }
+
+  return {
+    plan: projectQuota.plan,
+    currentCount: projectQuota.currentCount,
+    limit: projectQuota.limit,
+    allowedByRole: projectQuota.allowedByRole,
+    canCreate: projectQuota.canCreate,
+    limitReached: projectQuota.limitReached,
+    upgradePriceMonthlyUsd: projectQuota.upgradePriceMonthlyUsd,
+  };
+}
+
 export async function getWorkspace() {
   if (workspaceCache) {
     return workspaceCache;
@@ -60,6 +81,7 @@ export async function getWorkspace() {
           user: response.data.user,
           memberships: (response.data.memberships || []).map(mapMembership),
           projects: (response.data.projects || []).map(mapProject),
+          projectQuota: mapProjectQuota(response.data.projectQuota),
         };
 
         workspaceCache = workspace;

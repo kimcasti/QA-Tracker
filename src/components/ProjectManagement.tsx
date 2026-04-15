@@ -35,7 +35,16 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { appBranding } from '../assets/branding';
+import { ProjectUpgradeBox } from '../modules/projects/components/ProjectUpgradeBox';
 import { useProjects } from '../modules/projects/hooks/useProjects';
+import {
+  DEFAULT_PRO_PLAN_PRICE_MONTHLY_USD,
+  PROJECT_CREATION_ROLE_MESSAGE,
+  getEffectiveProjectCount,
+  getProjectLimitForPlan,
+  hasReachedProjectLimit,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 import { OrganizationTeamModal } from '../modules/organization-team/components/OrganizationTeamModal';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { renameActiveOrganization } from '../modules/workspace/services/workspaceService';
@@ -76,6 +85,12 @@ const PROJECT_STATUS_META: Record<
   },
 };
 
+function formatPlanLabel(plan: 'starter' | 'growth' | 'enterprise') {
+  if (plan === 'growth') return 'Growth';
+  if (plan === 'enterprise') return 'Enterprise';
+  return 'Starter';
+}
+
 function getInitials(name: string) {
   return name
     .split(' ')
@@ -91,6 +106,41 @@ function openProjectFromKeyboard(event: React.KeyboardEvent<HTMLDivElement>, onO
   onOpen();
 }
 
+function WorkspaceMetricCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  valueColor,
+}: {
+  title: string;
+  value: number;
+  subtitle: string;
+  icon: React.ReactNode;
+  valueColor: string;
+}) {
+  return (
+    <Card
+      variant="borderless"
+      className="h-full rounded-[24px] border border-slate-100/80 shadow-[0_16px_30px_rgba(15,35,95,0.06)]"
+      styles={{ body: { padding: 20 } }}
+      style={{ backgroundColor: qaPalette.card }}
+    >
+      <Statistic
+        title={
+          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            {title}
+          </span>
+        }
+        value={value}
+        prefix={icon}
+        styles={{ content: { color: valueColor, fontWeight: 700 } }}
+      />
+      <Text className="mt-2 block text-sm leading-6 text-slate-500">{subtitle}</Text>
+    </Card>
+  );
+}
+
 export default function ProjectManagement({
   onViewDetails,
   onEditProject,
@@ -98,10 +148,11 @@ export default function ProjectManagement({
 }: ProjectManagementProps) {
   const { data: projects = [] } = useProjects();
   const {
-    data: workspace,
     activeMembership,
     isViewer,
     canManageCycleConfig,
+    canCreateProjectsByRole,
+    projectQuota,
   } = useWorkspaceAccess();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,15 +160,47 @@ export default function ProjectManagement({
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isEditOrganizationModalOpen, setIsEditOrganizationModalOpen] = useState(false);
   const [organizationForm] = Form.useForm<{ name: string }>();
+
   const activeOrganization = activeMembership?.organization;
   const canEditOrganization = canManageCycleConfig;
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeOrganization?.plan,
+  );
+  const projectLimitValue =
+    typeof projectQuota?.limit === 'number'
+      ? projectQuota.limit
+      : getProjectLimitForPlan(activeOrganizationPlan);
+  const upgradePriceMonthlyUsd =
+    projectQuota?.upgradePriceMonthlyUsd ?? DEFAULT_PRO_PLAN_PRICE_MONTHLY_USD;
+  const effectiveProjectCount = useMemo(
+    () =>
+      getEffectiveProjectCount({
+        currentCount: projectQuota?.currentCount,
+        visibleProjectsCount: projects.length,
+      }),
+    [projectQuota?.currentCount, projects.length],
+  );
+  const projectLimitReached = hasReachedProjectLimit({
+    limit: projectLimitValue,
+    currentCount: projectQuota?.currentCount,
+    visibleProjectsCount: projects.length,
+  });
+  const canCreateProjectsInUi =
+    canCreateProjectsByRole &&
+    (projectQuota?.canCreate ?? canCreateProjectsByRole) &&
+    !projectLimitReached;
+  const showProjectUpgradeBox =
+    canCreateProjectsByRole &&
+    projectLimitReached &&
+    projectLimitValue !== null &&
+    upgradePriceMonthlyUsd > 0;
 
   const renameOrganizationMutation = useMutation({
     mutationFn: renameActiveOrganization,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
-      message.success('Nombre de la organización actualizado');
+      message.success('Nombre de la organizacion actualizado');
       setIsEditOrganizationModalOpen(false);
     },
   });
@@ -174,7 +257,7 @@ export default function ProjectManagement({
         return;
       }
 
-      message.error('No se pudo actualizar el nombre de la organización');
+      message.error('No se pudo actualizar el nombre de la organizacion');
     }
   };
 
@@ -184,6 +267,11 @@ export default function ProjectManagement({
     { label: 'Pausados', value: ProjectStatus.PAUSED },
     { label: 'Completados', value: ProjectStatus.COMPLETED },
   ];
+
+  const upgradeCurrentCount = Math.max(
+    effectiveProjectCount,
+    projectLimitValue ?? effectiveProjectCount,
+  );
 
   return (
     <div className="relative min-h-full overflow-hidden px-6 py-8 sm:px-8">
@@ -216,164 +304,195 @@ export default function ProjectManagement({
               style={{ backgroundColor: softSurface(qaPalette.primary) }}
             />
 
-            <Row gutter={[24, 24]} align="middle">
-              <Col xs={24} xl={15}>
-                <Space size={[8, 8]} wrap className="mb-4">
-                  <Tag
-                    variant="filled"
-                    className="rounded-full px-3 py-1 font-semibold"
-                    style={{
-                      color: qaPalette.primary,
-                      backgroundColor: softSurface(qaPalette.primary),
-                    }}
-                  >
-                    {qaBrand.name}
-                  </Tag>
-                  <Tag
-                    variant="filled"
-                    className="rounded-full px-3 py-1 font-semibold"
-                    style={{
-                      color: qaPalette.accent,
-                      backgroundColor: softSurface(qaPalette.accent),
-                    }}
-                  >
-                    Organización y proyectos
-                  </Tag>
-                </Space>
-
-                <Title
-                  level={1}
-                  className="!mb-3 !text-3xl !font-bold !text-slate-900 sm:!text-5xl"
+            <div className="relative flex flex-col gap-8">
+              <Space size={[8, 8]} wrap>
+                <Tag
+                  variant="filled"
+                  className="rounded-full px-3 py-1 font-semibold"
+                  style={{
+                    color: qaPalette.primary,
+                    backgroundColor: softSurface(qaPalette.primary),
+                  }}
                 >
-                  Gestión de proyectos QA con identidad consistente y acceso claro.
-                </Title>
-                <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
-                  Administra los proyectos de tu organización.
-                </Paragraph>
-                {isViewer && (
-                  <Space size={[8, 8]} wrap className="mt-4">
-                    <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
-                      Solo lectura
-                    </Tag>
-                    <Text className="text-slate-500">
-                      Tu rol Viewer puede consultar proyectos y métricas, pero no crear ni editar.
-                    </Text>
-                  </Space>
-                )}
+                  {qaBrand.name}
+                </Tag>
+                <Tag
+                  variant="filled"
+                  className="rounded-full px-3 py-1 font-semibold"
+                  style={{
+                    color: qaPalette.accent,
+                    backgroundColor: softSurface(qaPalette.accent),
+                  }}
+                >
+                  Organizacion y proyectos
+                </Tag>
+              </Space>
 
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Button
-                    type="primary"
-                    size="large"
-                    icon={<PlusOutlined />}
-                    onClick={onOpenCreateModal}
-                    disabled={isViewer}
-                    className="h-12 rounded-2xl px-6 text-base font-semibold"
-                  >
-                    Nuevo proyecto
-                  </Button>
-                  {!isViewer ? (
+              <div className="grid gap-8 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
+                <div className="flex flex-col gap-6">
+                  <div>
+                    <Title
+                      level={1}
+                      className="!mb-3 !max-w-4xl !text-3xl !font-bold !leading-[1.05] !text-slate-900 sm:!text-5xl"
+                    >
+                      Gestion de proyectos QA con identidad consistente y acceso claro.
+                    </Title>
+                    <Paragraph className="mb-0 max-w-3xl text-base text-slate-500 sm:text-lg">
+                      Administra el portfolio, el equipo y el estado del plan desde una vista mas
+                      clara y ordenada.
+                    </Paragraph>
+                  </div>
+
+                  {isViewer ? (
+                    <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3">
+                      <Space size={[8, 8]} wrap>
+                        <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                          Solo lectura
+                        </Tag>
+                        <Text className="text-slate-500">
+                          Tu rol Viewer puede consultar proyectos y metricas, pero no crear ni
+                          editar.
+                        </Text>
+                      </Space>
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <Button
+                      type="primary"
                       size="large"
-                      icon={<TeamOutlined />}
-                      onClick={() => setIsTeamModalOpen(true)}
+                      icon={<PlusOutlined />}
+                      onClick={onOpenCreateModal}
+                      disabled={!canCreateProjectsInUi}
                       className="h-12 rounded-2xl px-6 text-base font-semibold"
                     >
-                      Gestionar equipo de trabajo
+                      Nuevo proyecto
                     </Button>
+                    {!isViewer ? (
+                      <Button
+                        size="large"
+                        icon={<TeamOutlined />}
+                        onClick={() => setIsTeamModalOpen(true)}
+                        className="h-12 rounded-2xl px-6 text-base font-semibold"
+                      >
+                        Gestionar equipo de trabajo
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {!canCreateProjectsByRole ? (
+                    <Text className="block text-sm text-slate-500">
+                      {PROJECT_CREATION_ROLE_MESSAGE}
+                    </Text>
                   ) : null}
                 </div>
-              </Col>
 
-              <Col xs={24} xl={9}>
-                <div className="mb-4 flex justify-start xl:justify-end">
-                  <Button
-                    icon={<EditOutlined />}
-                    onClick={() => setIsEditOrganizationModalOpen(true)}
-                    disabled={!canEditOrganization}
-                    className="h-11 rounded-2xl px-5 font-semibold"
-                  >
-                    Editar organización
-                  </Button>
-                </div>
-                <div className="mb-4 text-right">
-                  <Text className="text-slate-500">
-                    {activeOrganization?.name || 'Organización actual'}
-                  </Text>
-                </div>
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} sm={12}>
-                    <Card
-                      variant="borderless"
-                      className="h-full rounded-3xl"
-                      styles={{ body: { padding: 20 } }}
-                      style={{ backgroundColor: qaPalette.card }}
-                    >
-                      <Statistic
-                        title={
-                          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            Proyectos
-                          </span>
-                        }
-                        value={projectMetrics.totalProjects}
-                        prefix={<AppstoreOutlined style={{ color: qaPalette.primary }} />}
-                        styles={{ content: { color: qaPalette.primary, fontWeight: 700 } }}
-                      />
-                      <Text className="mt-2 block text-slate-500">
-                        {projectMetrics.activeProjects} Activos listos para seguimiento
+                <div className="flex flex-col gap-4">
+                  <div className="rounded-[24px] border border-white/80 bg-white/80 p-5 shadow-[0_18px_35px_rgba(16,42,67,0.08)] backdrop-blur-sm">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between xl:flex-col xl:items-stretch 2xl:flex-row 2xl:items-start">
+                        <div>
+                          <Text className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                            Organizacion activa
+                          </Text>
+                          <Title level={3} className="!mb-1 !mt-2 !text-slate-900">
+                            {activeOrganization?.name || 'Organizacion actual'}
+                          </Title>
+                          <Space size={[8, 8]} wrap className="mt-3">
+                            <Tag
+                              variant="filled"
+                              className="rounded-full px-3 py-1 font-semibold"
+                              style={{
+                                color: qaPalette.primary,
+                                backgroundColor: softSurface(qaPalette.primary),
+                              }}
+                            >
+                              Plan {formatPlanLabel(activeOrganizationPlan)}
+                            </Tag>
+                            {activeMembership?.role?.name ? (
+                              <Tag
+                                variant="filled"
+                                className="rounded-full px-3 py-1 font-semibold"
+                                style={{
+                                  color: qaPalette.secondary,
+                                  backgroundColor: softSurface(qaPalette.border),
+                                }}
+                              >
+                                {activeMembership.role.name}
+                              </Tag>
+                            ) : null}
+                          </Space>
+                        </div>
+
+                        <Button
+                          icon={<EditOutlined />}
+                          onClick={() => setIsEditOrganizationModalOpen(true)}
+                          disabled={!canEditOrganization}
+                          className="h-11 rounded-2xl px-5 font-semibold"
+                        >
+                          Editar organizacion
+                        </Button>
+                      </div>
+
+                      <Text className="text-sm leading-6 text-slate-500">
+                        Centraliza el equipo, los proyectos y la configuracion principal del
+                        workspace desde un solo bloque.
                       </Text>
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12}>
-                    <Card
-                      variant="borderless"
-                      className="h-full rounded-3xl"
-                      styles={{ body: { padding: 20 } }}
-                      style={{ backgroundColor: qaPalette.card }}
-                    >
-                      <Statistic
-                        title={
-                          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            Colaboradores
-                          </span>
-                        }
-                        value={projectMetrics.distinctMembers}
-                        prefix={
-                          <TeamOutlined
-                            style={{ color: qaPalette.functionalityStatus.completed }}
-                          />
-                        }
-                        styles={{
-                          content: {
-                            color: qaPalette.functionalityStatus.completed,
-                            fontWeight: 700,
-                          },
-                        }}
-                      />
-                      <Text className="mt-2 block text-slate-500">
-                        Participantes distintos registrados en el portfolio
-                      </Text>
-                    </Card>
-                  </Col>
-                </Row>
-              </Col>
-            </Row>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <WorkspaceMetricCard
+                      title="Proyectos"
+                      value={projectMetrics.totalProjects}
+                      subtitle={`${projectMetrics.activeProjects} activos listos para seguimiento`}
+                      icon={<AppstoreOutlined style={{ color: qaPalette.primary }} />}
+                      valueColor={qaPalette.primary}
+                    />
+                    <WorkspaceMetricCard
+                      title="Colaboradores"
+                      value={projectMetrics.distinctMembers}
+                      subtitle="Participantes distintos registrados en el portfolio"
+                      icon={
+                        <TeamOutlined style={{ color: qaPalette.functionalityStatus.completed }} />
+                      }
+                      valueColor={qaPalette.functionalityStatus.completed}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
+
+        {showProjectUpgradeBox ? (
+          <ProjectUpgradeBox
+            organizationName={activeOrganization?.name}
+            currentCount={upgradeCurrentCount}
+            limit={projectLimitValue}
+            upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+          />
+        ) : null}
 
         <Card
           variant="borderless"
           className="qa-surface-card rounded-[28px]"
           styles={{ body: { padding: 24 } }}
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
               <Title level={3} className="!mb-1 !text-slate-900">
-                {activeOrganization?.name || 'Organización actual'}
+                {activeOrganization?.name || 'Organizacion actual'}
               </Title>
+              <Text className="text-slate-500">
+                {filteredProjects.length} proyecto{filteredProjects.length === 1 ? '' : 's'} visibles
+                {searchTerm || statusFilter !== ALL_PROJECTS_FILTER
+                  ? ' con los filtros actuales.'
+                  : ' en este portfolio.'}
+              </Text>
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
               <Input
                 allowClear
                 size="large"
@@ -417,7 +536,7 @@ export default function ProjectManagement({
               ];
 
               return (
-                <Col xs={24} md={12} xl={8} key={project.id}>
+                <Col xs={24} md={12} xl={8} key={project.id} className="flex">
                   <div
                     role="button"
                     tabIndex={0}
@@ -425,17 +544,24 @@ export default function ProjectManagement({
                     onKeyDown={event =>
                       openProjectFromKeyboard(event, () => onViewDetails(project))
                     }
-                    className="outline-none"
+                    className="h-full w-full outline-none"
                     aria-label={`Abrir proyecto ${project.name}`}
                   >
                     <Card
                       hoverable
                       variant="borderless"
-                      className="qa-surface-card h-full rounded-[28px] transition-transform duration-300 hover:-translate-y-1"
-                      styles={{ body: { padding: 24 } }}
+                      className="qa-surface-card h-[430px] w-full rounded-[28px] border border-slate-100/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_40px_rgba(16,42,67,0.08)]"
+                      styles={{
+                        body: {
+                          padding: 24,
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                        },
+                      }}
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-4">
+                        <div className="flex min-w-0 items-center gap-4">
                           {project.logo ? (
                             <Avatar
                               size={56}
@@ -455,7 +581,7 @@ export default function ProjectManagement({
                             </Avatar>
                           )}
 
-                          <div className="flex flex-col gap-2">
+                          <div className="flex min-w-0 flex-col gap-2">
                             <Tag
                               variant="filled"
                               className="m-0 w-fit rounded-full px-3 py-1 font-semibold"
@@ -501,26 +627,35 @@ export default function ProjectManagement({
                         </Dropdown>
                       </div>
 
-                      <div className="mt-8 space-y-3">
-                        <div>
-                          <Title level={4} className="!mb-1 !text-slate-900">
+                      <div className="mt-7 flex-1 overflow-hidden">
+                        <div className="space-y-1">
+                          <Paragraph
+                            ellipsis={{ rows: 2, tooltip: project.name }}
+                            className="!mb-1 !text-xl !font-semibold !leading-8 !text-slate-900"
+                          >
                             {project.name}
-                          </Title>
-                          <Text className="text-slate-500">
-                            {project.purpose || 'Proyecto QA de la organización actual'}
-                          </Text>
+                          </Paragraph>
+                          <Paragraph
+                            ellipsis={{
+                              rows: 1,
+                              tooltip: project.purpose || 'Proyecto QA de la organizacion actual',
+                            }}
+                            className="!mb-0 !text-sm !leading-6 !text-slate-500"
+                          >
+                            {project.purpose || 'Proyecto QA de la organizacion actual'}
+                          </Paragraph>
                         </div>
 
                         <Paragraph
-                          ellipsis={{ rows: 3 }}
-                          className="min-h-[66px] !text-sm !leading-6 !text-slate-500"
+                          ellipsis={{ rows: 4, tooltip: project.description }}
+                          className="!mb-0 min-h-[96px] !text-sm !leading-6 !text-slate-500"
                         >
                           {project.description}
                         </Paragraph>
                       </div>
 
-                      <div className="mt-8 rounded-3xl border border-slate-100 bg-slate-50/70 p-4">
-                        <div className="flex items-center justify-between gap-3 text-sm text-slate-500">
+                      <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50/80 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
                           <Space size={8}>
                             <CalendarOutlined />
                             <span>{dayjs(project.createdAt).format('DD MMM YYYY')}</span>
@@ -566,6 +701,7 @@ export default function ProjectManagement({
                   type="primary"
                   icon={<PlusOutlined />}
                   onClick={onOpenCreateModal}
+                  disabled={!canCreateProjectsInUi}
                   className="rounded-2xl px-5 font-semibold"
                 >
                   Crear proyecto
@@ -581,9 +717,10 @@ export default function ProjectManagement({
         onCancel={() => setIsTeamModalOpen(false)}
         workspaceProjectDocumentId={workspaceProjectDocumentId}
       />
+
       <Modal
         open={isEditOrganizationModalOpen}
-        title="Editar organización"
+        title="Editar organizacion"
         onOk={handleSaveOrganizationName}
         onCancel={() => setIsEditOrganizationModalOpen(false)}
         okText="Guardar cambios"
@@ -594,8 +731,8 @@ export default function ProjectManagement({
         <Form form={organizationForm} layout="vertical" className="mt-4">
           <Form.Item
             name="name"
-            label="Nombre de la organización"
-            rules={[{ required: true, message: 'Ingresa el nombre de la organización.' }]}
+            label="Nombre de la organizacion"
+            rules={[{ required: true, message: 'Ingresa el nombre de la organizacion.' }]}
           >
             <Input size="large" placeholder="Ej. Laboratorio QA" />
           </Form.Item>

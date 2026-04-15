@@ -6,6 +6,7 @@ export function useWorkspaceAccess() {
 
   return useMemo(() => {
     const activeMembership = workspaceQuery.data?.memberships?.[0];
+    const projectQuota = workspaceQuery.data?.projectQuota;
     const activeRoleCode = activeMembership?.role?.code || '';
     const activeRoleName =
       activeMembership?.role?.name ||
@@ -22,10 +23,14 @@ export function useWorkspaceAccess() {
     const canManageOrganization = isOwner;
     const canManageCycleConfig = isOwner || isQaLead;
     const canMutateWorkspace = Boolean(activeRoleCode) && !isViewer;
+    const canCreateProjectsByRole = projectQuota?.allowedByRole ?? canManageCycleConfig;
+    const hasReachedProjectLimit = projectQuota?.limitReached ?? false;
+    const canCreateProjects = projectQuota?.canCreate ?? canCreateProjectsByRole;
 
     return {
       ...workspaceQuery,
       activeMembership,
+      projectQuota,
       activeRoleCode,
       activeRoleName,
       isOwner,
@@ -34,6 +39,9 @@ export function useWorkspaceAccess() {
       canManageOrganization,
       canManageCycleConfig,
       canMutateWorkspace,
+      canCreateProjectsByRole,
+      hasReachedProjectLimit,
+      canCreateProjects,
     };
   }, [workspaceQuery]);
 }
