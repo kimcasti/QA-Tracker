@@ -4,21 +4,24 @@ import { getTestCycles, saveTestCycle } from '../services/testCyclesService';
 
 export function useSmokeCycles(projectId?: string) {
   const queryClient = useQueryClient();
+  const queryKey = ['test-cycles', 'smoke', projectId] as const;
 
   const query = useQuery({
-    queryKey: ['test-cycles', 'smoke', projectId],
+    queryKey,
     queryFn: () => getTestCycles(projectId, 'SMOKE'),
     enabled: Boolean(projectId),
   });
 
   const saveMutation = useMutation({
     mutationFn: (cycle: RegressionCycle) => saveTestCycle({ ...cycle, type: 'SMOKE' }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['test-cycles', 'smoke', projectId] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
   });
 
   return {
     ...query,
     save: saveMutation.mutateAsync,
+    isSaving: saveMutation.isPending,
   };
 }

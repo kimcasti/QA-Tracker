@@ -102,63 +102,73 @@ async function syncExecutions(
   organizationDocumentId?: string,
   projectDocumentId?: string,
 ) {
+  const needsTestCases = cycle.executions.some(item => Boolean(item.testCaseId));
+  const needsBugs = cycle.executions.some(
+    item => Boolean(item.linkedBugId || item.bugId || item.bugTitle),
+  );
+
   const [functionalities, testCases, bugs, existingExecutions] = await Promise.all([
     getFunctionalities(cycle.projectId),
-    getTestCases(cycle.projectId),
-    getBugs(cycle.projectId),
+    needsTestCases ? getTestCases(cycle.projectId) : Promise.resolve([]),
+    needsBugs ? getBugs(cycle.projectId) : Promise.resolve([]),
     listDocuments<TestCycleExecutionDto>('/api/test-cycle-executions', {
       'filters[testCycle][documentId][$eq]': cycleDocumentId,
       ...populateParams(['functionality', 'testCase', 'bug']),
     }),
   ]);
 
-  const savedExecutions: TestCycleExecutionDto[] = [];
-  for (const execution of cycle.executions) {
-    const functionality = functionalities.find(item => item.id === execution.functionalityId);
-    const testCase = testCases.find(item => item.id === execution.testCaseId);
-    const linkedBug = bugs.find(
-      item =>
-        item.internalBugId === execution.linkedBugId ||
-        item.internalBugId === execution.bugId ||
-        item.externalBugId === execution.bugId,
-    );
-    const bugDocuments = linkedBug
-      ? await listDocuments<any>('/api/bugs', {
+  const functionalitiesByCode = new Map(functionalities.map(item => [item.id, item]));
+  const testCasesById = new Map(testCases.map(item => [item.id, item]));
+  const existingExecutionIds = new Set(existingExecutions.map(item => item.documentId));
+  const bugDocumentCache = new Map<string, string | undefined>();
+
+  const savedExecutions = await Promise.all(
+    cycle.executions.map(async execution => {
+      const functionality = functionalitiesByCode.get(execution.functionalityId);
+      const testCase = execution.testCaseId ? testCasesById.get(execution.testCaseId) : undefined;
+      const linkedBug = bugs.find(
+        item =>
+          item.internalBugId === execution.linkedBugId ||
+          item.internalBugId === execution.bugId ||
+          item.externalBugId === execution.bugId,
+      );
+
+      let bugDocumentId = linkedBug ? bugDocumentCache.get(linkedBug.internalBugId) : undefined;
+      if (linkedBug && !bugDocumentCache.has(linkedBug.internalBugId)) {
+        const bugDocuments = await listDocuments<any>('/api/bugs', {
           'filters[internalBugId][$eq]': linkedBug.internalBugId,
-        })
-      : [];
-    const documentId = existingExecutions.some(item => item.documentId === execution.id)
-      ? execution.id
-      : null;
+        });
+        bugDocumentId = bugDocuments[0]?.documentId;
+        bugDocumentCache.set(linkedBug.internalBugId, bugDocumentId);
+      }
 
-    const saved = await upsertDocument<TestCycleExecutionDto>(
-      '/api/test-cycle-executions',
-      documentId,
-      {
-        moduleName: execution.module,
-        functionalityName: execution.functionalityName,
-        testCaseTitle: execution.testCaseTitle || null,
-        executed: execution.executed,
-        date: execution.date || null,
-        result: testResultToApi(execution.result),
-        executionMode: executionModeToApi(execution.executionMode),
-        evidence: execution.evidence || null,
-        evidenceImage: execution.evidenceImage || null,
-        bugTitle: execution.bugTitle || null,
-        bugLink: execution.bugLink || null,
-        severity: severityToApi(execution.severity),
-        linkedBugId: execution.linkedBugId || null,
-        organization: relation(organizationDocumentId),
-        project: relation(projectDocumentId),
-        testCycle: relation(cycleDocumentId),
-        functionality: relation(functionality?.id),
-        testCase: relation(testCase?.id),
-        bug: relation(bugDocuments[0]?.documentId),
-      },
-    );
-
-    savedExecutions.push(saved);
-  }
+      return upsertDocument<TestCycleExecutionDto>(
+        '/api/test-cycle-executions',
+        existingExecutionIds.has(execution.id) ? execution.id : null,
+        {
+          moduleName: execution.module,
+          functionalityName: execution.functionalityName,
+          testCaseTitle: execution.testCaseTitle || null,
+          executed: execution.executed,
+          date: execution.date || null,
+          result: testResultToApi(execution.result),
+          executionMode: executionModeToApi(execution.executionMode),
+          evidence: execution.evidence || null,
+          evidenceImage: execution.evidenceImage || null,
+          bugTitle: execution.bugTitle || null,
+          bugLink: execution.bugLink || null,
+          severity: severityToApi(execution.severity),
+          linkedBugId: execution.linkedBugId || null,
+          organization: relation(organizationDocumentId),
+          project: relation(projectDocumentId),
+          testCycle: relation(cycleDocumentId),
+          functionality: relation(functionality?.documentId || functionality?.id),
+          testCase: relation(testCase?.id),
+          bug: relation(bugDocumentId),
+        },
+      );
+    }),
+  );
 
   const savedIds = new Set(savedExecutions.map(item => item.documentId));
   await Promise.all(

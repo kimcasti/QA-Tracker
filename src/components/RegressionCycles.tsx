@@ -142,7 +142,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { data: cyclesData, save } = useRegressionCycles(projectId);
+  const { data: cyclesData, save, isSaving } = useRegressionCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -158,58 +158,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<RegressionCycle | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
-  const [selectionInitialized, setSelectionInitialized] = useState(false);
   const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
   const [form] = Form.useForm();
-
-  const handleOpenModal = () => {
-    setEditingCycle(null);
-    setSelectedFunctionalityIds([]);
-    setSelectionInitialized(false);
-    setSuggestionModuleFilter(undefined);
-    form.resetFields();
-    // Calculate next Cycle ID
-    const nextNumber =
-      cycles.length > 0
-        ? Math.max(
-            ...cycles.map(c => {
-              const match = c.cycleId?.match(/\d+/);
-              return match ? parseInt(match[0], 10) : 0;
-            }),
-          ) + 1
-        : 1;
-
-    form.setFieldsValue({
-      cycleId: `C-${nextNumber.toString().padStart(2, '0')}`,
-      sprint: undefined,
-      status: 'EN_PROGRESO',
-      date: dayjs(),
-      note: '',
-      tester: [],
-      environment: undefined,
-      buildVersion: '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleEdit = (cycle: RegressionCycle) => {
-    setEditingCycle(cycle);
-    setSelectedCycle(cycle); // Show the detail view in the background
-    setSelectedFunctionalityIds([]);
-    setSelectionInitialized(true);
-    setSuggestionModuleFilter(undefined);
-    form.setFieldsValue({
-      cycleId: cycle.cycleId,
-      status: cycle.status,
-      sprint: normalizeSprintName(cycle.sprint),
-      date: dayjs(cycle.date),
-      note: cycle.note,
-      tester: parseTesterValue(cycle.tester),
-      environment: cycle.environment,
-      buildVersion: cycle.buildVersion || '',
-    });
-    setIsModalOpen(true);
-  };
   const [tableFilters, setTableFilters] = useState<NativeCycleTableFilterState>({
     cycleId: null,
     date: null,
@@ -286,6 +236,14 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       isRecentlyChanged(functionality),
   );
 
+  const getSuggestedFunctionalityIds = () =>
+    Array.from(
+      new Set([
+        ...regressionMandatoryFuncs.map(item => item.id),
+        ...regressionRecommendedFuncs.map(item => item.id),
+      ]),
+    );
+
   const regressionOptionalFuncs = regressionFuncs.filter(
     functionality =>
       !regressionMandatoryFuncs.some(item => item.id === functionality.id) &&
@@ -305,25 +263,57 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const filterByModule = (items: Functionality[]) =>
     suggestionModuleFilter ? items.filter(item => item.module === suggestionModuleFilter) : items;
 
-  useEffect(() => {
-    if (!isModalOpen || editingCycle || selectionInitialized) return;
+  const resetCycleModal = () => {
+    setIsModalOpen(false);
+    setEditingCycle(null);
+    setSelectedFunctionalityIds([]);
+    setSuggestionModuleFilter(undefined);
+    form.resetFields();
+  };
 
-    const suggestedIds = Array.from(
-      new Set([
-        ...regressionMandatoryFuncs.map(item => item.id),
-        ...regressionRecommendedFuncs.map(item => item.id),
-      ]),
-    );
+  const handleOpenModal = () => {
+    resetCycleModal();
+    const nextNumber =
+      cycles.length > 0
+        ? Math.max(
+            ...cycles.map(c => {
+              const match = c.cycleId?.match(/\d+/);
+              return match ? parseInt(match[0], 10) : 0;
+            }),
+          ) + 1
+        : 1;
 
-    setSelectedFunctionalityIds(suggestedIds);
-    setSelectionInitialized(true);
-  }, [
-    editingCycle,
-    isModalOpen,
-    regressionMandatoryFuncs,
-    regressionRecommendedFuncs,
-    selectionInitialized,
-  ]);
+    setSelectedFunctionalityIds(getSuggestedFunctionalityIds());
+    form.setFieldsValue({
+      cycleId: `C-${nextNumber.toString().padStart(2, '0')}`,
+      sprint: undefined,
+      status: 'EN_PROGRESO',
+      date: dayjs(),
+      note: '',
+      tester: [],
+      environment: undefined,
+      buildVersion: '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (cycle: RegressionCycle) => {
+    setEditingCycle(cycle);
+    setSelectedCycle(cycle); // Show the detail view in the background
+    setSelectedFunctionalityIds([]);
+    setSuggestionModuleFilter(undefined);
+    form.setFieldsValue({
+      cycleId: cycle.cycleId,
+      status: cycle.status,
+      sprint: normalizeSprintName(cycle.sprint),
+      date: dayjs(cycle.date),
+      note: cycle.note,
+      tester: parseTesterValue(cycle.tester),
+      environment: cycle.environment,
+      buildVersion: cycle.buildVersion || '',
+    });
+    setIsModalOpen(true);
+  };
 
   const renderReasonTags = (functionality: Functionality) => {
     const tags: { label: string; color: string }[] = [];
@@ -702,6 +692,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     try {
       const values = await form.validateFields();
 
@@ -767,13 +759,14 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         message.success('Ciclo creado correctamente');
       }
 
-      setIsModalOpen(false);
-      setEditingCycle(null);
-      setSelectedFunctionalityIds([]);
-      setSelectionInitialized(false);
-      form.resetFields();
+      resetCycleModal();
     } catch (error) {
-      console.error('Validation failed:', error);
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) {
+        return;
+      }
+
+      console.error('Failed to save regression cycle:', error);
+      message.error('No pudimos guardar el ciclo. Intenta nuevamente.');
     }
   };
 
@@ -1658,19 +1651,24 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           </span>
         }
         open={isModalOpen}
-        onOk={!isViewer ? handleSave : undefined}
+        onOk={!isViewer ? () => void handleSave() : undefined}
         onCancel={() => {
-          setIsModalOpen(false);
-          setEditingCycle(null);
-          setSelectedFunctionalityIds([]);
-          setSelectionInitialized(false);
+          if (isSaving) return;
+          resetCycleModal();
         }}
         width={800}
         centered
+        confirmLoading={isSaving}
         okText={editingCycle ? 'Guardar Cambios' : 'Crear Ciclo y Comenzar'}
         cancelText="Cancelar"
         className="executive-modal"
-        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
+        okButtonProps={{
+          style: { display: isViewer ? 'none' : undefined },
+          loading: isSaving,
+        }}
+        cancelButtonProps={{ disabled: isSaving }}
+        maskClosable={!isSaving}
+        keyboard={!isSaving}
       >
         <Form
           form={form}

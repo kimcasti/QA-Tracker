@@ -4,21 +4,24 @@ import { getTestCycles, saveTestCycle } from '../services/testCyclesService';
 
 export function useRegressionCycles(projectId?: string) {
   const queryClient = useQueryClient();
+  const queryKey = ['test-cycles', 'regression', projectId] as const;
 
   const query = useQuery({
-    queryKey: ['test-cycles', 'regression', projectId],
+    queryKey,
     queryFn: () => getTestCycles(projectId, 'REGRESSION'),
     enabled: Boolean(projectId),
   });
 
   const saveMutation = useMutation({
     mutationFn: (cycle: RegressionCycle) => saveTestCycle({ ...cycle, type: 'REGRESSION' }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['test-cycles', 'regression', projectId] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
   });
 
   return {
     ...query,
     save: saveMutation.mutateAsync,
+    isSaving: saveMutation.isPending,
   };
 }
