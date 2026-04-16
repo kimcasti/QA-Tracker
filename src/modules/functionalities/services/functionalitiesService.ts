@@ -97,16 +97,21 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
 }
 
 export async function getFunctionalities(projectId?: string) {
-  const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<FunctionalityDto>('/api/functionalities', {
     'populate[project][fields][0]': 'key',
     'populate[module][fields][0]': 'name',
     'populate[personaRoles][fields][0]': 'name',
     'populate[sprint][fields][0]': 'name',
-    ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+    ...(projectId ? { 'filters[project][key][$eq]': projectId } : {}),
   });
 
-  return documents.map(mapFunctionality);
+  const mappedDocuments = documents.map(mapFunctionality);
+
+  if (!projectId) {
+    return mappedDocuments;
+  }
+
+  return mappedDocuments.filter(item => item.projectId === projectId);
 }
 
 export async function getNextFunctionalityCode(projectId: string, moduleName: string) {
@@ -163,11 +168,8 @@ export async function saveFunctionality(functionality: Functionality) {
 }
 
 export async function removeFunctionality(projectId: string, functionalityId: string) {
-  const context = await findProjectContext(projectId);
-  if (!context) return;
-
   const documents = await listDocuments<FunctionalityDto>('/api/functionalities', {
-    'filters[project][documentId][$eq]': context.documentId,
+    'filters[project][key][$eq]': projectId,
     'filters[code][$eq]': functionalityId,
   });
 
