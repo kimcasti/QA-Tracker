@@ -20,23 +20,15 @@ import {
   testResultToApi,
 } from '../../shared/services/enumMappers';
 import {
-  deleteDocument,
-  getDocument,
   listDocuments,
   populateParams,
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
-import { getBugs } from '../../bugs/services/bugsService';
-import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
 import { getSprints } from '../../settings/services/settingsService';
-import { getTestCases } from '../../test-cases/services/testCasesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCycleDto, TestCycleExecutionDto } from '../types/api';
-import {
-  buildExecutionIdentity,
-  dedupeRegressionExecutions,
-} from '../utils/executionIntegrity';
+import { dedupeRegressionExecutions } from '../utils/executionIntegrity';
 
 const testCyclePopulate = populateParams([
   'project',
@@ -126,10 +118,6 @@ function mapCycle(document: TestCycleDto): RegressionCycle {
   };
 }
 
-async function getTestCycleDocument(cycleDocumentId: string) {
-  return getDocument<TestCycleDto>('/api/test-cycles', cycleDocumentId, testCyclePopulate);
-}
-
 async function syncExecutions(
   cycleDocumentId: string,
   cycle: RegressionCycle,
@@ -137,54 +125,13 @@ async function syncExecutions(
   projectDocumentId?: string,
 ) {
   const desiredExecutions = dedupeRegressionExecutions(cycle.executions);
-  const needsTestCases = cycle.executions.some(item => Boolean(item.testCaseId));
-  const needsBugs = cycle.executions.some(
-    item => Boolean(item.linkedBugId || item.bugId || item.bugTitle),
-  );
-
-  const [functionalities, testCases, bugs, existingExecutions] = await Promise.all([
-    getFunctionalities(cycle.projectId),
-    needsTestCases ? getTestCases(cycle.projectId) : Promise.resolve([]),
-    needsBugs ? getBugs(cycle.projectId) : Promise.resolve([]),
-    listDocuments<TestCycleExecutionDto>('/api/test-cycle-executions', {
-      'filters[testCycle][documentId][$eq]': cycleDocumentId,
-      ...populateParams(['functionality', 'testCase', 'bug']),
-    }),
-  ]);
-
-  const functionalitiesByCode = new Map(functionalities.map(item => [item.id, item]));
-  const testCasesById = new Map(testCases.map(item => [item.id, item]));
-  const bugDocumentCache = new Map<string, string | undefined>();
-  const existingExecutionIdsByIdentity = new Map<string, string>();
-
-  dedupeRegressionExecutions(existingExecutions.map(mapExecution)).forEach(execution => {
-    existingExecutionIdsByIdentity.set(buildExecutionIdentity(execution), execution.id);
-  });
-
-  const savedExecutions = await Promise.all(
-    desiredExecutions.map(async execution => {
-      const functionality = functionalitiesByCode.get(execution.functionalityId);
-      const testCase = execution.testCaseId ? testCasesById.get(execution.testCaseId) : undefined;
-      const linkedBug = bugs.find(
-        item =>
-          item.internalBugId === execution.linkedBugId ||
-          item.internalBugId === execution.bugId ||
-          item.externalBugId === execution.bugId,
-      );
-
-      let bugDocumentId = linkedBug ? bugDocumentCache.get(linkedBug.internalBugId) : undefined;
-      if (linkedBug && !bugDocumentCache.has(linkedBug.internalBugId)) {
-        const bugDocuments = await listDocuments<any>('/api/bugs', {
-          'filters[internalBugId][$eq]': linkedBug.internalBugId,
-        });
-        bugDocumentId = bugDocuments[0]?.documentId;
-        bugDocumentCache.set(linkedBug.internalBugId, bugDocumentId);
-      }
-
-      return upsertDocument<TestCycleExecutionDto>(
-        '/api/test-cycle-executions',
-        existingExecutionIdsByIdentity.get(buildExecutionIdentity(execution)) || null,
-        {
+  const response = await Http.post<{ data: TestCycleDto }>('/api/test-cycle-executions/batch-sync', {
+    data: {
+      testCycle: cycleDocumentId,
+      project: projectDocumentId,
+      organization: organizationDocumentId,
+      items: desiredExecutions.map(execution => ({
+        data: {
           moduleName: execution.module,
           functionalityName: execution.functionalityName,
           testCaseTitle: execution.testCaseTitle || null,
@@ -203,20 +150,14 @@ async function syncExecutions(
           organization: relation(organizationDocumentId),
           project: relation(projectDocumentId),
           testCycle: relation(cycleDocumentId),
-          functionality: relation(functionality?.documentId || functionality?.id),
-          testCase: relation(testCase?.id),
-          bug: relation(bugDocumentId),
+          functionality: relation(execution.functionalityId),
+          testCase: relation(execution.testCaseId),
         },
-      );
-    }),
-  );
+      })),
+    },
+  });
 
-  const savedIds = new Set(savedExecutions.map(item => item.documentId));
-  await Promise.all(
-    existingExecutions
-      .filter(item => !savedIds.has(item.documentId))
-      .map(item => deleteDocument('/api/test-cycle-executions', item.documentId)),
-  );
+  return response.data.data;
 }
 
 export async function getTestCycles(projectId?: string, cycleType?: 'REGRESSION' | 'SMOKE') {
@@ -264,16 +205,14 @@ export async function saveTestCycle(cycle: RegressionCycle) {
     sprint: relation(sprint?.id),
   });
 
-  await syncExecutions(
+  const syncedCycle = await syncExecutions(
     saved.documentId,
     cycle,
     context.organizationDocumentId,
     context.documentId,
   );
 
-  const refreshedCycle = await getTestCycleDocument(saved.documentId);
-
-  return mapCycle(refreshedCycle);
+  return mapCycle(syncedCycle);
 }
 
 export async function saveTestCycleExecution(

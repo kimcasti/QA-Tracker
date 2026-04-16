@@ -926,9 +926,21 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         };
 
         console.log('Payload - Create Smoke Cycle:', newCycle);
-        const savedCycle = await save(newCycle);
+        const savePromise = save(newCycle);
+        resetCycleModal();
+        message.loading({
+          key: 'smoke-cycle-create',
+          content: 'Creando ciclo y sincronizando pruebas...',
+          duration: 0,
+        });
+
+        const savedCycle = await savePromise;
         setSelectedCycleId(savedCycle.id);
-        message.success('Ciclo de Smoke creado correctamente');
+        message.success({
+          key: 'smoke-cycle-create',
+          content: 'Ciclo de Smoke creado correctamente',
+        });
+        return;
       }
 
       resetCycleModal();

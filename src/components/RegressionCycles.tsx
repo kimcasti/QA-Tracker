@@ -973,9 +973,21 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         };
 
         console.log('Payload - Create Regression Cycle:', newCycle);
-        const savedCycle = await save(newCycle);
+        const savePromise = save(newCycle);
+        resetCycleModal();
+        message.loading({
+          key: 'regression-cycle-create',
+          content: 'Creando ciclo y sincronizando pruebas...',
+          duration: 0,
+        });
+
+        const savedCycle = await savePromise;
         setSelectedCycleId(savedCycle.id);
-        message.success('Ciclo creado correctamente');
+        message.success({
+          key: 'regression-cycle-create',
+          content: 'Ciclo creado correctamente',
+        });
+        return;
       }
 
       resetCycleModal();
