@@ -89,11 +89,20 @@ function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
 
 function mapCycle(document: TestCycleDto): RegressionCycle {
   const dedupedExecutions = dedupeRegressionExecutions((document.executions || []).map(mapExecution));
-  const totalTests = dedupedExecutions.length;
-  const passed = dedupedExecutions.filter(item => item.result === TestResult.PASSED).length;
-  const failed = dedupedExecutions.filter(item => item.result === TestResult.FAILED).length;
-  const blocked = dedupedExecutions.filter(item => item.result === TestResult.BLOCKED).length;
-  const pending = dedupedExecutions.filter(item => !item.executed).length;
+  const hasExecutionPayload = Array.isArray(document.executions) && document.executions.length > 0;
+  const totalTests = hasExecutionPayload ? dedupedExecutions.length : document.totalTests || 0;
+  const passed = hasExecutionPayload
+    ? dedupedExecutions.filter(item => item.result === TestResult.PASSED).length
+    : document.passed || 0;
+  const failed = hasExecutionPayload
+    ? dedupedExecutions.filter(item => item.result === TestResult.FAILED).length
+    : document.failed || 0;
+  const blocked = hasExecutionPayload
+    ? dedupedExecutions.filter(item => item.result === TestResult.BLOCKED).length
+    : document.blocked || 0;
+  const pending = hasExecutionPayload
+    ? dedupedExecutions.filter(item => !item.executed).length
+    : document.pending || 0;
   const passRate = totalTests > 0 ? Math.round((passed / totalTests) * 1000) / 10 : 0;
 
   return {
