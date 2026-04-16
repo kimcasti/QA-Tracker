@@ -194,7 +194,7 @@ export function groupItemsByModule<T extends { module: string }>(items: T[]) {
   const groups = new Map<string, T[]>();
 
   items.forEach(item => {
-    const moduleName = item.module?.trim() || 'Sin modulo';
+    const moduleName = normalizeModuleAssignmentKey(item.module);
     const group = groups.get(moduleName) || [];
     group.push(item);
     groups.set(moduleName, group);
@@ -212,6 +212,10 @@ export function resolveAssignmentSelection(
   fallbackSelection?: string | null,
 ) {
   return itemSelection ?? moduleSelection ?? fallbackSelection ?? undefined;
+}
+
+export function normalizeModuleAssignmentKey(moduleName?: string | null) {
+  return moduleName?.trim() || 'Sin modulo';
 }
 
 export function buildModuleAssignmentState<T extends ModuleScopedAssignmentItem>(items: T[]) {

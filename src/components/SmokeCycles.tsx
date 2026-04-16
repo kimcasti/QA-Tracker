@@ -54,6 +54,7 @@ import {
   canEditAssignedExecution,
   getCycleTesterAssignmentValue,
   groupItemsByModule,
+  normalizeModuleAssignmentKey,
   resolveAssignmentSelection,
   resolveCycleTesterAssignments,
   resolveSelectedTesterAssignment,
@@ -230,19 +231,21 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   ) =>
     resolveAssignmentSelection(
       assignmentSelections[itemId],
-      moduleAssignmentSelections[moduleName],
+      moduleAssignmentSelections[normalizeModuleAssignmentKey(moduleName)],
       fallbackSelection,
     );
   const handleModuleAssignmentChange = (moduleName: string, value?: string) => {
+    const moduleKey = normalizeModuleAssignmentKey(moduleName);
     setModuleAssignmentSelections(current => ({
       ...current,
-      [moduleName]: value,
+      [moduleKey]: value,
     }));
   };
   const handleItemAssignmentChange = (itemId: string, moduleName: string, value?: string) => {
+    const moduleKey = normalizeModuleAssignmentKey(moduleName);
     setAssignmentSelections(current => ({
       ...current,
-      [itemId]: value && value !== moduleAssignmentSelections[moduleName] ? value : undefined,
+      [itemId]: value && value !== moduleAssignmentSelections[moduleKey] ? value : undefined,
     }));
   };
 
