@@ -1,5 +1,6 @@
 export interface TestCycleExecutionDto {
   documentId: string;
+  updatedAt?: string;
   moduleName?: string;
   functionalityName?: string;
   testCaseTitle?: string;
@@ -13,6 +14,8 @@ export interface TestCycleExecutionDto {
   bugLink?: string;
   severity?: string;
   linkedBugId?: string;
+  assignedTesterName?: string;
+  assignedTesterEmail?: string;
   bug?: {
     documentId: string;
     internalBugId: string;

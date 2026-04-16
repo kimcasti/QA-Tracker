@@ -48,6 +48,16 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { saveTestCycleExecution } from '../modules/test-cycles/services/testCyclesService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
+import { useAuthSession } from '../modules/auth/context/AuthSessionProvider';
+import {
+  buildModuleAssignmentState,
+  canEditAssignedExecution,
+  getCycleTesterAssignmentValue,
+  groupItemsByModule,
+  resolveAssignmentSelection,
+  resolveCycleTesterAssignments,
+  resolveSelectedTesterAssignment,
+} from '../modules/test-cycles/utils/executionIntegrity';
 import {
   RegressionCycle,
   TestResult,
@@ -132,8 +142,13 @@ function getApiErrorMessage(error: unknown) {
 }
 
 function isExecutionConflictError(error: unknown) {
-  return getApiErrorMessage(error)?.includes(
-    'This execution already contains progress. Refresh the cycle before making destructive changes.',
+  const message = getApiErrorMessage(error) || '';
+
+  return (
+    message.includes(
+      'This execution already contains progress. Refresh the cycle before making destructive changes.',
+    ) ||
+    message.includes('This execution was updated by another tester. Refresh the cycle before saving again.')
   );
 }
 
@@ -165,6 +180,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: allTestCases } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
+  const { user } = useAuthSession();
   const { isViewer, canManageCycleConfig } = useWorkspaceAccess();
 
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
@@ -177,6 +193,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
+  const [assignmentSelections, setAssignmentSelections] = useState<Record<string, string | undefined>>({});
+  const [moduleAssignmentSelections, setModuleAssignmentSelections] = useState<
+    Record<string, string | undefined>
+  >({});
   const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
   const [executionDrafts, setExecutionDrafts] = useState<Record<string, Partial<RegressionExecution>>>({});
   const [savingExecutionIds, setSavingExecutionIds] = useState<string[]>([]);
@@ -196,9 +216,53 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [currentExecution, setCurrentExecution] = useState<RegressionExecution | null>(null);
   const [evidenceForm] = Form.useForm();
   const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
+  const selectedTesterValues = (Form.useWatch('tester', form) as string[] | undefined) || [];
+  const availableTesterAssignments = resolveCycleTesterAssignments(selectedTesterValues, slackMembers);
+  const availableTesterOptions = availableTesterAssignments.map(assignment => ({
+    label: assignment.name,
+    value: getCycleTesterAssignmentValue(assignment),
+  }));
+  const editingExecutionGroups = groupItemsByModule(selectedCycle?.executions || []);
+  const getEffectiveAssignmentSelection = (
+    itemId: string,
+    moduleName: string,
+    fallbackSelection?: string,
+  ) =>
+    resolveAssignmentSelection(
+      assignmentSelections[itemId],
+      moduleAssignmentSelections[moduleName],
+      fallbackSelection,
+    );
+  const handleModuleAssignmentChange = (moduleName: string, value?: string) => {
+    setModuleAssignmentSelections(current => ({
+      ...current,
+      [moduleName]: value,
+    }));
+  };
+  const handleItemAssignmentChange = (itemId: string, moduleName: string, value?: string) => {
+    setAssignmentSelections(current => ({
+      ...current,
+      [itemId]: value && value !== moduleAssignmentSelections[moduleName] ? value : undefined,
+    }));
+  };
 
   const isReadOnly = selectedCycle?.status === 'FINALIZADA' || isViewer;
   const isFailureEvidenceRequired = currentExecution?.result === TestResult.FAILED;
+  const currentUserEmail = user?.email || null;
+  const currentUserName = user?.username || null;
+
+  const canEditExecutionRecord = (execution: RegressionExecution) =>
+    !isReadOnly &&
+    canEditAssignedExecution(
+      execution,
+      currentUserEmail,
+      canManageCycleConfig,
+      currentUserName,
+    );
+
+  const getExecutionAssignmentLabel = (execution: RegressionExecution) =>
+    execution.assignedTesterName || execution.assignedTesterEmail || null;
+  const isCurrentExecutionReadOnly = currentExecution ? !canEditExecutionRecord(currentExecution) : isReadOnly;
 
   // Sync form values when currentExecution changes
   useEffect(() => {
@@ -281,6 +345,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     setIsModalOpen(false);
     setEditingCycle(null);
     setSelectedFunctionalityIds([]);
+    setAssignmentSelections({});
+    setModuleAssignmentSelections({});
     setSuggestionModuleFilter(undefined);
     form.resetFields();
   };
@@ -298,6 +364,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         : 1;
 
     setSelectedFunctionalityIds(getSuggestedFunctionalityIds());
+    setAssignmentSelections({});
+    setModuleAssignmentSelections({});
     form.setFieldsValue({
       cycleId: `S-${nextNumber.toString().padStart(2, '0')}`,
       sprint: undefined,
@@ -312,9 +380,12 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   };
 
   const handleEdit = (cycle: RegressionCycle) => {
+    const assignmentState = buildModuleAssignmentState(cycle.executions);
     setEditingCycle(cycle);
     setSelectedCycleId(cycle.id);
     setSelectedFunctionalityIds([]);
+    setAssignmentSelections(assignmentState.itemSelections);
+    setModuleAssignmentSelections(assignmentState.moduleSelections);
     setSuggestionModuleFilter(undefined);
     form.setFieldsValue({
       cycleId: cycle.cycleId,
@@ -383,36 +454,116 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
       {items.length > 0 ? (
         <div className="divide-y divide-slate-100">
-          {items.map(item => (
-            <label
-              key={item.id}
-              className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
-            >
-              <Checkbox
-                className="mt-1"
-                checked={selectedFunctionalityIds.includes(item.id)}
-                onChange={event => {
-                  setSelectedFunctionalityIds(current =>
-                    event.target.checked
-                      ? Array.from(new Set([...current, item.id]))
-                      : current.filter(id => id !== item.id),
-                  );
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-slate-800">{item.name}</span>
-                  <Tag className="m-0">{item.module}</Tag>
-                  {!hasFunctionalTestCases(item.id, functionalityIdsWithTestCases) && (
-                    <Tag color="orange" className="m-0">
-                      Sin casos de prueba
-                    </Tag>
-                  )}
+          {groupItemsByModule(items).map(group => {
+            const selectedItemsInModule = group.items.filter(item =>
+              selectedFunctionalityIds.includes(item.id),
+            );
+            const moduleSelection = moduleAssignmentSelections[group.module];
+
+            return (
+              <div key={`${title}-${group.module}`} className="px-4 py-4">
+                <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Tag color="geekblue" className="m-0">
+                          {group.module}
+                        </Tag>
+                        <span className="text-xs text-slate-500">
+                          {selectedItemsInModule.length}/{group.items.length} funcionalidades seleccionadas
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mb-0 mt-2">
+                        Asigna una QA al modulo y las funcionalidades heredaran ese valor.
+                      </p>
+                    </div>
+                    <Select
+                      placeholder="Asignar tester al modulo"
+                      className="min-w-[240px]"
+                      value={moduleSelection}
+                      options={availableTesterOptions}
+                      disabled={
+                        availableTesterOptions.length === 0 || selectedItemsInModule.length === 0
+                      }
+                      allowClear
+                      onChange={value => handleModuleAssignmentChange(group.module, value)}
+                    />
+                  </div>
+
+                  <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+                    {group.items.map(item => {
+                      const isSelected = selectedFunctionalityIds.includes(item.id);
+                      const effectiveSelection = getEffectiveAssignmentSelection(item.id, group.module);
+                      const hasIndividualOverride = Boolean(assignmentSelections[item.id]);
+
+                      return (
+                        <label
+                          key={item.id}
+                          className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                        >
+                          <Checkbox
+                            className="mt-1"
+                            checked={isSelected}
+                            onChange={event => {
+                              setSelectedFunctionalityIds(current =>
+                                event.target.checked
+                                  ? Array.from(new Set([...current, item.id]))
+                                  : current.filter(id => id !== item.id),
+                              );
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-slate-800">
+                                    {item.name}
+                                  </span>
+                                  {!hasFunctionalTestCases(item.id, functionalityIdsWithTestCases) && (
+                                    <Tag color="orange" className="m-0">
+                                      Sin casos de prueba
+                                    </Tag>
+                                  )}
+                                </div>
+                                <div className="mt-2">{renderReasonTags(item)}</div>
+                              </div>
+                              <div className="min-w-[240px]">
+                                <Select
+                                  placeholder={
+                                    moduleSelection
+                                      ? 'Hereda del modulo'
+                                      : 'Asignar tester a la funcionalidad'
+                                  }
+                                  className="w-full"
+                                  value={effectiveSelection}
+                                  options={availableTesterOptions}
+                                  disabled={!isSelected || availableTesterOptions.length === 0}
+                                  allowClear
+                                  onClick={event => event.stopPropagation()}
+                                  onChange={value =>
+                                    handleItemAssignmentChange(item.id, group.module, value)
+                                  }
+                                />
+                                {isSelected && (
+                                  <div className="mt-2 text-[11px] text-slate-400">
+                                    {hasIndividualOverride
+                                      ? 'Override individual para esta funcionalidad.'
+                                      : moduleSelection
+                                        ? 'Heredando asignacion del modulo.'
+                                        : 'Sin tester asignado todavia.'}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="mt-2">{renderReasonTags(item)}</div>
               </div>
-            </label>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="px-4 py-5 text-sm text-slate-400">
@@ -680,14 +831,40 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
     try {
       const values = await form.validateFields();
+      const testerAssignments = resolveCycleTesterAssignments(values.tester || [], slackMembers);
 
       if (editingCycle) {
+        const reassignedExecutions = editingCycle.executions.map(execution => {
+          const selectionValue = getEffectiveAssignmentSelection(
+            execution.id,
+            execution.module,
+            execution.assignedTesterEmail || execution.assignedTesterName,
+          );
+          const selectedAssignment = resolveSelectedTesterAssignment(
+            testerAssignments,
+            selectionValue,
+          );
+
+          if (!selectedAssignment) {
+            throw new Error(
+              `Completa la asignacion manual para "${execution.functionalityName}" antes de guardar el ciclo.`,
+            );
+          }
+
+          return {
+            ...execution,
+            assignedTesterName: selectedAssignment.name,
+            assignedTesterEmail: selectedAssignment.email,
+          };
+        });
+
         const updatedCycle: RegressionCycle = {
           ...editingCycle,
           ...values,
           sprint: normalizeSprintName(values.sprint),
           tester: serializeTesterValue(values.tester),
           date: values.date.format('YYYY-MM-DD'),
+          executions: reassignedExecutions,
         };
         console.log('Payload - Update Smoke Cycle:', updatedCycle);
         const savedCycle = await save(updatedCycle);
@@ -703,18 +880,28 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           return;
         }
 
-        // Smoke cycles are executed by functionality, not by individual test case.
-        const initialExecutions: RegressionExecution[] = [];
+        const initialExecutions: RegressionExecution[] = selectedFunctionalities.map(functionality => {
+          const selectedAssignment = resolveSelectedTesterAssignment(
+            testerAssignments,
+            getEffectiveAssignmentSelection(functionality.id, functionality.module),
+          );
 
-        selectedFunctionalities.forEach(f => {
-          initialExecutions.push({
+          if (!selectedAssignment) {
+            throw new Error(
+              `Asigna manualmente un tester para "${functionality.name}" antes de crear el ciclo.`,
+            );
+          }
+
+          return {
             id: Math.random().toString(36).substr(2, 9),
-            functionalityId: f.id,
-            module: f.module,
-            functionalityName: f.name,
+            functionalityId: functionality.id,
+            module: functionality.module,
+            functionalityName: functionality.name,
             executed: false,
             result: TestResult.NOT_EXECUTED,
-          });
+            assignedTesterName: selectedAssignment.name,
+            assignedTesterEmail: selectedAssignment.email,
+          };
         });
 
         const newCycle: RegressionCycle = {
@@ -746,6 +933,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       if (typeof error === 'object' && error !== null && 'errorFields' in error) {
         return;
       }
+      if (error instanceof Error && error.message) {
+        message.error(error.message);
+        return;
+      }
 
       console.error('Failed to save smoke cycle:', error);
       message.error('No pudimos guardar el ciclo. Intenta nuevamente.');
@@ -759,6 +950,21 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   ): Promise<boolean> => {
     const cycle = cycles.find(c => c.id === cycleId);
     if (!cycle) return false;
+    const targetExecution = cycle.executions.find(item => item.id === executionId);
+    if (!targetExecution) return false;
+    if (
+      !canEditAssignedExecution(
+        targetExecution,
+        currentUserEmail,
+        canManageCycleConfig,
+        currentUserName,
+      )
+    ) {
+      message.warning(
+        'Esta prueba esta asignada a otra QA. Solo la persona asignada o QA Lead/Owner puede guardarla.',
+      );
+      return false;
+    }
     const nextUpdates: Partial<RegressionExecution> = {
       ...updates,
       ...(updates.executed ? { date: updates.date || dayjs().format('YYYY-MM-DD') } : {}),
@@ -806,6 +1012,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         cycle.projectId,
         executionId,
         nextUpdates,
+        targetExecution.updatedAt,
       );
       queryClient.setQueryData<RegressionCycle[] | undefined>(
         testCyclesQueryKey,
@@ -920,10 +1127,13 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
   const filteredExecutions = (selectedCycle?.executions || []).filter(ex => {
     if (!ex) return false;
+    const normalizedSearch = detailSearch.toLowerCase();
     const matchesSearch =
-      (ex.functionalityId || '').toLowerCase().includes(detailSearch.toLowerCase()) ||
-      (ex.module || '').toLowerCase().includes(detailSearch.toLowerCase()) ||
-      (ex.functionalityName || '').toLowerCase().includes(detailSearch.toLowerCase());
+      (ex.functionalityId || '').toLowerCase().includes(normalizedSearch) ||
+      (ex.module || '').toLowerCase().includes(normalizedSearch) ||
+      (ex.functionalityName || '').toLowerCase().includes(normalizedSearch) ||
+      (ex.assignedTesterName || '').toLowerCase().includes(normalizedSearch) ||
+      (ex.assignedTesterEmail || '').toLowerCase().includes(normalizedSearch);
 
     const matchesFilter = detailFilter === 'ALL' || ex.result === TestResult.FAILED;
 
@@ -963,6 +1173,13 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   };
 
   const saveExecutionDraft = async (record: RegressionExecution) => {
+    if (!canEditExecutionRecord(record)) {
+      message.warning(
+        'Esta prueba esta asignada a otra QA. Solo la persona asignada o QA Lead/Owner puede guardarla.',
+      );
+      return;
+    }
+
     const mergedExecution = mergeExecutionDraft(record);
     if (
       mergedExecution.result === TestResult.FAILED &&
@@ -1138,7 +1355,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   </span>
                 </Tooltip>
               )}
-              {!isReadOnly && !isViewer && (
+              {!isReadOnly && canManageCycleConfig && !isViewer && (
                 <Button
                   type="primary"
                   icon={<BarChartOutlined />}
@@ -1249,7 +1466,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               <div className="flex items-center gap-4 flex-1 max-w-md">
                 <Input
                   prefix={<SearchOutlined className="text-slate-400" />}
-                  placeholder="Search by Module or Functionality..."
+                  placeholder="Buscar por modulo, funcionalidad o tester..."
                   className="h-11 rounded-xl bg-slate-50 border-none"
                   value={detailSearch}
                   onChange={e => setDetailSearch(e.target.value)}
@@ -1297,12 +1514,20 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   key: 'name',
                   render: (n, record) => {
                     const functionality = functionalityLookup.get(record.functionalityId);
+                    const assignmentLabel = getExecutionAssignmentLabel(record);
 
                     return (
                       <div>
                         <div className="text-slate-800 font-medium">{n}</div>
                         {functionality && (
                           <div className="mt-2">{renderReasonTags(functionality)}</div>
+                        )}
+                        {assignmentLabel && (
+                          <div className="mt-2">
+                            <Tag className="m-0 rounded-full border-slate-200 bg-slate-50 text-slate-500">
+                              Asignada a {assignmentLabel}
+                            </Tag>
+                          </div>
                         )}
                       </div>
                     );
@@ -1319,12 +1544,13 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   align: 'center',
                   render: (_executed, record) => {
                     const draftRecord = mergeExecutionDraft(record);
+                    const rowReadOnly = !canEditExecutionRecord(record);
 
                     return (
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center ${!isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${draftRecord.executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center ${!rowReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${draftRecord.executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
                         onClick={
-                          !isReadOnly
+                          !rowReadOnly
                             ? () =>
                                 stageExecutionDraft(record.id, {
                                   executed: !draftRecord.executed,
@@ -1369,6 +1595,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   key: 'result',
                   render: (_result, record) => {
                     const draftRecord = mergeExecutionDraft(record);
+                    const rowReadOnly = !canEditExecutionRecord(record);
 
                     return (
                       <div className="flex flex-col gap-1">
@@ -1401,7 +1628,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                           }}
                           className="w-32"
                           variant="borderless"
-                          disabled={isReadOnly}
+                          disabled={rowReadOnly}
                           dropdownStyle={{ borderRadius: '12px' }}
                           options={Object.values(TestResult).map(r => ({
                             label: (
@@ -1483,10 +1710,14 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   key: 'evidence',
                   render: (_ev, record) => {
                     const draftRecord = mergeExecutionDraft(record);
+                    const rowReadOnly = !canEditExecutionRecord(record);
+                    const hasEvidence = Boolean(draftRecord.evidence || draftRecord.evidenceImage);
 
                     return (
-                      <div className="flex items-center gap-2 text-orange-500 cursor-pointer hover:text-orange-700 font-medium">
-                        {draftRecord.evidence || draftRecord.evidenceImage ? (
+                      <div
+                        className={`flex items-center gap-2 font-medium ${hasEvidence ? 'text-orange-500 hover:text-orange-700' : rowReadOnly ? 'text-slate-300 cursor-not-allowed' : 'text-orange-500 hover:text-orange-700'}`}
+                      >
+                        {hasEvidence ? (
                           <div
                             className="flex items-center gap-1"
                             onClick={e => {
@@ -1496,6 +1727,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                             }}
                           >
                             <EyeOutlined /> <span>View</span>
+                          </div>
+                        ) : rowReadOnly ? (
+                          <div className="flex items-center gap-1">
+                            <PlusOutlined /> <span>Asignada</span>
                           </div>
                         ) : (
                           <div
@@ -1525,13 +1760,14 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   render: (_, record) => {
                     const hasDraft = Boolean(executionDrafts[record.id]);
                     const isSavingRow = savingExecutionIds.includes(record.id);
+                    const rowReadOnly = !canEditExecutionRecord(record);
 
                     return (
                       <Button
                         type={hasDraft ? 'primary' : 'default'}
                         icon={<SaveOutlined />}
                         size="small"
-                        disabled={isReadOnly || !hasDraft}
+                        disabled={rowReadOnly || !hasDraft}
                         loading={isSavingRow}
                         onClick={event => {
                           event.stopPropagation();
@@ -1977,20 +2213,45 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
                 Vista Previa de Funcionalidades
               </span>
+              <Space direction="vertical" size={12} className="w-full mb-3">
+                {editingExecutionGroups.map(group => (
+                  <div
+                    key={`edit-module-${group.module}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Tag color="geekblue" className="m-0">
+                          {group.module}
+                        </Tag>
+                        <span className="text-xs text-slate-500">
+                          {group.items.length} funcionalidades
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-400">
+                        La asignacion del modulo se puede sobrescribir por funcionalidad en la tabla.
+                      </div>
+                    </div>
+                    <Select
+                      placeholder="Asignar tester al modulo"
+                      className="min-w-[240px]"
+                      value={moduleAssignmentSelections[group.module]}
+                      options={availableTesterOptions}
+                      allowClear
+                      onChange={value => handleModuleAssignmentChange(group.module, value)}
+                    />
+                  </div>
+                ))}
+              </Space>
               <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
                 <Table
-                  dataSource={Array.from(
-                    new Map(
-                      (selectedCycle?.executions || []).map(execution => [
-                        execution.functionalityId,
-                        {
-                          id: execution.functionalityId,
-                          module: execution.module,
-                          name: execution.functionalityName,
-                        },
-                      ]),
-                    ).values(),
-                  )}
+                  dataSource={(selectedCycle?.executions || []).map(execution => ({
+                    id: execution.id,
+                    module: execution.module,
+                    name: execution.functionalityName,
+                    assignedTesterName: execution.assignedTesterName,
+                    assignedTesterEmail: execution.assignedTesterEmail,
+                  }))}
                   rowKey="id"
                   pagination={false}
                   size="small"
@@ -2006,6 +2267,36 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                       dataIndex: 'name',
                       key: 'name',
                       render: n => <span className="text-xs text-slate-500">{n}</span>,
+                    },
+                    {
+                      title: 'Tester asignado',
+                      key: 'assignedTester',
+                      render: (
+                        _,
+                        row: {
+                          id: string;
+                          module: string;
+                          assignedTesterName?: string;
+                          assignedTesterEmail?: string;
+                        },
+                      ) => (
+                        <Select
+                          placeholder={
+                            moduleAssignmentSelections[row.module]
+                              ? 'Hereda del modulo'
+                              : 'Asignar tester'
+                          }
+                          className="min-w-[220px]"
+                          value={getEffectiveAssignmentSelection(
+                            row.id,
+                            row.module,
+                            row.assignedTesterEmail || row.assignedTesterName,
+                          )}
+                          options={availableTesterOptions}
+                          allowClear
+                          onChange={value => handleItemAssignmentChange(row.id, row.module, value)}
+                        />
+                      ),
                     },
                   ]}
                 />
@@ -2027,6 +2318,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         onOk={async () => {
           try {
             if (currentExecution && selectedCycle) {
+              if (isCurrentExecutionReadOnly) {
+                setEvidenceModalOpen(false);
+                setCurrentExecution(null);
+                return;
+              }
               const values = await evidenceForm.validateFields();
               const mergedExecution = mergeExecutionDraft(currentExecution);
 
@@ -2103,7 +2399,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         okText="Guardar Evidencia"
         cancelText="Cerrar"
         footer={
-          isReadOnly
+          isCurrentExecutionReadOnly
             ? [
                 <Button key="close" onClick={() => setEvidenceModalOpen(false)}>
                   Cerrar
@@ -2168,7 +2464,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 rows={4}
                 placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes..."
                 className="rounded-xl border-slate-200 focus:border-orange-500"
-                disabled={isReadOnly}
+                disabled={isCurrentExecutionReadOnly}
               />
             </Form.Item>
 
@@ -2190,7 +2486,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               <Input
                 placeholder="Resume el error detectado"
                 className="rounded-lg"
-                disabled={isReadOnly}
+                disabled={isCurrentExecutionReadOnly}
               />
             </Form.Item>
 
@@ -2211,7 +2507,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   <Select
                     placeholder="Selecciona severidad"
                     className="rounded-lg"
-                    disabled={isReadOnly}
+                    disabled={isCurrentExecutionReadOnly}
                   >
                     {Object.values(Severity).map(s => (
                       <Select.Option key={s} value={s}>
@@ -2223,7 +2519,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               </Col>
               <Col span={24}>
                 <Form.Item name="bugLink" label="Link al Bug">
-                  <Input placeholder="https://..." className="rounded-lg" disabled={isReadOnly} />
+                  <Input
+                    placeholder="https://..."
+                    className="rounded-lg"
+                    disabled={isCurrentExecutionReadOnly}
+                  />
                 </Form.Item>
               </Col>
             </Row>
@@ -2246,7 +2546,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                       alt="Evidencia"
                       className="w-full h-auto max-h-64 object-contain bg-slate-100"
                     />
-                    {!isReadOnly && (
+                    {!isCurrentExecutionReadOnly && (
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                         <Button
                           danger
@@ -2263,7 +2563,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   <Upload.Dragger
                     maxCount={1}
                     showUploadList={false}
-                    disabled={isReadOnly}
+                    disabled={isCurrentExecutionReadOnly}
                     beforeUpload={file => {
                       if (!validateInlineImageFile(file)) return false;
                       void readFileAsDataUrl(file).then(base64 => {

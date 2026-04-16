@@ -1,5 +1,10 @@
 import { Http } from '../../../config/http';
-import { ExecutionMode, type RegressionCycle, type RegressionExecution } from '../../../types';
+import {
+  ExecutionMode,
+  TestResult,
+  type RegressionCycle,
+  type RegressionExecution,
+} from '../../../types';
 import {
   cycleStatusFromApi,
   cycleStatusToApi,
@@ -28,6 +33,10 @@ import { getSprints } from '../../settings/services/settingsService';
 import { getTestCases } from '../../test-cases/services/testCasesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCycleDto, TestCycleExecutionDto } from '../types/api';
+import {
+  buildExecutionIdentity,
+  dedupeRegressionExecutions,
+} from '../utils/executionIntegrity';
 
 const testCyclePopulate = populateParams([
   'project',
@@ -80,21 +89,32 @@ function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
     bugLink: document.bugLink,
     severity: severityFromApi(document.severity),
     linkedBugId: document.linkedBugId,
+    assignedTesterName: document.assignedTesterName,
+    assignedTesterEmail: document.assignedTesterEmail,
+    updatedAt: document.updatedAt,
   };
 }
 
 function mapCycle(document: TestCycleDto): RegressionCycle {
+  const dedupedExecutions = dedupeRegressionExecutions((document.executions || []).map(mapExecution));
+  const totalTests = dedupedExecutions.length;
+  const passed = dedupedExecutions.filter(item => item.result === TestResult.PASSED).length;
+  const failed = dedupedExecutions.filter(item => item.result === TestResult.FAILED).length;
+  const blocked = dedupedExecutions.filter(item => item.result === TestResult.BLOCKED).length;
+  const pending = dedupedExecutions.filter(item => !item.executed).length;
+  const passRate = totalTests > 0 ? Math.round((passed / totalTests) * 1000) / 10 : 0;
+
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
     cycleId: document.code,
     date: document.date,
-    totalTests: document.totalTests || 0,
-    passed: document.passed || 0,
-    failed: document.failed || 0,
-    blocked: document.blocked || 0,
-    pending: document.pending || 0,
-    passRate: Number(document.passRate || 0),
+    totalTests,
+    passed,
+    failed,
+    blocked,
+    pending,
+    passRate,
     note: document.note || '',
     status: cycleStatusFromApi(document.status),
     sprint: document.sprint?.name,
@@ -102,7 +122,7 @@ function mapCycle(document: TestCycleDto): RegressionCycle {
     tester: document.tester,
     buildVersion: document.buildVersion,
     environment: environmentFromApi(document.environment),
-    executions: (document.executions || []).map(mapExecution),
+    executions: dedupedExecutions,
   };
 }
 
@@ -116,6 +136,7 @@ async function syncExecutions(
   organizationDocumentId?: string,
   projectDocumentId?: string,
 ) {
+  const desiredExecutions = dedupeRegressionExecutions(cycle.executions);
   const needsTestCases = cycle.executions.some(item => Boolean(item.testCaseId));
   const needsBugs = cycle.executions.some(
     item => Boolean(item.linkedBugId || item.bugId || item.bugTitle),
@@ -133,11 +154,15 @@ async function syncExecutions(
 
   const functionalitiesByCode = new Map(functionalities.map(item => [item.id, item]));
   const testCasesById = new Map(testCases.map(item => [item.id, item]));
-  const existingExecutionIds = new Set(existingExecutions.map(item => item.documentId));
   const bugDocumentCache = new Map<string, string | undefined>();
+  const existingExecutionIdsByIdentity = new Map<string, string>();
+
+  dedupeRegressionExecutions(existingExecutions.map(mapExecution)).forEach(execution => {
+    existingExecutionIdsByIdentity.set(buildExecutionIdentity(execution), execution.id);
+  });
 
   const savedExecutions = await Promise.all(
-    cycle.executions.map(async execution => {
+    desiredExecutions.map(async execution => {
       const functionality = functionalitiesByCode.get(execution.functionalityId);
       const testCase = execution.testCaseId ? testCasesById.get(execution.testCaseId) : undefined;
       const linkedBug = bugs.find(
@@ -158,7 +183,7 @@ async function syncExecutions(
 
       return upsertDocument<TestCycleExecutionDto>(
         '/api/test-cycle-executions',
-        existingExecutionIds.has(execution.id) ? execution.id : null,
+        existingExecutionIdsByIdentity.get(buildExecutionIdentity(execution)) || null,
         {
           moduleName: execution.module,
           functionalityName: execution.functionalityName,
@@ -173,6 +198,8 @@ async function syncExecutions(
           bugLink: execution.bugLink || null,
           severity: severityToApi(execution.severity),
           linkedBugId: execution.linkedBugId || null,
+          assignedTesterName: execution.assignedTesterName || null,
+          assignedTesterEmail: execution.assignedTesterEmail || null,
           organization: relation(organizationDocumentId),
           project: relation(projectDocumentId),
           testCycle: relation(cycleDocumentId),
@@ -254,6 +281,7 @@ export async function saveTestCycleExecution(
   _projectId: string,
   executionId: string,
   updates: Partial<RegressionExecution>,
+  expectedUpdatedAt?: string,
 ) {
   const data: Record<string, unknown> = {};
 
@@ -297,6 +325,9 @@ export async function saveTestCycleExecution(
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'linkedBugId')) {
     data.linkedBugId = updates.linkedBugId || null;
+  }
+  if (expectedUpdatedAt) {
+    data.expectedUpdatedAt = expectedUpdatedAt;
   }
 
   const response = await Http.put<{ data: TestCycleDto }>(

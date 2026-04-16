@@ -250,6 +250,9 @@ export interface RegressionExecution {
   bugLink?: string;
   severity?: Severity;
   linkedBugId?: string;
+  assignedTesterName?: string;
+  assignedTesterEmail?: string;
+  updatedAt?: string;
 }
 
 export interface RegressionCycle {
