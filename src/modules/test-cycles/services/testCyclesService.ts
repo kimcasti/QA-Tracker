@@ -1,4 +1,5 @@
-import { ExecutionMode, TestResult, type RegressionCycle, type RegressionExecution } from '../../../types';
+import { Http } from '../../../config/http';
+import { ExecutionMode, type RegressionCycle, type RegressionExecution } from '../../../types';
 import {
   cycleStatusFromApi,
   cycleStatusToApi,
@@ -105,31 +106,8 @@ function mapCycle(document: TestCycleDto): RegressionCycle {
   };
 }
 
-function calculateCycleStats(executions: RegressionExecution[]) {
-  const totalTests = executions.length;
-  const passed = executions.filter(item => item.result === TestResult.PASSED).length;
-  const failed = executions.filter(item => item.result === TestResult.FAILED).length;
-  const blocked = executions.filter(item => item.result === TestResult.BLOCKED).length;
-  const pending = executions.filter(item => !item.executed).length;
-  const passRate = totalTests > 0 ? Math.round((passed / totalTests) * 1000) / 10 : 0;
-
-  return {
-    totalTests,
-    passed,
-    failed,
-    blocked,
-    pending,
-    passRate,
-  };
-}
-
 async function getTestCycleDocument(cycleDocumentId: string) {
   return getDocument<TestCycleDto>('/api/test-cycles', cycleDocumentId, testCyclePopulate);
-}
-
-export async function getTestCycleById(cycleDocumentId: string) {
-  const document = await getTestCycleDocument(cycleDocumentId);
-  return mapCycle(document);
 }
 
 async function syncExecutions(
@@ -272,86 +250,61 @@ export async function saveTestCycle(cycle: RegressionCycle) {
 }
 
 export async function saveTestCycleExecution(
-  cycleDocumentId: string,
-  projectId: string,
+  _cycleDocumentId: string,
+  _projectId: string,
   executionId: string,
   updates: Partial<RegressionExecution>,
 ) {
-  const context = await findProjectContext(projectId);
-  if (!context) {
-    throw new Error(`Project ${projectId} is not available in the workspace.`);
+  const data: Record<string, unknown> = {};
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'module')) {
+    data.moduleName = updates.module || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'functionalityName')) {
+    data.functionalityName = updates.functionalityName || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'testCaseTitle')) {
+    data.testCaseTitle = updates.testCaseTitle || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'executed')) {
+    data.executed = updates.executed;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'date')) {
+    data.date = updates.date || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'result')) {
+    data.result = updates.result ? testResultToApi(updates.result) : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'executionMode')) {
+    data.executionMode = updates.executionMode
+      ? executionModeToApi(updates.executionMode)
+      : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'evidence')) {
+    data.evidence = updates.evidence || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'evidenceImage')) {
+    data.evidenceImage = updates.evidenceImage || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'bugTitle')) {
+    data.bugTitle = updates.bugTitle || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'bugLink')) {
+    data.bugLink = updates.bugLink || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'severity')) {
+    data.severity = updates.severity ? severityToApi(updates.severity) : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'linkedBugId')) {
+    data.linkedBugId = updates.linkedBugId || null;
   }
 
-  const latestCycleDocument = await getTestCycleDocument(cycleDocumentId);
-  const latestCycle = mapCycle(latestCycleDocument);
-  const targetExecutionDocument = (latestCycleDocument.executions || []).find(
-    item => item.documentId === executionId,
+  const response = await Http.put<{ data: TestCycleDto }>(
+    `/api/test-cycle-executions/${executionId}/persist`,
+    {
+      data,
+    },
   );
-  const currentExecution = latestCycle.executions.find(item => item.id === executionId);
 
-  if (!targetExecutionDocument || !currentExecution) {
-    throw new Error(`Execution ${executionId} was not found in cycle ${cycleDocumentId}.`);
-  }
-
-  const nextExecution: RegressionExecution = {
-    ...currentExecution,
-    ...updates,
-    date: updates.executed ? updates.date || currentExecution.date || latestCycle.date : currentExecution.date,
-  };
-
-  let bugDocumentId = targetExecutionDocument.bug?.documentId;
-  const nextBugId = nextExecution.linkedBugId || nextExecution.bugId;
-  if (nextBugId) {
-    const bugDocuments = await listDocuments<any>('/api/bugs', {
-      'filters[project][documentId][$eq]': context.documentId,
-      'filters[internalBugId][$eq]': nextBugId,
-    });
-    bugDocumentId = bugDocuments[0]?.documentId || bugDocumentId;
-  }
-
-  await upsertDocument<TestCycleExecutionDto>('/api/test-cycle-executions', executionId, {
-    moduleName: nextExecution.module,
-    functionalityName: nextExecution.functionalityName,
-    testCaseTitle: nextExecution.testCaseTitle || null,
-    executed: nextExecution.executed,
-    date: nextExecution.date || null,
-    result: testResultToApi(nextExecution.result),
-    executionMode: executionModeToApi(nextExecution.executionMode),
-    evidence: nextExecution.evidence || null,
-    evidenceImage: nextExecution.evidenceImage || null,
-    bugTitle: nextExecution.bugTitle || null,
-    bugLink: nextExecution.bugLink || null,
-    severity: severityToApi(nextExecution.severity),
-    linkedBugId: nextExecution.linkedBugId || null,
-    organization: relation(context.organizationDocumentId),
-    project: relation(context.documentId),
-    testCycle: relation(cycleDocumentId),
-    functionality: relation(targetExecutionDocument.functionality?.documentId),
-    testCase: relation(targetExecutionDocument.testCase?.documentId),
-    bug: relation(bugDocumentId),
-  });
-
-  const nextExecutions = latestCycle.executions.map(item =>
-    item.id === executionId ? nextExecution : item,
-  );
-  const nextStats = calculateCycleStats(nextExecutions);
-
-  await upsertDocument<TestCycleDto>('/api/test-cycles', cycleDocumentId, {
-    code: latestCycle.cycleId,
-    cycleType: cycleTypeToApi(latestCycle.type),
-    date: latestCycle.date,
-    totalTests: nextStats.totalTests,
-    passed: nextStats.passed,
-    failed: nextStats.failed,
-    blocked: nextStats.blocked,
-    pending: nextStats.pending,
-    passRate: nextStats.passRate,
-    note: latestCycle.note,
-    status: cycleStatusToApi(latestCycle.status),
-    tester: latestCycle.tester || null,
-    buildVersion: latestCycle.buildVersion || null,
-    environment: environmentToApi(latestCycle.environment),
-  });
-
-  return getTestCycleById(cycleDocumentId);
+  return mapCycle(response.data.data);
 }

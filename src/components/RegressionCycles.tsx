@@ -142,6 +142,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   };
 
   const queryClient = useQueryClient();
+  const testCyclesQueryKey = ['test-cycles', 'regression', projectId] as const;
   const { t } = useTranslation();
   const { data: cyclesData, save, isSaving } = useRegressionCycles(projectId);
   const { data: functionalitiesData } = useFunctionalities(projectId);
@@ -783,18 +784,64 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       ...updates,
       ...(updates.executed ? { date: updates.date || dayjs().format('YYYY-MM-DD') } : {}),
     };
-
-    const savedCycle = await saveTestCycleExecution(cycleId, cycle.projectId, executionId, nextUpdates);
+    const optimisticExecutions = cycle.executions.map(item =>
+      item.id === executionId ? { ...item, ...nextUpdates } : item,
+    );
+    const optimisticPassed = optimisticExecutions.filter(
+      item => item.result === TestResult.PASSED,
+    ).length;
+    const optimisticFailed = optimisticExecutions.filter(
+      item => item.result === TestResult.FAILED,
+    ).length;
+    const optimisticBlocked = optimisticExecutions.filter(
+      item => item.result === TestResult.BLOCKED,
+    ).length;
+    const optimisticPending = optimisticExecutions.filter(item => !item.executed).length;
+    const optimisticCycle: RegressionCycle = {
+      ...cycle,
+      executions: optimisticExecutions,
+      totalTests: optimisticExecutions.length,
+      passed: optimisticPassed,
+      failed: optimisticFailed,
+      blocked: optimisticBlocked,
+      pending: optimisticPending,
+      passRate:
+        optimisticExecutions.length > 0
+          ? Math.round((optimisticPassed / optimisticExecutions.length) * 1000) / 10
+          : 0,
+    };
+    const previousCycles = queryClient.getQueryData<RegressionCycle[] | undefined>(
+      testCyclesQueryKey,
+    );
     queryClient.setQueryData<RegressionCycle[] | undefined>(
-      ['test-cycles', 'regression', projectId],
+      testCyclesQueryKey,
       previous =>
         previous
-          ? previous.map(item => (item.id === savedCycle.id ? savedCycle : item))
-          : [savedCycle],
+          ? previous.map(item => (item.id === cycleId ? optimisticCycle : item))
+          : [optimisticCycle],
     );
-    void queryClient.invalidateQueries({ queryKey: ['test-cycles', 'regression', projectId] });
-    if (selectedCycleId === cycleId) {
-      setSelectedCycleId(savedCycle.id);
+
+    try {
+      const savedCycle = await saveTestCycleExecution(
+        cycleId,
+        cycle.projectId,
+        executionId,
+        nextUpdates,
+      );
+      queryClient.setQueryData<RegressionCycle[] | undefined>(
+        testCyclesQueryKey,
+        previous =>
+          previous
+            ? previous.map(item => (item.id === savedCycle.id ? savedCycle : item))
+            : [savedCycle],
+      );
+      if (selectedCycleId === cycleId) {
+        setSelectedCycleId(savedCycle.id);
+      }
+    } catch (error) {
+      queryClient.setQueryData(testCyclesQueryKey, previousCycles);
+      void queryClient.invalidateQueries({ queryKey: testCyclesQueryKey });
+      throw error;
     }
   };
 
@@ -1932,7 +1979,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               });
               linkedBugId = syncedBug?.internalBugId;
               if (syncedBug) {
-                await queryClient.invalidateQueries({
+                void queryClient.invalidateQueries({
                   queryKey: ['bugs', selectedCycle.projectId],
                 });
               }
