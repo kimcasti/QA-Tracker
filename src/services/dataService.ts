@@ -28,6 +28,7 @@ const JWT_STORAGE_KEY = 'qa_tracker_api_jwt';
 type ApiDocument = Record<string, any>;
 
 let cachedWorkspace: any | null = null;
+const STRAPI_MAX_PAGE_SIZE = 100;
 
 function apiEnabled() {
   return Boolean(API_URL);
@@ -118,45 +119,85 @@ async function getActiveOrganizationDocumentId() {
 }
 
 async function listCollection(endpoint: string, params?: Record<string, string>) {
-  const pageSize = Number(params?.['pagination[pageSize]'] ?? 200);
+  // Keep requests aligned with the backend maxLimit to avoid losing records when Strapi clamps page sizes.
+  const requestedPageSize = Number(params?.['pagination[pageSize]'] ?? STRAPI_MAX_PAGE_SIZE);
+  const pageSize =
+    Number.isFinite(requestedPageSize) && requestedPageSize > 0
+      ? Math.min(requestedPageSize, STRAPI_MAX_PAGE_SIZE)
+      : STRAPI_MAX_PAGE_SIZE;
   const baseParams = {
     ...params,
     'pagination[pageSize]': pageSize,
+    'pagination[withCount]': 'true',
   };
+  const documents: ApiDocument[] = [];
+  let currentPage = 1;
+  let declaredPageCount: number | null = null;
+  let totalDocuments: number | null = null;
+  let effectivePageSize = pageSize;
 
-  const firstResponse = await apiRequest<{
-    data: ApiDocument[];
-    meta?: { pagination?: { pageCount?: number } };
-  }>({
-    method: 'GET',
-    url: endpoint,
-    params: {
-      ...baseParams,
-      'pagination[page]': 1,
-    },
-  });
+  while (true) {
+    const response = await apiRequest<{
+      data: ApiDocument[];
+      meta?: {
+        pagination?: {
+          pageCount?: number;
+          pageSize?: number;
+          total?: number;
+        };
+      };
+    }>({
+      method: 'GET',
+      url: endpoint,
+      params: {
+        ...baseParams,
+        'pagination[page]': currentPage,
+      },
+    });
 
-  const firstPageData = firstResponse.data || [];
-  const pageCount = firstResponse.meta?.pagination?.pageCount ?? 1;
+    const pageData = response.data || [];
+    const pagination = response.meta?.pagination;
+    const responsePageCount = Number(pagination?.pageCount);
+    const responsePageSize = Number(pagination?.pageSize);
+    const responseTotal = Number(pagination?.total);
 
-  if (pageCount <= 1) {
-    return firstPageData;
+    if (Number.isFinite(responsePageCount) && responsePageCount > 0) {
+      declaredPageCount = responsePageCount;
+    }
+
+    if (Number.isFinite(responsePageSize) && responsePageSize > 0) {
+      effectivePageSize = responsePageSize;
+    }
+
+    if (Number.isFinite(responseTotal) && responseTotal >= 0) {
+      totalDocuments = responseTotal;
+    }
+
+    documents.push(...pageData);
+
+    const reachedTotal = totalDocuments !== null && documents.length >= totalDocuments;
+    const reachedDeclaredLastPage =
+      declaredPageCount !== null && currentPage >= declaredPageCount;
+    const receivedEmptyPage = pageData.length === 0;
+    const receivedPartialPage = pageData.length < effectivePageSize;
+
+    if (
+      reachedTotal ||
+      receivedEmptyPage ||
+      (receivedPartialPage && reachedDeclaredLastPage) ||
+      (receivedPartialPage && totalDocuments === null)
+    ) {
+      break;
+    }
+
+    if (reachedDeclaredLastPage && totalDocuments === null) {
+      break;
+    }
+
+    currentPage += 1;
   }
 
-  const remainingPages = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
-      apiRequest<{ data: ApiDocument[] }>({
-        method: 'GET',
-        url: endpoint,
-        params: {
-          ...baseParams,
-          'pagination[page]': index + 2,
-        },
-      }),
-    ),
-  );
-
-  return [...firstPageData, ...remainingPages.flatMap(response => response.data || [])];
+  return documents;
 }
 
 async function createOrUpdateDocument(

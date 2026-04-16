@@ -18,6 +18,8 @@ export interface StrapiEntityResponse<T> {
   data: T;
 }
 
+const STRAPI_MAX_PAGE_SIZE = 100;
+
 export function relation(documentId?: string | null) {
   if (!documentId) {
     return undefined;
@@ -37,41 +39,74 @@ export async function listDocuments<T extends ApiDocument>(
   endpoint: string,
   params?: Record<string, string | number | boolean | undefined>,
 ) {
-  const pageSize = Number(params?.['pagination[pageSize]'] ?? 200);
+  // Keep requests aligned with the backend maxLimit to avoid losing records when Strapi clamps page sizes.
+  const requestedPageSize = Number(params?.['pagination[pageSize]'] ?? STRAPI_MAX_PAGE_SIZE);
+  const pageSize =
+    Number.isFinite(requestedPageSize) && requestedPageSize > 0
+      ? Math.min(requestedPageSize, STRAPI_MAX_PAGE_SIZE)
+      : STRAPI_MAX_PAGE_SIZE;
   const baseParams = {
     ...params,
     'pagination[pageSize]': pageSize,
+    'pagination[withCount]': true,
   };
+  const documents: T[] = [];
+  let currentPage = 1;
+  let declaredPageCount: number | null = null;
+  let totalDocuments: number | null = null;
+  let effectivePageSize = pageSize;
 
-  const firstResponse = await Http.get<StrapiListResponse<T>>(endpoint, {
-    params: {
-      ...baseParams,
-      'pagination[page]': 1,
-    },
-  });
+  while (true) {
+    const response = await Http.get<StrapiListResponse<T>>(endpoint, {
+      params: {
+        ...baseParams,
+        'pagination[page]': currentPage,
+      },
+    });
 
-  const firstPageData = firstResponse.data.data || [];
-  const pageCount = firstResponse.data.meta?.pagination?.pageCount ?? 1;
+    const pageData = response.data.data || [];
+    const pagination = response.data.meta?.pagination;
+    const responsePageCount = Number(pagination?.pageCount);
+    const responsePageSize = Number(pagination?.pageSize);
+    const responseTotal = Number(pagination?.total);
 
-  if (pageCount <= 1) {
-    return firstPageData;
+    if (Number.isFinite(responsePageCount) && responsePageCount > 0) {
+      declaredPageCount = responsePageCount;
+    }
+
+    if (Number.isFinite(responsePageSize) && responsePageSize > 0) {
+      effectivePageSize = responsePageSize;
+    }
+
+    if (Number.isFinite(responseTotal) && responseTotal >= 0) {
+      totalDocuments = responseTotal;
+    }
+
+    documents.push(...pageData);
+
+    const reachedTotal = totalDocuments !== null && documents.length >= totalDocuments;
+    const reachedDeclaredLastPage =
+      declaredPageCount !== null && currentPage >= declaredPageCount;
+    const receivedEmptyPage = pageData.length === 0;
+    const receivedPartialPage = pageData.length < effectivePageSize;
+
+    if (
+      reachedTotal ||
+      receivedEmptyPage ||
+      (receivedPartialPage && reachedDeclaredLastPage) ||
+      (receivedPartialPage && totalDocuments === null)
+    ) {
+      break;
+    }
+
+    if (reachedDeclaredLastPage && totalDocuments === null) {
+      break;
+    }
+
+    currentPage += 1;
   }
 
-  const remainingResponses = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
-      Http.get<StrapiListResponse<T>>(endpoint, {
-        params: {
-          ...baseParams,
-          'pagination[page]': index + 2,
-        },
-      }),
-    ),
-  );
-
-  return [
-    ...firstPageData,
-    ...remainingResponses.flatMap(response => response.data.data || []),
-  ];
+  return documents;
 }
 
 export async function getDocument<T extends ApiDocument>(
