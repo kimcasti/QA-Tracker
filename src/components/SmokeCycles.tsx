@@ -35,6 +35,7 @@ import {
   DeleteOutlined,
   BugOutlined,
   RollbackOutlined,
+  SaveOutlined,
 } from '@ant-design/icons';
 import { useState, useEffect } from 'react';
 import type { FilterValue } from 'antd/es/table/interface';
@@ -113,6 +114,29 @@ function summarizeTesterValue(value?: string) {
   };
 }
 
+function getApiErrorMessage(error: unknown) {
+  if (!error || typeof error !== 'object') return undefined;
+
+  const candidate = error as {
+    message?: string;
+    response?: {
+      data?: {
+        error?: {
+          message?: string;
+        };
+      };
+    };
+  };
+
+  return candidate.response?.data?.error?.message || candidate.message;
+}
+
+function isExecutionConflictError(error: unknown) {
+  return getApiErrorMessage(error)?.includes(
+    'This execution already contains progress. Refresh the cycle before making destructive changes.',
+  );
+}
+
 function isRecentlyChanged(functionality: Functionality) {
   if (!functionality.lastFunctionalChangeAt) return false;
 
@@ -154,6 +178,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
   const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
+  const [executionDrafts, setExecutionDrafts] = useState<Record<string, Partial<RegressionExecution>>>({});
+  const [savingExecutionIds, setSavingExecutionIds] = useState<string[]>([]);
   const [form] = Form.useForm();
   const selectedCycle = selectedCycleId ? cycles.find(cycle => cycle.id === selectedCycleId) || null : null;
 
@@ -730,9 +756,9 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     cycleId: string,
     executionId: string,
     updates: Partial<RegressionExecution>,
-  ) => {
+  ): Promise<boolean> => {
     const cycle = cycles.find(c => c.id === cycleId);
-    if (!cycle) return;
+    if (!cycle) return false;
     const nextUpdates: Partial<RegressionExecution> = {
       ...updates,
       ...(updates.executed ? { date: updates.date || dayjs().format('YYYY-MM-DD') } : {}),
@@ -791,10 +817,20 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       if (selectedCycleId === cycleId) {
         setSelectedCycleId(savedCycle.id);
       }
+      return true;
     } catch (error) {
       queryClient.setQueryData(testCyclesQueryKey, previousCycles);
       void queryClient.invalidateQueries({ queryKey: testCyclesQueryKey });
-      throw error;
+      if (isExecutionConflictError(error)) {
+        message.warning(
+          'Otra QA actualizó esta prueba antes que tú. Recargamos el ciclo para mostrar la versión más reciente.',
+        );
+        return false;
+      }
+
+      console.error('Failed to update smoke execution:', error);
+      message.error('No pudimos guardar este cambio. Intenta nuevamente.');
+      return false;
     }
   };
 
@@ -896,6 +932,81 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
   const functionalityLookup = new Map(functionalities.map(item => [item.id, item] as const));
 
+  const getExecutionDraft = (executionId: string) => executionDrafts[executionId] || {};
+
+  const mergeExecutionDraft = (execution: RegressionExecution): RegressionExecution => ({
+    ...execution,
+    ...getExecutionDraft(execution.id),
+  });
+
+  const stageExecutionDraft = (
+    executionId: string,
+    updates: Partial<RegressionExecution>,
+  ) => {
+    setExecutionDrafts(previous => ({
+      ...previous,
+      [executionId]: {
+        ...previous[executionId],
+        ...updates,
+      },
+    }));
+  };
+
+  const clearExecutionDraft = (executionId: string) => {
+    setExecutionDrafts(previous => {
+      if (!previous[executionId]) return previous;
+
+      const next = { ...previous };
+      delete next[executionId];
+      return next;
+    });
+  };
+
+  const saveExecutionDraft = async (record: RegressionExecution) => {
+    const mergedExecution = mergeExecutionDraft(record);
+    if (
+      mergedExecution.result === TestResult.FAILED &&
+      (!mergedExecution.evidence?.trim() ||
+        !mergedExecution.bugTitle?.trim() ||
+        !mergedExecution.severity)
+    ) {
+      setCurrentExecution(mergedExecution);
+      setEvidenceModalOpen(true);
+      message.warning(
+        'Completa las notas, el título del bug y la severidad antes de guardar una prueba fallida.',
+      );
+      return;
+    }
+
+    const updates: Partial<RegressionExecution> = {
+      executionMode: mergedExecution.executionMode,
+      executed: mergedExecution.executed,
+      date: mergedExecution.executed ? mergedExecution.date || dayjs().format('YYYY-MM-DD') : '',
+      result: mergedExecution.result,
+      evidence: mergedExecution.evidence,
+      evidenceImage: mergedExecution.evidenceImage,
+      bugTitle: mergedExecution.bugTitle,
+      bugId: mergedExecution.bugId,
+      bugLink: mergedExecution.bugLink,
+      severity: mergedExecution.severity,
+      linkedBugId: mergedExecution.linkedBugId,
+    };
+
+    setSavingExecutionIds(previous =>
+      previous.includes(record.id) ? previous : [...previous, record.id],
+    );
+
+    try {
+      const didSave = await updateExecution(selectedCycle.id, record.id, updates);
+      if (didSave) {
+        clearExecutionDraft(record.id);
+        message.success('Ejecución guardada correctamente.');
+      }
+    } finally {
+      setSavingExecutionIds(previous => previous.filter(item => item !== record.id));
+    }
+  };
+
   return (
     <>
       {selectedCycle ? (
@@ -904,7 +1015,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             <div className="flex items-center gap-4">
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => setSelectedCycleId(null)}
+                onClick={() => {
+                  setExecutionDrafts({});
+                  setSelectedCycleId(null);
+                }}
                 className="rounded-xl h-10 w-10 flex items-center justify-center border-slate-200"
               />
               <div>
@@ -1203,22 +1317,31 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   dataIndex: 'executed',
                   key: 'executed',
                   align: 'center',
-                  render: (executed, record) => (
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center ${!isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
-                      onClick={
-                        !isReadOnly
-                          ? () =>
-                              updateExecution(selectedCycle.id, record.id, {
-                                executed: !executed,
-                                result: !executed ? TestResult.PASSED : TestResult.NOT_EXECUTED,
-                              })
-                          : undefined
-                      }
-                    >
-                      <CheckCircleOutlined />
-                    </div>
-                  ),
+                  render: (_executed, record) => {
+                    const draftRecord = mergeExecutionDraft(record);
+
+                    return (
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center ${!isReadOnly ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors ${draftRecord.executed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}
+                        onClick={
+                          !isReadOnly
+                            ? () =>
+                                stageExecutionDraft(record.id, {
+                                  executed: !draftRecord.executed,
+                                  result: !draftRecord.executed
+                                    ? TestResult.PASSED
+                                    : TestResult.NOT_EXECUTED,
+                                  date: !draftRecord.executed
+                                    ? dayjs().format('YYYY-MM-DD')
+                                    : '',
+                                })
+                            : undefined
+                        }
+                      >
+                        <CheckCircleOutlined />
+                      </div>
+                    );
+                  },
                 },
                 {
                   title: (
@@ -1226,11 +1349,15 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   ),
                   dataIndex: 'date',
                   key: 'date',
-                  render: d => (
-                    <span className="text-slate-400">
-                      {d ? dayjs(d).format('DD MMM, YYYY') : '—'}
-                    </span>
-                  ),
+                  render: (_date, record) => {
+                    const draftRecord = mergeExecutionDraft(record);
+
+                    return (
+                      <span className="text-slate-400">
+                        {draftRecord.date ? dayjs(draftRecord.date).format('DD MMM, YYYY') : '—'}
+                      </span>
+                    );
+                  },
                 },
                 {
                   title: (
@@ -1240,88 +1367,111 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   ),
                   dataIndex: 'result',
                   key: 'result',
-                  render: (result, record) => (
-                    <div className="flex flex-col gap-1">
-                      <Select
-                        value={result}
-                        onChange={val =>
-                          updateExecution(selectedCycle.id, record.id, {
-                            result: val,
-                            executed: val !== TestResult.NOT_EXECUTED,
-                          })
-                        }
-                        className="w-32"
-                        variant="borderless"
-                        disabled={isReadOnly}
-                        dropdownStyle={{ borderRadius: '12px' }}
-                        options={Object.values(TestResult).map(r => ({
-                          label: (
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-2 h-2 rounded-full ${
-                                  r === TestResult.PASSED
-                                    ? 'bg-emerald-500'
-                                    : r === TestResult.FAILED
-                                      ? 'bg-red-500'
-                                      : r === TestResult.BLOCKED
-                                        ? 'bg-amber-500'
-                                        : 'bg-slate-300'
-                                }`}
-                              />
-                              <span
-                                className={
-                                  r === TestResult.PASSED
-                                    ? 'text-emerald-600'
-                                    : r === TestResult.FAILED
-                                      ? 'text-red-600'
-                                      : r === TestResult.BLOCKED
-                                        ? 'text-amber-600'
-                                        : 'text-slate-400'
-                                }
-                              >
-                                {labelTestResult(r, t)}
-                              </span>
-                            </div>
-                          ),
-                          value: r,
-                        }))}
-                      />
-                      {(() => {
-                        const raw = (record.bugLink || record.bugId || '').trim();
-                        if (!raw) return null;
+                  render: (_result, record) => {
+                    const draftRecord = mergeExecutionDraft(record);
 
-                        const isUrl = /^https?:\/\//i.test(raw) || /^www\./i.test(raw);
-                        const href = isUrl
-                          ? raw.startsWith('http')
-                            ? raw
-                            : `https://${raw}`
-                          : null;
-                        const label = (record.bugId || raw).trim();
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <Select
+                          value={draftRecord.result}
+                          onChange={val => {
+                            const nextExecution: RegressionExecution = {
+                              ...draftRecord,
+                              result: val,
+                              executed: val !== TestResult.NOT_EXECUTED,
+                              date:
+                                val !== TestResult.NOT_EXECUTED
+                                  ? draftRecord.date || dayjs().format('YYYY-MM-DD')
+                                  : '',
+                            };
 
-                        return (
-                          <Tag
-                            color="magenta"
-                            icon={<BugOutlined />}
-                            className="text-[10px] m-0 w-fit"
-                          >
-                            {href ? (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-inherit underline"
-                                onClick={e => e.stopPropagation()}
-                              >
-                                {label}
-                              </a>
-                            ) : (
-                              label
-                            )}
-                          </Tag>
-                        );
-                      })()}
-                    </div>
-                  ),
+                            stageExecutionDraft(record.id, {
+                              result: val,
+                              executed: val !== TestResult.NOT_EXECUTED,
+                              date: nextExecution.date,
+                            });
+
+                            if (val === TestResult.FAILED) {
+                              setCurrentExecution(nextExecution);
+                              setEvidenceModalOpen(true);
+                              message.info(
+                                'Adjunta evidencia y registra el bug para completar la prueba fallida.',
+                              );
+                            }
+                          }}
+                          className="w-32"
+                          variant="borderless"
+                          disabled={isReadOnly}
+                          dropdownStyle={{ borderRadius: '12px' }}
+                          options={Object.values(TestResult).map(r => ({
+                            label: (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`w-2 h-2 rounded-full ${
+                                    r === TestResult.PASSED
+                                      ? 'bg-emerald-500'
+                                      : r === TestResult.FAILED
+                                        ? 'bg-red-500'
+                                        : r === TestResult.BLOCKED
+                                          ? 'bg-amber-500'
+                                          : 'bg-slate-300'
+                                  }`}
+                                />
+                                <span
+                                  className={
+                                    r === TestResult.PASSED
+                                      ? 'text-emerald-600'
+                                      : r === TestResult.FAILED
+                                        ? 'text-red-600'
+                                        : r === TestResult.BLOCKED
+                                          ? 'text-amber-600'
+                                          : 'text-slate-400'
+                                  }
+                                >
+                                  {labelTestResult(r, t)}
+                                </span>
+                              </div>
+                            ),
+                            value: r,
+                          }))}
+                        />
+                        {(() => {
+                          const raw = (draftRecord.bugLink || draftRecord.bugId || '').trim();
+                          if (!raw) return null;
+
+                          const isUrl = /^https?:\/\//i.test(raw) || /^www\./i.test(raw);
+                          const href = isUrl
+                            ? raw.startsWith('http')
+                              ? raw
+                              : `https://${raw}`
+                            : null;
+                          const label = (draftRecord.bugId || raw).trim();
+
+                          return (
+                            <Tag
+                              color="magenta"
+                              icon={<BugOutlined />}
+                              className="text-[10px] m-0 w-fit"
+                            >
+                              {href ? (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-inherit underline"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  {label}
+                                </a>
+                              ) : (
+                                label
+                              )}
+                            </Tag>
+                          );
+                        })()}
+                      </div>
+                    );
+                  },
                 },
                 {
                   title: (
@@ -1331,33 +1481,67 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   ),
                   dataIndex: 'evidence',
                   key: 'evidence',
-                  render: (ev, record) => (
-                    <div className="flex items-center gap-2 text-orange-500 cursor-pointer hover:text-orange-700 font-medium">
-                      {ev || record.evidenceImage ? (
-                        <div
-                          className="flex items-center gap-1"
-                          onClick={e => {
-                            e.stopPropagation();
-                            setCurrentExecution(record);
-                            setEvidenceModalOpen(true);
-                          }}
-                        >
-                          <EyeOutlined /> <span>View</span>
-                        </div>
-                      ) : (
-                        <div
-                          className="flex items-center gap-1 text-slate-400"
-                          onClick={e => {
-                            e.stopPropagation();
-                            setCurrentExecution(record);
-                            setEvidenceModalOpen(true);
-                          }}
-                        >
-                          <PlusOutlined /> <span>Note</span>
-                        </div>
-                      )}
-                    </div>
+                  render: (_ev, record) => {
+                    const draftRecord = mergeExecutionDraft(record);
+
+                    return (
+                      <div className="flex items-center gap-2 text-orange-500 cursor-pointer hover:text-orange-700 font-medium">
+                        {draftRecord.evidence || draftRecord.evidenceImage ? (
+                          <div
+                            className="flex items-center gap-1"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setCurrentExecution(draftRecord);
+                              setEvidenceModalOpen(true);
+                            }}
+                          >
+                            <EyeOutlined /> <span>View</span>
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex items-center gap-1 ${draftRecord.result === TestResult.FAILED ? 'text-red-500' : 'text-slate-400'}`}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setCurrentExecution(draftRecord);
+                              setEvidenceModalOpen(true);
+                            }}
+                          >
+                            <PlusOutlined />{' '}
+                            <span>
+                              {draftRecord.result === TestResult.FAILED ? 'Requerida' : 'Note'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  },
+                },
+                {
+                  title: (
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">ACCIÓN</span>
                   ),
+                  key: 'save',
+                  align: 'center',
+                  render: (_, record) => {
+                    const hasDraft = Boolean(executionDrafts[record.id]);
+                    const isSavingRow = savingExecutionIds.includes(record.id);
+
+                    return (
+                      <Button
+                        type={hasDraft ? 'primary' : 'default'}
+                        icon={<SaveOutlined />}
+                        size="small"
+                        disabled={isReadOnly || !hasDraft}
+                        loading={isSavingRow}
+                        onClick={event => {
+                          event.stopPropagation();
+                          void saveExecutionDraft(record);
+                        }}
+                      >
+                        Guardar
+                      </Button>
+                    );
+                  },
                 },
               ]}
             />
@@ -1844,6 +2028,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           try {
             if (currentExecution && selectedCycle) {
               const values = await evidenceForm.validateFields();
+              const mergedExecution = mergeExecutionDraft(currentExecution);
 
               const evidencePayload = {
                 evidence: values.evidence,
@@ -1854,10 +2039,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 severity: values.severity,
               };
 
-              let linkedBugId = currentExecution.linkedBugId;
-              if (currentExecution.result === TestResult.FAILED) {
+              let linkedBugId = mergedExecution.linkedBugId;
+              if (mergedExecution.result === TestResult.FAILED) {
                 const syncedBug = await syncBugReport({
-                  linkedBugId: currentExecution.linkedBugId,
+                  linkedBugId: mergedExecution.linkedBugId,
                   internalBugId: values.bugId,
                   title: values.bugTitle,
                   description: values.evidence,
@@ -1866,13 +2051,13 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   evidenceImage,
                   origin: BugOrigin.SMOKE_CYCLE,
                   projectId: selectedCycle.projectId,
-                  functionalityId: currentExecution.functionalityId,
-                  functionalityName: currentExecution.functionalityName,
-                  module: currentExecution.module,
+                  functionalityId: mergedExecution.functionalityId,
+                  functionalityName: mergedExecution.functionalityName,
+                  module: mergedExecution.module,
                   sprint: selectedCycle.sprint,
                   cycleId: selectedCycle.cycleId,
                   reportedBy: selectedCycle.tester,
-                  executionId: currentExecution.id,
+                  executionId: mergedExecution.id,
                 });
                 linkedBugId = syncedBug?.internalBugId;
                 if (syncedBug) {
@@ -1883,13 +2068,19 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               }
 
               console.log('Payload - Save Smoke Evidence:', {
-                executionId: currentExecution.id,
+                executionId: mergedExecution.id,
                 ...evidencePayload,
               });
-              await updateExecution(selectedCycle.id, currentExecution.id, {
+              const didSave = await updateExecution(selectedCycle.id, mergedExecution.id, {
+                executionMode: mergedExecution.executionMode,
+                executed: mergedExecution.executed,
+                date: mergedExecution.executed ? mergedExecution.date || dayjs().format('YYYY-MM-DD') : '',
+                result: mergedExecution.result,
                 ...evidencePayload,
                 linkedBugId,
               });
+              if (!didSave) return;
+              clearExecutionDraft(mergedExecution.id);
               message.success('Evidencia guardada correctamente');
               setEvidenceModalOpen(false);
               setCurrentExecution(null);
