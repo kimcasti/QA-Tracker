@@ -45,6 +45,7 @@ import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemb
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import { saveTestCycleExecution } from '../modules/test-cycles/services/testCyclesService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   RegressionCycle,
@@ -149,10 +150,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
     useSlackMembers(isModalOpen);
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
-  const [selectedCycle, setSelectedCycle] = useState<RegressionCycle | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
   const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
   const [form] = Form.useForm();
+  const selectedCycle = selectedCycleId ? cycles.find(cycle => cycle.id === selectedCycleId) || null : null;
 
   const [tableFilters, setTableFilters] = useState<NativeCycleTableFilterState>({
     cycleId: null,
@@ -284,7 +286,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
   const handleEdit = (cycle: RegressionCycle) => {
     setEditingCycle(cycle);
-    setSelectedCycle(cycle);
+    setSelectedCycleId(cycle.id);
     setSelectedFunctionalityIds([]);
     setSuggestionModuleFilter(undefined);
     form.setFieldsValue({
@@ -451,7 +453,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         <Button
           type="link"
           className="p-0 h-auto font-bold text-orange-600"
-          onClick={() => setSelectedCycle(record)}
+          onClick={() => setSelectedCycleId(record.id)}
         >
           {text}
         </Button>
@@ -619,7 +621,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         <Space>
           <Button
             icon={<EyeOutlined />}
-            onClick={() => setSelectedCycle(record)}
+            onClick={() => setSelectedCycleId(record.id)}
             className="rounded-lg border-slate-200 text-slate-600"
           >
             Ver Detalle
@@ -662,7 +664,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         };
         console.log('Payload - Update Smoke Cycle:', updatedCycle);
         const savedCycle = await save(updatedCycle);
-        setSelectedCycle(savedCycle);
+        setSelectedCycleId(savedCycle.id);
         message.success('Ciclo de Smoke actualizado correctamente');
       } else {
         const selectedFunctionalities = smokeFuncs.filter(f =>
@@ -708,7 +710,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
 
         console.log('Payload - Create Smoke Cycle:', newCycle);
         const savedCycle = await save(newCycle);
-        setSelectedCycle(savedCycle);
+        setSelectedCycleId(savedCycle.id);
         message.success('Ciclo de Smoke creado correctamente');
       }
 
@@ -730,35 +732,22 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   ) => {
     const cycle = cycles.find(c => c.id === cycleId);
     if (!cycle) return;
-
-    const updatedExecutions = cycle.executions.map(ex =>
-      ex.id === executionId
-        ? { ...ex, ...updates, date: updates.executed ? dayjs().format('YYYY-MM-DD') : ex.date }
-        : ex,
-    );
-
-    const passed = updatedExecutions.filter(ex => ex.result === TestResult.PASSED).length;
-    const failed = updatedExecutions.filter(ex => ex.result === TestResult.FAILED).length;
-    const blocked = updatedExecutions.filter(ex => ex.result === TestResult.BLOCKED).length;
-    const total = updatedExecutions.length;
-    const pending = updatedExecutions.filter(ex => !ex.executed).length;
-    const rate = total > 0 ? Math.round((passed / total) * 1000) / 10 : 0;
-
-    const updatedCycle: RegressionCycle = {
-      ...cycle,
-      executions: updatedExecutions,
-      passed,
-      failed,
-      blocked,
-      pending,
-      passRate: rate,
-      // Keep status manual; do not auto-finalize when pending reaches 0.
-      status: cycle.status || 'EN_PROGRESO',
+    const nextUpdates: Partial<RegressionExecution> = {
+      ...updates,
+      ...(updates.executed ? { date: updates.date || dayjs().format('YYYY-MM-DD') } : {}),
     };
 
-    const savedCycle = await save(updatedCycle);
-    if (selectedCycle?.id === cycleId) {
-      setSelectedCycle(savedCycle);
+    const savedCycle = await saveTestCycleExecution(cycleId, cycle.projectId, executionId, nextUpdates);
+    queryClient.setQueryData<RegressionCycle[] | undefined>(
+      ['test-cycles', 'smoke', projectId],
+      previous =>
+        previous
+          ? previous.map(item => (item.id === savedCycle.id ? savedCycle : item))
+          : [savedCycle],
+    );
+    void queryClient.invalidateQueries({ queryKey: ['test-cycles', 'smoke', projectId] });
+    if (selectedCycleId === cycleId) {
+      setSelectedCycleId(savedCycle.id);
     }
   };
 
@@ -783,7 +772,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     };
 
     const savedCycle = await save(updatedCycle);
-    setSelectedCycle(savedCycle);
+    setSelectedCycleId(savedCycle.id);
   };
 
   const handleFinalizeCycle = async (cycle: RegressionCycle) => {
@@ -802,7 +791,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       message.error(
         'No puedes finalizar el ciclo mientras exista una prueba fallida sin notas, titulo del bug o severidad.',
       );
-      setSelectedCycle(cycle);
+      setSelectedCycleId(cycle.id);
       setCurrentExecution(incompleteFailedExecution);
       setEvidenceModalOpen(true);
       return;
@@ -814,7 +803,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     };
 
     const savedCycle = await save(updatedCycle);
-    setSelectedCycle(savedCycle);
+    setSelectedCycleId(savedCycle.id);
     message.success('Ciclo finalizado correctamente');
   };
 
@@ -830,7 +819,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     };
 
     const savedCycle = await save(updatedCycle);
-    setSelectedCycle(savedCycle);
+    setSelectedCycleId(savedCycle.id);
     message.success('Ciclo reabierto (EN PROGRESO)');
   };
 
@@ -868,7 +857,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             <div className="flex items-center gap-4">
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => setSelectedCycle(null)}
+                onClick={() => setSelectedCycleId(null)}
                 className="rounded-xl h-10 w-10 flex items-center justify-center border-slate-200"
               />
               <div>
