@@ -13,6 +13,7 @@ import {
   Typography,
   message,
   Popconfirm,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -49,29 +50,45 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     data: testCases,
     isLoading,
     save,
+    saveManyWithSingleRefresh,
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
   const { isViewer } = useWorkspaceAccess();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedForFunctionalityId, setGeneratedForFunctionalityId] = useState<string | null>(
+    null,
+  );
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
   const [form] = Form.useForm();
+  const hasGeneratedCasesForCurrentFunctionality =
+    generatedForFunctionalityId === functionalityId && (testCases?.length ?? 0) > 0;
+  const isGenerateAiDisabled = isGenerating || hasGeneratedCasesForCurrentFunctionality;
+  const generateAiButtonLabel = isGenerating
+    ? 'Generando con IA...'
+    : hasGeneratedCasesForCurrentFunctionality
+      ? 'Casos IA generados'
+      : 'Generar con IA';
+  const generateAiTooltipTitle = isGenerating
+    ? 'La IA está generando y guardando los casos de prueba.'
+    : hasGeneratedCasesForCurrentFunctionality
+      ? 'La generación ya fue exitosa para esta funcionalidad. Si necesitas más casos, recarga la vista o edita los existentes.'
+      : 'Genera casos sugeridos con IA para esta funcionalidad.';
 
   const runGenerateAI = async () => {
     setIsGenerating(true);
     try {
       const generated = await generateTestCasesWithAI(functionalityName, moduleName);
+      const generatedTestCases: TestCase[] = generated.map(tc => ({
+        ...tc,
+        id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        projectId,
+        functionalityId,
+        isAutomated: false,
+      }));
 
-      for (const tc of generated) {
-        const newTestCase: TestCase = {
-          ...tc,
-          id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          projectId,
-          functionalityId,
-          isAutomated: false,
-        };
-        save(newTestCase);
-      }
+      await saveManyWithSingleRefresh(generatedTestCases);
+      setGeneratedForFunctionalityId(functionalityId);
 
       message.success(`Se generaron ${generated.length} casos de prueba con IA`);
     } catch (error) {
@@ -240,14 +257,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         <Space>
           {!isViewer ? (
             <>
-              <Button
-                icon={<ThunderboltOutlined />}
-                onClick={handleGenerateAI}
-                loading={isGenerating}
-                className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
-              >
-                Generar con IA
-              </Button>
+              <Tooltip title={generateAiTooltipTitle}>
+                <Button
+                  icon={<ThunderboltOutlined />}
+                  onClick={handleGenerateAI}
+                  loading={isGenerating}
+                  disabled={isGenerateAiDisabled}
+                  className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
+                >
+                  {generateAiButtonLabel}
+                </Button>
+              </Tooltip>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
                 Nuevo Caso de Prueba
               </Button>
