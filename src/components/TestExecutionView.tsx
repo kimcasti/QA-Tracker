@@ -84,7 +84,7 @@ import {
   validateInlineImageFile,
 } from '../utils/uploadValidation';
 import {
-  getGeminiApiKey,
+  hasAiProviderConfigured,
   recommendExecutionFunctionalitiesWithAI,
   type ExecutionRecommendationCandidate,
 } from '../services/geminiService';
@@ -470,11 +470,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     const fallbackSuggestions = buildRuleBasedSuggestions();
 
-    if (!getGeminiApiKey()) {
+    if (!hasAiProviderConfigured()) {
       setAiSuggestions(fallbackSuggestions);
       setAiSuggestionMode('rules');
       message.warning(
-        'No se encontro configuracion de Gemini. Se muestran sugerencias automaticas basadas en reglas.',
+        'No se encontró configuración de proveedor IA. Se muestran sugerencias automáticas basadas en reglas.',
       );
       return;
     }
@@ -516,12 +516,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     } catch (error) {
       console.error('AI suggestion error:', error);
       const msg = (error instanceof Error ? error.message : (error as any)?.message) || '';
-      if (msg === 'GEMINI_API_KEY_MISSING') {
+      if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
         message.warning(
-          'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar sugerencias con IA.',
+          'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar sugerencias con IA.',
         );
       } else if (msg === 'GEMINI_API_KEY_INVALID' || msg === 'GEMINI_API_KEY_LEAKED') {
-        message.error('La configuracion actual de Gemini no es valida. Se usaran sugerencias automaticas.');
+        message.error('La configuración actual del proveedor IA no es válida. Se usarán sugerencias automáticas.');
       } else {
         message.warning('No fue posible consultar la IA. Se muestran sugerencias automaticas.');
       }

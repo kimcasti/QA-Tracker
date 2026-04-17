@@ -14,6 +14,7 @@ import {
   message,
   Popconfirm,
   Tooltip,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -24,10 +25,11 @@ import {
 } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
+import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { generateTestCasesWithAI, getGeminiApiKey } from '../services/geminiService';
+import { generateTestCasesWithAI, hasAiProviderConfigured } from '../services/geminiService';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -49,6 +51,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const {
     data: testCases,
     isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
     save,
     saveManyWithSingleRefresh,
     delete: deleteTestCase,
@@ -64,6 +70,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const hasGeneratedCasesForCurrentFunctionality =
     generatedForFunctionalityId === functionalityId && (testCases?.length ?? 0) > 0;
   const isGenerateAiDisabled = isGenerating || hasGeneratedCasesForCurrentFunctionality;
+  const visibleTestCases = Array.isArray(testCases) ? testCases : [];
+  const loadErrorMessage = isError ? toApiError(error).message : '';
   const generateAiButtonLabel = isGenerating
     ? 'Generando con IA...'
     : hasGeneratedCasesForCurrentFunctionality
@@ -105,9 +113,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         reason === 'API_KEY_INVALID' ||
         /api key not valid/i.test(nestedMessage);
 
-      if (msg === 'GEMINI_API_KEY_MISSING') {
+      if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
         message.warning(
-          'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la generación con IA.',
+          'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
         );
       } else if (isInvalidKey) {
         message.error(
@@ -116,7 +124,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             : 'La API Key configurada en el entorno no es válida.',
         );
       } else {
-        message.error('Error al generar casos con IA. Revisa la configuración de Gemini.');
+        message.error('Error al generar casos con IA. Revisa la configuración del proveedor IA.');
       }
     } finally {
       setIsGenerating(false);
@@ -124,9 +132,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const handleGenerateAI = async () => {
-    if (!getGeminiApiKey()) {
+    if (!hasAiProviderConfigured()) {
       message.warning(
-        'Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la generación con IA.',
+        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
       );
       return;
     }
@@ -277,12 +285,39 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       }
       className="shadow-sm"
     >
+      {isError ? (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          message="No pudimos cargar los casos de prueba en este momento."
+          description={
+            loadErrorMessage
+              ? `${loadErrorMessage} Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.`
+              : 'Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.'
+          }
+          action={
+            <Button size="small" onClick={() => void refetch()} loading={isFetching}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
+
       <Table
         columns={columns}
-        dataSource={testCases}
+        dataSource={visibleTestCases}
         rowKey="id"
-        loading={isLoading}
-        pagination={{ pageSize: 5 }}
+        loading={isLoading || (isFetching && visibleTestCases.length === 0)}
+        pagination={{
+          pageSize: 5,
+          showTotal: total => `${total} caso${total === 1 ? '' : 's'}`,
+        }}
+        locale={{
+          emptyText: isError
+            ? 'No se pudieron cargar los casos de prueba.'
+            : 'Aún no hay casos de prueba registrados para esta funcionalidad.',
+        }}
         expandable={{
           expandedRowRender: record => (
             <div className="rounded-lg bg-gray-50 p-4">

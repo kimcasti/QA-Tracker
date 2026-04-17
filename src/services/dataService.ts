@@ -719,7 +719,8 @@ export const dataService = {
     withApiFallback(async () => {
       const projectDocumentId = projectId ? await getProjectDocumentId(projectId) : null;
       const testCases = await listCollection('/api/test-cases', {
-        ...populateParams(['project', 'functionality']),
+        'populate[project][fields][0]': 'key',
+        'populate[functionality][fields][0]': 'code',
         ...(projectDocumentId ? { 'filters[project][documentId][$eq]': projectDocumentId } : {}),
       });
 

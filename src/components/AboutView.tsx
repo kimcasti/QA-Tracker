@@ -48,7 +48,7 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import {
   analyzeProjectWithAI,
   generateProjectWireframeBrief,
-  getGeminiApiKey,
+  hasAiProviderConfigured,
   improveMeetingNotesWithAI,
 } from '../services/geminiService';
 import { MeetingNote, Project } from '../types';
@@ -371,8 +371,8 @@ export default function AboutView({ project }: { project: Project }) {
   };
 
   const handleGenerateProjectAi = async (mode: 'analysis' | 'wireframe') => {
-    if (!getGeminiApiKey()) {
-      message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar esta accion.');
+    if (!hasAiProviderConfigured()) {
+      message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar esta acción.');
       return;
     }
 
@@ -424,12 +424,12 @@ export default function AboutView({ project }: { project: Project }) {
       const code = anyErr?.message || '';
 
       if (code === 'GEMINI_API_KEY_INVALID') {
-        message.error('La API key de Gemini no es valida.');
+        message.error('La API key configurada para IA no es válida.');
         return;
       }
 
       if (code === 'GEMINI_API_KEY_LEAKED') {
-        message.error('La API key de Gemini fue reportada como expuesta. Genera una nueva.');
+        message.error('La API key configurada para IA fue reportada como expuesta. Genera una nueva.');
         return;
       }
 
@@ -497,8 +497,8 @@ export default function AboutView({ project }: { project: Project }) {
       message.warning('Por favor ingresa algunas notas primero');
       return;
     }
-    if (!getGeminiApiKey()) {
-      message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la mejora con IA.');
+    if (!hasAiProviderConfigured()) {
+      message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la mejora con IA.');
       return;
     }
     setIsImproving(true);
@@ -538,8 +538,8 @@ export default function AboutView({ project }: { project: Project }) {
       const isLeakedKey = /reported as leaked/i.test(nestedMessage);
       const isInvalidKey =
         reason === 'API_KEY_INVALID' || /api key not valid/i.test(nestedMessage) || isLeakedKey;
-      if (msg === 'GEMINI_API_KEY_MISSING') {
-        message.warning('Configura VITE_GEMINI_API_KEY en el .env del cliente para usar la mejora con IA.');
+      if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
+        message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la mejora con IA.');
       } else if (isInvalidKey) {
         message.error(
           isLeakedKey

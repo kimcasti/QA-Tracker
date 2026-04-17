@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
 const GEMINI_MODEL = 'gemini-3-flash-preview';
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 export type ExecutionRecommendationCandidate = {
   id: string;
@@ -21,12 +22,25 @@ export type ExecutionRecommendation = {
   reason: string;
 };
 
+type ProjectInsightInput = {
+  name: string;
+  description?: string;
+  purpose?: string;
+  coreRequirements?: string[];
+  businessRules?: string;
+};
+
 function getEnvValue(value: unknown) {
   return String(value || '').trim();
 }
 
 export const getGeminiApiKey = () =>
   getEnvValue(import.meta.env.VITE_GEMINI_API_KEY) || getEnvValue(process.env.GEMINI_API_KEY);
+
+export const getGroqApiKey = () =>
+  getEnvValue(import.meta.env.VITE_GROQ_API_KEY) || getEnvValue(process.env.GROQ_API_KEY);
+
+export const hasAiProviderConfigured = () => Boolean(getGeminiApiKey() || getGroqApiKey());
 
 function createGeminiClient() {
   const apiKey = getGeminiApiKey();
@@ -53,71 +67,219 @@ function normalizeGeminiError(error: unknown) {
   throw error;
 }
 
-export async function generateTestCasesWithAI(functionalityName: string, moduleName: string) {
-  const ai = createGeminiClient();
+function shouldFallbackToGroq(error: unknown) {
+  const raw: any = (error as any)?.error ?? error;
+  const status = raw?.status;
+  const code = raw?.code;
+  const message = (raw?.message || raw?.error?.message || (error as any)?.message || '')
+    .toString()
+    .toLowerCase();
 
+  return (
+    code === 429 ||
+    status === 'RESOURCE_EXHAUSTED' ||
+    message.includes('quota exceeded') ||
+    message.includes('resource_exhausted') ||
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('api key not valid') ||
+    message.includes('reported as leaked')
+  );
+}
+
+function extractJsonPayload<T>(rawText: string): T {
+  const trimmed = rawText.trim();
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed;
+
+  try {
+    return JSON.parse(candidate) as T;
+  } catch {
+    const firstObject = candidate.indexOf('{');
+    const firstArray = candidate.indexOf('[');
+    const jsonStart =
+      firstObject === -1
+        ? firstArray
+        : firstArray === -1
+          ? firstObject
+          : Math.min(firstObject, firstArray);
+
+    const lastObject = candidate.lastIndexOf('}');
+    const lastArray = candidate.lastIndexOf(']');
+    const jsonEnd = Math.max(lastObject, lastArray);
+
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      return JSON.parse(candidate.slice(jsonStart, jsonEnd + 1)) as T;
+    }
+
+    throw new Error('AI_PROVIDER_INVALID_JSON');
+  }
+}
+
+async function requestGroqCompletion(prompt: string) {
+  const apiKey = getGroqApiKey();
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY_MISSING');
+  }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Eres un asistente de QA. Responde exactamente en el formato solicitado y no agregues texto fuera de ese formato.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null);
+    const errorMessage =
+      errorPayload?.error?.message || `Groq request failed with status ${response.status}`;
+    const error = new Error(errorMessage) as Error & { code?: number; error?: unknown };
+    error.code = response.status;
+    error.error = errorPayload?.error || errorPayload;
+    throw error;
+  }
+
+  const payload = await response.json();
+  const text = payload?.choices?.[0]?.message?.content?.trim();
+
+  if (!text) {
+    throw new Error('No se recibió respuesta de Groq');
+  }
+
+  return text;
+}
+
+async function withAiFallback<T>(
+  geminiRequest: () => Promise<T>,
+  groqRequest: () => Promise<T>,
+) {
+  const hasGemini = Boolean(getGeminiApiKey());
+  const hasGroq = Boolean(getGroqApiKey());
+
+  if (!hasGemini && !hasGroq) {
+    throw new Error('AI_PROVIDER_MISSING');
+  }
+
+  if (hasGemini) {
+    try {
+      return await geminiRequest();
+    } catch (error) {
+      if (hasGroq && shouldFallbackToGroq(error)) {
+        console.warn('Gemini no disponible, usando fallback Groq.', error);
+        return groqRequest();
+      }
+
+      normalizeGeminiError(error);
+      throw error;
+    }
+  }
+
+  return groqRequest();
+}
+
+function buildProjectContext(input: ProjectInsightInput) {
+  return `Proyecto: ${input.name}
+Descripcion general: ${input.description || 'No definida'}
+Objetivo del proyecto:
+${input.purpose || 'No definido'}
+
+Requisitos basicos:
+${(input.coreRequirements || []).join('\n') || 'No definidos'}
+
+Normas empresariales:
+${input.businessRules || 'No definidas'}`;
+}
+
+export async function generateTestCasesWithAI(functionalityName: string, moduleName: string) {
   const prompt = `Genera 3 casos de prueba detallados para la funcionalidad "${functionalityName}" del módulo "${moduleName}".
 Devuelve un array de objetos JSON con la siguiente estructura:
-{
-  "title": "Título del caso",
-  "description": "Descripción breve",
-  "preconditions": "Precondiciones",
-  "testSteps": "1. Paso 1\\n2. Paso 2...",
-  "expectedResult": "Resultado esperado",
-  "testType": "Funcional",
-  "priority": "Medio"
-}
+[
+  {
+    "title": "Título del caso",
+    "description": "Descripción breve",
+    "preconditions": "Precondiciones",
+    "testSteps": "1. Paso 1\\n2. Paso 2...",
+    "expectedResult": "Resultado esperado",
+    "testType": "Funcional",
+    "priority": "Medio"
+  }
+]
 Asegúrate de que los tipos de prueba sean uno de: Integración, Funcional, Sanity, Regresión, Smoke, Exploratoria, UAT.
 Asegúrate de que la prioridad sea uno de: Crítico, Alto, Medio, Bajo.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              preconditions: { type: Type.STRING },
-              testSteps: { type: Type.STRING },
-              expectedResult: { type: Type.STRING },
-              testType: { type: Type.STRING },
-              priority: { type: Type.STRING },
+    return await withAiFallback(
+      async () => {
+        const ai = createGeminiClient();
+        const response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  preconditions: { type: Type.STRING },
+                  testSteps: { type: Type.STRING },
+                  expectedResult: { type: Type.STRING },
+                  testType: { type: Type.STRING },
+                  priority: { type: Type.STRING },
+                },
+                required: [
+                  'title',
+                  'description',
+                  'preconditions',
+                  'testSteps',
+                  'expectedResult',
+                  'testType',
+                  'priority',
+                ],
+              },
             },
-            required: [
-              'title',
-              'description',
-              'preconditions',
-              'testSteps',
-              'expectedResult',
-              'testType',
-              'priority',
-            ],
           },
-        },
+        });
+
+        const text = response.text;
+        if (!text) {
+          throw new Error('No se recibió respuesta de la IA');
+        }
+
+        return JSON.parse(text);
       },
-    });
+      async () => {
+        const groqPrompt = `${prompt}
 
-    const text = response.text;
-    if (!text) {
-      throw new Error('No se recibió respuesta de la IA');
-    }
-
-    return JSON.parse(text);
+Responde únicamente con JSON válido. No uses Markdown ni texto adicional.`;
+        return extractJsonPayload(await requestGroqCompletion(groqPrompt));
+      },
+    );
   } catch (error) {
     console.error('Error generating test cases:', error);
-    normalizeGeminiError(error);
+    throw error;
   }
 }
 
 export async function improveMeetingNotesWithAI(notes: string) {
-  const ai = createGeminiClient();
-
   const prompt = `Reorganiza las siguientes notas de reunión en un formato estructurado con las siguientes secciones:
 1. Resumen de la reunión
 2. Decisiones
@@ -130,39 +292,61 @@ ${notes}
 Responde únicamente con un objeto JSON que tenga las llaves: summary, decisions, actions, nextSteps.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            decisions: { type: Type.STRING },
-            actions: { type: Type.STRING },
-            nextSteps: { type: Type.STRING },
+    return await withAiFallback(
+      async () => {
+        const ai = createGeminiClient();
+        const response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                summary: { type: Type.STRING },
+                decisions: { type: Type.STRING },
+                actions: { type: Type.STRING },
+                nextSteps: { type: Type.STRING },
+              },
+              required: ['summary', 'decisions', 'actions', 'nextSteps'],
+            },
           },
-          required: ['summary', 'decisions', 'actions', 'nextSteps'],
-        },
+        });
+
+        const text = response.text;
+        if (!text) {
+          throw new Error('No se recibió respuesta de la IA');
+        }
+
+        const result = JSON.parse(text);
+        return {
+          summary: result?.summary || '',
+          decisions: result?.decisions || '',
+          actions: result?.actions || '',
+          nextSteps: result?.nextSteps || '',
+        };
       },
-    });
+      async () => {
+        const result = extractJsonPayload<{
+          summary?: string;
+          decisions?: string;
+          actions?: string;
+          nextSteps?: string;
+        }>(
+          await requestGroqCompletion(`${prompt}\n\nResponde únicamente con JSON válido.`),
+        );
 
-    const text = response.text;
-    if (!text) {
-      throw new Error('No se recibió respuesta de la IA');
-    }
-
-    const result = JSON.parse(text);
-    return {
-      summary: result?.summary || '',
-      decisions: result?.decisions || '',
-      actions: result?.actions || '',
-      nextSteps: result?.nextSteps || '',
-    };
+        return {
+          summary: result?.summary || '',
+          decisions: result?.decisions || '',
+          actions: result?.actions || '',
+          nextSteps: result?.nextSteps || '',
+        };
+      },
+    );
   } catch (error) {
     console.error('Error improving meeting notes:', error);
-    normalizeGeminiError(error);
+    throw error;
   }
 }
 
@@ -173,7 +357,6 @@ export async function recommendExecutionFunctionalitiesWithAI(input: {
   candidateFunctionalities: ExecutionRecommendationCandidate[];
   maxSuggestions?: number;
 }) {
-  const ai = createGeminiClient();
   const maxSuggestions = Math.max(1, Math.min(input.maxSuggestions || 5, 5));
 
   const prompt = `Actua como analista QA senior.
@@ -204,61 +387,47 @@ Responde unicamente con JSON valido usando este formato:
 ]`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              functionalityId: { type: Type.STRING },
-              reason: { type: Type.STRING },
+    return await withAiFallback(
+      async () => {
+        const ai = createGeminiClient();
+        const response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  functionalityId: { type: Type.STRING },
+                  reason: { type: Type.STRING },
+                },
+                required: ['functionalityId', 'reason'],
+              },
             },
-            required: ['functionalityId', 'reason'],
           },
-        },
+        });
+
+        const text = response.text;
+        if (!text) {
+          throw new Error('No se recibió respuesta de la IA');
+        }
+
+        return JSON.parse(text) as ExecutionRecommendation[];
       },
-    });
-
-    const text = response.text;
-    if (!text) {
-      throw new Error('No se recibió respuesta de la IA');
-    }
-
-    return JSON.parse(text) as ExecutionRecommendation[];
+      async () =>
+        extractJsonPayload<ExecutionRecommendation[]>(
+          await requestGroqCompletion(`${prompt}\n\nResponde únicamente con JSON válido.`),
+        ),
+    );
   } catch (error) {
     console.error('Error recommending execution functionalities:', error);
-    normalizeGeminiError(error);
+    throw error;
   }
 }
 
-type ProjectInsightInput = {
-  name: string;
-  description?: string;
-  purpose?: string;
-  coreRequirements?: string[];
-  businessRules?: string;
-};
-
-function buildProjectContext(input: ProjectInsightInput) {
-  return `Proyecto: ${input.name}
-Descripcion general: ${input.description || 'No definida'}
-Objetivo del proyecto:
-${input.purpose || 'No definido'}
-
-Requisitos basicos:
-${(input.coreRequirements || []).join('\n') || 'No definidos'}
-
-Normas empresariales:
-${input.businessRules || 'No definidas'}`;
-}
-
 export async function analyzeProjectWithAI(input: ProjectInsightInput) {
-  const ai = createGeminiClient();
-
   const prompt = `Actua como consultor senior de gestion de proyectos y QA.
 Analiza la siguiente informacion del proyecto y devuelve recomendaciones utiles en espanol.
 
@@ -282,26 +451,30 @@ Reglas:
 Responde solo con Markdown.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }],
-    });
+    return await withAiFallback(
+      async () => {
+        const ai = createGeminiClient();
+        const response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ parts: [{ text: prompt }] }],
+        });
 
-    const text = response.text;
-    if (!text) {
-      throw new Error('No se recibio respuesta de la IA');
-    }
+        const text = response.text;
+        if (!text) {
+          throw new Error('No se recibio respuesta de la IA');
+        }
 
-    return text.trim();
+        return text.trim();
+      },
+      async () => requestGroqCompletion(prompt),
+    );
   } catch (error) {
     console.error('Error analyzing project with AI:', error);
-    normalizeGeminiError(error);
+    throw error;
   }
 }
 
 export async function generateProjectWireframeBrief(input: ProjectInsightInput) {
-  const ai = createGeminiClient();
-
   const coreRequirements = (input.coreRequirements || []).join('\n') || 'No definidos';
   const businessRules = input.businessRules || 'No definidas';
   const description = input.description || 'No definida';
@@ -357,19 +530,25 @@ Reglas especificas para "Wireframe prompt listo para pegar":
 Responde solo con Markdown.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ parts: [{ text: prompt }] }],
-    });
+    return await withAiFallback(
+      async () => {
+        const ai = createGeminiClient();
+        const response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ parts: [{ text: prompt }] }],
+        });
 
-    const text = response.text;
-    if (!text) {
-      throw new Error('No se recibio respuesta de la IA');
-    }
+        const text = response.text;
+        if (!text) {
+          throw new Error('No se recibio respuesta de la IA');
+        }
 
-    return text.trim();
+        return text.trim();
+      },
+      async () => requestGroqCompletion(prompt),
+    );
   } catch (error) {
     console.error('Error generating wireframe brief with AI:', error);
-    normalizeGeminiError(error);
+    throw error;
   }
 }
