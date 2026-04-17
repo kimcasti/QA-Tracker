@@ -40,6 +40,7 @@ import {
   BarChartOutlined,
   ArrowDownOutlined,
   ThunderboltOutlined,
+  MinusOutlined,
 } from '@ant-design/icons';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -302,6 +303,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       );
     });
     return counts;
+  }, [testCases]);
+
+  const testCaseById = useMemo(() => {
+    return new Map(testCases.map(testCase => [testCase.id, testCase]));
   }, [testCases]);
 
   const functionalityById = useMemo(() => {
@@ -1125,7 +1130,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 key: 'module',
                 width: '14%',
                 render: (_, record) => {
-                  const func = functionalities.find(f => f.id === record.functionalityId);
+                  const func = functionalityById.get(record.functionalityId);
                   return (
                     <Text strong className="text-slate-800">
                       {func?.module}
@@ -1142,8 +1147,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 key: 'case',
                 width: '30%',
                 render: (_, record) => {
-                  const tc = testCases.find(t => t.id === record.testCaseId);
-                  const func = functionalities.find(f => f.id === record.functionalityId);
+                  const tc = testCaseById.get(record.testCaseId);
+                  const func = functionalityById.get(record.functionalityId);
                   return (
                     <div className="flex flex-col">
                       <Text className="text-slate-800 text-sm">{tc?.title}</Text>
@@ -1329,6 +1334,57 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   ]
                 : []),
             ]}
+            expandable={{
+              rowExpandable: record => Boolean(testCaseById.get(record.testCaseId)),
+              expandIcon: ({ expanded, onExpand, record }) => (
+                <button
+                  type="button"
+                  aria-label={expanded ? 'Ocultar detalle del caso' : 'Ver detalle del caso'}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600"
+                  onClick={event => onExpand(record, event)}
+                >
+                  {expanded ? (
+                    <MinusOutlined className="text-[10px]" />
+                  ) : (
+                    <PlusOutlined className="text-[10px]" />
+                  )}
+                </button>
+              ),
+              expandedRowRender: record => {
+                const testCase = testCaseById.get(record.testCaseId);
+
+                if (!testCase) return null;
+
+                return (
+                  <div className="rounded-xl bg-slate-50 p-5">
+                    <div className="mb-4">
+                      <Text strong>Descripción:</Text>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                        {testCase.description || '—'}
+                      </p>
+                    </div>
+                    <div className="mb-4">
+                      <Text strong>Precondiciones:</Text>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                        {testCase.preconditions || '—'}
+                      </p>
+                    </div>
+                    <div className="mb-4">
+                      <Text strong>Pasos de Prueba:</Text>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                        {testCase.testSteps || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <Text strong>Resultado Esperado:</Text>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                        {testCase.expectedResult || '—'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              },
+            }}
           />
         </Card>
         {!isReadOnly && !isViewer && (
