@@ -182,7 +182,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const { data: allTestCases } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const { user } = useAuthSession();
-  const { isViewer, canManageCycleConfig } = useWorkspaceAccess();
+  const { isOwner, isViewer, canManageCycleConfig } = useWorkspaceAccess();
 
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -1081,6 +1081,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   };
 
   const handleFinalizeCycle = async (cycle: RegressionCycle) => {
+    if (!isOwner) {
+      message.error('Solo Owner puede finalizar ciclos.');
+      return;
+    }
+
     if (cycle.pending > 0) {
       message.warning('AÃºn hay casos pendientes por ejecutar');
       return;
@@ -1346,7 +1351,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               >
                 Export Report
               </Button>
-              {!isReadOnly && !isViewer && (
+              {!isReadOnly && !isViewer && isOwner && (
                 <Tooltip
                   title={
                     selectedCycle.pending > 0 ? 'Ejecute todos los casos antes de finalizar' : ''
@@ -2061,7 +2066,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               >
                 <Select className="h-10 rounded-lg">
                   <Select.Option value="EN_PROGRESO">EN PROGRESO</Select.Option>
-                  <Select.Option value="FINALIZADA">FINALIZADA</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
