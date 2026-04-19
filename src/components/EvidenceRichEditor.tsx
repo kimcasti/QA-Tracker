@@ -4,7 +4,6 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import FileHandler from '@tiptap/extension-file-handler';
 import { useEffect, useMemo, useRef, type ChangeEvent } from 'react';
 import { readFileAsDataUrl, validateInlineImageFile } from '../utils/uploadValidation';
 import { hasCloudinaryConfigured, uploadImageToCloudinary } from '../services/cloudinaryService';
@@ -22,6 +21,10 @@ type EvidenceRichEditorProps = {
 
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
+function extractAcceptedImageFiles(files?: FileList | null) {
+  return Array.from(files || []).filter(file => ACCEPTED_IMAGE_TYPES.includes(file.type));
+}
+
 async function resolveImageSource(file: File) {
   if (!validateInlineImageFile(file)) {
     throw new Error('INVALID_IMAGE');
@@ -33,6 +36,40 @@ async function resolveImageSource(file: File) {
   }
 
   return readFileAsDataUrl(file);
+}
+
+async function insertImagesIntoEditor(
+  currentEditor: NonNullable<ReturnType<typeof useEditor>>,
+  files: File[],
+  insertAt?: number
+) {
+  let currentPosition = insertAt;
+
+  for (const file of files) {
+    try {
+      const src = await resolveImageSource(file);
+
+      if (typeof currentPosition === 'number') {
+        currentEditor
+          .chain()
+          .focus()
+          .insertContentAt(currentPosition, {
+            type: 'image',
+            attrs: { src },
+          })
+          .run();
+        currentPosition += 1;
+        continue;
+      }
+
+      currentEditor.chain().focus().setImage({ src }).run();
+    } catch (error) {
+      if ((error as Error)?.message !== 'INVALID_IMAGE') {
+        console.error('Error inserting image into editor:', error);
+        message.error('No fue posible adjuntar la imagen. Intenta nuevamente.');
+      }
+    }
+  }
 }
 
 export default function EvidenceRichEditor({
@@ -61,46 +98,50 @@ export default function EvidenceRichEditor({
         inline: false,
         allowBase64: true,
       }),
-      FileHandler.configure({
-        allowedMimeTypes: ACCEPTED_IMAGE_TYPES,
-        onPaste: (currentEditor, files) => {
-          void (async () => {
-            for (const file of files) {
-              try {
-                const src = await resolveImageSource(file);
-                currentEditor.chain().focus().setImage({ src }).run();
-              } catch (error) {
-                if ((error as Error)?.message !== 'INVALID_IMAGE') {
-                  console.error('Error inserting pasted image:', error);
-                  message.error('No fue posible pegar la imagen. Intenta nuevamente.');
-                }
-              }
-            }
-          })();
-        },
-        onDrop: (currentEditor, files, pos) => {
-          void (async () => {
-            for (const file of files) {
-              try {
-                const src = await resolveImageSource(file);
-                currentEditor.chain().focus().insertContentAt(pos, {
-                  type: 'image',
-                  attrs: { src },
-                }).run();
-              } catch (error) {
-                if ((error as Error)?.message !== 'INVALID_IMAGE') {
-                  console.error('Error dropping image into editor:', error);
-                  message.error('No fue posible adjuntar la imagen. Intenta nuevamente.');
-                }
-              }
-            }
-          })();
-        },
-      }),
     ],
     content: normalizedValue,
     onUpdate: ({ editor: currentEditor }) => {
       onChange?.(currentEditor.getHTML());
+    },
+    editorProps: {
+      handlePaste: (_view, event) => {
+        if (disabled) {
+          return true;
+        }
+
+        const files = extractAcceptedImageFiles(event.clipboardData?.files);
+        if (!files.length || !editor) {
+          return false;
+        }
+
+        event.preventDefault();
+        void insertImagesIntoEditor(editor, files);
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (disabled) {
+          return true;
+        }
+
+        if (moved) {
+          return false;
+        }
+
+        const files = extractAcceptedImageFiles(event.dataTransfer?.files);
+        if (!files.length || !editor) {
+          return false;
+        }
+
+        event.preventDefault();
+
+        const position = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        })?.pos;
+
+        void insertImagesIntoEditor(editor, files, position);
+        return true;
+      },
     },
   });
 
@@ -135,15 +176,7 @@ export default function EvidenceRichEditor({
     event.target.value = '';
     if (!file || !editor) return;
 
-    try {
-      const src = await resolveImageSource(file);
-      editor.chain().focus().setImage({ src }).run();
-    } catch (error) {
-      if ((error as Error)?.message !== 'INVALID_IMAGE') {
-        console.error('Error uploading image into editor:', error);
-        message.error('No fue posible adjuntar la imagen. Intenta nuevamente.');
-      }
-    }
+    await insertImagesIntoEditor(editor, [file]);
   };
 
   return (

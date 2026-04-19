@@ -821,9 +821,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'title',
-      width: 300,
       render: (_: any, record: TestRun) => (
-        <Text strong className="text-slate-700">
+        <Text strong className="block text-slate-700">
           {record.title}
         </Text>
       ),
@@ -834,7 +833,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'executionDate',
       key: 'executionDate',
-      width: 140,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
@@ -845,7 +843,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'testType',
       key: 'testType',
-      width: 140,
       filters: nativeTestTypeFilters,
       filteredValue: tableFilters.testType,
       onFilter: (value: boolean | React.Key, record: TestRun) =>
@@ -864,7 +861,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'sprint',
       key: 'sprint',
-      width: 140,
       filters: nativeSprintFilters,
       filteredValue: tableFilters.sprint,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.sprint === String(value),
@@ -877,8 +873,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'tester',
       key: 'tester',
-      width: 160,
-      ellipsis: true,
       render: (tester: string | undefined) => tester || '—',
     },
     {
@@ -889,7 +883,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'environment',
       key: 'environment',
-      width: 160,
       filters: nativeEnvironmentFilters,
       filteredValue: tableFilters.environment,
       onFilter: (value: boolean | React.Key, record: TestRun) =>
@@ -911,7 +904,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'status',
       key: 'status',
-      width: 120,
       filters: nativeStatusFilters,
       filteredValue: tableFilters.status,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.status === String(value),
@@ -931,13 +923,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'progress',
-      width: 200,
       render: (_: any, record: TestRun) => {
         const total = record.results.length;
         const executed = record.results.filter(r => r.result !== TestResult.NOT_EXECUTED).length;
         const percent = total > 0 ? Math.round((executed / total) * 100) : 0;
         return (
-          <div className="w-32">
+          <div className="min-w-[110px]">
             <div className="flex justify-between text-[10px] mb-1">
               <span>
                 {executed}/{total}
@@ -958,9 +949,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'actions',
-      width: 160,
       render: (_: any, record: TestRun) => (
-        <Space>
+        <Space size="small" wrap>
           <Button
             icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
             size="small"
@@ -1626,7 +1616,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     dataSource={testRuns}
                     rowKey="id"
                     className="executive-table"
-                    scroll={{ x: 'max-content' }}
+                    tableLayout="auto"
                     onChange={(_, filters) => handleNativeTableChange(filters)}
                   />
                 </Card>
