@@ -12,14 +12,12 @@ import {
   DatePicker,
   Row,
   Col,
-  Upload,
   message,
   Tooltip,
   Divider,
   Checkbox,
   Popconfirm,
   List,
-  Image,
   Tabs,
 } from 'antd';
 import {
@@ -27,9 +25,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
-  UploadOutlined,
   DeleteOutlined,
-  FileImageOutlined,
   EyeOutlined,
   EditOutlined,
   BugOutlined,
@@ -76,14 +72,19 @@ import {
 } from '../i18n/labels';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
+import EvidenceRichEditor from './EvidenceRichEditor';
 import dayjs from 'dayjs';
 import type { FilterValue } from 'antd/es/table/interface';
 import {
   isPayloadTooLargeError,
-  readFileAsDataUrl,
   showPayloadTooLargeMessage,
-  validateInlineImageFile,
 } from '../utils/uploadValidation';
+import {
+  extractFirstImageSrc,
+  hasMeaningfulEvidenceContent,
+  mergeEvidenceContentWithImage,
+  stripHtmlToText,
+} from '../utils/evidenceRichText';
 import {
   hasAiProviderConfigured,
   recommendExecutionFunctionalitiesWithAI,
@@ -136,6 +137,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     useSlackMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm();
+  const [evidenceForm] = Form.useForm();
 
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -169,6 +171,22 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return functionalities.find(func => func.id === currentEvidenceRecord.functionalityId) || null;
   }, [currentEvidenceRecord, functionalities]);
   const isFailureEvidenceRequired = currentEvidenceRecord?.result === TestResult.FAILED;
+
+  useEffect(() => {
+    if (currentEvidenceRecord && isEvidenceModalOpen) {
+      evidenceForm.setFieldsValue({
+        evidence: mergeEvidenceContentWithImage(
+          currentEvidenceRecord.notes || '',
+          currentEvidenceRecord.evidenceImage,
+        ),
+        bugTitle: currentEvidenceRecord.bugTitle || '',
+        severity: currentEvidenceRecord.severity,
+        bugLink: currentEvidenceRecord.bugLink || '',
+      });
+    } else {
+      evidenceForm.resetFields();
+    }
+  }, [currentEvidenceRecord, evidenceForm, isEvidenceModalOpen]);
 
   const functionalityIdsWithTestCases = useMemo(() => {
     return new Set(testCases.map(testCase => testCase.functionalityId).filter(Boolean));
@@ -211,6 +229,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setIsEvidenceModalOpen(false);
     setCurrentEvidenceTestCaseId(null);
     setOriginalEvidenceRecord(null);
+    evidenceForm.resetFields();
   };
 
   const restoreEvidenceChanges = () => {
@@ -228,32 +247,51 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const handleSaveEvidence = async () => {
     if (!currentEvidenceRecord) return;
 
-    if (
-      currentEvidenceRecord.result === TestResult.FAILED &&
-      (!currentEvidenceRecord.notes?.trim() ||
-        !currentEvidenceRecord.bugTitle?.trim() ||
-        !currentEvidenceRecord.severity)
-    ) {
-      message.error(
-        'Para pruebas fallidas son obligatorias las notas de ejecucion, el titulo del bug y la severidad.',
-      );
-      return;
-    }
-
     try {
+      const values = await evidenceForm.validateFields();
+      const evidenceHtml = String(values.evidence || '');
+      const derivedEvidenceImage = extractFirstImageSrc(evidenceHtml);
+      const bugDescription = stripHtmlToText(evidenceHtml);
+      const mergedRecord: TestRunResult = {
+        ...currentEvidenceRecord,
+        notes: evidenceHtml,
+        bugTitle: values.bugTitle || '',
+        severity: values.severity,
+        bugLink: values.bugLink || '',
+        evidenceImage: derivedEvidenceImage,
+      };
+
+      if (mergedRecord.result === TestResult.FAILED && !hasMeaningfulEvidenceContent(evidenceHtml)) {
+        message.error('Las notas de ejecución son obligatorias para pruebas fallidas.');
+        return;
+      }
+
+      if (mergedRecord.result === TestResult.FAILED && !mergedRecord.evidenceImage?.trim()) {
+        message.error(
+          'Para pruebas fallidas son obligatorias las notas de ejecución, el título del bug, la severidad y una imagen pegada o subida dentro del editor.',
+        );
+        return;
+      }
+
+      setExecutionResults(prev =>
+        prev.map(result =>
+          result.testCaseId === mergedRecord.testCaseId ? mergedRecord : result,
+        ),
+      );
+
       if (
-        currentEvidenceRecord.result === TestResult.FAILED &&
+        mergedRecord.result === TestResult.FAILED &&
         activeTestRun &&
         activeEvidenceFunctionality
       ) {
         const syncedBug = await syncBugReport({
-          linkedBugId: currentEvidenceRecord.linkedBugId,
-          internalBugId: currentEvidenceRecord.bugId,
-          title: currentEvidenceRecord.bugTitle,
-          description: currentEvidenceRecord.notes,
-          severity: currentEvidenceRecord.severity,
-          bugLink: currentEvidenceRecord.bugLink,
-          evidenceImage: currentEvidenceRecord.evidenceImage,
+          linkedBugId: mergedRecord.linkedBugId,
+          internalBugId: mergedRecord.bugId,
+          title: mergedRecord.bugTitle,
+          description: bugDescription,
+          severity: mergedRecord.severity,
+          bugLink: mergedRecord.bugLink,
+          evidenceImage: mergedRecord.evidenceImage,
           origin: BugOrigin.GENERAL_EXECUTION,
           projectId: activeTestRun.projectId,
           functionalityId: activeEvidenceFunctionality.id,
@@ -261,15 +299,24 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           module: activeEvidenceFunctionality.module,
           sprint: activeTestRun.sprint,
           reportedBy: activeTestRun.tester,
-          testCaseId: currentEvidenceRecord.testCaseId,
+          testCaseId: mergedRecord.testCaseId,
           testCaseTitle: activeEvidenceTestCase?.title,
           testRunId: activeTestRun.id,
-          executionId: currentEvidenceRecord.id,
+          executionId: mergedRecord.id,
         });
 
         if (syncedBug) {
-          updateResult(currentEvidenceRecord.testCaseId, 'linkedBugId', syncedBug.internalBugId);
-          updateResult(currentEvidenceRecord.testCaseId, 'bugId', syncedBug.internalBugId);
+          setExecutionResults(prev =>
+            prev.map(result =>
+              result.testCaseId === mergedRecord.testCaseId
+                ? {
+                    ...result,
+                    linkedBugId: syncedBug.internalBugId,
+                    bugId: syncedBug.internalBugId,
+                  }
+                : result,
+            ),
+          );
           await queryClient.invalidateQueries({
             queryKey: ['bugs', activeTestRun.projectId],
           });
@@ -1435,7 +1482,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           ]}
         >
           {currentEvidenceRecord && (
-            <div className="space-y-5 py-2">
+            <div key={currentEvidenceRecord.testCaseId} className="space-y-5 py-2">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <Text
                   type="secondary"
@@ -1448,142 +1495,73 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </Text>
               </div>
 
-              <div>
-                <Text className="text-sm font-semibold text-slate-700 block mb-2">
-                  {isFailureEvidenceRequired ? '* ' : ''}
-                  Notas de Ejecución
-                </Text>
-                <Input.TextArea
-                  rows={4}
-                  placeholder="Escribe aquí las notas de la ejecución..."
-                  value={currentEvidenceRecord.notes}
-                  disabled={isReadOnly}
-                  onChange={e =>
-                    updateResult(currentEvidenceRecord.testCaseId, 'notes', e.target.value)
+              <Form form={evidenceForm} layout="vertical">
+                <Form.Item
+                  name="evidence"
+                  label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
+                  rules={
+                    isFailureEvidenceRequired
+                      ? [{ required: true, message: 'Las notas de ejecución son obligatorias.' }]
+                      : undefined
                   }
-                  className="rounded-xl border-slate-200"
-                />
-              </div>
-
-              <Divider className="m-0">
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-widest">
-                  Reporte de Bug
-                </Text>
-              </Divider>
-
-              <div>
-                <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
-                  {isFailureEvidenceRequired ? '* ' : ''}
-                  Titulo del Bug
-                </Text>
-                <Input
-                  placeholder="Resume el error detectado"
-                  value={currentEvidenceRecord.bugTitle}
-                  disabled={isReadOnly}
-                  onChange={e =>
-                    updateResult(currentEvidenceRecord.testCaseId, 'bugTitle', e.target.value)
-                  }
-                  className="rounded-lg border-slate-200"
-                />
-              </div>
-
-              <Row gutter={16}>
-                <Col span={24}>
-                  <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
-                    {isFailureEvidenceRequired ? '* ' : ''}
-                    Severidad
-                  </Text>
-                  <Select
-                    className="w-full rounded-lg"
-                    placeholder="Seleccionar"
-                    value={currentEvidenceRecord.severity}
+                >
+                  <EvidenceRichEditor
+                    placeholder="Escribe aquí las notas de la ejecución. Puedes usar emojis, pegar una captura o subir una imagen."
                     disabled={isReadOnly}
-                    onChange={val =>
-                      updateResult(currentEvidenceRecord.testCaseId, 'severity', val)
-                    }
-                    options={Object.values(Severity).map(s => ({ label: s, value: s }))}
                   />
-                </Col>
-              </Row>
+                </Form.Item>
+                {isFailureEvidenceRequired && (
+                  <>
+                    <Divider titlePlacement="left" className="!m-0 !mb-4">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                        Reporte de Bug
+                      </span>
+                    </Divider>
 
-              <div>
-                <Text className="text-xs font-semibold text-slate-600 block mb-1.5">
-                  Link al Bug
-                </Text>
-                <Input
-                  placeholder="https://jira.atlassian.net/browse/..."
-                  value={currentEvidenceRecord.bugLink}
-                  disabled={isReadOnly}
-                  onChange={e =>
-                    updateResult(currentEvidenceRecord.testCaseId, 'bugLink', e.target.value)
-                  }
-                  className="rounded-lg border-slate-200"
-                />
-              </div>
-
-              <Text type="secondary" className="text-[11px] block -mt-2">
-                Al registrar un bug desde una prueba fallida, se creara o actualizara
-                automaticamente en el Historial de Bugs con estado inicial Pendiente.
-              </Text>
-
-              <div>
-                <Text className="text-sm font-semibold text-slate-700 block mb-2">
-                  Evidencia Visual (Imagen)
-                </Text>
-                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[200px]">
-                  {currentEvidenceRecord.evidenceImage ? (
-                    <div className="relative group">
-                      <Image
-                        src={currentEvidenceRecord.evidenceImage}
-                        className="max-h-[300px] object-contain rounded-xl shadow-sm"
-                      />
-                      {!isReadOnly && (
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-                          <Upload
-                            showUploadList={false}
-                            beforeUpload={file => {
-                              if (!validateInlineImageFile(file)) return false;
-                              void readFileAsDataUrl(file).then(base64 =>
-                                updateResult(
-                                  currentEvidenceRecord.testCaseId,
-                                  'evidenceImage',
-                                  base64,
-                                ),
-                              );
-                              return false;
-                            }}
-                          >
-                            <Button icon={<UploadOutlined />} ghost>
-                              Cambiar Imagen
-                            </Button>
-                          </Upload>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <Upload
-                      showUploadList={false}
-                      disabled={isReadOnly}
-                      beforeUpload={file => {
-                        if (!validateInlineImageFile(file)) return false;
-                        void readFileAsDataUrl(file).then(base64 =>
-                          updateResult(currentEvidenceRecord.testCaseId, 'evidenceImage', base64),
-                        );
-                        return false;
-                      }}
+                    <Form.Item
+                      name="bugTitle"
+                      label={<span className="font-semibold text-slate-600">* Título del Bug</span>}
+                      rules={[{ required: true, message: 'El título del bug es obligatorio.' }]}
                     >
-                      <div className="flex flex-col items-center gap-2 cursor-pointer">
-                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
-                          <UploadOutlined className="text-blue-500 text-xl" />
-                        </div>
-                        <Text type="secondary" className="text-xs">
-                          Haz clic para subir evidencia
-                        </Text>
-                      </div>
-                    </Upload>
-                  )}
-                </div>
-              </div>
+                      <Input
+                        placeholder="Resume el error detectado"
+                        disabled={isReadOnly}
+                        className="rounded-lg border-slate-200"
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="severity"
+                      label={<span className="font-semibold text-slate-600">* Severidad</span>}
+                      rules={[{ required: true, message: 'La severidad es obligatoria.' }]}
+                    >
+                      <Select
+                        className="w-full rounded-lg"
+                        placeholder="Seleccionar"
+                        disabled={isReadOnly}
+                        options={Object.values(Severity).map(s => ({ label: s, value: s }))}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="bugLink"
+                      label={<span className="font-semibold text-slate-600">Link al Bug</span>}
+                    >
+                      <Input
+                        placeholder="https://jira.atlassian.net/browse/..."
+                        disabled={isReadOnly}
+                        className="rounded-lg border-slate-200"
+                      />
+                    </Form.Item>
+
+                    <Text type="secondary" className="text-[11px] block -mt-2">
+                      Al registrar un bug desde una prueba fallida, se creará o actualizará
+                      automáticamente en el Historial de Bugs con estado inicial Pendiente.
+                    </Text>
+                  </>
+                )}
+
+            </Form>
             </div>
           )}
         </Modal>

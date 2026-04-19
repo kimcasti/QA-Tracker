@@ -14,7 +14,6 @@ import {
   Tag,
   Typography,
   Tooltip,
-  Upload,
   message,
   Divider,
   Checkbox,
@@ -31,8 +30,6 @@ import {
   FileTextOutlined,
   ArrowLeftOutlined,
   SettingOutlined,
-  UploadOutlined,
-  DeleteOutlined,
   BugOutlined,
   RollbackOutlined,
   SaveOutlined,
@@ -73,13 +70,18 @@ import {
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
+import EvidenceRichEditor from './EvidenceRichEditor';
 import dayjs from 'dayjs';
 import {
   isPayloadTooLargeError,
-  readFileAsDataUrl,
   showPayloadTooLargeMessage,
-  validateInlineImageFile,
 } from '../utils/uploadValidation';
+import {
+  extractFirstImageSrc,
+  hasMeaningfulEvidenceContent,
+  mergeEvidenceContentWithImage,
+  stripHtmlToText,
+} from '../utils/evidenceRichText';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -216,7 +218,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [currentExecution, setCurrentExecution] = useState<RegressionExecution | null>(null);
   const [evidenceForm] = Form.useForm();
-  const [evidenceImage, setEvidenceImage] = useState<string | undefined>(undefined);
   const selectedTesterValues = (Form.useWatch('tester', form) as string[] | undefined) || [];
   const availableTesterAssignments = resolveCycleTesterAssignments(selectedTesterValues, slackMembers);
   const availableTesterOptions = availableTesterAssignments.map(assignment => ({
@@ -271,16 +272,17 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (currentExecution) {
       evidenceForm.setFieldsValue({
-        evidence: currentExecution.evidence,
+        evidence: mergeEvidenceContentWithImage(
+          currentExecution.evidence,
+          currentExecution.evidenceImage,
+        ),
         bugTitle: currentExecution.bugTitle,
         bugId: currentExecution.bugId,
         bugLink: currentExecution.bugLink,
         severity: currentExecution.severity,
       });
-      setEvidenceImage(currentExecution.evidenceImage);
     } else {
       evidenceForm.resetFields();
-      setEvidenceImage(undefined);
     }
   }, [currentExecution, evidenceForm]);
 
@@ -2344,15 +2346,30 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               }
               const values = await evidenceForm.validateFields();
               const mergedExecution = mergeExecutionDraft(currentExecution);
+              const evidenceHtml = String(values.evidence || '');
+              const derivedEvidenceImage = extractFirstImageSrc(evidenceHtml);
+              const bugDescription = stripHtmlToText(evidenceHtml);
 
               const evidencePayload = {
-                evidence: values.evidence,
-                evidenceImage: evidenceImage,
+                evidence: evidenceHtml,
+                evidenceImage: derivedEvidenceImage,
                 bugTitle: values.bugTitle,
                 bugId: values.bugId,
                 bugLink: values.bugLink,
                 severity: values.severity,
               };
+
+              if (mergedExecution.result === TestResult.FAILED && !hasMeaningfulEvidenceContent(evidenceHtml)) {
+                message.error('Las notas de ejecución son obligatorias para pruebas fallidas.');
+                return;
+              }
+
+              if (mergedExecution.result === TestResult.FAILED && !derivedEvidenceImage?.trim()) {
+                message.error(
+                  'Para pruebas fallidas son obligatorias las notas de ejecución, el título del bug, la severidad y una imagen pegada o subida dentro del editor.',
+                );
+                return;
+              }
 
               let linkedBugId = mergedExecution.linkedBugId;
               if (mergedExecution.result === TestResult.FAILED) {
@@ -2360,10 +2377,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   linkedBugId: mergedExecution.linkedBugId,
                   internalBugId: values.bugId,
                   title: values.bugTitle,
-                  description: values.evidence,
+                  description: bugDescription,
                   severity: values.severity,
                   bugLink: values.bugLink,
-                  evidenceImage,
+                  evidenceImage: derivedEvidenceImage,
                   origin: BugOrigin.SMOKE_CYCLE,
                   projectId: selectedCycle.projectId,
                   functionalityId: mergedExecution.functionalityId,
@@ -2475,138 +2492,70 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               label={<span className="font-semibold text-slate-600">Notas / Observaciones</span>}
               rules={
                 isFailureEvidenceRequired
-                  ? [{ required: true, message: 'Las notas de ejecucion son obligatorias.' }]
+                  ? [{ required: true, message: 'Las notas de ejecución son obligatorias.' }]
                   : undefined
               }
             >
-              <Input.TextArea
-                rows={4}
-                placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes..."
-                className="rounded-xl border-slate-200 focus:border-orange-500"
+              <EvidenceRichEditor
+                placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes. Puedes usar emojis, pegar una captura o subir una imagen."
                 disabled={isCurrentExecutionReadOnly}
               />
             </Form.Item>
 
-            <Divider titlePlacement="left" className="!m-0 !mb-4">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Reporte de Bug
-              </span>
-            </Divider>
-
-            <Form.Item
-              name="bugTitle"
-              label="Titulo del bug"
-              rules={
-                isFailureEvidenceRequired
-                  ? [{ required: true, message: 'El titulo del bug es obligatorio.' }]
-                  : undefined
-              }
-            >
-              <Input
-                placeholder="Resume el error detectado"
-                className="rounded-lg"
-                disabled={isCurrentExecutionReadOnly}
-              />
+            <Form.Item name="bugId" hidden>
+              <Input />
             </Form.Item>
 
-            <Row gutter={16}>
-              <Form.Item name="bugId" hidden>
-                <Input />
-              </Form.Item>
-              <Col span={24}>
+            {isFailureEvidenceRequired && (
+              <>
+                <Divider titlePlacement="left" className="!m-0 !mb-4">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    Reporte de Bug
+                  </span>
+                </Divider>
+
+                <Form.Item
+                  name="bugTitle"
+                  label={<span className="font-semibold text-slate-600">* Título del bug</span>}
+                  rules={[{ required: true, message: 'El título del bug es obligatorio.' }]}
+                >
+                  <Input
+                    placeholder="Resume el error detectado"
+                    className="rounded-lg"
+                    disabled={isCurrentExecutionReadOnly}
+                  />
+                </Form.Item>
+
                 <Form.Item
                   name="severity"
-                  label="Severidad"
-                  rules={
-                    isFailureEvidenceRequired
-                      ? [{ required: true, message: 'La severidad es obligatoria.' }]
-                      : undefined
-                  }
+                  label={<span className="font-semibold text-slate-600">* Severidad</span>}
+                  rules={[{ required: true, message: 'La severidad es obligatoria.' }]}
                 >
                   <Select
                     placeholder="Selecciona severidad"
                     className="rounded-lg"
                     disabled={isCurrentExecutionReadOnly}
-                  >
-                    {Object.values(Severity).map(s => (
-                      <Select.Option key={s} value={s}>
-                        {s}
-                      </Select.Option>
-                    ))}
-                  </Select>
+                    options={Object.values(Severity).map(s => ({ label: s, value: s }))}
+                  />
                 </Form.Item>
-              </Col>
-              <Col span={24}>
-                <Form.Item name="bugLink" label="Link al Bug">
+
+                <Form.Item
+                  name="bugLink"
+                  label={<span className="font-semibold text-slate-600">Link al Bug</span>}
+                >
                   <Input
                     placeholder="https://..."
                     className="rounded-lg"
                     disabled={isCurrentExecutionReadOnly}
                   />
                 </Form.Item>
-              </Col>
-            </Row>
 
-            <Text type="secondary" className="text-[11px] block -mt-2 mb-3">
-              Al guardar una prueba fallida, este bug tambien se registrara automaticamente en el
-              Historial de Bugs con estado Pendiente.
-            </Text>
-
-            <Form.Item
-              label={
-                <span className="font-semibold text-slate-600">Evidencia Visual (Imagen)</span>
-              }
-            >
-              <div className="mt-2">
-                {evidenceImage ? (
-                  <div className="relative group rounded-xl overflow-hidden border border-slate-200">
-                    <img
-                      src={evidenceImage}
-                      alt="Evidencia"
-                      className="w-full h-auto max-h-64 object-contain bg-slate-100"
-                    />
-                    {!isCurrentExecutionReadOnly && (
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                        <Button
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => setEvidenceImage(undefined)}
-                          className="rounded-lg"
-                        >
-                          Eliminar
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <Upload.Dragger
-                    maxCount={1}
-                    showUploadList={false}
-                    disabled={isCurrentExecutionReadOnly}
-                    beforeUpload={file => {
-                      if (!validateInlineImageFile(file)) return false;
-                      void readFileAsDataUrl(file).then(base64 => {
-                        setEvidenceImage(base64);
-                      });
-                      return false;
-                    }}
-                    className="rounded-xl"
-                  >
-                    <div className="py-4">
-                      <p className="ant-upload-drag-icon">
-                        <UploadOutlined className="text-orange-500 text-3xl" />
-                      </p>
-                      <p className="ant-upload-text font-medium text-slate-600">
-                        Haz clic o arrastra una imagen aquí
-                      </p>
-                      <p className="ant-upload-hint text-xs text-slate-400">
-                        Soporta JPG, PNG. Máximo 1 archivo.
-                      </p>
-                    </div>
-                  </Upload.Dragger>
-                )}
-              </div>
-            </Form.Item>
+                <Text type="secondary" className="text-[11px] block -mt-2 mb-3">
+                  Al guardar una prueba fallida, este bug también se registrará automáticamente en
+                  el Historial de Bugs con estado Pendiente.
+                </Text>
+              </>
+            )}
           </Form>
         </div>
       </Modal>

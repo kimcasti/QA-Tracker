@@ -234,6 +234,40 @@
   margin-inline-start: 0 !important;
 }
 
+.evidence-rich-editor .ProseMirror {
+  min-height: 150px;
+  outline: none;
+  color: var(--qa-color-text, #102A43);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.evidence-rich-editor .ProseMirror p {
+  margin: 0 0 0.75rem;
+}
+
+.evidence-rich-editor .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-rich-editor .ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--qa-color-border, #D9E5EF);
+  margin: 0.75rem 0;
+}
+
+.evidence-rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 @media print {
   body.report-print-mode {
     background: #ffffff !important;
