@@ -120,7 +120,7 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: workspace, activeMembership, isViewer } = useWorkspaceAccess();
+  const { data: workspace, activeMembership, isViewer, isOwner } = useWorkspaceAccess();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: testRunsData, save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId);
   const { data: allTestCases } = useTestCases(projectId);
@@ -130,7 +130,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
-  const canDeleteTestRuns = ['owner', 'qa-lead'].includes(activeMembership?.role?.code || '');
+  const canDeleteTestRuns = isOwner || activeMembership?.role?.code === 'owner';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
@@ -950,7 +950,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       key: 'actions',
       render: (_: any, record: TestRun) => (
-        <Space size="small" wrap>
+        <Space size="small" className="flex-nowrap items-center">
           <Button
             icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
             size="small"
