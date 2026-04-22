@@ -88,6 +88,7 @@ export default function FunctionalityList({
     qaCoverage: null,
     status: null,
   });
+  const [functionalitySearch, setFunctionalitySearch] = useState('');
 
   const functionalities = allFunctionalities.filter(f => {
     if (!f) return false;
@@ -168,6 +169,18 @@ export default function FunctionalityList({
     [tableFilters],
   );
 
+  const filteredFunctionalities = React.useMemo(() => {
+    const normalizedSearch = functionalitySearch.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return functionalities;
+    }
+
+    return functionalities.filter(item =>
+      String(item?.name || '').toLowerCase().includes(normalizedSearch),
+    );
+  }, [functionalities, functionalitySearch]);
+
   const clearNativeTableFilters = () => {
     setTableFilters({
       module: null,
@@ -177,6 +190,7 @@ export default function FunctionalityList({
       qaCoverage: null,
       status: null,
     });
+    setFunctionalitySearch('');
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -926,13 +940,20 @@ export default function FunctionalityList({
           </div>
         }
         extra={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <Input.Search
+              allowClear
+              placeholder="Buscar por funcionalidad"
+              value={functionalitySearch}
+              onChange={event => setFunctionalitySearch(event.target.value)}
+              className="w-[260px]"
+            />
             <Button
               onClick={clearNativeTableFilters}
-              disabled={!hasActiveNativeTableFilters}
+              disabled={!hasActiveNativeTableFilters && !functionalitySearch.trim()}
               className="rounded-lg h-9 px-4 text-slate-500"
             >
-              Limpiar filtros tabla
+              Limpiar filtros
             </Button>
             {!isViewer && selectedRowKeys.length > 0 && (
               <Button
@@ -948,7 +969,7 @@ export default function FunctionalityList({
         <Table
           rowSelection={isViewer ? undefined : rowSelection}
           columns={columns}
-          dataSource={functionalities}
+          dataSource={filteredFunctionalities}
           rowKey="id"
           className="executive-table"
           pagination={{ pageSize: 10 }}

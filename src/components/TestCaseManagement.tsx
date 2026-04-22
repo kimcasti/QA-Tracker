@@ -256,34 +256,38 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   return (
     <Card
       title={
-        <Space>
-          <FileTextOutlined />
-          <span>Casos de Prueba - {functionalityName}</span>
-        </Space>
-      }
-      extra={
-        <Space>
-          {!isViewer ? (
-            <>
-              <Tooltip title={generateAiTooltipTitle}>
-                <Button
-                  icon={<ThunderboltOutlined />}
-                  onClick={handleGenerateAI}
-                  loading={isGenerating}
-                  disabled={isGenerateAiDisabled}
-                  className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
-                >
-                  {generateAiButtonLabel}
+        <div className="qa-test-case-management-header">
+          <div className="qa-test-case-management-header__title">
+            <FileTextOutlined className="shrink-0" />
+            <Tooltip title={`Casos de Prueba - ${functionalityName}`}>
+              <span className="qa-test-case-management-header__title-text">
+                Casos de Prueba - {functionalityName}
+              </span>
+            </Tooltip>
+          </div>
+          <div className="qa-test-case-management-header__actions">
+            {!isViewer ? (
+              <>
+                <Tooltip title={generateAiTooltipTitle}>
+                  <Button
+                    icon={<ThunderboltOutlined />}
+                    onClick={handleGenerateAI}
+                    loading={isGenerating}
+                    disabled={isGenerateAiDisabled}
+                    className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
+                  >
+                    {generateAiButtonLabel}
+                  </Button>
+                </Tooltip>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
+                  Nuevo Caso de Prueba
                 </Button>
-              </Tooltip>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
-                Nuevo Caso de Prueba
-              </Button>
-            </>
-          ) : null}
-        </Space>
+              </>
+            ) : null}
+          </div>
+        </div>
       }
-      className="shadow-sm"
+      className="qa-test-case-management-card shadow-sm"
     >
       {isError ? (
         <Alert
