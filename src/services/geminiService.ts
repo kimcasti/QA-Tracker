@@ -207,21 +207,22 @@ ${input.businessRules || 'No definidas'}`;
 }
 
 export async function generateTestCasesWithAI(functionalityName: string, moduleName: string) {
-  const prompt = `Genera 3 casos de prueba detallados para la funcionalidad "${functionalityName}" del módulo "${moduleName}".
-Devuelve un array de objetos JSON con la siguiente estructura:
-[
-  {
-    "title": "Título del caso",
-    "description": "Descripción breve",
-    "preconditions": "Precondiciones",
-    "testSteps": "1. Paso 1\\n2. Paso 2...",
-    "expectedResult": "Resultado esperado",
-    "testType": "Funcional",
-    "priority": "Medio"
-  }
-]
-Asegúrate de que los tipos de prueba sean uno de: Integración, Funcional, Sanity, Regresión, Smoke, Exploratoria, UAT.
-Asegúrate de que la prioridad sea uno de: Crítico, Alto, Medio, Bajo.`;
+  const prompt = `Genera 1 caso de prueba de camino feliz para la funcionalidad "${functionalityName}" del módulo "${moduleName}".
+Debe ser el escenario principal más representativo para el usuario final.
+
+Responde solo con JSON válido:
+{
+  "title": "",
+  "description": "",
+  "preconditions": "",
+  "testSteps": "",
+  "expectedResult": "",
+  "testType": "Funcional",
+  "priority": "Medio"
+}
+
+Usa testType solo de esta lista: Integración, Funcional, Sanity, Regresión, Smoke, Exploratoria, UAT.
+Usa priority solo de esta lista: Crítico, Alto, Medio, Bajo.`;
 
   try {
     return await withAiFallback(
@@ -233,44 +234,43 @@ Asegúrate de que la prioridad sea uno de: Crítico, Alto, Medio, Bajo.`;
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  preconditions: { type: Type.STRING },
-                  testSteps: { type: Type.STRING },
-                  expectedResult: { type: Type.STRING },
-                  testType: { type: Type.STRING },
-                  priority: { type: Type.STRING },
-                },
-                required: [
-                  'title',
-                  'description',
-                  'preconditions',
-                  'testSteps',
-                  'expectedResult',
-                  'testType',
-                  'priority',
-                ],
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                preconditions: { type: Type.STRING },
+                testSteps: { type: Type.STRING },
+                expectedResult: { type: Type.STRING },
+                testType: { type: Type.STRING },
+                priority: { type: Type.STRING },
               },
+              required: [
+                'title',
+                'description',
+                'preconditions',
+                'testSteps',
+                'expectedResult',
+                'testType',
+                'priority',
+              ],
             },
           },
         });
 
         const text = response.text;
         if (!text) {
-          throw new Error('No se recibió respuesta de la IA');
+          throw new Error('No se recibi?? respuesta de la IA');
         }
 
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed.slice(0, 1) : [parsed];
       },
       async () => {
         const groqPrompt = `${prompt}
 
-Responde únicamente con JSON válido. No uses Markdown ni texto adicional.`;
-        return extractJsonPayload(await requestGroqCompletion(groqPrompt));
+Responde ??nicamente con JSON v??lido. No uses Markdown ni texto adicional.`;
+        const parsed = extractJsonPayload(await requestGroqCompletion(groqPrompt));
+        return Array.isArray(parsed) ? parsed.slice(0, 1) : [parsed];
       },
     );
   } catch (error) {

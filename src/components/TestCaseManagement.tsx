@@ -116,7 +116,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       await saveManyWithSingleRefresh(generatedTestCases);
       setGeneratedForFunctionalityId(functionalityId);
 
-      message.success(`Se generaron ${generated.length} casos de prueba con IA`);
+      message.success(
+        generated.length === 1
+          ? 'Se generó 1 caso de prueba con IA'
+          : `Se generaron ${generated.length} casos de prueba con IA`,
+      );
     } catch (error) {
       console.error('AI Generation error:', error);
       const msg = (error instanceof Error ? error.message : (error as any)?.message) || '';
