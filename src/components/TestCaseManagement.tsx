@@ -30,9 +30,27 @@ import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { generateTestCasesWithAI, hasAiProviderConfigured } from '../services/geminiService';
+import BasicRichTextEditor from './BasicRichTextEditor';
+import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
 
 const { TextArea } = Input;
 const { Text } = Typography;
+
+function renderRichTextContent(value?: string) {
+  const normalizedHtml = normalizeEvidenceHtml(value);
+  const plainText = stripHtmlToText(value);
+
+  if (!normalizedHtml || !plainText) {
+    return <p className="mt-1 text-slate-500">-</p>;
+  }
+
+  return (
+    <div
+      className="qa-rich-text-content mt-1 text-sm text-slate-700"
+      dangerouslySetInnerHTML={{ __html: normalizedHtml }}
+    />
+  );
+}
 
 interface TestCaseManagementProps {
   projectId: string;
@@ -327,7 +345,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             <div className="rounded-lg bg-gray-50 p-4">
               <div className="mb-4">
                 <Text strong>Descripción:</Text>
-                <p className="mt-1">{record.description}</p>
+                {renderRichTextContent(record.description)}
               </div>
               <div className="mb-4">
                 <Text strong>Precondiciones:</Text>
@@ -335,11 +353,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </div>
               <div className="mb-4">
                 <Text strong>Pasos de Prueba:</Text>
-                <p className="mt-1 whitespace-pre-wrap">{record.testSteps}</p>
+                {renderRichTextContent(record.testSteps)}
               </div>
               <div>
                 <Text strong>Resultado Esperado:</Text>
-                <p className="mt-1">{record.expectedResult}</p>
+                {renderRichTextContent(record.expectedResult)}
               </div>
             </div>
           ),
@@ -394,7 +412,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             </Form.Item>
 
             <Form.Item name="description" label="Descripción" className="col-span-2">
-              <TextArea rows={2} placeholder="Descripción breve del objetivo de la prueba" />
+              <BasicRichTextEditor placeholder="Descripción breve del objetivo de la prueba" />
             </Form.Item>
 
             <Form.Item
@@ -416,9 +434,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
               className="col-span-2"
             >
-              <TextArea
-                rows={4}
+              <BasicRichTextEditor
                 placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
+                minHeightClassName="min-h-[160px]"
               />
             </Form.Item>
 
@@ -428,7 +446,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
               className="col-span-2"
             >
-              <TextArea rows={2} placeholder="El sistema debe mostrar el dashboard..." />
+              <BasicRichTextEditor
+                placeholder="El sistema debe mostrar el dashboard..."
+                minHeightClassName="min-h-[120px]"
+              />
             </Form.Item>
           </div>
 

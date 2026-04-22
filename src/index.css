@@ -337,6 +337,56 @@
   pointer-events: none;
 }
 
+.qa-basic-rich-editor .ProseMirror,
+.qa-rich-text-content {
+  outline: none;
+  color: var(--qa-color-text, #102A43);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.qa-basic-rich-editor .ProseMirror p,
+.qa-rich-text-content p {
+  margin: 0 0 0.75rem;
+}
+
+.qa-basic-rich-editor .ProseMirror p:last-child,
+.qa-rich-text-content p:last-child {
+  margin-bottom: 0;
+}
+
+.qa-basic-rich-editor .ProseMirror ul,
+.qa-basic-rich-editor .ProseMirror ol,
+.qa-rich-text-content ul,
+.qa-rich-text-content ol {
+  margin: 0 0 0.75rem 1.25rem;
+  padding: 0;
+}
+
+.qa-basic-rich-editor .ProseMirror ul,
+.qa-rich-text-content ul {
+  list-style: disc;
+}
+
+.qa-basic-rich-editor .ProseMirror ol,
+.qa-rich-text-content ol {
+  list-style: decimal;
+}
+
+.qa-basic-rich-editor .ProseMirror li,
+.qa-rich-text-content li {
+  margin-bottom: 0.25rem;
+}
+
+.qa-basic-rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 @media print {
   body.report-print-mode {
     background: #ffffff !important;

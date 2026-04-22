@@ -83,6 +83,7 @@ import {
   extractFirstImageSrc,
   hasMeaningfulEvidenceContent,
   mergeEvidenceContentWithImage,
+  normalizeEvidenceHtml,
   stripHtmlToText,
 } from '../utils/evidenceRichText';
 import {
@@ -92,6 +93,22 @@ import {
 } from '../services/geminiService';
 
 const { Text, Title } = Typography;
+
+function renderRichTextContent(value?: string | null) {
+  const normalizedHtml = normalizeEvidenceHtml(value);
+  const plainText = stripHtmlToText(value);
+
+  if (!normalizedHtml || !plainText) {
+    return <p className="mt-1 text-sm text-slate-500">-</p>;
+  }
+
+  return (
+    <div
+      className="qa-rich-text-content mt-1 text-sm text-slate-700"
+      dangerouslySetInnerHTML={{ __html: normalizedHtml }}
+    />
+  );
+}
 
 type NativeExecutionTableFilterState = {
   status: React.Key[] | null;
@@ -1396,9 +1413,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   <div className="rounded-xl bg-slate-50 p-5">
                     <div className="mb-4">
                       <Text strong>Descripción:</Text>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                        {testCase.description || '—'}
-                      </p>
+                      {renderRichTextContent(testCase.description)}
                     </div>
                     <div className="mb-4">
                       <Text strong>Precondiciones:</Text>
@@ -1408,15 +1423,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     </div>
                     <div className="mb-4">
                       <Text strong>Pasos de Prueba:</Text>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                        {testCase.testSteps || '—'}
-                      </p>
+                      {renderRichTextContent(testCase.testSteps)}
                     </div>
                     <div>
                       <Text strong>Resultado Esperado:</Text>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                        {testCase.expectedResult || '—'}
-                      </p>
+                      {renderRichTextContent(testCase.expectedResult)}
                     </div>
                   </div>
                 );

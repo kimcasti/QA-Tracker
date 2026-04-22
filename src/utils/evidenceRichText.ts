@@ -1,6 +1,15 @@
 const IMAGE_TAG_REGEX = /<img[^>]+src=["']([^"']+)["'][^>]*>/i;
 const HTML_TAG_REGEX = /<[^>]*>/g;
 
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&');
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -41,12 +50,13 @@ export function normalizeEvidenceHtml(value?: string | null) {
 
   if (!trimmedValue) return '';
 
-  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(trimmedValue);
+  const decodedValue = decodeHtmlEntities(trimmedValue);
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(decodedValue);
   if (looksLikeHtml) {
-    return trimmedValue;
+    return decodedValue;
   }
 
-  return trimmedValue
+  return decodedValue
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean)
