@@ -45,12 +45,6 @@ import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers'
 import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
 import type { SlackMember } from '../modules/slack-members/types/model';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import {
-  analyzeProjectWithAI,
-  generateProjectWireframeBrief,
-  hasAiProviderConfigured,
-  improveMeetingNotesWithAI,
-} from '../services/geminiService';
 import { MeetingNote, Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 
@@ -371,6 +365,12 @@ export default function AboutView({ project }: { project: Project }) {
   };
 
   const handleGenerateProjectAi = async (mode: 'analysis' | 'wireframe') => {
+    const {
+      analyzeProjectWithAI,
+      generateProjectWireframeBrief,
+      hasAiProviderConfigured,
+    } = await import('../services/geminiService');
+
     if (!hasAiProviderConfigured()) {
       message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar esta acción.');
       return;
@@ -497,6 +497,9 @@ export default function AboutView({ project }: { project: Project }) {
       message.warning('Por favor ingresa algunas notas primero');
       return;
     }
+    const { hasAiProviderConfigured, improveMeetingNotesWithAI } = await import(
+      '../services/geminiService'
+    );
     if (!hasAiProviderConfigured()) {
       message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la mejora con IA.');
       return;

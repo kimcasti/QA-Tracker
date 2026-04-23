@@ -15,33 +15,34 @@ import {
   CalendarOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import Dashboard from './components/Dashboard';
-import FunctionalityList from './components/FunctionalityList';
-import TestExecutionView from './components/TestExecutionView';
-import RegressionCycles from './components/RegressionCycles';
-import SmokeCycles from './components/SmokeCycles';
-import TestPlanView from './components/TestPlanView';
-import Reports from './components/Reports';
-import CoverageMatrix from './components/CoverageMatrix';
-import ProjectManagement from './components/ProjectManagement';
-import EditProject from './components/EditProject';
-import Settings from './components/Settings';
-import AboutView from './components/AboutView';
-import CreateProjectModal from './components/CreateProjectModal';
-import AuthPage from './modules/auth/components/AuthPage';
 import { useAuthSession } from './modules/auth/context/AuthSessionProvider';
 import { UserMenu } from './components/UserMenu';
-import StoryMapPage from './modules/storymap/components/StoryMapPage';
-import PersonalNotesPage from './modules/personal-notes/components/PersonalNotesPage';
 import { useProjects } from './modules/projects/hooks/useProjects';
 import { useWorkspaceAccess } from './modules/workspace/hooks/useWorkspaceAccess';
 import type { Project } from './types';
 import { useTranslation } from 'react-i18next';
 import { appBranding } from './assets/branding';
 import { qaBrand } from './theme/palette';
+
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const FunctionalityList = lazy(() => import('./components/FunctionalityList'));
+const TestExecutionView = lazy(() => import('./components/TestExecutionView'));
+const RegressionCycles = lazy(() => import('./components/RegressionCycles'));
+const SmokeCycles = lazy(() => import('./components/SmokeCycles'));
+const TestPlanView = lazy(() => import('./components/TestPlanView'));
+const Reports = lazy(() => import('./components/Reports'));
+const CoverageMatrix = lazy(() => import('./components/CoverageMatrix'));
+const ProjectManagement = lazy(() => import('./components/ProjectManagement'));
+const EditProject = lazy(() => import('./components/EditProject'));
+const Settings = lazy(() => import('./components/Settings'));
+const AboutView = lazy(() => import('./components/AboutView'));
+const CreateProjectModal = lazy(() => import('./components/CreateProjectModal'));
+const AuthPage = lazy(() => import('./modules/auth/components/AuthPage'));
+const StoryMapPage = lazy(() => import('./modules/storymap/components/StoryMapPage'));
+const PersonalNotesPage = lazy(() => import('./modules/personal-notes/components/PersonalNotesPage'));
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -179,6 +180,17 @@ function renderWorkspaceContent(view: WorkspaceViewKey, currentProject: Project)
   }
 }
 
+function PageLoader() {
+  return (
+    <div className="flex min-h-[320px] items-center justify-center">
+      <div className="flex flex-col items-center gap-3 rounded-3xl border border-slate-100 bg-white px-8 py-10 shadow-sm">
+        <Spin size="large" />
+        <Text type="secondary">Cargando vista...</Text>
+      </div>
+    </div>
+  );
+}
+
 function getPersistedProjectId() {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
@@ -204,7 +216,11 @@ export default function App() {
   }
 
   if (!isAuthenticated || !user) {
-    return <AuthPage />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <AuthPage />
+      </Suspense>
+    );
   }
 
   return <WorkspaceApp currentUser={user} onLogout={logout} />;
@@ -388,16 +404,20 @@ function WorkspaceApp({
         </div>
       </Header>
       <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto">
-        <ProjectManagement
-          onViewDetails={handleViewProject}
-          onEditProject={handleEditProject}
-          onOpenCreateModal={() => setIsCreateProjectModalOpen(true)}
-        />
+        <Suspense fallback={<PageLoader />}>
+          <ProjectManagement
+            onViewDetails={handleViewProject}
+            onEditProject={handleEditProject}
+            onOpenCreateModal={() => setIsCreateProjectModalOpen(true)}
+          />
+        </Suspense>
       </Content>
-      <CreateProjectModal
-        open={isCreateProjectModalOpen}
-        onCancel={() => setIsCreateProjectModalOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <CreateProjectModal
+          open={isCreateProjectModalOpen}
+          onCancel={() => setIsCreateProjectModalOpen(false)}
+        />
+      </Suspense>
     </Layout>
   );
 
@@ -414,16 +434,20 @@ function WorkspaceApp({
     return (
       <>
         <Layout className="qa-workspace-shell min-h-screen bg-slate-50">
-          <EditProject
-            project={project}
-            onCancel={() => navigate('/')}
-            onSave={() => navigate('/')}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <EditProject
+              project={project}
+              onCancel={() => navigate('/')}
+              onSave={() => navigate('/')}
+            />
+          </Suspense>
         </Layout>
-        <CreateProjectModal
-          open={isCreateProjectModalOpen}
-          onCancel={() => setIsCreateProjectModalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <CreateProjectModal
+            open={isCreateProjectModalOpen}
+            onCancel={() => setIsCreateProjectModalOpen(false)}
+          />
+        </Suspense>
       </>
     );
   }
@@ -468,7 +492,9 @@ function WorkspaceApp({
         </Header>
         <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto p-8">
           <div className="qa-workspace-canvas mx-auto w-full max-w-7xl">
-            <PersonalNotesPage />
+            <Suspense fallback={<PageLoader />}>
+              <PersonalNotesPage />
+            </Suspense>
           </div>
         </Content>
       </Layout>
@@ -618,15 +644,19 @@ function WorkspaceApp({
                     : 'qa-workspace-canvas mx-auto w-full max-w-7xl'
                 }
               >
-                {renderWorkspaceContent(workspaceView, routedProject)}
+                <Suspense fallback={<PageLoader />}>
+                  {renderWorkspaceContent(workspaceView, routedProject)}
+                </Suspense>
               </div>
             </Content>
           </Layout>
         </Layout>
-        <CreateProjectModal
-          open={isCreateProjectModalOpen}
-          onCancel={() => setIsCreateProjectModalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <CreateProjectModal
+            open={isCreateProjectModalOpen}
+            onCancel={() => setIsCreateProjectModalOpen(false)}
+          />
+        </Suspense>
       </>
     );
   }

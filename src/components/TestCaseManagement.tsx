@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import {
   Table,
   Button,
@@ -29,12 +29,19 @@ import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { generateTestCasesWithAI, hasAiProviderConfigured } from '../services/geminiService';
-import BasicRichTextEditor from './BasicRichTextEditor';
 import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
 
 const { TextArea } = Input;
 const { Text } = Typography;
+const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
+
+function BasicRichTextEditorField(props: React.ComponentProps<typeof BasicRichTextEditor>) {
+  return (
+    <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
+      <BasicRichTextEditor {...props} />
+    </Suspense>
+  );
+}
 
 function renderRichTextContent(value?: string) {
   const normalizedHtml = normalizeEvidenceHtml(value);
@@ -104,6 +111,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const runGenerateAI = async () => {
     setIsGenerating(true);
     try {
+      const { generateTestCasesWithAI } = await import('../services/geminiService');
       const generated = await generateTestCasesWithAI(functionalityName, moduleName);
       const generatedTestCases: TestCase[] = generated.map(tc => ({
         ...tc,
@@ -154,6 +162,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const handleGenerateAI = async () => {
+    const { hasAiProviderConfigured } = await import('../services/geminiService');
+
     if (!hasAiProviderConfigured()) {
       message.warning(
         'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
@@ -375,16 +385,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         footer={null}
         width={800}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={onFinish}
-          initialValues={{
-            priority: Priority.MEDIUM,
-            testType: TestType.FUNCTIONAL,
-            isAutomated: false,
-          }}
-        >
+        <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={onFinish}
+            initialValues={{
+              priority: Priority.MEDIUM,
+              testType: TestType.FUNCTIONAL,
+              isAutomated: false,
+            }}
+          >
           <div className="grid grid-cols-2 gap-4">
             <Form.Item
               name="title"
@@ -467,7 +478,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               ) : null}
             </Space>
           </Form.Item>
-        </Form>
+          </Form>
+        </Suspense>
       </Modal>
     </Card>
   );

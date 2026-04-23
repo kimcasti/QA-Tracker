@@ -16,7 +16,7 @@
   App as AntdApp,
 } from 'antd';
 import { CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
 import { Priority, RiskLevel, TestStatus, TestType } from '../../../types';
@@ -33,11 +33,11 @@ import { storyAssociationsService } from '../services/storyAssociationsService';
 import { storyMapExportService } from '../services/storyMapExportService';
 import { getProjectStoryMap, saveProjectStoryMap } from '../services/projectStoryMapService';
 import type { StoryMapRoleNode } from '../types';
-import StoryMapBoard from './StoryMapBoard';
 import { StoryMapErrorBoundary } from './StoryMapErrorBoundary';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
+const StoryMapBoard = lazy(() => import('./StoryMapBoard'));
 
 export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
@@ -370,24 +370,26 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
           </div>
         ) : (
           <StoryMapErrorBoundary onRetry={reload}>
-            <StoryMapBoard
-              projectId={projectId}
-              roles={fullMap}
-              functionalities={functionalities}
-              onCreateEpic={openCreateEpic}
-              onCreateStory={openCreateStory}
-              onCreateFunctionality={openCreateFunctionality}
-              onEditRole={openEditRole}
-              onEditEpic={openEditEpic}
-              onEditStory={openEditStory}
-              onEnsurePrimaryAssociation={ensurePrimaryAssociation}
-              onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
-              onMoveFunctionality={handleMoveFunctionality}
-              onStructureChange={() => {
-                void persistStoryMapSnapshot();
-              }}
-              readOnly={isViewer}
-            />
+            <Suspense fallback={<div className="py-8 text-center text-sm text-slate-400">Cargando Story Map...</div>}>
+              <StoryMapBoard
+                projectId={projectId}
+                roles={fullMap}
+                functionalities={functionalities}
+                onCreateEpic={openCreateEpic}
+                onCreateStory={openCreateStory}
+                onCreateFunctionality={openCreateFunctionality}
+                onEditRole={openEditRole}
+                onEditEpic={openEditEpic}
+                onEditStory={openEditStory}
+                onEnsurePrimaryAssociation={ensurePrimaryAssociation}
+                onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
+                onMoveFunctionality={handleMoveFunctionality}
+                onStructureChange={() => {
+                  void persistStoryMapSnapshot();
+                }}
+                readOnly={isViewer}
+              />
+            </Suspense>
           </StoryMapErrorBoundary>
         )}
       </Card>

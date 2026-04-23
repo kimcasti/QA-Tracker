@@ -18,6 +18,10 @@ export interface StrapiEntityResponse<T> {
   data: T;
 }
 
+export interface ListDocumentsOptions {
+  paginateAll?: boolean;
+}
+
 const STRAPI_MAX_PAGE_SIZE = 100;
 
 export function relation(documentId?: string | null) {
@@ -38,7 +42,9 @@ export function populateParams(paths: string[]) {
 export async function listDocuments<T extends ApiDocument>(
   endpoint: string,
   params?: Record<string, string | number | boolean | undefined>,
+  options?: ListDocumentsOptions,
 ) {
+  const paginateAll = options?.paginateAll ?? true;
   // Keep requests aligned with the backend maxLimit to avoid losing records when Strapi clamps page sizes.
   const requestedPageSize = Number(params?.['pagination[pageSize]'] ?? STRAPI_MAX_PAGE_SIZE);
   const pageSize =
@@ -83,6 +89,10 @@ export async function listDocuments<T extends ApiDocument>(
     }
 
     documents.push(...pageData);
+
+    if (!paginateAll) {
+      break;
+    }
 
     const reachedTotal = totalDocuments !== null && documents.length >= totalDocuments;
     const reachedDeclaredLastPage =

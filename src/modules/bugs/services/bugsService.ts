@@ -11,13 +11,8 @@ import {
 import {
   deleteDocument,
   listDocuments,
-  populateParams,
-  relation,
   upsertDocument,
 } from '../../shared/services/strapi';
-import { getSprints } from '../../settings/services/settingsService';
-import { getTestCases } from '../../test-cases/services/testCasesService';
-import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { BugDto } from '../types/api';
 
@@ -82,8 +77,7 @@ function mapBug(document: BugDto): QABug {
 
 export async function getBugs(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
-  const documents = await listDocuments<BugDto>('/api/bugs', {
-    ...populateParams(['project', 'functionality', 'sprint', 'testCase', 'testRun', 'testCycle']),
+  const documents = await listDocuments<BugDto>('/api/bug-summaries', {
     sort: 'detectedAt:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
@@ -105,26 +99,13 @@ export async function saveBug(bug: QABug) {
     throw new Error(`Project ${bug.projectId} is not available in the workspace.`);
   }
 
-  const [functionalities, sprints, testCases, testCycles, documents] = await Promise.all([
-    getFunctionalities(bug.projectId),
-    getSprints(bug.projectId),
-    getTestCases(bug.projectId),
-    listDocuments<any>('/api/test-cycles', {
-      'filters[project][documentId][$eq]': context.documentId,
-      ...(bug.cycleId ? { 'filters[code][$eq]': bug.cycleId } : {}),
-    }),
-    listDocuments<BugDto>('/api/bugs', {
-      'filters[internalBugId][$eq]': bug.internalBugId,
-      'filters[project][documentId][$eq]': context.documentId,
-    }),
-  ]);
-
-  const functionality = functionalities.find(item => item.id === bug.functionalityId);
-  const sprint = sprints.find(item => item.name === bug.sprint);
-  const testCase = testCases.find(
-    item => item.id === bug.testCaseId || item.title === bug.testCaseTitle,
-  );
-  const testCycle = testCycles.find((item: { code?: string }) => item.code === bug.cycleId);
+  const documents = await listDocuments<BugDto>('/api/bugs', {
+    'filters[internalBugId][$eq]': bug.internalBugId,
+    'filters[project][documentId][$eq]': context.documentId,
+    'pagination[pageSize]': 1,
+  }, {
+    paginateAll: false,
+  });
 
   const saved = await upsertDocument<BugDto>('/api/bugs', documents[0]?.documentId || null, {
     internalBugId: bug.internalBugId,
@@ -142,12 +123,13 @@ export async function saveBug(bug: QABug) {
     status: bugStatusToApi(bug.status),
     testCaseTitle: bug.testCaseTitle || null,
     linkedSourceId: bug.linkedSourceId || null,
-    organization: relation(context.organizationDocumentId),
-    project: relation(context.documentId),
-    functionality: relation(functionality?.id),
-    sprint: relation(sprint?.id),
-    testCase: relation(testCase?.id),
-    testCycle: relation(testCycle?.documentId),
+    organization: context.organizationDocumentId,
+    project: context.documentId,
+    functionality: bug.functionalityId || null,
+    sprint: bug.sprint || null,
+    testCase: bug.testCaseId || bug.testCaseTitle || null,
+    testRun: bug.testRunId || null,
+    testCycle: bug.cycleId || null,
   });
 
   return mapBug(saved);
@@ -162,6 +144,9 @@ export async function removeBug(internalBugId: string, projectId?: string) {
   const documents = await listDocuments<BugDto>('/api/bugs', {
     'filters[internalBugId][$eq]': internalBugId,
     'filters[project][documentId][$eq]': context.documentId,
+    'pagination[pageSize]': 1,
+  }, {
+    paginateAll: false,
   });
 
   const documentId = documents[0]?.documentId;

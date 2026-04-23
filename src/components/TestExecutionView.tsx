@@ -38,7 +38,7 @@ import {
   ThunderboltOutlined,
   MinusOutlined,
 } from '@ant-design/icons';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -47,7 +47,9 @@ import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemb
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useTestRunSummaries } from '../modules/test-runs/hooks/useTestRunSummaries';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
+import { getTestRunById } from '../modules/test-runs/services/testRunsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   TestExecution,
@@ -72,7 +74,6 @@ import {
 } from '../i18n/labels';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
-import EvidenceRichEditor from './EvidenceRichEditor';
 import dayjs from 'dayjs';
 import type { FilterValue } from 'antd/es/table/interface';
 import {
@@ -86,13 +87,18 @@ import {
   normalizeEvidenceHtml,
   stripHtmlToText,
 } from '../utils/evidenceRichText';
-import {
-  hasAiProviderConfigured,
-  recommendExecutionFunctionalitiesWithAI,
-  type ExecutionRecommendationCandidate,
-} from '../services/geminiService';
+import type { ExecutionRecommendationCandidate } from '../services/geminiService';
 
 const { Text, Title } = Typography;
+const EvidenceRichEditor = lazy(() => import('./EvidenceRichEditor'));
+
+function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
+  return (
+    <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
+      <EvidenceRichEditor {...props} />
+    </Suspense>
+  );
+}
 
 function renderRichTextContent(value?: string | null) {
   const normalizedHtml = normalizeEvidenceHtml(value);
@@ -139,17 +145,21 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const queryClient = useQueryClient();
   const { data: workspace, activeMembership, isViewer, isOwner } = useWorkspaceAccess();
   const { data: functionalitiesData } = useFunctionalities(projectId);
-  const { data: testRunsData, save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId);
+  const { data: testRunSummariesData } = useTestRunSummaries(projectId);
+  const { save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId, {
+    enabled: false,
+  });
   const { data: allTestCases } = useTestCases(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
-  const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
+  const testRuns = Array.isArray(testRunSummariesData) ? testRunSummariesData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const canDeleteTestRuns = isOwner || activeMembership?.role?.code === 'owner';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [openingRunId, setOpeningRunId] = useState<string | null>(null);
   const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
     useSlackMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
@@ -538,6 +548,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     }
 
     const fallbackSuggestions = buildRuleBasedSuggestions();
+    const { hasAiProviderConfigured, recommendExecutionFunctionalitiesWithAI } = await import(
+      '../services/geminiService'
+    );
 
     if (!hasAiProviderConfigured()) {
       setAiSuggestions(fallbackSuggestions);
@@ -971,9 +984,21 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           <Button
             icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
             size="small"
+            loading={openingRunId === record.id}
             onClick={() => {
-              setActiveTestRun(record);
-              setExecutionResults(record.results);
+              setOpeningRunId(record.id);
+              void getTestRunById(record.id)
+                .then(fullRun => {
+                  setActiveTestRun(fullRun);
+                  setExecutionResults(fullRun.results);
+                })
+                .catch(error => {
+                  console.error('Error loading test run detail:', error);
+                  message.error('No se pudo abrir la ejecución seleccionada.');
+                })
+                .finally(() => {
+                  setOpeningRunId(current => (current === record.id ? null : current));
+                });
             }}
             className={record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'}
           >
@@ -1506,10 +1531,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       : undefined
                   }
                 >
-                  <EvidenceRichEditor
+                    <EvidenceRichEditorField
                     placeholder="Escribe aquí las notas de la ejecución. Puedes usar emojis, pegar una captura o subir una imagen."
-                    disabled={isReadOnly}
-                  />
+                      disabled={isReadOnly}
+                    />
                 </Form.Item>
                 {isFailureEvidenceRequired && (
                   <>

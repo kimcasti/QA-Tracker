@@ -181,6 +181,20 @@ export async function getTestCycles(projectId?: string, cycleType?: 'REGRESSION'
   return documents.map(mapCycle);
 }
 
+export async function getTestCycleSummaries(
+  projectId?: string,
+  cycleType?: 'REGRESSION' | 'SMOKE',
+) {
+  const context = projectId ? await findProjectContext(projectId) : null;
+  const documents = await listDocuments<TestCycleDto>('/api/test-cycles/list-summary', {
+    sort: 'date:desc',
+    ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+    ...(cycleType ? { 'filters[cycleType][$eq]': cycleTypeToApi(cycleType) } : {}),
+  });
+
+  return documents.map(mapCycle);
+}
+
 export async function saveTestCycle(cycle: RegressionCycle) {
   const context = await findProjectContext(cycle.projectId);
   if (!context) {
@@ -192,6 +206,9 @@ export async function saveTestCycle(cycle: RegressionCycle) {
   const documents = await listDocuments<TestCycleDto>('/api/test-cycles', {
     'filters[project][documentId][$eq]': context.documentId,
     'filters[code][$eq]': cycle.cycleId,
+    'pagination[pageSize]': 1,
+  }, {
+    paginateAll: false,
   });
 
   const saved = await upsertDocument<TestCycleDto>('/api/test-cycles', documents[0]?.documentId || null, {

@@ -24,6 +24,7 @@ import {
   SearchOutlined,
   BarChartOutlined,
   CheckCircleOutlined,
+  CloseOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
   EyeOutlined,
@@ -34,7 +35,7 @@ import {
   RollbackOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import type { FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -70,7 +71,6 @@ import {
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
-import EvidenceRichEditor from './EvidenceRichEditor';
 import dayjs from 'dayjs';
 import {
   isPayloadTooLargeError,
@@ -86,6 +86,15 @@ import {
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 const RECENT_CHANGE_WINDOW_DAYS = 14;
+const EvidenceRichEditor = lazy(() => import('./EvidenceRichEditor'));
+
+function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
+  return (
+    <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
+      <EvidenceRichEditor {...props} />
+    </Suspense>
+  );
+}
 
 function normalizeSprintName(value?: string) {
   return value?.trim() || undefined;
@@ -267,6 +276,12 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const getExecutionAssignmentLabel = (execution: RegressionExecution) =>
     execution.assignedTesterName || execution.assignedTesterEmail || null;
   const isCurrentExecutionReadOnly = currentExecution ? !canEditExecutionRecord(currentExecution) : isReadOnly;
+
+  const handleCloseEvidenceModal = () => {
+    setEvidenceModalOpen(false);
+    setCurrentExecution(null);
+    evidenceForm.resetFields();
+  };
 
   // Sync form values when currentExecution changes
   useEffect(() => {
@@ -1377,17 +1392,6 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   </span>
                 </Tooltip>
               )}
-              {!isReadOnly && canManageCycleConfig && !isViewer && (
-                <Button
-                  type="primary"
-                  icon={<BarChartOutlined />}
-                  size="large"
-                  className="rounded-xl h-11 px-8 shadow-lg shadow-orange-200 font-bold bg-orange-600 border-orange-600 hover:bg-orange-700"
-                  onClick={() => void handleExecuteAll(selectedCycle)}
-                >
-                  Execute All
-                </Button>
-              )}
             </Space>
           </div>
 
@@ -2340,8 +2344,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           try {
             if (currentExecution && selectedCycle) {
               if (isCurrentExecutionReadOnly) {
-                setEvidenceModalOpen(false);
-                setCurrentExecution(null);
+                handleCloseEvidenceModal();
                 return;
               }
               const values = await evidenceForm.validateFields();
@@ -2414,8 +2417,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               if (!didSave) return;
               clearExecutionDraft(mergedExecution.id);
               message.success('Evidencia guardada correctamente');
-              setEvidenceModalOpen(false);
-              setCurrentExecution(null);
+              handleCloseEvidenceModal();
             }
           } catch (error) {
             console.error('Error saving evidence:', error);
@@ -2426,10 +2428,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             message.error('Error al guardar la evidencia. Por favor revisa los campos.');
           }
         }}
-        onCancel={() => {
-          setEvidenceModalOpen(false);
-          setCurrentExecution(null);
-        }}
+        onCancel={handleCloseEvidenceModal}
+        closeIcon={<CloseOutlined onClick={handleCloseEvidenceModal} />}
         width={600}
         centered
         okText="Guardar Evidencia"
@@ -2437,7 +2437,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
         footer={
           isCurrentExecutionReadOnly
             ? [
-                <Button key="close" onClick={() => setEvidenceModalOpen(false)}>
+                <Button key="close" onClick={handleCloseEvidenceModal}>
                   Cerrar
                 </Button>,
               ]
@@ -2496,10 +2496,10 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   : undefined
               }
             >
-              <EvidenceRichEditor
+                <EvidenceRichEditorField
                 placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes. Puedes usar emojis, pegar una captura o subir una imagen."
-                disabled={isCurrentExecutionReadOnly}
-              />
+                  disabled={isCurrentExecutionReadOnly}
+                />
             </Form.Item>
 
             <Form.Item name="bugId" hidden>

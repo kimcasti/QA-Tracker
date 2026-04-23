@@ -27,7 +27,7 @@ import {
   HistoryOutlined,
 } from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
-import React, { useState, useRef } from 'react';
+import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import {
@@ -41,10 +41,10 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import { toApiError } from '../config/http';
 import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
-import TestCaseManagement from './TestCaseManagement';
 import type { InputRef } from 'antd';
 import type { FilterValue } from 'antd/es/table/interface';
-import * as XLSX from 'xlsx';
+
+const TestCaseManagement = lazy(() => import('./TestCaseManagement'));
 
 export default function FunctionalityList({
   filter,
@@ -656,6 +656,7 @@ export default function FunctionalityList({
         let importedData: any[] = [];
 
         if (isExcel) {
+          const XLSX = await import('xlsx');
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
           const firstSheetName = workbook.SheetNames[0];
@@ -743,7 +744,7 @@ export default function FunctionalityList({
     return false; // Prevent auto-upload
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
       if (!functionalities || functionalities.length === 0) {
         message.warning('No hay datos para exportar.');
@@ -765,6 +766,7 @@ export default function FunctionalityList({
         Estado: f.status || '',
       }));
 
+      const XLSX = await import('xlsx');
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Funcionalidades');
@@ -1151,12 +1153,14 @@ export default function FunctionalityList({
         destroyOnHidden
       >
         {selectedFunctionality && (
-          <TestCaseManagement
-            projectId={projectId || ''}
-            functionalityId={selectedFunctionality.id}
-            functionalityName={selectedFunctionality.name}
-            moduleName={selectedFunctionality.module}
-          />
+          <Suspense fallback={<div className="py-6 text-center text-sm text-slate-400">Cargando casos de prueba...</div>}>
+            <TestCaseManagement
+              projectId={projectId || ''}
+              functionalityId={selectedFunctionality.id}
+              functionalityName={selectedFunctionality.name}
+              moduleName={selectedFunctionality.module}
+            />
+          </Suspense>
         )}
       </Modal>
 

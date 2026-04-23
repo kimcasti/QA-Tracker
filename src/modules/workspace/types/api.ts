@@ -58,3 +58,14 @@ export interface WorkspaceDto {
   projects: WorkspaceProjectDto[];
   projectQuota?: WorkspaceProjectQuotaDto;
 }
+
+export interface ProjectContextsDto {
+  projects: Array<{
+    documentId: string;
+    key: string;
+    organization?: {
+      documentId: string;
+      name: string;
+    };
+  }>;
+}

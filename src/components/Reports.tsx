@@ -49,7 +49,9 @@ import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
+import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { BugStatus, ExecutionMode, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
@@ -188,11 +190,18 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
   </Card>
 );
 
-const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | null }> = ({
+const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> = ({
   projectId,
-  cycle,
+  cycleId,
 }) => {
   const { data: bugs = [] } = useBugs(projectId);
+  const { data: regressionCycles = [] } = useRegressionCycles(projectId);
+  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
+
+  const cycle = useMemo(
+    () => [...regressionCycles, ...smokeCycles].find(item => item.id === cycleId) || null,
+    [cycleId, regressionCycles, smokeCycles],
+  );
 
   if (!cycle) return <Empty description="Seleccione un ciclo para ver el reporte" />;
 
@@ -341,15 +350,25 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
                     outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
+                    isAnimationActive={false}
                   >
                     {pieData.map(entry => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <RechartsTooltip />
-                  <Legend verticalAlign="bottom" />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
+              {pieData.map(entry => (
+                <div key={entry.name} className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: entry.color }}
+                  />
+                  <span className="text-sm text-slate-600">{entry.name}</span>
+                </div>
+              ))}
             </div>
           </Card>
         </Col>
@@ -411,7 +430,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycle: RegressionCycle | nu
               title: 'Bug ID',
               dataIndex: 'bugId',
               key: 'bugId',
-              render: bugId => bugId || '-',
+              render: (_, record) => record.bugId || record.linkedBugId || '-',
             },
           ]}
           pagination={false}
@@ -758,26 +777,46 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
       </div>
 
       <Row gutter={24}>
-        <Col span={16}>
+        <Col span={15}>
           <Card title="Avance por categoria" className="rounded-2xl border-slate-100 h-full">
-            <div className="h-[300px]">
+            <div className="mb-4 flex flex-wrap gap-2">
+              {barData.map(item => (
+                <Tag
+                  key={item.name}
+                  className="m-0 rounded-full border-none px-3 py-1 text-xs font-semibold"
+                  style={{ backgroundColor: `${item.fill}1A`, color: item.fill }}
+                >
+                  {item.name}: {item.value}
+                </Tag>
+              ))}
+            </div>
+            <div className="h-[280px] pr-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
+                <BarChart data={barData} margin={{ top: 8, right: 28, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} />
                   <YAxis axisLine={false} tickLine={false} />
-                  <RechartsTooltip />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
+                  <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={44} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={9}>
           <Card title="Resumen ejecutivo" className="rounded-2xl border-slate-100 h-full">
-            <div className="space-y-6">
-              <Statistic title="Progreso general" value={stats.progress} suffix="%" />
-              <Progress percent={stats.progress} status="active" strokeColor="#3b82f6" />
+            <div className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 px-5 py-4">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Progreso general
+                </div>
+                <div className="mt-2 flex items-end justify-between">
+                  <span className="text-4xl font-bold text-slate-800">{stats.progress}%</span>
+                  <span className="text-sm font-semibold text-slate-500">
+                    {stats.completed}/{stats.total || 0}
+                  </span>
+                </div>
+                <Progress percent={stats.progress} showInfo={false} strokeColor="#3b82f6" className="mt-3" />
+              </div>
               <Divider />
               <div className="space-y-2">
                 <div className="flex justify-between">
@@ -869,13 +908,13 @@ export default function Reports({ projectId }: { projectId: string }) {
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
 
-  const { data: regressionCycles = [] } = useRegressionCycles(projectId);
-  const { data: smokeCycles = [] } = useSmokeCycles(projectId);
+  const { data: regressionCycleSummaries = [] } = useRegressionCycleSummaries(projectId);
+  const { data: smokeCycleSummaries = [] } = useSmokeCycleSummaries(projectId);
   const { data: sprints = [] } = useSprints(projectId);
 
   const allCycles = useMemo(
-    () => [...regressionCycles, ...smokeCycles],
-    [regressionCycles, smokeCycles],
+    () => [...regressionCycleSummaries, ...smokeCycleSummaries],
+    [regressionCycleSummaries, smokeCycleSummaries],
   );
 
   const filteredCycles = useMemo(() => {
@@ -883,11 +922,6 @@ export default function Reports({ projectId }: { projectId: string }) {
     const selectedKey = normalizeSprintKey(selectedSprint);
     return allCycles.filter(cycle => normalizeSprintKey(cycle.sprint) === selectedKey);
   }, [allCycles, selectedSprint]);
-
-  const selectedCycle = useMemo(
-    () => allCycles.find(cycle => cycle.id === selectedCycleId) || null,
-    [allCycles, selectedCycleId],
-  );
 
   const handleGenerate = () => {
     if (selectedVariant === 'QA_STATUS_SUMMARY' && !selectedCycleId) {
@@ -950,7 +984,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         </div>
 
         {selectedVariant === 'QA_STATUS_SUMMARY' && (
-          <QAStatusSummary projectId={projectId} cycle={selectedCycle} />
+          <QAStatusSummary projectId={projectId} cycleId={selectedCycleId} />
         )}
         {selectedVariant === 'QA_PROGRESS_REPORT' && (
           <QAProgressReport projectId={projectId} sprint={selectedSprint} />

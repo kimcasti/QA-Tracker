@@ -37,14 +37,10 @@ export async function getTestCases(projectId?: string, functionalityId?: string)
     'populate[project][fields][0]': 'key',
     'populate[functionality][fields][0]': 'code',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+    ...(functionalityId ? { 'filters[functionality][code][$eq]': functionalityId } : {}),
   });
 
-  let mapped = documents.map(mapTestCase);
-  if (functionalityId) {
-    mapped = mapped.filter(item => item.functionalityId === functionalityId);
-  }
-
-  return mapped;
+  return documents.map(mapTestCase);
 }
 
 export async function saveTestCase(testCase: TestCase) {

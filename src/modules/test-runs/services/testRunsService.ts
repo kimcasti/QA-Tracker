@@ -21,10 +21,6 @@ import {
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
-import { getBugs } from '../../bugs/services/bugsService';
-import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
-import { getSprints } from '../../settings/services/settingsService';
-import { getTestCases } from '../../test-cases/services/testCasesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestRunDto, TestRunResultDto } from '../types/api';
 
@@ -93,32 +89,13 @@ async function syncResults(
   organizationDocumentId?: string,
   projectDocumentId?: string,
 ) {
-  const [functionalities, testCases, bugs, existingResults] = await Promise.all([
-    getFunctionalities(testRun.projectId),
-    getTestCases(testRun.projectId),
-    getBugs(testRun.projectId),
-    listDocuments<TestRunResultDto>('/api/test-run-results', {
-      'filters[testRun][documentId][$eq]': testRunDocumentId,
-      ...populateParams(['functionality', 'testCase', 'bug']),
-    }),
-  ]);
+  const existingResults = await listDocuments<TestRunResultDto>('/api/test-run-results', {
+    'filters[testRun][documentId][$eq]': testRunDocumentId,
+    ...populateParams(['functionality', 'testCase', 'bug']),
+  });
 
   const savedResults: TestRunResultDto[] = [];
   for (const result of testRun.results) {
-    const functionality = functionalities.find(item => item.id === result.functionalityId);
-    const testCase = testCases.find(item => item.id === result.testCaseId);
-    const linkedBug = bugs.find(
-      item =>
-        item.internalBugId === result.linkedBugId ||
-        item.internalBugId === result.bugId ||
-        item.externalBugId === result.bugId,
-    );
-    const bugDocuments = linkedBug
-      ? await listDocuments<any>('/api/bugs', {
-          'filters[internalBugId][$eq]': linkedBug.internalBugId,
-        })
-      : [];
-
     const documentId = existingResults.some(item => item.documentId === result.id) ? result.id : null;
 
     const saved = await upsertDocument<TestRunResultDto>(
@@ -132,12 +109,12 @@ async function syncResults(
         bugLink: result.bugLink || null,
         severity: severityToApi(result.severity),
         linkedBugId: result.linkedBugId || null,
-        organization: relation(organizationDocumentId),
-        project: relation(projectDocumentId),
-        testRun: relation(testRunDocumentId),
-        functionality: relation(functionality?.id),
-        testCase: relation(testCase?.id),
-        bug: relation(bugDocuments[0]?.documentId),
+        organization: organizationDocumentId,
+        project: projectDocumentId,
+        testRun: testRunDocumentId,
+        functionality: result.functionalityId || null,
+        testCase: result.testCaseId || null,
+        bug: result.linkedBugId || result.bugId || null,
       },
     );
 
@@ -173,7 +150,17 @@ export async function getTestRuns(projectId?: string) {
   return documents.map(document => mapTestRun(document, resultsByRun[document.documentId] || []));
 }
 
-async function getTestRunById(documentId: string) {
+export async function getTestRunSummaries(projectId?: string) {
+  const context = projectId ? await findProjectContext(projectId) : null;
+  const documents = await listDocuments<TestRunDto>('/api/test-runs/list-summary', {
+    sort: 'executionDate:desc',
+    ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
+  });
+
+  return documents.map(document => mapTestRun(document));
+}
+
+export async function getTestRunById(documentId: string) {
   const [document, resultsByRun] = await Promise.all([
     getDocument<TestRunDto>('/api/test-runs', documentId, {
       ...populateParams([
@@ -197,8 +184,6 @@ export async function saveTestRun(testRun: TestRun) {
     throw new Error(`Project ${testRun.projectId} is not available in the workspace.`);
   }
 
-  const sprints = await getSprints(testRun.projectId);
-  const sprint = sprints.find(item => item.name === testRun.sprint);
   const documentId = testRun.id.startsWith('TR-') ? null : testRun.id;
 
   const saved = await upsertDocument<TestRunDto>('/api/test-runs', documentId, {
@@ -215,7 +200,7 @@ export async function saveTestRun(testRun: TestRun) {
     selectedFunctionalities: testRun.selectedFunctionalities || [],
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
-    sprint: relation(sprint?.id),
+    sprint: testRun.sprint || null,
   });
 
   await syncResults(

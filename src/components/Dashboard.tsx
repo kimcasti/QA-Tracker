@@ -26,14 +26,13 @@ import {
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import dayjs, { type Dayjs } from 'dayjs';
-import * as XLSX from 'xlsx';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { normalizeDateOnly } from '../modules/functionalities/services/functionalitiesService';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
-import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
+import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
+import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { BugStatus, ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
@@ -174,8 +173,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   );
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
-  const { data: regressionCyclesData } = useRegressionCycles(projectId);
-  const { data: smokeCyclesData } = useSmokeCycles(projectId);
+  const { data: regressionCyclesData } = useRegressionCycleSummaries(projectId);
+  const { data: smokeCyclesData } = useSmokeCycleSummaries(projectId);
   const { data: testCasesData } = useTestCases(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const { data: bugsData = [] } = useBugs(projectId);
@@ -208,13 +207,20 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
 
-  const regressionExecutions = regressionCycles.flatMap(cycle => cycle.executions || []);
-  const regressionPassedExecutions = regressionExecutions.filter(
-    execution => execution.result === TestResult.PASSED,
-  ).length;
+  const regressionPassedExecutions = regressionCycles.reduce(
+    (sum, cycle) => sum + (cycle.passed || 0),
+    0,
+  );
+  const regressionExecutedCount = regressionCycles.reduce((sum, cycle) => {
+    const executedCount = Math.max(
+      (cycle.totalTests || 0) - (cycle.pending || 0) - (cycle.blocked || 0),
+      0,
+    );
+    return sum + executedCount;
+  }, 0);
   const regressionStability =
-    regressionExecutions.length > 0
-      ? (regressionPassedExecutions / regressionExecutions.length) * 100
+    regressionExecutedCount > 0
+      ? (regressionPassedExecutions / regressionExecutedCount) * 100
       : 0;
 
   const automatedTests = testCases.filter(item => item.isAutomated).length;
@@ -492,7 +498,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     },
   ];
 
-  const exportTableData = () => {
+  const exportTableData = async () => {
     if (!tableData.length) {
       message.info('No hay funcionalidades filtradas para exportar.');
       return;
@@ -513,6 +519,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
 
     try {
+      const XLSX = await import('xlsx');
       const csv = XLSX.utils.sheet_to_csv(worksheet);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');

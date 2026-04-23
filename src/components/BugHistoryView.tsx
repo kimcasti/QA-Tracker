@@ -1,13 +1,30 @@
 import { Card, Input, Select, Space, Table, Tag, Typography, message } from 'antd';
-import { BugOutlined, SearchOutlined } from '@ant-design/icons';
+import { BugOutlined, PlusOutlined, MinusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { BugOrigin, BugStatus, type QABug } from '../types';
 import { qaPalette } from '../theme/palette';
 import { bugStatusColors, softTagStyle } from '../theme/statusStyles';
+import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
 
 const { Text } = Typography;
+
+function renderRichTextContent(value?: string | null) {
+  const normalizedHtml = normalizeEvidenceHtml(value);
+  const plainText = stripHtmlToText(value);
+
+  if (!normalizedHtml || !plainText) {
+    return <p className="mt-1 text-sm text-slate-500">-</p>;
+  }
+
+  return (
+    <div
+      className="qa-rich-text-content mt-1 text-sm text-slate-700"
+      dangerouslySetInnerHTML={{ __html: normalizedHtml }}
+    />
+  );
+}
 
 function formatOriginLabel(record: QABug) {
   const showCycleId =
@@ -105,6 +122,46 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
           dataSource={filteredBugs}
           pagination={{ pageSize: 8 }}
           scroll={{ x: 'max-content' }}
+          expandable={{
+            expandedRowRender: (record: QABug) => (
+              <div className="rounded-xl bg-slate-50 p-5">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <Text strong>Descripcion:</Text>
+                    {renderRichTextContent(record.description)}
+                  </div>
+                  <div>
+                    <Text strong>Evidencia:</Text>
+                    {record.evidenceImage ? (
+                      <div className="mt-2">
+                        <img
+                          src={record.evidenceImage}
+                          alt={`Evidencia ${record.internalBugId}`}
+                          className="max-h-72 rounded-xl border border-slate-200"
+                        />
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-500">-</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ),
+            expandIcon: ({ expanded, onExpand, record }) => (
+              <button
+                type="button"
+                aria-label={expanded ? 'Ocultar detalle del bug' : 'Ver detalle del bug'}
+                className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600"
+                onClick={event => onExpand(record, event)}
+              >
+                {expanded ? (
+                  <MinusOutlined className="text-[10px]" />
+                ) : (
+                  <PlusOutlined className="text-[10px]" />
+                )}
+              </button>
+            ),
+          }}
           columns={[
             {
               title: (

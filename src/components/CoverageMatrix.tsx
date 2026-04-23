@@ -17,7 +17,6 @@ import {
 } from 'antd';
 import {
   SearchOutlined,
-  FilterOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
@@ -33,7 +32,6 @@ import { useFunctionalities } from '../modules/functionalities/hooks/useFunction
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { TestResult, TestType, Priority, RiskLevel, BugStatus } from '../types';
-import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -376,7 +374,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   ).length;
   const coveragePercent = totalFuncs > 0 ? Math.round((coveredWithCases / totalFuncs) * 100) : 0;
 
-  const exportMatrix = (format: 'xlsx' | 'csv') => {
+  const exportMatrix = async (format: 'xlsx' | 'csv') => {
     const data = filteredData.map(f => {
       const { totalCases, executedCases, coveragePercent, qaStatus } = getCoverageStats(f.id);
 
@@ -407,6 +405,7 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       };
     });
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Matriz de Cobertura');
@@ -532,14 +531,6 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
               onChange={setModuleFilter}
               options={modules.map(m => ({ label: m, value: m }))}
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <Tooltip title="Configurar Columnas">
-              <Button
-                icon={<FilterOutlined />}
-                className="rounded-xl h-11 w-11 flex items-center justify-center border-slate-200"
-              />
-            </Tooltip>
           </div>
         </div>
 

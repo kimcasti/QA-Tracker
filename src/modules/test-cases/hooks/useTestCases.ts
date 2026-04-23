@@ -4,16 +4,13 @@ import type { TestCase } from '../../../types';
 
 export function useTestCases(projectId?: string, functionalityId?: string) {
   const queryClient = useQueryClient();
+  const queryKey = ['test-cases', projectId, functionalityId || 'all'] as const;
 
   const query = useQuery({
-    queryKey: ['test-cases', projectId],
-    queryFn: () => getTestCases(projectId),
+    queryKey,
+    queryFn: () => getTestCases(projectId, functionalityId),
     enabled: Boolean(projectId),
   });
-
-  const data = functionalityId
-    ? (query.data || []).filter(item => item.functionalityId === functionalityId)
-    : query.data;
 
   const saveMutation = useMutation({
     mutationFn: saveTestCase,
@@ -31,7 +28,7 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
 
   return {
     ...query,
-    data,
+    data: query.data,
     save: saveMutation.mutate,
     saveAsync: saveMutation.mutateAsync,
     delete: deleteMutation.mutate,

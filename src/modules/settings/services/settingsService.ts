@@ -64,10 +64,16 @@ export async function saveModule(module: Module) {
     throw new Error(`Project ${module.projectId} is not available in the workspace.`);
   }
 
-  const existingDocuments = await listDocuments<ProjectModuleDto>('/api/project-modules', {
-    'filters[project][documentId][$eq]': context.documentId,
-  });
-  const documentId = existingDocuments.some(item => item.documentId === module.id) ? module.id : null;
+  const existingDocuments = module.id
+    ? await listDocuments<ProjectModuleDto>('/api/project-modules', {
+        'filters[project][documentId][$eq]': context.documentId,
+        'filters[documentId][$eq]': module.id,
+        'pagination[pageSize]': 1,
+      }, {
+        paginateAll: false,
+      })
+    : [];
+  const documentId = existingDocuments[0]?.documentId || null;
 
   const saved = await upsertDocument<ProjectModuleDto>('/api/project-modules', documentId, {
     name: module.name,
@@ -100,10 +106,16 @@ export async function saveRole(role: Role) {
     throw new Error(`Project ${role.projectId} is not available in the workspace.`);
   }
 
-  const existingDocuments = await listDocuments<ProjectRoleDto>('/api/project-persona-roles', {
-    'filters[project][documentId][$eq]': context.documentId,
-  });
-  const documentId = existingDocuments.some(item => item.documentId === role.id) ? role.id : null;
+  const existingDocuments = role.id
+    ? await listDocuments<ProjectRoleDto>('/api/project-persona-roles', {
+        'filters[project][documentId][$eq]': context.documentId,
+        'filters[documentId][$eq]': role.id,
+        'pagination[pageSize]': 1,
+      }, {
+        paginateAll: false,
+      })
+    : [];
+  const documentId = existingDocuments[0]?.documentId || null;
 
   const saved = await upsertDocument<ProjectRoleDto>(
     '/api/project-persona-roles',
@@ -140,10 +152,16 @@ export async function saveSprint(sprint: Sprint) {
     throw new Error(`Project ${sprint.projectId} is not available in the workspace.`);
   }
 
-  const existingDocuments = await listDocuments<SprintDto>('/api/sprints', {
-    'filters[project][documentId][$eq]': context.documentId,
-  });
-  const documentId = existingDocuments.some(item => item.documentId === sprint.id) ? sprint.id : null;
+  const existingDocuments = sprint.id
+    ? await listDocuments<SprintDto>('/api/sprints', {
+        'filters[project][documentId][$eq]': context.documentId,
+        'filters[documentId][$eq]': sprint.id,
+        'pagination[pageSize]': 1,
+      }, {
+        paginateAll: false,
+      })
+    : [];
+  const documentId = existingDocuments[0]?.documentId || null;
 
   const saved = await upsertDocument<SprintDto>('/api/sprints', documentId, {
     name: sprint.name,

@@ -47,7 +47,6 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import * as XLSX from 'xlsx';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -123,7 +122,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
     },
   ];
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const data = [
       ['Reporte de Progreso del Proyecto', project?.name || ''],
       ['Fecha', new Date().toLocaleDateString()],
@@ -143,6 +142,7 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
       ['Marcadas para Smoke', stats.smokeFuncs],
     ];
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resumen de Progreso');

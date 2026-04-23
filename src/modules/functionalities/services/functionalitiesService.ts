@@ -171,6 +171,9 @@ export async function removeFunctionality(projectId: string, functionalityId: st
   const documents = await listDocuments<FunctionalityDto>('/api/functionalities', {
     'filters[project][key][$eq]': projectId,
     'filters[code][$eq]': functionalityId,
+    'pagination[pageSize]': 1,
+  }, {
+    paginateAll: false,
   });
 
   const documentId = documents[0]?.documentId;

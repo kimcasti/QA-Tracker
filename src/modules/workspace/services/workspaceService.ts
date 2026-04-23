@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import { Http } from '../../../config/http';
 import type { Project } from '../../../types';
 import { projectStatusFromApi } from '../../shared/services/enumMappers';
-import type { WorkspaceDto } from '../types/api';
+import type { ProjectContextsDto, WorkspaceDto } from '../types/api';
 import type {
   ProjectContext,
   Workspace,
@@ -12,6 +12,7 @@ import type {
 
 let workspaceCache: Workspace | null = null;
 let workspacePromise: Promise<Workspace> | null = null;
+let projectContextsPromise: Promise<Record<string, ProjectContext>> | null = null;
 let projectContextCache: Record<string, ProjectContext> = {};
 
 function mapProject(document: WorkspaceDto['projects'][number]): Project {
@@ -58,6 +59,28 @@ function mapProjectQuota(projectQuota?: WorkspaceDto['projectQuota']): Workspace
   };
 }
 
+function buildProjectContextMap(
+  projects: Array<{
+    documentId: string;
+    key: string;
+    organization?: {
+      documentId: string;
+      name: string;
+    };
+  }>,
+) {
+  return Object.fromEntries(
+    (projects || []).map(project => [
+      project.key,
+      {
+        documentId: project.documentId,
+        organizationDocumentId: project.organization?.documentId,
+        organizationName: project.organization?.name,
+      } satisfies ProjectContext,
+    ]),
+  );
+}
+
 export async function getWorkspace() {
   if (workspaceCache) {
     return workspaceCache;
@@ -66,16 +89,7 @@ export async function getWorkspace() {
   if (!workspacePromise) {
     workspacePromise = Http.get<WorkspaceDto>('/api/me/workspace')
       .then(response => {
-        projectContextCache = Object.fromEntries(
-          (response.data.projects || []).map(project => [
-            project.key,
-            {
-              documentId: project.documentId,
-              organizationDocumentId: project.organization?.documentId,
-              organizationName: project.organization?.name,
-            } satisfies ProjectContext,
-          ]),
-        );
+        projectContextCache = buildProjectContextMap(response.data.projects || []);
 
         const workspace: Workspace = {
           user: response.data.user,
@@ -98,6 +112,7 @@ export async function getWorkspace() {
 export function invalidateWorkspaceCache() {
   workspaceCache = null;
   workspacePromise = null;
+  projectContextsPromise = null;
   projectContextCache = {};
 }
 
@@ -118,6 +133,25 @@ export async function getActiveOrganizationDocumentId() {
 }
 
 export async function findProjectContext(projectId: string): Promise<ProjectContext | null> {
+  if (!projectContextCache[projectId]) {
+    if (!projectContextsPromise) {
+      projectContextsPromise = Http.get<ProjectContextsDto>('/api/me/project-contexts')
+        .then(response => {
+          const nextMap = buildProjectContextMap(response.data.projects || []);
+          projectContextCache = {
+            ...projectContextCache,
+            ...nextMap,
+          };
+          return projectContextCache;
+        })
+        .finally(() => {
+          projectContextsPromise = null;
+        });
+    }
+
+    await projectContextsPromise;
+  }
+
   if (!projectContextCache[projectId]) {
     await getWorkspace();
   }
