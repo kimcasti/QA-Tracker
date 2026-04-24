@@ -88,6 +88,21 @@ export interface TestCase {
   isAutomated?: boolean;
 }
 
+export interface TestCaseTemplate {
+  id: string;
+  projectId: string;
+  moduleId: string;
+  moduleName: string;
+  name: string;
+  description: string;
+  preconditions: string;
+  testSteps: string;
+  expectedResult: string;
+  testType: TestType;
+  priority: Priority;
+  isAutomated?: boolean;
+}
+
 export enum ExecutionStatus {
   DRAFT = 'Borrador',
   FINAL = 'Final',

@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
 
@@ -84,6 +85,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     saveManyWithSingleRefresh,
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
+  const { data: templates = [] } = useTestCaseTemplates(projectId, moduleName);
   const { isViewer } = useWorkspaceAccess();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -188,6 +190,22 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const handleCancel = () => {
     setIsModalVisible(false);
     form.resetFields();
+  };
+
+  const handleTemplateSelect = (templateId?: string) => {
+    const template = templates.find(item => item.id === templateId);
+
+    if (!template) return;
+
+    form.setFieldsValue({
+      description: template.description,
+      preconditions: template.preconditions,
+      testSteps: template.testSteps,
+      expectedResult: template.expectedResult,
+      testType: template.testType,
+      priority: template.priority,
+      isAutomated: template.isAutomated,
+    });
   };
 
   const onFinish = (values: any) => {
@@ -404,6 +422,22 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               className="col-span-2"
             >
               <Input placeholder="Ej: Validar login con credenciales correctas" />
+            </Form.Item>
+
+            <Form.Item name="templateId" label="Plantilla" className="col-span-2">
+              <Select
+                allowClear
+                placeholder={
+                  templates.length > 0
+                    ? 'Selecciona una plantilla para autocompletar'
+                    : 'No hay plantillas para este módulo'
+                }
+                options={templates.map(template => ({
+                  label: template.name,
+                  value: template.id,
+                }))}
+                onChange={handleTemplateSelect}
+              />
             </Form.Item>
 
             <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
