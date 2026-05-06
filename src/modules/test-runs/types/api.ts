@@ -36,6 +36,12 @@ export interface TestRunDto {
   tester?: string;
   buildVersion?: string;
   environment?: string;
+  browser?: string;
+  deviceType?: string;
+  operatingSystem?: string;
+  browserVersion?: string;
+  osVersion?: string;
+  resolution?: string;
   selectedModules?: string[];
   selectedFunctionalities?: string[];
   project?: {

@@ -29,6 +29,7 @@ import {
 } from '@ant-design/icons';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
 import { TestResult, TestType, Priority, RiskLevel, BugStatus } from '../types';
@@ -375,6 +376,10 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
   const coveragePercent = totalFuncs > 0 ? Math.round((coveredWithCases / totalFuncs) * 100) : 0;
 
   const exportMatrix = async (format: 'xlsx' | 'csv') => {
+    if (!projectId) {
+      return;
+    }
+
     const data = filteredData.map(f => {
       const { totalCases, executedCases, coveragePercent, qaStatus } = getCoverageStats(f.id);
 
@@ -405,25 +410,30 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
       };
     });
 
-    const XLSX = await import('xlsx');
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Matriz de Cobertura');
+    await runTrackedExport({
+      projectId,
+      action: async () => {
+        const XLSX = await import('xlsx');
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Matriz de Cobertura');
 
-    if (format === 'xlsx') {
-      XLSX.writeFile(wb, `Matriz_Cobertura_${projectId || 'QA'}.xlsx`);
-    } else {
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Matriz_Cobertura_${projectId || 'QA'}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+        if (format === 'xlsx') {
+          XLSX.writeFile(wb, `Matriz_Cobertura_${projectId || 'QA'}.xlsx`);
+        } else {
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `Matriz_Cobertura_${projectId || 'QA'}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      },
+    });
   };
 
   const exportMenu = {

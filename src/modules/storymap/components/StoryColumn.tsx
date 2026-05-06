@@ -10,7 +10,7 @@ const { Text } = Typography;
 export function StoryColumn({
   storyId,
   storyName,
-  slots,
+  itemIds,
   availableFunctionalities,
   readOnly = false,
   onCreateFunctionality,
@@ -20,7 +20,7 @@ export function StoryColumn({
 }: {
   storyId: string;
   storyName: string;
-  slots: { slotId: string; itemId: string }[];
+  itemIds: string[];
   availableFunctionalities: Functionality[];
   readOnly?: boolean;
   onCreateFunctionality: (storyId: string) => void;
@@ -30,6 +30,7 @@ export function StoryColumn({
 }) {
   const { t } = useTranslation();
   const [showAssociate, setShowAssociate] = useState(false);
+  const [selectedFunctionalityId, setSelectedFunctionalityId] = useState<string | undefined>(undefined);
 
   const options = useMemo(() => {
     return availableFunctionalities.map(f => ({
@@ -68,21 +69,15 @@ export function StoryColumn({
           )}
         </div>
       }
-      extra={<Tag className="m-0 text-[10px] uppercase font-bold">{Math.max(0, slots.length - 1)}</Tag>}
+      extra={<Tag className="m-0 text-[10px] uppercase font-bold">{itemIds.length}</Tag>}
     >
       <div className="space-y-2">
         <div>
           <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('storymap.tasks_title')}</Text>
           <div className="mt-2 space-y-2">
-            {slots.map(({ slotId, itemId }) => (
-              <div
-                key={slotId}
-                data-swapy-slot={slotId}
-                className="min-h-[48px]"
-              >
-                <div data-swapy-item={itemId}>
-                  {renderItem(itemId)}
-                </div>
+            {itemIds.map(itemId => (
+              <div key={itemId} className="min-h-[48px]">
+                {renderItem(itemId)}
               </div>
             ))}
           </div>
@@ -117,13 +112,20 @@ export function StoryColumn({
               <Select
                 showSearch
                 allowClear
+                value={selectedFunctionalityId}
                 placeholder={t('storymap.associate_existing_placeholder')}
                 className="w-full mt-2"
                 options={options}
                 filterOption={(input, option) =>
                   (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
                 }
-                onSelect={(funcId) => onAssignExisting(storyId, funcId)}
+                onChange={(value) => {
+                  setSelectedFunctionalityId(value);
+                }}
+                onSelect={(funcId) => {
+                  onAssignExisting(storyId, funcId);
+                  setSelectedFunctionalityId(undefined);
+                }}
               />
             </div>
           )}

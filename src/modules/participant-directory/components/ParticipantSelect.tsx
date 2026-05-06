@@ -2,31 +2,32 @@ import React, { useMemo } from 'react';
 import { Avatar, Select, Tag } from 'antd';
 import type { DefaultOptionType, SelectProps } from 'antd/es/select';
 import { UserOutlined } from '@ant-design/icons';
-import type { SlackMember } from '../types/model';
+import type { ParticipantDirectoryMember } from '../types/model';
 
 type ValueField = 'id' | 'fullName' | 'username';
 
-type SlackMemberOption = DefaultOptionType & {
+type ParticipantDirectoryOption = DefaultOptionType & {
   value: string;
   label: string;
   searchText: string;
-  member?: SlackMember;
+  member?: ParticipantDirectoryMember;
   isManual?: boolean;
 };
 
-export interface SlackMemberSelectProps
-  extends Omit<SelectProps<any, SlackMemberOption>, 'mode' | 'options' | 'tagRender'> {
-  members: SlackMember[];
+export interface ParticipantSelectProps
+  extends Omit<SelectProps<any, ParticipantDirectoryOption>, 'mode' | 'options' | 'tagRender'> {
+  members: ParticipantDirectoryMember[];
   valueField?: ValueField;
   multiple?: boolean;
+  allowCustomOptions?: boolean;
   extraOptions?: Array<{
     label: string;
     value: string;
   }>;
 }
 
-type SlackMemberTagProps = Parameters<
-  NonNullable<SelectProps<string[], SlackMemberOption>['tagRender']>
+type ParticipantTagProps = Parameters<
+  NonNullable<SelectProps<string[], ParticipantDirectoryOption>['tagRender']>
 >[0];
 
 function getInitials(name: string) {
@@ -38,20 +39,21 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function getOptionValue(member: SlackMember, valueField: ValueField) {
+function getOptionValue(member: ParticipantDirectoryMember, valueField: ValueField) {
   if (valueField === 'fullName') return member.fullName;
   if (valueField === 'username') return member.username;
   return member.id;
 }
 
-export function SlackMemberSelect({
+export function ParticipantSelect({
   members,
   valueField = 'id',
   multiple = true,
+  allowCustomOptions = false,
   extraOptions = [],
   ...props
-}: SlackMemberSelectProps) {
-  const options = useMemo<SlackMemberOption[]>(() => {
+}: ParticipantSelectProps) {
+  const options = useMemo<ParticipantDirectoryOption[]>(() => {
     const memberOptions = members.map(member => ({
       value: getOptionValue(member, valueField),
       label: member.fullName,
@@ -80,7 +82,7 @@ export function SlackMemberSelect({
     [options],
   );
 
-  const renderAvatar = (option?: SlackMemberOption) => {
+  const renderAvatar = (option?: ParticipantDirectoryOption) => {
     const member = option?.member;
     const label = option?.label || option?.value || '';
 
@@ -96,8 +98,10 @@ export function SlackMemberSelect({
     );
   };
 
-  const renderTag = ({ label, value, closable, onClose }: SlackMemberTagProps) => {
+  const renderTag = ({ label, value, closable, onClose }: ParticipantTagProps) => {
     const option = optionsByValue.get(String(value));
+    const sourceLabel = option?.member?.isExternal ? 'Externo' : 'Miembro';
+    const sourceColor = option?.member?.isExternal ? 'gold' : 'blue';
 
     return (
       <Tag
@@ -108,33 +112,51 @@ export function SlackMemberSelect({
       >
         {renderAvatar(option)}
         <span>{label}</span>
+        {option?.member ? (
+          <Tag color={sourceColor} className="!m-0 rounded-full border-0 text-[10px] font-bold">
+            {sourceLabel}
+          </Tag>
+        ) : null}
       </Tag>
     );
   };
 
   return (
-    <Select<any, SlackMemberOption>
-      mode={multiple ? 'tags' : undefined}
+    <Select<any, ParticipantDirectoryOption>
+      mode={multiple ? (allowCustomOptions ? 'tags' : 'multiple') : undefined}
       options={options}
       optionFilterProp="label"
       maxTagCount="responsive"
       allowClear
       showSearch
-      tokenSeparators={[',']}
+      tokenSeparators={allowCustomOptions ? [','] : undefined}
       filterOption={(input, option) =>
         (option?.searchText || option?.label || '').toLowerCase().includes(input.toLowerCase())
       }
       optionRender={option => {
-        const typedOption = option.data as SlackMemberOption;
+        const typedOption = option.data as ParticipantDirectoryOption;
+        const sourceLabel = typedOption.member?.isExternal ? 'Externo' : 'Miembro';
+        const sourceColor = typedOption.member?.isExternal ? 'gold' : 'blue';
 
         return (
           <div className="flex items-center gap-3 py-1">
             {renderAvatar(typedOption)}
-            <div className="min-w-0">
-              <div className="truncate font-medium text-slate-800">{typedOption.label}</div>
-              {typedOption.member?.username && (
-                <div className="truncate text-xs text-slate-500">@{typedOption.member.username}</div>
-              )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="truncate font-medium text-slate-800">{typedOption.label}</div>
+                {!typedOption.isManual ? (
+                  <Tag color={sourceColor} className="!m-0 rounded-full border-0 text-[10px] font-bold">
+                    {sourceLabel}
+                  </Tag>
+                ) : null}
+              </div>
+              <div className="truncate text-xs text-slate-500">
+                {typedOption.member?.isExternal
+                  ? typedOption.member?.title || 'Participante externo'
+                  : typedOption.member?.username
+                    ? `@${typedOption.member.username}`
+                    : typedOption.member?.title || ''}
+              </div>
             </div>
           </div>
         );
@@ -145,4 +167,4 @@ export function SlackMemberSelect({
   );
 }
 
-export default SlackMemberSelect;
+export default ParticipantSelect;

@@ -115,7 +115,10 @@
   "functionality.risk": "Nivel de riesgo",
   "functionality.sprint": "Sprint",
   "functionality.sprint_placeholder": "Selecciona un sprint",
+  "functionality.delivery_date": "Fecha de entrega",
   "functionality.delivery_date_optional": "Fecha de entrega (opcional)",
+  "functionality.authorized_roles": "Roles Autorizados",
+  "functionality.roles_placeholder": "Selecciona roles",
   "functionality.id_auto_hint": "El ID se genera automáticamente con base en el módulo.",
   "functionality.tests": "Tests"
 }

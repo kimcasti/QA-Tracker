@@ -58,7 +58,7 @@ export default function PersonalNotesPage() {
   const [editingNote, setEditingNote] = useState<PersonalNote | null>(null);
   const [form] = Form.useForm<PersonalNoteFormValues>();
 
-  const organizationName = workspace?.memberships?.[0]?.organization?.name || 'tu organizacion';
+  const organizationName = workspace?.memberships?.[0]?.organization?.name || 'tu organización';
   const displayName = user?.username?.trim() || user?.email?.split('@')[0] || 'Usuario';
   const weeklyEntries = useMemo(
     () =>
@@ -219,7 +219,7 @@ export default function PersonalNotesPage() {
                 <Form.Item
                   name="title"
                   label="Actividad"
-                  rules={[{ required: true, message: 'Ingresa un titulo para la actividad.' }]}
+                  rules={[{ required: true, message: 'Ingresa un título para la actividad.' }]}
                 >
                   <Input
                     className="h-11 rounded-2xl"
@@ -229,7 +229,7 @@ export default function PersonalNotesPage() {
 
                 <Form.Item
                   name="description"
-                  label="Descripcion"
+                  label="Descripción"
                   rules={[{ required: true, message: 'Describe lo realizado en el dia.' }]}
                 >
                   <Input.TextArea
@@ -307,7 +307,7 @@ export default function PersonalNotesPage() {
                   Historial de actividades
                 </Title>
                 <Text className="text-slate-400">
-                  Registro personal dentro de la organizacion.
+                  Registro personal dentro de la organización.
                 </Text>
               </div>
             </div>

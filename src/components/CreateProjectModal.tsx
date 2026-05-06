@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HttpStatusCode } from 'axios';
-import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Col, Form, Input, Modal, Row, Select, message } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { toApiError } from '../config/http';
+import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
+import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { ProjectUpgradeBox } from '../modules/projects/components/ProjectUpgradeBox';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import {
   DEFAULT_PRO_PLAN_PRICE_MONTHLY_USD,
   PROJECT_CREATION_ROLE_MESSAGE,
+  buildProjectUpgradeWhatsAppUrl,
   getEffectiveProjectCount,
-  getProjectLimitForPlan,
   getProjectLimitReachedMessage,
   hasReachedProjectLimit,
   normalizeOrganizationPlan,
 } from '../modules/projects/utils/projectUpgrade';
-import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
-import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { ParticipantSelect } from '../modules/participant-directory/components/ParticipantSelect';
+import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { invalidateWorkspaceCache } from '../modules/workspace/services/workspaceService';
+import {
+  invalidateWorkspaceCache,
+} from '../modules/workspace/services/workspaceService';
 import { Project, ProjectStatus } from '../types';
 
 interface CreateProjectModalProps {
@@ -69,44 +73,43 @@ function buildProjectKey(name: string, existingKeys: string[]) {
 }
 
 export default function CreateProjectModal({ open, onCancel }: CreateProjectModalProps) {
-  const queryClient = useQueryClient();
   const { data: projects = [], save: saveProject, isSaving } = useProjects();
+  const queryClient = useQueryClient();
   const {
     activeMembership,
     canCreateProjectsByRole,
     projectQuota,
   } = useWorkspaceAccess();
   const {
-    data: slackMembers = [],
-    isLoading: isSlackMembersLoading,
-    error: slackMembersError,
-  } = useSlackMembers(open);
+    data: participantDirectoryMembers = [],
+    isLoading: isParticipantDirectoryLoading,
+    error: participantDirectoryError,
+  } = useParticipantDirectoryMembers(open);
   const [form] = Form.useForm();
   const [serverProjectLimitReached, setServerProjectLimitReached] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
-  const activeOrganizationName = activeMembership?.organization?.name || 'tu organizacion';
+  const activeOrganizationName = activeMembership?.organization?.name || 'tu organización';
   const activeOrganizationPlan = normalizeOrganizationPlan(
     projectQuota?.plan || activeMembership?.organization?.plan,
   );
-  const projectLimit =
-    typeof projectQuota?.limit === 'number'
-      ? projectQuota.limit
-      : getProjectLimitForPlan(activeOrganizationPlan);
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? null;
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
   const upgradePriceMonthlyUsd =
     projectQuota?.upgradePriceMonthlyUsd ?? DEFAULT_PRO_PLAN_PRICE_MONTHLY_USD;
   const effectiveProjectCount = useMemo(
     () =>
       getEffectiveProjectCount({
-        currentCount: projectQuota?.currentCount,
+        currentCount: projectUsageCount,
         visibleProjectsCount: projects.length,
       }),
-    [projectQuota?.currentCount, projects.length],
+    [projectUsageCount, projects.length],
   );
   const limitReached =
     serverProjectLimitReached ||
     hasReachedProjectLimit({
       limit: projectLimit,
-      currentCount: projectQuota?.currentCount,
+      currentCount: projectUsageCount,
       visibleProjectsCount: projects.length,
     });
   const quotaAllowsProjectCreation = projectQuota?.canCreate ?? canCreateProjectsByRole;
@@ -116,6 +119,13 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
     limitReached &&
     projectLimit !== null &&
     upgradePriceMonthlyUsd > 0;
+  const wasDowngradedToStarter = Boolean(projectQuota?.billing?.downgradedToStarter);
+  const projectUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeOrganizationName,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+  });
   const upgradeCurrentCount = Math.max(
     effectiveProjectCount,
     projectLimit ?? effectiveProjectCount,
@@ -123,25 +133,63 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
   const creationBlockedMessage = !canCreateProjectsByRole
     ? PROJECT_CREATION_ROLE_MESSAGE
     : showUpgradeBox
-      ? getProjectLimitReachedMessage({
-          organizationName: activeOrganizationName,
-          currentCount: upgradeCurrentCount,
-          limit: projectLimit,
-          upgradePriceMonthlyUsd,
-        })
+      ? wasDowngradedToStarter
+        ? 'Tu organización volvió a Starter. Tus datos siguen seguros, pero para seguir creando proyectos sin interrupciones necesitas reactivar Growth.'
+        : getProjectLimitReachedMessage({
+            organizationName: activeOrganizationName,
+            currentCount: upgradeCurrentCount,
+            limit: projectLimit,
+            upgradePriceMonthlyUsd,
+          })
       : null;
 
   useEffect(() => {
     if (!open) {
       setServerProjectLimitReached(false);
+      setIsUpgradeModalOpen(false);
       form.resetFields();
     }
   }, [form, open]);
 
   const handleClose = () => {
     setServerProjectLimitReached(false);
+    setIsUpgradeModalOpen(false);
     onCancel();
     form.resetFields();
+  };
+
+  const handleUpgradeClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source: 'create-project-modal-limit',
+        currentCount: upgradeCurrentCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: projectUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+
+  const handleEnterpriseClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'enterprise',
+        source: 'create-project-modal-enterprise',
+        currentCount: upgradeCurrentCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: null,
+        contactUrl: projectUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
   };
 
   const handleCreateProject = async (values: {
@@ -153,7 +201,7 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
   }) => {
     if (!canCreateProjectsInUi) {
       message.warning(
-        creationBlockedMessage || 'No tienes permisos para crear proyectos en esta organizacion.',
+        creationBlockedMessage || 'No tienes permisos para crear proyectos en esta organización.',
       );
       return;
     }
@@ -225,7 +273,7 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
       width={720}
     >
       <div className="pb-2 text-slate-500">
-        Registra un nuevo proyecto QA dentro de tu organizacion actual.
+        Registra un nuevo proyecto QA dentro de tu organización actual.
       </div>
 
       {!canCreateProjectsInUi ? (
@@ -236,7 +284,9 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
             className="rounded-2xl"
             message={
               showUpgradeBox
-                ? 'Limite del plan Starter alcanzado'
+                ? wasDowngradedToStarter
+                  ? 'Tu plan volvió a Starter'
+                  : 'Límite del plan Starter alcanzado'
                 : 'No tienes permisos para crear proyectos'
             }
             description={creationBlockedMessage || undefined}
@@ -248,6 +298,8 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
               currentCount={upgradeCurrentCount}
               limit={projectLimit}
               upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+              onUpgradeClick={handleUpgradeClick}
+              onViewPlans={() => setIsUpgradeModalOpen(true)}
             />
           ) : null}
 
@@ -286,8 +338,8 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
 
           <Form.Item
             name="description"
-            label="Descripcion"
-            rules={[{ required: true, message: 'Ingresa una descripcion breve' }]}
+            label="Descripción"
+            rules={[{ required: true, message: 'Ingresa una descripción breve' }]}
           >
             <Input.TextArea
               rows={4}
@@ -299,8 +351,8 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
             <Col xs={24} md={12}>
               <Form.Item
                 name="version"
-                label="Version del sistema"
-                rules={[{ required: true, message: 'Ingresa la version' }]}
+                label="Versión del sistema"
+                rules={[{ required: true, message: 'Ingresa la versión' }]}
               >
                 <Input size="large" placeholder="v2.4.0" />
               </Form.Item>
@@ -320,28 +372,22 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
           </Row>
 
           <Form.Item name="teamMembers" label="Miembros del equipo">
-            <SlackMemberSelect
-              members={slackMembers}
+            <ParticipantSelect
+              members={participantDirectoryMembers}
               size="large"
               valueField="fullName"
-              loading={isSlackMembersLoading}
-              placeholder="Agrega nombres del equipo"
-              extraOptions={[
-                { label: 'QA Lead', value: 'QA Lead' },
-                { label: 'QA Engineer', value: 'QA Engineer' },
-                { label: 'Automation Engineer', value: 'Automation Engineer' },
-                { label: 'Product Owner', value: 'Product Owner' },
-              ]}
+              loading={isParticipantDirectoryLoading}
+              placeholder="Selecciona miembros registrados del workspace"
             />
           </Form.Item>
 
-          {slackMembersError ? (
+          {participantDirectoryError ? (
             <Alert
               type="warning"
               showIcon
               className="mb-6 rounded-2xl"
-              message="No se pudieron cargar los miembros de Slack"
-              description="Puedes seguir agregando nombres manualmente mientras revisas la configuracion de Slack."
+              message="No se pudieron cargar los participantes del workspace"
+              description="Cuando se recupere la lista podras seleccionarlos desde aqui."
             />
           ) : null}
 
@@ -363,6 +409,17 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
           </div>
         </Form>
       )}
+
+      <UpgradeModal
+        open={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        organizationName={activeOrganizationName}
+        currentPlan={activeOrganizationPlan}
+        title="Compara planes antes de seguir creciendo"
+        description="Revisa que desbloquea cada plan y elige la ruta que mejor acompana el momento actual de tu equipo QA."
+        onUpgradeGrowth={() => void handleUpgradeClick()}
+        onContactEnterprise={() => void handleEnterpriseClick()}
+      />
     </Modal>
   );
 }

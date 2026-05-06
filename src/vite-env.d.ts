@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_CLOUDINARY_CLOUD_NAME?: string;
   readonly VITE_CLOUDINARY_UPLOAD_PRESET?: string;
   readonly VITE_UPGRADE_WHATSAPP_PHONE?: string;
+  readonly VITE_UPGRADE_CONTACT_URL?: string;
+  readonly VITE_RENEW_PLAN_URL?: string;
   readonly VITE_USE_SERVICE_AUTH?: string;
 }
 

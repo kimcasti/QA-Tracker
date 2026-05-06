@@ -48,6 +48,12 @@ export interface TestCycleDto {
   tester?: string;
   buildVersion?: string;
   environment?: string;
+  browser?: string;
+  deviceType?: string;
+  operatingSystem?: string;
+  browserVersion?: string;
+  osVersion?: string;
+  resolution?: string;
   project?: {
     documentId: string;
     key: string;

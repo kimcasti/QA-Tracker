@@ -467,3 +467,45 @@
     margin: 14mm;
   }
 }
+
+@keyframes qa-landing-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes qa-landing-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.qa-landing-float {
+  animation: qa-landing-float 8s ease-in-out infinite;
+}
+
+.qa-landing-float-delay {
+  animation: qa-landing-float 10s ease-in-out infinite;
+  animation-delay: 1.2s;
+}
+
+.qa-landing-fade-up {
+  animation: qa-landing-fade-up 0.6s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-landing-float,
+  .qa-landing-float-delay,
+  .qa-landing-fade-up {
+    animation: none !important;
+  }
+}

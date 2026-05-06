@@ -1,11 +1,14 @@
 import dayjs from 'dayjs';
 import {
+  Browser,
   BugOrigin,
   BugStatus,
+  DeviceType,
   Environment,
   ExecutionMode,
   ExecutionStatus,
   FunctionalityScope,
+  OperatingSystem,
   Priority,
   ProjectStatus,
   RiskLevel,
@@ -173,6 +176,72 @@ export function environmentFromApi(environment?: string) {
       local: Environment.LOCAL,
       production: Environment.PRODUCTION,
     }[environment || ''] || undefined
+  );
+}
+
+export function browserToApi(browser?: Browser) {
+  if (!browser) return undefined;
+
+  return {
+    [Browser.CHROME]: 'chrome',
+    [Browser.FIREFOX]: 'firefox',
+    [Browser.EDGE]: 'edge',
+    [Browser.SAFARI]: 'safari',
+  }[browser];
+}
+
+export function browserFromApi(browser?: string) {
+  return (
+    {
+      chrome: Browser.CHROME,
+      firefox: Browser.FIREFOX,
+      edge: Browser.EDGE,
+      safari: Browser.SAFARI,
+    }[browser || ''] || undefined
+  );
+}
+
+export function deviceTypeToApi(deviceType?: DeviceType) {
+  if (!deviceType) return undefined;
+
+  return {
+    [DeviceType.DESKTOP]: 'desktop',
+    [DeviceType.MOBILE]: 'mobile',
+    [DeviceType.TABLET]: 'tablet',
+  }[deviceType];
+}
+
+export function deviceTypeFromApi(deviceType?: string) {
+  return (
+    {
+      desktop: DeviceType.DESKTOP,
+      mobile: DeviceType.MOBILE,
+      tablet: DeviceType.TABLET,
+    }[deviceType || ''] || undefined
+  );
+}
+
+export function operatingSystemToApi(operatingSystem?: OperatingSystem) {
+  if (!operatingSystem) return undefined;
+
+  return {
+    [OperatingSystem.WINDOWS]: 'windows',
+    [OperatingSystem.MACOS]: 'macos',
+    [OperatingSystem.LINUX]: 'linux',
+    [OperatingSystem.ANDROID]: 'android',
+    [OperatingSystem.IOS]: 'ios',
+  }[operatingSystem];
+}
+
+export function operatingSystemFromApi(operatingSystem?: string) {
+  return (
+    {
+      windows: OperatingSystem.WINDOWS,
+      macos: OperatingSystem.MACOS,
+      linux: OperatingSystem.LINUX,
+      android: OperatingSystem.ANDROID,
+      ios: OperatingSystem.IOS,
+    }[operatingSystem || ''] || undefined
   );
 }
 

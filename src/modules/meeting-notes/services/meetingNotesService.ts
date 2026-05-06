@@ -24,6 +24,18 @@ function normalizeMeetingNoteTime(value?: string | null) {
   return trimmed;
 }
 
+function normalizeMeetingNoteText(value?: string | string[] | null) {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => `${item ?? ''}`.trim())
+      .filter(Boolean)
+      .map(item => `- ${item}`)
+      .join('\n');
+  }
+
+  return value || null;
+}
+
 function mapMeetingNote(document: MeetingNoteDto): MeetingNote {
   return {
     id: document.documentId,
@@ -64,10 +76,10 @@ export async function saveMeetingNote(note: MeetingNote) {
     time: normalizeMeetingNoteTime(note.time),
     participants: note.participants,
     notes: note.notes,
-    aiSummary: note.aiSummary || null,
-    aiDecisions: note.aiDecisions || null,
-    aiActions: note.aiActions || null,
-    aiNextSteps: note.aiNextSteps || null,
+    aiSummary: normalizeMeetingNoteText(note.aiSummary),
+    aiDecisions: normalizeMeetingNoteText(note.aiDecisions),
+    aiActions: normalizeMeetingNoteText(note.aiActions),
+    aiNextSteps: normalizeMeetingNoteText(note.aiNextSteps),
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
   });

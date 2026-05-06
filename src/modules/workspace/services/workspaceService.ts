@@ -4,6 +4,7 @@ import type { Project } from '../../../types';
 import { projectStatusFromApi } from '../../shared/services/enumMappers';
 import type { ProjectContextsDto, WorkspaceDto } from '../types/api';
 import type {
+  OrganizationUsageSnapshot,
   ProjectContext,
   Workspace,
   WorkspaceMembership,
@@ -50,12 +51,21 @@ function mapProjectQuota(projectQuota?: WorkspaceDto['projectQuota']): Workspace
 
   return {
     plan: projectQuota.plan,
+    effectivePlan: projectQuota.effectivePlan,
     currentCount: projectQuota.currentCount,
     limit: projectQuota.limit,
+    limits: projectQuota.limits,
+    usage: projectQuota.usage,
     allowedByRole: projectQuota.allowedByRole,
     canCreate: projectQuota.canCreate,
     limitReached: projectQuota.limitReached,
     upgradePriceMonthlyUsd: projectQuota.upgradePriceMonthlyUsd,
+    features: projectQuota.features,
+    billing: projectQuota.billing,
+    aiUsage: projectQuota.aiUsage,
+    reports: projectQuota.reports,
+    exportUsage: projectQuota.exportUsage,
+    organizationUsage: projectQuota.organizationUsage || null,
   };
 }
 
@@ -130,6 +140,11 @@ export async function renameActiveOrganization(name: string) {
 export async function getActiveOrganizationDocumentId() {
   const workspace = await getWorkspace();
   return workspace.memberships[0]?.organization?.documentId || null;
+}
+
+export async function getOrganizationUsage(): Promise<OrganizationUsageSnapshot | null> {
+  const response = await Http.get<{ data?: OrganizationUsageSnapshot | null }>('/api/me/organization-usage');
+  return response.data?.data || null;
 }
 
 export async function findProjectContext(projectId: string): Promise<ProjectContext | null> {

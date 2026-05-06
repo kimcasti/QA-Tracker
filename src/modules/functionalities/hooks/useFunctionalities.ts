@@ -7,6 +7,7 @@ import {
   removeFunctionality,
   saveFunctionality,
 } from '../services/functionalitiesService';
+import { invalidateWorkspaceCache } from '../../workspace/services/workspaceService';
 
 export function useFunctionalities(projectId?: string) {
   const queryClient = useQueryClient();
@@ -21,7 +22,8 @@ export function useFunctionalities(projectId?: string) {
 
   const saveMutation = useMutation({
     mutationFn: (functionality: Functionality) => saveFunctionality(functionality),
-    onSuccess: savedFunctionality => {
+    onSuccess: async savedFunctionality => {
+      invalidateWorkspaceCache();
       queryClient.setQueryData<Functionality[] | undefined>(queryKey, previous => {
         if (!previous) return [savedFunctionality];
 
@@ -39,6 +41,9 @@ export function useFunctionalities(projectId?: string) {
         next[existingIndex] = savedFunctionality;
         return next;
       });
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
   });
 
@@ -47,7 +52,13 @@ export function useFunctionalities(projectId?: string) {
       if (!projectId) throw new Error('A projectId is required to delete a functionality.');
       return removeFunctionality(projectId, id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: async () => {
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
+    },
   });
 
   const bulkUpdateMutation = useMutation({
@@ -55,12 +66,24 @@ export function useFunctionalities(projectId?: string) {
       if (!projectId) throw new Error('A projectId is required to bulk update functionalities.');
       return bulkUpdateFunctionalities(projectId, ids, updates);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: async () => {
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
+    },
   });
 
   const bulkAddMutation = useMutation({
     mutationFn: (functionalities: Functionality[]) => bulkAddFunctionalities(functionalities),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: async () => {
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
+    },
   });
 
   return {

@@ -25,6 +25,7 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   HistoryOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
@@ -53,6 +54,20 @@ export default function FunctionalityList({
   filter?: 'regression' | 'smoke';
   projectId?: string;
 }) {
+  const validateOptionalUrl = async (_: unknown, value?: string) => {
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedValue) return;
+
+    try {
+      const parsed = new URL(normalizedValue);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
+      throw new Error('Ingresa una URL v\u00e1lida de Jira.');
+    }
+  };
+
   const valuesLooksLikeFunctionalityDuplicate = (value?: string) =>
     String(value || '').toLowerCase().includes('already exists in this project');
 
@@ -264,6 +279,24 @@ export default function FunctionalityList({
       ),
       dataIndex: 'name',
       key: 'name',
+      render: (name: string, record: Functionality) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="truncate text-slate-700">{name}</span>
+          {record.jiraTaskUrl ? (
+            <Tooltip title="Abrir tarea en Jira">
+              <a
+                href={record.jiraTaskUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                onClick={event => event.stopPropagation()}
+              >
+                <LinkOutlined className="text-xs" />
+              </a>
+            </Tooltip>
+          ) : null}
+        </div>
+      ),
     },
     {
       title: (
@@ -565,6 +598,7 @@ export default function FunctionalityList({
         ...editingFunc,
         ...values,
         id: finalId,
+        jiraTaskUrl: values.jiraTaskUrl?.trim() || '',
         testTypes:
           values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
         isCore: Boolean(values.isCore),
@@ -572,7 +606,6 @@ export default function FunctionalityList({
         isSmoke: Boolean(values.isSmoke),
         projectId: projectId || '',
       };
-      console.log('Payload - Save Functionality:', payload);
       await save(payload);
       message.success(
         editingFunc ? 'Funcionalidad actualizada correctamente.' : 'Funcionalidad creada correctamente.',
@@ -613,7 +646,6 @@ export default function FunctionalityList({
       if (values.status) updates.status = values.status;
 
       if (Object.keys(updates).length > 0) {
-        console.log('Payload - Bulk Update Functionalities:', { ids: selectedRowKeys, updates });
         await bulkUpdate({ ids: selectedRowKeys as string[], updates });
         setIsBulkModalOpen(false);
         setSelectedRowKeys([]);
@@ -688,10 +720,88 @@ export default function FunctionalityList({
           return;
         }
 
+        const getFirstValue = (item: Record<string, unknown>, keys: string[]) => {
+          for (const key of keys) {
+            const value = item[key];
+            if (value !== undefined && value !== null && value !== '') {
+              return value;
+            }
+          }
+
+          return undefined;
+        };
+
+        const normalizeStatus = (value: unknown): TestStatus => {
+          const normalized = String(value ?? '')
+            .trim()
+            .toLowerCase();
+
+          if (normalized === 'completado' || normalized === 'completed') return TestStatus.COMPLETED;
+          if (normalized === 'fallido' || normalized === 'failed') return TestStatus.FAILED;
+          if (
+            normalized === 'en progreso' ||
+            normalized === 'in progress' ||
+            normalized === 'in_progress'
+          ) {
+            return TestStatus.IN_PROGRESS;
+          }
+          if (normalized === 'mvp') return TestStatus.MVP;
+          if (
+            normalized === 'post mvp' ||
+            normalized === 'post-mvp' ||
+            normalized === 'post_mvp'
+          ) {
+            return TestStatus.POST_MVP;
+          }
+
+          return TestStatus.BACKLOG;
+        };
+
+        const normalizePriority = (value: unknown): Priority => {
+          const normalized = String(value ?? '')
+            .trim()
+            .toLowerCase();
+
+          if (normalized === 'critical' || normalized === 'critico' || normalized === 'crÃ­tico') {
+            return Priority.CRITICAL;
+          }
+          if (normalized === 'high' || normalized === 'alto') return Priority.HIGH;
+          if (normalized === 'low' || normalized === 'bajo') return Priority.LOW;
+
+          return Priority.MEDIUM;
+        };
+
+        const normalizeRiskLevel = (value: unknown): RiskLevel => {
+          const normalized = String(value ?? '')
+            .trim()
+            .toLowerCase();
+
+          if (
+            normalized === 'high' ||
+            normalized === 'alto riesgo' ||
+            normalized === 'riesgo alto'
+          ) {
+            return RiskLevel.HIGH;
+          }
+          if (
+            normalized === 'low' ||
+            normalized === 'bajo riesgo' ||
+            normalized === 'riesgo bajo'
+          ) {
+            return RiskLevel.LOW;
+          }
+
+          return RiskLevel.MEDIUM;
+        };
+
         const formattedFuncs: Functionality[] = importedData.map((item, index) => {
-          const roles = Array.isArray(item.roles)
-            ? item.roles
-            : (item.roles?.split(',') || []).map((r: string) => r.trim());
+          const rawRoles = getFirstValue(item, ['roles', 'Roles', 'Roles Autorizados']);
+          const roles = Array.isArray(rawRoles)
+            ? rawRoles
+            : String(rawRoles ?? '')
+                .split(',')
+                .map((r: string) => r.trim())
+                .filter(Boolean);
 
           const parseBooleanLike = (value: unknown) => {
             const normalized = String(value ?? '')
@@ -707,10 +817,26 @@ export default function FunctionalityList({
           };
 
           return {
-            id: item.id || `IMP-${Date.now()}-${index}`,
+            id:
+              String(getFirstValue(item, ['id', 'ID', 'Code', 'CÃ³digo']) ?? '').trim() ||
+              `IMP-${Date.now()}-${index}`,
             projectId: projectId || '',
-            module: item.module || 'Importado',
-            name: item.name || 'Sin nombre',
+            module:
+              String(getFirstValue(item, ['module', 'Module', 'MÃ³dulo', 'Modulo']) ?? '').trim() ||
+              'Importado',
+            name:
+              String(
+                getFirstValue(item, [
+                  'name',
+                  'Name',
+                  'Funcionalidad',
+                  'Nombre de la Funcionalidad',
+                ]) ?? '',
+              ).trim() || 'Sin nombre',
+            jiraTaskUrl: String(
+              getFirstValue(item, ['jiraTaskUrl', 'Jira', 'Jira URL', 'Link de tarea Jira']) ??
+                '',
+            ).trim(),
             roles: roles.length > 0 ? roles : ['Todos'],
             testTypes: [TestType.FUNCTIONAL],
             isCore: parseBooleanLike(item.isCore ?? item['Core'] ?? item['Es Core']),
@@ -720,14 +846,45 @@ export default function FunctionalityList({
             isSmoke: parseBooleanLike(item.isSmoke ?? item['Smoke']),
             lastFunctionalChangeAt:
               item.lastFunctionalChangeAt || item['Último Cambio Funcional'] || '',
-            deliveryDate: item.deliveryDate || new Date().toISOString().split('T')[0],
-            status: (item.status as TestStatus) || TestStatus.BACKLOG,
-            priority: (item.priority as Priority) || Priority.MEDIUM,
-            riskLevel: (item.riskLevel as RiskLevel) || RiskLevel.LOW,
+            deliveryDate:
+              String(
+                getFirstValue(item, ['deliveryDate', 'Fecha Entrega', 'Fecha de Entrega']) ?? '',
+              ).trim() || new Date().toISOString().split('T')[0],
+            status: normalizeStatus(getFirstValue(item, ['status', 'Estado'])),
+            priority: normalizePriority(getFirstValue(item, ['priority', 'Prioridad'])),
+            riskLevel: normalizeRiskLevel(
+              getFirstValue(item, ['riskLevel', 'Nivel de Riesgo', 'Riesgo']),
+            ),
+            sprint: String(getFirstValue(item, ['sprint', 'Sprint']) ?? '').trim() || undefined,
           };
         });
 
-        const count = await bulkAdd(formattedFuncs);
+        const reservedFunctionalities: Array<Pick<Functionality, 'id' | 'module'>> =
+          allFunctionalities.map(item => ({
+            id: item.id,
+            module: item.module,
+          }));
+        const usedIds = new Set(reservedFunctionalities.map(item => item.id));
+
+        const normalizedFuncs = formattedFuncs.map(item => {
+          const hasGeneratedImportId = /^IMP-\d+-\d+$/.test(item.id);
+          const requestedId = item.id.trim();
+          const needsGeneratedId =
+            hasGeneratedImportId || !requestedId || usedIds.has(requestedId);
+          const resolvedId = needsGeneratedId
+            ? buildNextFunctionalityCode(item.module, reservedFunctionalities)
+            : requestedId;
+
+          usedIds.add(resolvedId);
+          reservedFunctionalities.push({ id: resolvedId, module: item.module });
+
+          return {
+            ...item,
+            id: resolvedId,
+          };
+        });
+
+        const count = await bulkAdd(normalizedFuncs);
         message.success(`Se importaron ${count} funcionalidades correctamente.`);
       } catch (err) {
         console.error('Import error:', err);
@@ -746,23 +903,30 @@ export default function FunctionalityList({
 
   const handleExport = async () => {
     try {
+      if (!projectId) {
+        message.warning('No se encontro el proyecto activo para exportar.');
+        return;
+      }
+
       if (!functionalities || functionalities.length === 0) {
         message.warning('No hay datos para exportar.');
         return;
       }
 
-      console.log('Exporting functionalities:', functionalities);
-
       const exportData = functionalities.map(f => ({
         ID: f.id || '',
         Módulo: f.module || '',
         Funcionalidad: f.name || '',
+        Jira: f.jiraTaskUrl || '',
         Roles: Array.isArray(f.roles) ? f.roles.join(', ') : '',
         Core: f.isCore ? 'Sí' : 'No',
         Regresión: f.isRegression ? 'Sí' : 'No',
         Smoke: f.isSmoke ? 'Sí' : 'No',
         'Último Cambio Funcional': f.lastFunctionalChangeAt || '',
         'Fecha Entrega': f.deliveryDate || '',
+        Sprint: f.sprint || '',
+        Prioridad: f.priority || '',
+        'Nivel de Riesgo': f.riskLevel || '',
         Estado: f.status || '',
       }));
 
@@ -1040,6 +1204,17 @@ export default function FunctionalityList({
             rules={[{ required: true }]}
           >
             <Input placeholder="Ej: Inicio de sesión con Google" className="h-10 rounded-lg" />
+          </Form.Item>
+
+          <Form.Item
+            name="jiraTaskUrl"
+            label={<span className="font-semibold text-slate-600">Link de tarea Jira</span>}
+            rules={[{ validator: validateOptionalUrl }]}
+          >
+            <Input
+              placeholder="Opcional: https://tuempresa.atlassian.net/browse/PROJ-123"
+              className="h-10 rounded-lg"
+            />
           </Form.Item>
 
           <Form.Item

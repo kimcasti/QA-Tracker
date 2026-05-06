@@ -29,11 +29,19 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { normalizeDateOnly } from '../modules/functionalities/services/functionalitiesService';
+import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
+import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
+import {
+  buildProjectUpgradeWhatsAppUrl,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
 import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { BugStatus, ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../theme/statusStyles';
@@ -171,6 +179,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const [deliveryDateRange, setDeliveryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     null,
   );
+  const { activeMembership, projectQuota } = useWorkspaceAccess();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
   const { data: regressionCyclesData } = useRegressionCycleSummaries(projectId);
@@ -188,6 +197,50 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
   const sprints = Array.isArray(sprintsData) ? sprintsData : [];
   const bugs = Array.isArray(bugsData) ? bugsData : [];
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const effectiveOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const activeBillingState = {
+    planStatus:
+      projectQuota?.billing?.planStatus || activeMembership?.organization?.planStatus || 'active',
+    planExpiresAt:
+      projectQuota?.billing?.planExpiresAt || activeMembership?.organization?.planExpiresAt || null,
+    gracePeriodEndsAt:
+      projectQuota?.billing?.gracePeriodEndsAt ||
+      activeMembership?.organization?.gracePeriodEndsAt ||
+      null,
+    inGracePeriod: projectQuota?.billing?.inGracePeriod ?? false,
+    downgradedToStarter: projectQuota?.billing?.downgradedToStarter ?? false,
+  };
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
+  const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const upgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeMembership?.organization?.name,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+  });
+
+  const handleUpgradeClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source: 'dashboard-billing-banner',
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: upgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
 
   const totalFunctionalities = functionalities.length;
   const completedFuncs = functionalities.filter(
@@ -504,6 +557,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       return;
     }
 
+    if (!projectId) {
+      message.warning('No se encontro el proyecto activo para exportar.');
+      return;
+    }
+
     const exportRows = tableData.map(item => ({
       'Fecha / Periodo': item.period,
       Funcionalidad: item.name,
@@ -511,26 +569,30 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       Calidad: `${item.quality}%`,
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const [startDate, endDate] = deliveryDateRange || [];
-    const rangeLabel = startDate || endDate
-      ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
-      : 'Todas';
-    const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
-
     try {
-      const XLSX = await import('xlsx');
-      const csv = XLSX.utils.sheet_to_csv(worksheet);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `${fileName}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await runTrackedExport({
+        projectId,
+        action: async () => {
+          const XLSX = await import('xlsx');
+          const worksheet = XLSX.utils.json_to_sheet(exportRows);
+          const [startDate, endDate] = deliveryDateRange || [];
+          const rangeLabel = startDate || endDate
+            ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
+            : 'Todas';
+          const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
+          const csv = XLSX.utils.sheet_to_csv(worksheet);
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `${fileName}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        },
+      });
 
       message.success('Lista exportada en CSV.');
     } catch (error) {
@@ -541,6 +603,15 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   return (
     <div className="space-y-8 pb-10">
+      <PlanBillingBanner
+        organizationName={activeMembership?.organization?.name}
+        contractedPlan={activeOrganizationPlan}
+        effectivePlan={effectiveOrganizationPlan}
+        billing={activeBillingState}
+        upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+        onRenewClick={handleUpgradeClick}
+      />
+
       <div className="flex flex-col gap-1">
         <Title level={2} className="m-0 font-bold text-slate-800">
           Dashboard
@@ -565,7 +636,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Ejecucion de casos"
+              title="Ejecución de casos"
               value={`${executionCoveragePercent}%`}
               hint={`${executedTestCasesCount} de ${testCases.length} ejecutados`}
               accent={qaPalette.primary}
@@ -633,7 +704,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Estabilidad regresion funcional"
+              title="Estabilidad regresión funcional"
               value={`${regressionStability.toFixed(1)}%`}
               hint="Tasa de exito en ciclos"
               accent={qaPalette.primary}
@@ -956,7 +1027,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
         <Col xs={24} lg={8}>
           <Card
-            title={<span className="font-bold text-slate-800">Funcionalidades por modulos</span>}
+            title={<span className="font-bold text-slate-800">Funcionalidades por módulos</span>}
             variant="borderless"
             className="h-full rounded-2xl qa-surface-card"
           >
@@ -1007,7 +1078,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </div>
               ) : (
                 <div className="py-10 text-center italic text-slate-400">
-                  No hay datos de modulos
+                  No hay datos de módulos
                 </div>
               )}
 

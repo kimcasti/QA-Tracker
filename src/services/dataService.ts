@@ -413,6 +413,7 @@ function mapFunctionality(document: ApiDocument): Functionality {
     projectId: document.project?.key || '',
     module: document.module?.name || '',
     name: document.name,
+    jiraTaskUrl: document.jiraTaskUrl || '',
     roles: (document.personaRoles || []).map((role: ApiDocument) => role.name),
     testTypes: (document.testTypes || []).map((type: string) => testTypeFromApi(type)),
     isRegression: Boolean(document.isRegression),
@@ -662,6 +663,7 @@ export const dataService = {
         {
           code: func.id,
           name: func.name,
+          jiraTaskUrl: func.jiraTaskUrl?.trim() || null,
           testTypes: (func.testTypes || []).map(testTypeToApi),
           isRegression: func.isRegression,
           isSmoke: func.isSmoke,

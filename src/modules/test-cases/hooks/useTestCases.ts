@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getTestCases, removeTestCase, saveTestCase } from '../services/testCasesService';
 import type { TestCase } from '../../../types';
+import { invalidateWorkspaceCache } from '../../workspace/services/workspaceService';
 
 export function useTestCases(projectId?: string, functionalityId?: string) {
   const queryClient = useQueryClient();
@@ -14,15 +15,23 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
 
   const saveMutation = useMutation({
     mutationFn: saveTestCase,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+    onSuccess: async () => {
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: removeTestCase,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+    onSuccess: async () => {
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
   });
 
@@ -40,7 +49,11 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
         await saveTestCase(testCase);
       }
 
+      invalidateWorkspaceCache();
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
   };
 }

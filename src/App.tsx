@@ -14,12 +14,14 @@ import {
   InfoCircleOutlined,
   CalendarOutlined,
   ApartmentOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthSession } from './modules/auth/context/AuthSessionProvider';
 import { UserMenu } from './components/UserMenu';
+import { WhatsAppSupportButton } from './components/WhatsAppSupportButton';
 import { useProjects } from './modules/projects/hooks/useProjects';
 import { useWorkspaceAccess } from './modules/workspace/hooks/useWorkspaceAccess';
 import type { Project } from './types';
@@ -41,8 +43,10 @@ const Settings = lazy(() => import('./components/Settings'));
 const AboutView = lazy(() => import('./components/AboutView'));
 const CreateProjectModal = lazy(() => import('./components/CreateProjectModal'));
 const AuthPage = lazy(() => import('./modules/auth/components/AuthPage'));
+const PublicLandingPage = lazy(() => import('./modules/auth/components/PublicLandingPage'));
 const StoryMapPage = lazy(() => import('./modules/storymap/components/StoryMapPage'));
 const PersonalNotesPage = lazy(() => import('./modules/personal-notes/components/PersonalNotesPage'));
+const SuperadminView = lazy(() => import('./components/SuperadminView'));
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -62,6 +66,7 @@ type WorkspaceViewKey =
 
 type ParsedRoute =
   | { type: 'projects' }
+  | { type: 'superadmin' }
   | { type: 'notes' }
   | { type: 'edit'; projectId: string }
   | { type: 'workspace'; projectId: string; scene: string }
@@ -127,6 +132,10 @@ function parseRoute(pathname: string): ParsedRoute {
 
   if (normalized === '/notes') {
     return { type: 'notes' };
+  }
+
+  if (normalized === '/superadmin') {
+    return { type: 'superadmin' };
   }
 
   const editMatch = normalized.match(/^\/edit-project\/([^/]+)$/);
@@ -197,7 +206,25 @@ function getPersistedProjectId() {
 }
 
 export default function App() {
+  const location = useLocation();
   const { status, isAuthenticated, user, logout } = useAuthSession();
+  const hideWhatsAppSupportButton = location.pathname === '/superadmin';
+  const isPublicLandingRoute = useMemo(() => {
+    if (location.pathname !== '/') {
+      return false;
+    }
+
+    const searchParams = new URLSearchParams(location.search);
+    const hasInvitationFlow = Boolean(searchParams.get('invitation'));
+    const requestedMode = searchParams.get('mode');
+    const hasAuthMode =
+      requestedMode === 'login' ||
+      requestedMode === 'signup' ||
+      requestedMode === 'forgot-password';
+    const hasResetCode = Boolean(searchParams.get('code'));
+
+    return !hasInvitationFlow && !hasAuthMode && !hasResetCode;
+  }, [location.pathname, location.search]);
 
   if (status === 'loading') {
     return (
@@ -218,24 +245,29 @@ export default function App() {
   if (!isAuthenticated || !user) {
     return (
       <Suspense fallback={<PageLoader />}>
-        <AuthPage />
+        {isPublicLandingRoute ? <PublicLandingPage /> : <AuthPage />}
       </Suspense>
     );
   }
 
-  return <WorkspaceApp currentUser={user} onLogout={logout} />;
+  return (
+    <>
+      <WorkspaceApp currentUser={user} onLogout={logout} />
+      {hideWhatsAppSupportButton ? null : <WhatsAppSupportButton />}
+    </>
+  );
 }
 
 function WorkspaceApp({
   currentUser,
   onLogout,
 }: {
-  currentUser: { username: string; email: string };
+  currentUser: { username: string; email: string; isSuperAdmin?: boolean };
   onLogout: () => void;
 }) {
   const { t } = useTranslation();
   const { message } = AntdApp.useApp();
-  const { isViewer, activeRoleName } = useWorkspaceAccess();
+  const { isViewer, activeRoleName, isSuperAdmin } = useWorkspaceAccess();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects();
@@ -244,6 +276,8 @@ function WorkspaceApp({
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const userInitial = currentUser.username.slice(0, 1).toUpperCase();
   const userDisplayName = currentUser.username?.trim() || currentUser.email.split('@')[0] || 'User';
+  const globalRoleLabel = isSuperAdmin ? 'Superadmin' : undefined;
+  const tenantRoleLabel = activeRoleName || undefined;
 
   const currentProject = useMemo(
     () => projects.find(project => project.id === selectedProjectId) || null,
@@ -392,11 +426,21 @@ function WorkspaceApp({
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {isSuperAdmin ? (
+            <Button
+              icon={<SafetyCertificateOutlined />}
+              onClick={() => navigate('/superadmin')}
+              className="rounded-xl"
+            >
+              Superadmin
+            </Button>
+          ) : null}
           <UserMenu
             email={currentUser.email}
             userDisplayName={userDisplayName}
             userInitial={userInitial}
-            roleLabel={activeRoleName || undefined}
+            globalRoleLabel={globalRoleLabel}
+            roleLabel={tenantRoleLabel}
             onLogout={handleLogout}
             onOpenNotes={handleOpenNotes}
             isViewer={isViewer}
@@ -423,6 +467,49 @@ function WorkspaceApp({
 
   if (parsedRoute.type === 'projects') {
     return projectsScreen;
+  }
+
+  if (parsedRoute.type === 'superadmin') {
+    if (!isSuperAdmin) {
+      return <Navigate to="/" replace />;
+    }
+
+    return (
+      <Layout className="qa-workspace-shell min-h-screen">
+        <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <img
+              src={appBranding.logoUrl}
+              alt={qaBrand.name}
+              className="h-10 w-10 rounded-xl object-cover shadow-md"
+            />
+            <div className="flex flex-col leading-none">
+              <span className="font-bold text-slate-800">{qaBrand.name}</span>
+              <span className="text-[11px] text-slate-500">Administración global del servicio</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <UserMenu
+              email={currentUser.email}
+              userDisplayName={userDisplayName}
+              userInitial={userInitial}
+              globalRoleLabel={globalRoleLabel}
+              roleLabel={tenantRoleLabel}
+              onLogout={handleLogout}
+              onOpenNotes={handleOpenNotes}
+              isViewer={isViewer}
+            />
+          </div>
+        </Header>
+        <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto p-8">
+          <div className="qa-workspace-canvas w-full">
+            <Suspense fallback={<PageLoader />}>
+              <SuperadminView onBack={() => navigate('/')} />
+            </Suspense>
+          </div>
+        </Content>
+      </Layout>
+    );
   }
 
   if (parsedRoute.type === 'edit') {
@@ -472,7 +559,7 @@ function WorkspaceApp({
               <div className="flex flex-col leading-none">
                 <span className="font-bold text-slate-800">Notas</span>
                 <span className="text-[11px] text-slate-500">
-                  Registro personal por organizacion
+                  Registro personal por organización
                 </span>
               </div>
             </div>
@@ -482,7 +569,8 @@ function WorkspaceApp({
               email={currentUser.email}
               userDisplayName={userDisplayName}
               userInitial={userInitial}
-              roleLabel={activeRoleName || undefined}
+              globalRoleLabel={globalRoleLabel}
+              roleLabel={tenantRoleLabel}
               onLogout={handleLogout}
               onOpenNotes={() => message.info('Ya estas en la vista de notas.')}
               notesActive
@@ -491,7 +579,7 @@ function WorkspaceApp({
           </div>
         </Header>
         <Content className="qa-workspace-content min-h-[calc(100vh-64px)] overflow-auto p-8">
-          <div className="qa-workspace-canvas mx-auto w-full max-w-7xl">
+          <div className="qa-workspace-canvas w-full">
             <Suspense fallback={<PageLoader />}>
               <PersonalNotesPage />
             </Suspense>
@@ -558,7 +646,8 @@ function WorkspaceApp({
                 email={currentUser.email}
                 userDisplayName={userDisplayName}
                 userInitial={userInitial}
-                roleLabel={activeRoleName || undefined}
+                globalRoleLabel={globalRoleLabel}
+                roleLabel={tenantRoleLabel}
                 onLogout={handleLogout}
                 onOpenNotes={handleOpenNotes}
                 isViewer={isViewer}
@@ -593,9 +682,9 @@ function WorkspaceApp({
                       <span className="text-[10px] text-slate-400 font-medium truncate">
                         {routedProject.name}
                       </span>
-                      {activeRoleName && (
+                      {tenantRoleLabel && (
                         <span className="mt-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
-                          {activeRoleName}
+                          {tenantRoleLabel}
                         </span>
                       )}
                     </div>
@@ -641,7 +730,7 @@ function WorkspaceApp({
                 className={
                   isStoryMapView
                     ? 'qa-workspace-canvas w-full'
-                    : 'qa-workspace-canvas mx-auto w-full max-w-7xl'
+                    : 'qa-workspace-canvas w-full'
                 }
               >
                 <Suspense fallback={<PageLoader />}>

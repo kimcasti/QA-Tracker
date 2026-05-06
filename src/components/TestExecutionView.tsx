@@ -38,12 +38,16 @@ import {
   ThunderboltOutlined,
   MinusOutlined,
 } from '@ant-design/icons';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
+import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
+import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
+import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
 import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
-import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
-import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
+import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
+import { ParticipantSelect } from '../modules/participant-directory/components/ParticipantSelect';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
@@ -52,6 +56,8 @@ import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { getTestRunById } from '../modules/test-runs/services/testRunsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
+  Browser,
+  DeviceType,
   TestExecution,
   TestResult,
   TestType,
@@ -65,6 +71,7 @@ import {
   Environment,
   BugOrigin,
   Functionality,
+  OperatingSystem,
 } from '../types';
 import {
   labelEnvironment,
@@ -76,10 +83,7 @@ import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerS
 import BugHistoryView from './BugHistoryView';
 import dayjs from 'dayjs';
 import type { FilterValue } from 'antd/es/table/interface';
-import {
-  isPayloadTooLargeError,
-  showPayloadTooLargeMessage,
-} from '../utils/uploadValidation';
+import { isPayloadTooLargeError, showPayloadTooLargeMessage } from '../utils/uploadValidation';
 import {
   extractFirstImageSrc,
   hasMeaningfulEvidenceContent,
@@ -88,9 +92,20 @@ import {
   stripHtmlToText,
 } from '../utils/evidenceRichText';
 import type { ExecutionRecommendationCandidate } from '../services/geminiService';
+import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
+import {
+  buildProjectUpgradeWhatsAppUrl,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 
 const { Text, Title } = Typography;
 const EvidenceRichEditor = lazy(() => import('./EvidenceRichEditor'));
+const browserOptions = Object.values(Browser).map(value => ({ label: value, value }));
+const deviceTypeOptions = Object.values(DeviceType).map(value => ({ label: value, value }));
+const operatingSystemOptions = Object.values(OperatingSystem).map(value => ({
+  label: value,
+  value,
+}));
 
 function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
@@ -143,7 +158,13 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: workspace, activeMembership, isViewer, isOwner } = useWorkspaceAccess();
+  const {
+    data: workspace,
+    activeMembership,
+    projectQuota,
+    isViewer,
+    isOwner,
+  } = useWorkspaceAccess();
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: testRunSummariesData } = useTestRunSummaries(projectId);
   const { save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId, {
@@ -157,11 +178,74 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const testRuns = Array.isArray(testRunSummariesData) ? testRunSummariesData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const canDeleteTestRuns = isOwner || activeMembership?.role?.code === 'owner';
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const effectiveOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const activeBillingState = {
+    planStatus:
+      projectQuota?.billing?.planStatus || activeMembership?.organization?.planStatus || 'active',
+    planExpiresAt:
+      projectQuota?.billing?.planExpiresAt || activeMembership?.organization?.planExpiresAt || null,
+    gracePeriodEndsAt:
+      projectQuota?.billing?.gracePeriodEndsAt ||
+      activeMembership?.organization?.gracePeriodEndsAt ||
+      null,
+    inGracePeriod: projectQuota?.billing?.inGracePeriod ?? false,
+    downgradedToStarter: projectQuota?.billing?.downgradedToStarter ?? false,
+  };
+  const canUseAi = projectQuota?.aiUsage?.canUse ?? Boolean(projectQuota?.features?.ai);
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
+  const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const aiUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeMembership?.organization?.name,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+    messageVariant: 'ai-access',
+  });
+  const handleUpgradeClick = async (source: string) => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source,
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+  const handleEnterpriseClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'enterprise',
+        source: 'test-execution-upgrade-modal-enterprise',
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: null,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isEditingRunInfo, setIsEditingRunInfo] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
-  const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
-    useSlackMembers(isModalOpen);
+  const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
+    useParticipantDirectoryMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm();
   const [evidenceForm] = Form.useForm();
@@ -236,11 +320,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setCurrentEvidenceTestCaseId(record.testCaseId);
     setIsEvidenceModalOpen(true);
 
-    if (
-      record.result === TestResult.FAILED &&
-      !record.bugId?.trim() &&
-      activeTestRun?.projectId
-    ) {
+    if (record.result === TestResult.FAILED && !record.bugId?.trim() && activeTestRun?.projectId) {
       void previewNextInternalBugId(
         activeTestRun.projectId,
         executionResults
@@ -288,7 +368,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         evidenceImage: derivedEvidenceImage,
       };
 
-      if (mergedRecord.result === TestResult.FAILED && !hasMeaningfulEvidenceContent(evidenceHtml)) {
+      if (
+        mergedRecord.result === TestResult.FAILED &&
+        !hasMeaningfulEvidenceContent(evidenceHtml)
+      ) {
         message.error('Las notas de ejecución son obligatorias para pruebas fallidas.');
         return;
       }
@@ -301,9 +384,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       }
 
       setExecutionResults(prev =>
-        prev.map(result =>
-          result.testCaseId === mergedRecord.testCaseId ? mergedRecord : result,
-        ),
+        prev.map(result => (result.testCaseId === mergedRecord.testCaseId ? mergedRecord : result)),
       );
 
       if (
@@ -371,10 +452,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const testCaseCountByFunctionality = useMemo(() => {
     const counts = new Map<string, number>();
     testCases.forEach(testCase => {
-      counts.set(
-        testCase.functionalityId,
-        (counts.get(testCase.functionalityId) || 0) + 1,
-      );
+      counts.set(testCase.functionalityId, (counts.get(testCase.functionalityId) || 0) + 1);
     });
     return counts;
   }, [testCases]);
@@ -432,7 +510,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
         if (sameModule) {
           score += 4;
-          reasons.push('pertenece a un modulo seleccionado');
+          reasons.push('pertenece a un módulo seleccionado');
         }
         if (recentChange) {
           score += 4;
@@ -457,11 +535,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
         if (selectedTestType === TestType.SANITY && func.isCore) {
           score += 2;
-          reasons.push('encaja bien para una validacion sanity');
+          reasons.push('encaja bien para una validación sanity');
         }
         if (selectedTestType === TestType.INTEGRATION && (hasHighRisk || recentChange)) {
           score += 2;
-          reasons.push('podria impactar integraciones relacionadas');
+          reasons.push('podría impactar integraciones relacionadas');
         }
         if (
           selectedTestType === TestType.EXPLORATORY &&
@@ -472,7 +550,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         }
         if (selectedTestType === TestType.UAT && (func.isCore || hasHighPriority)) {
           score += 1;
-          reasons.push('podria afectar un flujo relevante para negocio');
+          reasons.push('podría afectar un flujo relevante para negocio');
         }
 
         return {
@@ -495,7 +573,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   ]);
 
   const visibleAiSuggestions = useMemo(() => {
-    return aiSuggestions.filter(suggestion => !selectedFuncIds.includes(suggestion.functionalityId));
+    return aiSuggestions.filter(
+      suggestion => !selectedFuncIds.includes(suggestion.functionalityId),
+    );
   }, [aiSuggestions, selectedFuncIds]);
 
   const groupedFunctionalities = useMemo(() => {
@@ -535,8 +615,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const handleSuggestWithAI = async () => {
+    if (!canUseAi) {
+      message.warning('Las sugerencias con IA están disponibles en el plan Growth.');
+      return;
+    }
+
     if (!selectedModules.length) {
-      message.warning('Selecciona al menos un modulo antes de pedir sugerencias.');
+      message.warning('Selecciona al menos un módulo antes de pedir sugerencias.');
       return;
     }
 
@@ -548,9 +633,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     }
 
     const fallbackSuggestions = buildRuleBasedSuggestions();
-    const { hasAiProviderConfigured, recommendExecutionFunctionalitiesWithAI } = await import(
-      '../services/geminiService'
-    );
+    const { hasAiProviderConfigured, recommendExecutionFunctionalitiesWithAI } =
+      await import('../services/geminiService');
 
     if (!hasAiProviderConfigured()) {
       setAiSuggestions(fallbackSuggestions);
@@ -565,6 +649,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     try {
       const response =
         (await recommendExecutionFunctionalitiesWithAI({
+          projectId: projectId || '',
           testType: selectedTestType || TestType.FUNCTIONAL,
           selectedModules,
           selectedFunctionalities: selectedFunctionalityModels.map(buildRecommendationCandidate),
@@ -588,7 +673,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       if (nextSuggestions.length === 0) {
         setAiSuggestions(fallbackSuggestions);
         setAiSuggestionMode('rules');
-        message.info('La IA no encontro nuevas candidatas claras. Se muestran sugerencias automaticas.');
+        message.info(
+          'La IA no encontro nuevas candidatas claras. Se muestran sugerencias automaticas.',
+        );
         return;
       }
 
@@ -603,7 +690,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar sugerencias con IA.',
         );
       } else if (msg === 'GEMINI_API_KEY_INVALID' || msg === 'GEMINI_API_KEY_LEAKED') {
-        message.error('La configuración actual del proveedor IA no es válida. Se usarán sugerencias automáticas.');
+        message.error(
+          'La configuración actual del proveedor IA no es válida. Se usarán sugerencias automáticas.',
+        );
       } else {
         message.warning('No fue posible consultar la IA. Se muestran sugerencias automaticas.');
       }
@@ -617,6 +706,53 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const addSuggestedFunctionality = (functionalityId: string) => {
     setSelectedFuncIds(prev => Array.from(new Set([...prev, functionalityId])));
+  };
+
+  const resetTestRunModal = () => {
+    setIsModalOpen(false);
+    setIsEditingRunInfo(false);
+    form.resetFields();
+    setSelectedModules([]);
+    setSelectedFuncIds([]);
+  };
+
+  const openCreateTestRunModal = () => {
+    setIsEditingRunInfo(false);
+    form.resetFields();
+    form.setFieldsValue({
+      executionDate: dayjs(),
+      testType: TestType.FUNCTIONAL,
+      priority: Priority.MEDIUM,
+    });
+    setSelectedModules([]);
+    setSelectedFuncIds([]);
+    setIsModalOpen(true);
+  };
+
+  const openEditTestRunModal = () => {
+    if (!activeTestRun) return;
+
+    setIsEditingRunInfo(true);
+    form.setFieldsValue({
+      title: activeTestRun.title,
+      description: activeTestRun.description || '',
+      executionDate: activeTestRun.executionDate ? dayjs(activeTestRun.executionDate) : dayjs(),
+      testType: activeTestRun.testType,
+      sprint: activeTestRun.sprint || undefined,
+      priority: activeTestRun.priority,
+      tester: activeTestRun.tester,
+      environment: activeTestRun.environment,
+      buildVersion: activeTestRun.buildVersion || '',
+      browser: activeTestRun.browser,
+      deviceType: activeTestRun.deviceType,
+      operatingSystem: activeTestRun.operatingSystem,
+      browserVersion: activeTestRun.browserVersion || '',
+      osVersion: activeTestRun.osVersion || '',
+      resolution: activeTestRun.resolution || '',
+    });
+    setSelectedModules(activeTestRun.selectedModules || []);
+    setSelectedFuncIds(activeTestRun.selectedFunctionalities || []);
+    setIsModalOpen(true);
   };
 
   const handleCreateTestRun = async () => {
@@ -640,6 +776,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         tester: values.tester,
         buildVersion: values.buildVersion,
         environment: values.environment,
+        browser: values.browser,
+        deviceType: values.deviceType,
+        operatingSystem: values.operatingSystem,
+        browserVersion: values.browserVersion,
+        osVersion: values.osVersion,
+        resolution: values.resolution,
         selectedModules,
         selectedFunctionalities: selectedFuncIds,
         results: [],
@@ -666,14 +808,48 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
-      setIsModalOpen(false);
-      form.resetFields();
-      setSelectedModules([]);
-      setSelectedFuncIds([]);
+      resetTestRunModal();
 
       message.success('Ejecución de pruebas creada. Iniciando fase de ejecución...');
     } catch (error) {
       console.error('Validation failed:', error);
+    }
+  };
+
+  const handleUpdateTestRunInfo = async () => {
+    if (!activeTestRun) return;
+
+    try {
+      const values = await form.validateFields();
+      const updatedRun: TestRun = {
+        ...activeTestRun,
+        title: values.title,
+        description: values.description || '',
+        executionDate: values.executionDate.format('YYYY-MM-DD'),
+        testType: values.testType,
+        sprint: values.sprint,
+        priority: values.priority,
+        tester: values.tester,
+        buildVersion: values.buildVersion,
+        environment: values.environment,
+        browser: values.browser,
+        deviceType: values.deviceType,
+        operatingSystem: values.operatingSystem,
+        browserVersion: values.browserVersion,
+        osVersion: values.osVersion,
+        resolution: values.resolution,
+        selectedModules: activeTestRun.selectedModules,
+        selectedFunctionalities: activeTestRun.selectedFunctionalities,
+        results: executionResults,
+      };
+
+      const savedRun = await saveTestRun(updatedRun);
+      setActiveTestRun(savedRun);
+      setExecutionResults(savedRun.results);
+      resetTestRunModal();
+      message.success('Información de la ejecución actualizada');
+    } catch (error) {
+      console.error('Update failed:', error);
     }
   };
 
@@ -689,7 +865,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       if (incompleteFailedRecord) {
         message.error(
-          'No puedes finalizar la ejecucion mientras exista una prueba fallida sin notas, titulo del bug o severidad.',
+          'No puedes finalizar la ejecución mientras exista una prueba fallida sin notas, título del bug o severidad.',
         );
         openEvidenceModal(incompleteFailedRecord);
         return;
@@ -722,7 +898,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     message.success('Todos los casos pendientes marcados como Aprobados');
   };
 
-  const handleExportReport = () => {
+  const handleExportReport = async () => {
     if (!activeTestRun) return;
 
     try {
@@ -744,15 +920,28 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         };
       });
 
-      import('xlsx').then(XLSX => {
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
-        XLSX.writeFile(wb, `Reporte_${activeTestRun.id}_${dayjs().format('YYYYMMDD')}.xlsx`);
-        message.success('Reporte exportado correctamente');
+      if (!projectId) {
+        message.warning('No se encontro el proyecto activo para exportar.');
+        return;
+      }
+
+      await runTrackedExport({
+        projectId,
+        action: async () => {
+          const XLSX = await import('xlsx');
+          const ws = XLSX.utils.json_to_sheet(dataToExport);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
+          XLSX.writeFile(wb, `Reporte_${activeTestRun.id}_${dayjs().format('YYYYMMDD')}.xlsx`);
+        },
       });
+      message.success('Reporte exportado correctamente');
     } catch (error) {
-      message.error('Error al exportar el reporte');
+      const exportErrorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Error al exportar el reporte';
+      message.error(exportErrorMessage);
     }
   };
 
@@ -822,10 +1011,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const nativeEnvironmentFilters = useMemo(
     () =>
-      Array.from(new Set(testRuns.map(run => run.environment).filter(Boolean))).map(environment => ({
-        text: labelEnvironment(environment as Environment, t),
-        value: String(environment),
-      })),
+      Array.from(new Set(testRuns.map(run => run.environment).filter(Boolean))).map(
+        environment => ({
+          text: labelEnvironment(environment as Environment, t),
+          value: String(environment),
+        }),
+      ),
     [testRuns, t],
   );
 
@@ -875,8 +1066,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       key: 'testType',
       filters: nativeTestTypeFilters,
       filteredValue: tableFilters.testType,
-      onFilter: (value: boolean | React.Key, record: TestRun) =>
-        record.testType === String(value),
+      onFilter: (value: boolean | React.Key, record: TestRun) => record.testType === String(value),
       render: (type: string) => (
         <Tag className="m-0 text-[10px] font-semibold uppercase bg-slate-100 border-slate-200 text-slate-600">
           {type}
@@ -1077,11 +1267,35 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 {activeTestRun.environment ? ` • ${activeTestRun.environment}` : ''}
                 {activeTestRun.buildVersion ? ` • Build ${activeTestRun.buildVersion}` : ''}
               </Text>
+              {(activeTestRun.browser ||
+                activeTestRun.deviceType ||
+                activeTestRun.operatingSystem) && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {activeTestRun.browser && (
+                    <Tag className="m-0 rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Navegador:</span>{' '}
+                      {activeTestRun.browser}
+                    </Tag>
+                  )}
+                  {activeTestRun.deviceType && (
+                    <Tag className="m-0 rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Dispositivo:</span>{' '}
+                      {activeTestRun.deviceType}
+                    </Tag>
+                  )}
+                  {activeTestRun.operatingSystem && (
+                    <Tag className="m-0 rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Sistema operativo:</span>{' '}
+                      {activeTestRun.operatingSystem}
+                    </Tag>
+                  )}
+                </div>
+              )}
             </div>
           </Space>
           <Space>
             {!isReadOnly && !isViewer && (
-              <Button icon={<EditOutlined />} className="rounded-lg">
+              <Button icon={<EditOutlined />} className="rounded-lg" onClick={openEditTestRunModal}>
                 Editar Info
               </Button>
             )}
@@ -1480,6 +1694,185 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </div>
         )}
 
+        <Modal
+          title={
+            <span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>
+          }
+          open={isModalOpen}
+          onCancel={resetTestRunModal}
+          width={800}
+          centered
+          footer={[
+            <Button key="cancel" onClick={resetTestRunModal}>
+              Cancelar
+            </Button>,
+            ...(!isViewer
+              ? [
+                  <Button
+                    key="create"
+                    type="primary"
+                    onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
+                  >
+                    Crear Ejecución de Pruebas
+                  </Button>,
+                ]
+              : []),
+          ]}
+        >
+          <Form
+            form={form}
+            layout="vertical"
+            initialValues={{
+              executionDate: dayjs(),
+              testType: TestType.FUNCTIONAL,
+              priority: Priority.MEDIUM,
+            }}
+          >
+            <Row gutter={24}>
+              <Col span={24}>
+                <Form.Item
+                  name="title"
+                  label="Tí­tulo de la Ejecución"
+                  rules={[{ required: true }]}
+                >
+                  <Input
+                    placeholder="Ej: Regresión Módulo de Pagos - Sprint 25"
+                    className="h-10 rounded-lg"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="testType" label="Tipo de Test" rules={[{ required: true }]}>
+                  <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="executionDate"
+                  label="Fecha de Ejecución"
+                  rules={[{ required: true }]}
+                >
+                  <DatePicker className="w-full h-10 rounded-lg" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sprint" label="Sprint" rules={[{ required: true }]}>
+                  <Select
+                    placeholder="Selecciona el Sprint"
+                    className="h-10 rounded-lg"
+                    options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
+                  <Select
+                    options={Object.values(Priority).map(v => ({
+                      label: labelPriority(v, t),
+                      value: v,
+                    }))}
+                    className="h-10 rounded-lg"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
+                  <ParticipantSelect
+                    members={participantDirectoryMembers}
+                    valueField="fullName"
+                    multiple={false}
+                    placeholder="Selecciona el tester del workspace"
+                    className="h-10 rounded-lg"
+                    loading={isParticipantDirectoryLoading}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
+                  <Select
+                    placeholder="Selecciona el Environment"
+                    className="h-10 rounded-lg"
+                    options={[
+                      { label: Environment.TEST, value: Environment.TEST },
+                      { label: Environment.LOCAL, value: Environment.LOCAL },
+                      { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="buildVersion" label="Build version">
+                  <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="browser" label="Navegador">
+                  <Select
+                    allowClear
+                    placeholder="Selecciona navegador"
+                    className="h-10 rounded-lg"
+                    options={browserOptions}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="deviceType" label="Tipo de dispositivo">
+                  <Select
+                    allowClear
+                    placeholder="Selecciona dispositivo"
+                    className="h-10 rounded-lg"
+                    options={deviceTypeOptions}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="operatingSystem" label="Sistema operativo">
+                  <Select
+                    allowClear
+                    placeholder="Selecciona sistema operativo"
+                    className="h-10 rounded-lg"
+                    options={operatingSystemOptions}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="browserVersion" label="Versión del navegador">
+                  <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="osVersion" label="Versión del sistema operativo">
+                  <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="resolution" label="Resolución de pantalla">
+                  <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item label="Seleccionar Módulos Relacionados" required>
+              <Select
+                mode="multiple"
+                placeholder="Selecciona uno o más módulos"
+                className="w-full rounded-lg"
+                onChange={setSelectedModules}
+                value={selectedModules}
+                options={moduleOptions}
+                disabled={isEditingRunInfo}
+              />
+            </Form.Item>
+
+            {isEditingRunInfo && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                En modo edición solo se actualiza la información general. Los módulos,
+                funcionalidades y resultados actuales se conservan.
+              </div>
+            )}
+          </Form>
+        </Modal>
+
         {/* Evidence Modal */}
         <Modal
           title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
@@ -1488,11 +1881,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           width={520}
           centered
           footer={[
-            <Button
-              key="close"
-              onClick={restoreEvidenceChanges}
-              className="rounded-lg"
-            >
+            <Button key="close" onClick={restoreEvidenceChanges} className="rounded-lg">
               Cancelar
             </Button>,
             !isReadOnly && (
@@ -1524,6 +1913,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <Form form={evidenceForm} layout="vertical">
                 <Form.Item
                   name="evidence"
+                  required={isFailureEvidenceRequired}
                   label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
                   rules={
                     isFailureEvidenceRequired
@@ -1531,10 +1921,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       : undefined
                   }
                 >
-                    <EvidenceRichEditorField
+                  <EvidenceRichEditorField
                     placeholder="Escribe aquí las notas de la ejecución. Puedes usar emojis, pegar una captura o subir una imagen."
-                      disabled={isReadOnly}
-                    />
+                    disabled={isReadOnly}
+                  />
                 </Form.Item>
                 {isFailureEvidenceRequired && (
                   <>
@@ -1546,7 +1936,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
                     <Form.Item
                       name="bugTitle"
-                      label={<span className="font-semibold text-slate-600">* Título del Bug</span>}
+                      required
+                      label={<span className="font-semibold text-slate-600">Título del Bug</span>}
                       rules={[{ required: true, message: 'El título del bug es obligatorio.' }]}
                     >
                       <Input
@@ -1558,7 +1949,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
                     <Form.Item
                       name="severity"
-                      label={<span className="font-semibold text-slate-600">* Severidad</span>}
+                      required
+                      label={<span className="font-semibold text-slate-600">Severidad</span>}
                       rules={[{ required: true, message: 'La severidad es obligatoria.' }]}
                     >
                       <Select
@@ -1586,8 +1978,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     </Text>
                   </>
                 )}
-
-            </Form>
+              </Form>
             </div>
           )}
         </Modal>
@@ -1597,6 +1988,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   return (
     <div className="space-y-6 pb-10">
+      <PlanBillingBanner
+        organizationName={activeMembership?.organization?.name}
+        contractedPlan={activeOrganizationPlan}
+        effectivePlan={effectiveOrganizationPlan}
+        billing={activeBillingState}
+        upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+        onRenewClick={() => handleUpgradeClick('test-execution-billing-banner')}
+      />
+
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
           <Title level={2} className="m-0 font-bold text-slate-800">
@@ -1611,7 +2011,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => setIsModalOpen(true)}
+            onClick={openCreateTestRunModal}
             className="rounded-lg h-10 px-6"
           >
             Crear Ejecución de Pruebas
@@ -1633,7 +2033,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     <div className="flex flex-col gap-1">
                       <span className="text-slate-800 font-bold">Historial de Ejecuciones</span>
                       <span className="text-xs text-slate-400">
-                        Usa los filtros nativos de la tabla en estado, sprint, tipo de test y environment.
+                        Usa los filtros nativos de la tabla en estado, sprint, tipo de test y
+                        environment.
                       </span>
                     </div>
                   }
@@ -1670,16 +2071,20 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       <Modal
         title={<span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>}
         open={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
+        onCancel={resetTestRunModal}
         width={800}
         centered
         footer={[
-          <Button key="cancel" onClick={() => setIsModalOpen(false)}>
+          <Button key="cancel" onClick={resetTestRunModal}>
             Cancelar
           </Button>,
           ...(!isViewer
             ? [
-                <Button key="create" type="primary" onClick={handleCreateTestRun}>
+                <Button
+                  key="create"
+                  type="primary"
+                  onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
+                >
                   Crear Ejecución de Pruebas
                 </Button>,
               ]
@@ -1740,13 +2145,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
             <Col span={12}>
               <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
-                <SlackMemberSelect
-                  members={slackMembers}
+                <ParticipantSelect
+                  members={participantDirectoryMembers}
                   valueField="fullName"
                   multiple={false}
-                  placeholder="Selecciona el tester desde Slack"
+                  placeholder="Selecciona el tester del workspace"
                   className="h-10 rounded-lg"
-                  loading={isSlackMembersLoading}
+                  loading={isParticipantDirectoryLoading}
                 />
               </Form.Item>
             </Col>
@@ -1768,6 +2173,51 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
+            <Col span={8}>
+              <Form.Item name="browser" label="Navegador">
+                <Select
+                  allowClear
+                  placeholder="Selecciona navegador"
+                  className="h-10 rounded-lg"
+                  options={browserOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="deviceType" label="Tipo de dispositivo">
+                <Select
+                  allowClear
+                  placeholder="Selecciona dispositivo"
+                  className="h-10 rounded-lg"
+                  options={deviceTypeOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="operatingSystem" label="Sistema operativo">
+                <Select
+                  allowClear
+                  placeholder="Selecciona sistema operativo"
+                  className="h-10 rounded-lg"
+                  options={operatingSystemOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="browserVersion" label="Versión del navegador">
+                <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="osVersion" label="Versión del sistema operativo">
+                <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="resolution" label="Resolución de pantalla">
+                <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
           </Row>
 
           <Form.Item label="Seleccionar Módulos Relacionados" required>
@@ -1778,21 +2228,30 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               onChange={setSelectedModules}
               value={selectedModules}
               options={moduleOptions}
+              disabled={isEditingRunInfo}
             />
           </Form.Item>
 
-          {selectedModules.length > 0 && (
+          {isEditingRunInfo && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              En modo edición solo se actualiza la información general. Los módulos, funcionalidades
+              y resultados actuales se conservan.
+            </div>
+          )}
+
+          {!isEditingRunInfo && selectedModules.length > 0 && (
             <div className="mt-6">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                   Funcionalidades por Módulo
                 </span>
                 <Space>
-                  <Tooltip title="Analiza el tipo de prueba, los modulos seleccionados y cambios recientes para sugerir funcionalidades relacionadas.">
+                  <Tooltip title="Analiza el tipo de prueba, los módulos seleccionados y cambios recientes para sugerir funcionalidades relacionadas.">
                     <Button
                       size="small"
                       icon={<ThunderboltOutlined />}
                       loading={isSuggestingAi}
+                      disabled={!canUseAi}
                       onClick={() => void handleSuggestWithAI()}
                       className="rounded-full"
                     >
@@ -1819,6 +2278,30 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </Button>
                 </Space>
               </div>
+
+              {!canUseAi ? (
+                <PlanUpgradeCard
+                  className="mb-4"
+                  variant="inline-banner"
+                  eyebrow="IA disponible en Growth"
+                  title="Activa sugerencias automáticas para este flujo"
+                  description="Desbloquea recomendaciones inteligentes para esta ejecución sin salir del proyecto."
+                  ctaHref={aiUpgradeUrl}
+                  ctaText="Probar IA"
+                  onCtaClick={() => handleUpgradeClick('test-execution-ai-lock')}
+                />
+              ) : null}
+
+              <UpgradeModal
+                open={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                organizationName={activeMembership?.organization?.name}
+                currentPlan={effectiveOrganizationPlan}
+                title="Compara planes para priorizar mejor tus ejecuciones"
+                description="Si quieres sumar sugerencias inteligentes, más capacidad y una operación más robusta, aquí puedes revisar el siguiente paso."
+                onUpgradeGrowth={() => handleUpgradeClick('test-execution-upgrade-modal-growth')}
+                onContactEnterprise={() => handleEnterpriseClick()}
+              />
 
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
@@ -1901,7 +2384,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 })}
                 {Object.keys(groupedFunctionalities).length === 0 && (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    No hay funcionalidades con casos de prueba registrados en los modulos seleccionados.
+                    No hay funcionalidades con casos de prueba registrados en los módulos
+                    seleccionados.
                   </div>
                 )}
               </div>
@@ -1926,7 +2410,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                         </Tag>
                       </div>
                       <Text type="secondary" className="text-xs">
-                        Recomendaciones complementarias para ampliar el alcance de esta ejecucion.
+                        Recomendaciones complementarias para ampliar el alcance de esta ejecución.
                       </Text>
                     </div>
                     {visibleAiSuggestions.length > 0 && (

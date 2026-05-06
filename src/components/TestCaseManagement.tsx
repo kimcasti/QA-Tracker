@@ -29,8 +29,16 @@ import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
+import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
+import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
+import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
+import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
+import {
+  buildProjectUpgradeWhatsAppUrl,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -86,8 +94,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
   const { data: templates = [] } = useTestCaseTemplates(projectId, moduleName);
-  const { isViewer } = useWorkspaceAccess();
+  const { isViewer, activeMembership, projectQuota } = useWorkspaceAccess();
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedForFunctionalityId, setGeneratedForFunctionalityId] = useState<string | null>(
     null,
@@ -104,8 +113,71 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     : hasGeneratedCasesForCurrentFunctionality
       ? 'Casos IA generados'
       : 'Generar con IA';
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const effectiveOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const activeBillingState = {
+    planStatus:
+      projectQuota?.billing?.planStatus || activeMembership?.organization?.planStatus || 'active',
+    planExpiresAt:
+      projectQuota?.billing?.planExpiresAt || activeMembership?.organization?.planExpiresAt || null,
+    gracePeriodEndsAt:
+      projectQuota?.billing?.gracePeriodEndsAt ||
+      activeMembership?.organization?.gracePeriodEndsAt ||
+      null,
+    inGracePeriod: projectQuota?.billing?.inGracePeriod ?? false,
+    downgradedToStarter: projectQuota?.billing?.downgradedToStarter ?? false,
+  };
+  const canUseAi = projectQuota?.aiUsage?.canUse ?? Boolean(projectQuota?.features?.ai);
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
+  const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const aiUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeMembership?.organization?.name,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+    messageVariant: 'ai-access',
+  });
+  const handleUpgradeClick = async (source: string) => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source,
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+  const handleEnterpriseClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'enterprise',
+        source: 'test-case-upgrade-modal-enterprise',
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: null,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
   const generateAiTooltipTitle = isGenerating
     ? 'La IA está generando y guardando los casos de prueba.'
+    : !canUseAi
+      ? 'Disponible en Growth. Actualiza tu plan para generar casos de prueba con IA.'
     : hasGeneratedCasesForCurrentFunctionality
       ? 'La generación ya fue exitosa para esta funcionalidad. Si necesitas más casos, recarga la vista o edita los existentes.'
       : 'Genera casos sugeridos con IA para esta funcionalidad.';
@@ -114,7 +186,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     setIsGenerating(true);
     try {
       const { generateTestCasesWithAI } = await import('../services/geminiService');
-      const generated = await generateTestCasesWithAI(functionalityName, moduleName);
+      const generated = await generateTestCasesWithAI(functionalityName, moduleName, projectId);
       const generatedTestCases: TestCase[] = generated.map(tc => ({
         ...tc,
         id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -164,6 +236,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const handleGenerateAI = async () => {
+    if (!canUseAi) {
+      message.warning('La generación de casos con IA está disponible en el plan Growth.');
+      return;
+    }
+
     const { hasAiProviderConfigured } = await import('../services/geminiService');
 
     if (!hasAiProviderConfigured()) {
@@ -323,7 +400,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     icon={<ThunderboltOutlined />}
                     onClick={handleGenerateAI}
                     loading={isGenerating}
-                    disabled={isGenerateAiDisabled}
+                    disabled={isGenerateAiDisabled || !canUseAi}
                     className="rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
                   >
                     {generateAiButtonLabel}
@@ -339,6 +416,39 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       }
       className="qa-test-case-management-card shadow-sm"
     >
+      <PlanBillingBanner
+        organizationName={activeMembership?.organization?.name}
+        contractedPlan={activeOrganizationPlan}
+        effectivePlan={effectiveOrganizationPlan}
+        billing={activeBillingState}
+        upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+        onRenewClick={() => handleUpgradeClick('test-case-billing-banner')}
+      />
+
+      {!isViewer && !canUseAi ? (
+        <PlanUpgradeCard
+          className="mb-4"
+          variant="inline-banner"
+          eyebrow="IA disponible en Growth"
+          title="Desbloquea la generación de casos con IA"
+          description="Activa sugerencias automáticas para crear casos de prueba sin salir del proyecto."
+          ctaHref={aiUpgradeUrl}
+          ctaText="Probar IA"
+          onCtaClick={() => handleUpgradeClick('test-case-ai-lock')}
+        />
+      ) : null}
+
+      <UpgradeModal
+        open={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        organizationName={activeMembership?.organization?.name}
+        currentPlan={effectiveOrganizationPlan}
+        title="Compara planes para acelerar la creación de casos"
+        description="Si quieres combinar trabajo manual con IA y más capacidad operativa, aquí puedes ver con claridad el siguiente paso."
+        onUpgradeGrowth={() => handleUpgradeClick('test-case-upgrade-modal-growth')}
+        onContactEnterprise={() => handleEnterpriseClick()}
+      />
+
       {isError ? (
         <Alert
           type="error"

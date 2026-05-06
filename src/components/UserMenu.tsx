@@ -11,6 +11,7 @@ type UserMenuProps = {
   userDisplayName: string;
   userInitial: string;
   roleLabel?: string;
+  globalRoleLabel?: string;
   onLogout: () => void;
   onOpenNotes: () => void;
   notesActive?: boolean;
@@ -22,6 +23,7 @@ export function UserMenu({
   userDisplayName,
   userInitial,
   roleLabel,
+  globalRoleLabel,
   onLogout,
   onOpenNotes,
   notesActive = false,
@@ -84,6 +86,11 @@ export function UserMenu({
             <Text strong className="truncate text-[13px]">
               {userDisplayName}
             </Text>
+            {globalRoleLabel ? (
+              <span className="shrink-0 rounded-full bg-fuchsia-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-fuchsia-700">
+                {globalRoleLabel}
+              </span>
+            ) : null}
             {roleLabel ? (
               <span className="shrink-0 rounded-full bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-700">
                 {roleLabel}

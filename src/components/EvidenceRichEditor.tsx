@@ -158,7 +158,7 @@ export default function EvidenceRichEditor({
 
     if (!normalizedValue && !hasMeaningfulEvidenceContent(currentHtml)) return;
 
-    editor.commands.setContent(normalizedValue || '<p></p>', false);
+    editor.commands.setContent(normalizedValue || '<p></p>');
   }, [editor, normalizedValue]);
 
   const insertEmoji = (emoji: string) => {

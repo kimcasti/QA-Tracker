@@ -80,7 +80,7 @@ export default function BasicRichTextEditor({
     if (!editor) return;
     if (editor.getHTML() === normalizedValue) return;
 
-    editor.commands.setContent(normalizedValue || '<p></p>', false);
+    editor.commands.setContent(normalizedValue || '<p></p>');
   }, [editor, normalizedValue]);
 
   return (

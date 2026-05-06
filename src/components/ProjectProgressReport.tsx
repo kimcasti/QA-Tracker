@@ -30,6 +30,7 @@ import {
 } from '@ant-design/icons';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
@@ -123,6 +124,10 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
   ];
 
   const exportToExcel = async () => {
+    if (!projectId) {
+      return;
+    }
+
     const data = [
       ['Reporte de Progreso del Proyecto', project?.name || ''],
       ['Fecha', new Date().toLocaleDateString()],
@@ -142,11 +147,16 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
       ['Marcadas para Smoke', stats.smokeFuncs],
     ];
 
-    const XLSX = await import('xlsx');
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Resumen de Progreso');
-    XLSX.writeFile(wb, `Reporte_Progreso_${project?.name || 'QA'}.xlsx`);
+    await runTrackedExport({
+      projectId,
+      action: async () => {
+        const XLSX = await import('xlsx');
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Resumen de Progreso');
+        XLSX.writeFile(wb, `Reporte_Progreso_${project?.name || 'QA'}.xlsx`);
+      },
+    });
   };
 
   if (!project) return <Empty description="Proyecto no encontrado" />;

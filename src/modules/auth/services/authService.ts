@@ -1,26 +1,36 @@
 import {
   PublicHttp,
   clearStoredToken,
+  getAccessRestrictionReason,
   getStoredToken,
-  isActiveMembershipRequiredError,
   setStoredToken,
 } from '../../../config/http';
 import type { WorkspaceDto } from '../../workspace/types/api';
-import type { AuthResult, AuthUser, LoginInput, SignupInput } from '../types/model';
+import type {
+  AuthResult,
+  AuthUser,
+  ForgotPasswordInput,
+  LoginInput,
+  ResetPasswordInput,
+  SignupInput,
+} from '../types/model';
 
 const AUTH_USER_STORAGE_KEY = 'qa_tracker_auth_user';
-const ACCESS_DISABLED_MESSAGE =
-  'Tu acceso a la organizacion fue desactivado. Si crees que es un error, contacta al administrador.';
+const INACTIVE_MEMBERSHIP_ACCESS_MESSAGE =
+  'Tu membresía está inactiva. Pide a un administrador de tu organización que la reactive para volver a entrar.';
+const INACTIVE_ORGANIZATION_ACCESS_MESSAGE =
+  'Tu organización está inactiva. Un superadmin debe reactivarla para que el equipo recupere el acceso.';
 
 function normalizeText(value?: string) {
   return (value || '').trim();
 }
 
-function mapAuthUser(payload: { id: number; username: string; email: string }): AuthUser {
+function mapAuthUser(payload: { id: number; username: string; email: string; isSuperAdmin?: boolean }): AuthUser {
   return {
     id: payload.id,
     username: payload.username,
     email: payload.email,
+    isSuperAdmin: Boolean(payload.isSuperAdmin),
   };
 }
 
@@ -63,13 +73,14 @@ async function fetchWorkspaceAuthUser(token: string): Promise<AuthUser> {
   const user = response.data?.user;
 
   if (!user?.id || !user.username || !user.email) {
-    throw new Error('No se pudo validar la sesion actual.');
+    throw new Error('No se pudo validar la sesión actual.');
   }
 
   return mapAuthUser({
     id: user.id,
     username: user.username,
     email: user.email,
+    isSuperAdmin: user.isSuperAdmin,
   });
 }
 
@@ -98,8 +109,14 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   } catch (error) {
     clearStoredAuthSession();
 
-    if (isActiveMembershipRequiredError(error)) {
-      throw new Error(ACCESS_DISABLED_MESSAGE);
+    const accessRestrictionReason = getAccessRestrictionReason(error);
+
+    if (accessRestrictionReason === 'inactive_organization') {
+      throw new Error(INACTIVE_ORGANIZATION_ACCESS_MESSAGE);
+    }
+
+    if (accessRestrictionReason === 'inactive_membership') {
+      throw new Error(INACTIVE_MEMBERSHIP_ACCESS_MESSAGE);
     }
 
     throw error;
@@ -111,6 +128,8 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
     username: normalizeText(input?.username),
     email: normalizeText(input?.email).toLowerCase(),
     password: input?.password || '',
+    passwordConfirmation: input?.passwordConfirmation || '',
+    contactNumber: normalizeText(input?.contactNumber),
     organizationName: normalizeText(input?.organizationName),
   });
 
@@ -122,6 +141,20 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
   setStoredToken(result.jwt);
   setStoredAuthUser(result.user);
   return result;
+}
+
+export async function requestPasswordReset(input: ForgotPasswordInput) {
+  await PublicHttp.post('/api/auth/password/forgot', {
+    email: normalizeText(input?.email).toLowerCase(),
+  });
+}
+
+export async function resetPassword(input: ResetPasswordInput) {
+  await PublicHttp.post('/api/auth/reset-password', {
+    code: normalizeText(input?.code),
+    password: input?.password || '',
+    passwordConfirmation: input?.passwordConfirmation || '',
+  });
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {

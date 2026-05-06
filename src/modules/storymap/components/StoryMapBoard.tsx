@@ -7,8 +7,6 @@ import {
   RocketOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { createSwapy, type SlotItemMapArray, type Swapy } from 'swapy';
-import type { SwapEvent } from 'swapy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
@@ -20,11 +18,9 @@ import {
 } from '../services/storyAssociationsService';
 import type { StoryFunctionalityLink } from '../types';
 import { StoryColumn } from './StoryColumn';
-import { TaskCard, TaskPlaceholderCard } from './TaskCard';
+import { TaskCard } from './TaskCard';
 
 const { Text } = Typography;
-
-const EMPTY_PREFIX = '__EMPTY__:'; // __EMPTY__:storyId
 
 const EPIC_ACCENT_CLASSES = [
   'qa-story-accent',
@@ -45,18 +41,6 @@ function hashStringToUint(value: string) {
 
 function epicAccentClass(epicId: string) {
   return EPIC_ACCENT_CLASSES[hashStringToUint(epicId) % EPIC_ACCENT_CLASSES.length];
-}
-
-function emptyId(storyId: string) {
-  return `${EMPTY_PREFIX}${storyId}`;
-}
-
-function isEmptyItem(itemId: string) {
-  return itemId.startsWith(EMPTY_PREFIX);
-}
-
-function storyIdFromSlot(slotId: string) {
-  return slotId.split('::')[0];
 }
 
 function collapsedRolesStorageKey(projectId: string) {
@@ -123,7 +107,6 @@ export default function StoryMapBoard({
   onEditStory,
   onEnsurePrimaryAssociation,
   onSyncPrimaryStoryAfterUnassign,
-  onMoveFunctionality,
   onStructureChange,
 }: {
   projectId: string;
@@ -138,15 +121,9 @@ export default function StoryMapBoard({
   onEditStory: (storyId: string, storyName: string) => void;
   onEnsurePrimaryAssociation: (storyId: string, functionalityId: string) => void;
   onSyncPrimaryStoryAfterUnassign: (storyId: string, functionalityId: string) => void;
-  onMoveFunctionality: (functionalityId: string, storyId: string) => Promise<void>;
   onStructureChange?: () => void;
 }) {
   const { t } = useTranslation();
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const swapyRef = useRef<Swapy | null>(null);
-  const isDraggingRef = useRef(false);
-  const pendingSwapyUpdateRef = useRef(false);
-  const latestSwapRef = useRef<SwapEvent | null>(null);
 
   const storyIdsInRenderOrder = useMemo(() => {
     const ids: string[] = [];
@@ -178,11 +155,6 @@ export default function StoryMapBoard({
       return {};
     }
   });
-
-  const storyIdsRef = useRef(storyIdsInRenderOrder);
-  useEffect(() => {
-    storyIdsRef.current = storyIdsInRenderOrder;
-  }, [storyIdsInRenderOrder]);
 
   useEffect(() => {
     setTasksByStory(taskOrderService.getProjectOrder(projectId));
@@ -239,17 +211,6 @@ export default function StoryMapBoard({
     return map;
   }, [links]);
 
-  const funcByIdRef = useRef(funcById);
-  const onMoveRef = useRef(onMoveFunctionality);
-
-  useEffect(() => {
-    funcByIdRef.current = funcById;
-  }, [funcById]);
-
-  useEffect(() => {
-    onMoveRef.current = onMoveFunctionality;
-  }, [onMoveFunctionality]);
-
   useEffect(() => {
     const syncedLinks = storyAssociationsService.syncProjectLinks(
       projectId,
@@ -267,195 +228,25 @@ export default function StoryMapBoard({
     });
   }, [functionalities, onStructureChange, projectId, storyIdsInRenderOrder]);
 
-  const canonicalSlotItemMap = useMemo<SlotItemMapArray>(() => {
-    const map: SlotItemMapArray = [];
+  const slotsByStory = useMemo(() => {
+    const grouped: Record<string, string[]> = {};
     const seenItemIds = new Set<string>();
+
     for (const storyId of storyIdsInRenderOrder) {
-      const tasks = (tasksByStory[storyId] || []).filter(id => {
-        if (!linkById.has(id) || seenItemIds.has(id)) {
+      const itemIds = (tasksByStory[storyId] || []).filter(itemId => {
+        if (!linkById.has(itemId) || seenItemIds.has(itemId)) {
           return false;
         }
 
-        seenItemIds.add(id);
+        seenItemIds.add(itemId);
         return true;
       });
-      const items = [...tasks, emptyId(storyId)];
-      items.forEach((itemId, idx) => map.push({ slot: `${storyId}::${idx}`, item: itemId }));
-    }
-    return map;
-  }, [linkById, storyIdsInRenderOrder, tasksByStory]);
 
-  const slotsByStory = useMemo(() => {
-    const grouped: Record<string, Array<{ slotId: string; itemId: string }>> = {};
-    for (const entry of canonicalSlotItemMap) {
-      const sid = storyIdFromSlot(entry.slot);
-      if (!grouped[sid]) grouped[sid] = [];
-      grouped[sid].push({ slotId: entry.slot, itemId: entry.item });
+      grouped[storyId] = itemIds;
     }
+
     return grouped;
-  }, [canonicalSlotItemMap]);
-
-  const normalizeAndPersist = async (
-    mapArray: SlotItemMapArray,
-    explicitMove?: Pick<SwapEvent, 'draggingItem' | 'fromSlot' | 'toSlot'>,
-  ) => {
-    const nextOrderDraft: Record<string, string[]> = {};
-    storyIdsRef.current.forEach(storyId => (nextOrderDraft[storyId] = []));
-    const currentLinks = Array.from(linkById.values());
-    const movedLinks: Array<{
-      linkId: string;
-      functionalityId: string;
-      fromStoryId: string;
-      toStoryId: string;
-    }> = [];
-
-    for (const { slot, item } of mapArray) {
-      const sid = storyIdFromSlot(slot);
-      if (isEmptyItem(item)) continue;
-      if (!nextOrderDraft[sid]) nextOrderDraft[sid] = [];
-      nextOrderDraft[sid].push(item);
-    }
-
-    let nextLinks = currentLinks.map(link => ({ ...link }));
-
-    if (
-      explicitMove &&
-      !isEmptyItem(explicitMove.draggingItem) &&
-      explicitMove.fromSlot !== explicitMove.toSlot
-    ) {
-      const link = currentLinks.find(item => item.id === explicitMove.draggingItem);
-      const fromStoryId = storyIdFromSlot(explicitMove.fromSlot);
-      const toStoryId = storyIdFromSlot(explicitMove.toSlot);
-
-      if (link && fromStoryId !== toStoryId) {
-        movedLinks.push({
-          linkId: link.id,
-          functionalityId: link.functionalityId,
-          fromStoryId,
-          toStoryId,
-        });
-        nextLinks = storyAssociationsService.moveAssociation(projectId, link.id, toStoryId);
-      }
-    } else {
-      const nextStoryByLinkId = new Map<string, string>();
-
-      mapArray.forEach(({ slot, item }) => {
-        if (!isEmptyItem(item)) {
-          nextStoryByLinkId.set(item, storyIdFromSlot(slot));
-        }
-      });
-
-      currentLinks.forEach(link => {
-        const nextStoryId = nextStoryByLinkId.get(link.id);
-        if (!nextStoryId || nextStoryId === link.storyId) {
-          return;
-        }
-
-        const currentLinkExists = nextLinks.some(item => item.id === link.id);
-        if (!currentLinkExists) {
-          return;
-        }
-
-        movedLinks.push({
-          linkId: link.id,
-          functionalityId: link.functionalityId,
-          fromStoryId: link.storyId,
-          toStoryId: nextStoryId,
-        });
-
-        nextLinks = nextLinks
-          .map(item => (item.id === link.id ? { ...item, storyId: nextStoryId } : item))
-          .filter((item, index, all) => {
-            if (item.storyId !== nextStoryId || item.functionalityId !== link.functionalityId) {
-              return true;
-            }
-
-            return (
-              index ===
-              all.findIndex(
-                candidate =>
-                  candidate.storyId === nextStoryId &&
-                  candidate.functionalityId === link.functionalityId &&
-                  candidate.id === link.id,
-              )
-            );
-          });
-      });
-    }
-
-    storyAssociationsService.saveProjectLinks(projectId, nextLinks);
-
-    const nextOrder = buildNormalizedTaskOrder(
-      storyIdsRef.current,
-      nextLinks,
-      nextOrderDraft,
-    );
-
-    movedLinks.forEach(move => {
-      storyIdsRef.current.forEach(storyId => {
-        nextOrder[storyId] = (nextOrder[storyId] || []).filter(itemId => itemId !== move.linkId);
-      });
-
-      if (!nextOrder[move.toStoryId]) {
-        nextOrder[move.toStoryId] = [];
-      }
-
-      if (
-        nextLinks.some(item => item.id === move.linkId) &&
-        !nextOrder[move.toStoryId].includes(move.linkId)
-      ) {
-        nextOrder[move.toStoryId] = [...nextOrder[move.toStoryId], move.linkId];
-      }
-    });
-
-    setTasksByStory(nextOrder);
-    taskOrderService.saveProjectOrder(projectId, nextOrder);
-    setLinks(nextLinks);
-    storyAssociationsService.saveProjectLinks(projectId, nextLinks);
-    onStructureChange?.();
-
-    const persistPrimaryMoves = movedLinks
-      .filter((move, index, moves) => {
-        return (
-          index ===
-          moves.findIndex(
-            item =>
-              item.functionalityId === move.functionalityId &&
-              item.toStoryId === move.toStoryId,
-          )
-        );
-      })
-      .filter(move => {
-        const current = funcByIdRef.current.get(move.functionalityId);
-        if (!current) {
-          return false;
-        }
-
-        const sameFunctionalityLinks = nextLinks.filter(
-          item => item.functionalityId === move.functionalityId,
-        );
-
-        return current.storyId === move.fromStoryId || sameFunctionalityLinks.length === 1;
-      });
-
-    if (persistPrimaryMoves.length > 0) {
-      await Promise.all(
-        persistPrimaryMoves.map(move =>
-          onMoveRef.current(move.functionalityId, move.toStoryId),
-        ),
-      );
-    }
-  };
-
-  const flushSwapyUpdate = () => {
-    if (isDraggingRef.current) {
-      pendingSwapyUpdateRef.current = true;
-      return;
-    }
-
-    pendingSwapyUpdateRef.current = false;
-    swapyRef.current?.update();
-  };
+  }, [linkById, storyIdsInRenderOrder, tasksByStory]);
 
   const handleAssignExisting = (storyId: string, functionalityId: string) => {
     const link = storyAssociationsService.ensureAssociation(projectId, storyId, functionalityId);
@@ -464,7 +255,7 @@ export default function StoryMapBoard({
     onEnsurePrimaryAssociation(storyId, functionalityId);
 
     setTasksByStory(prev => {
-      const next = buildNormalizedTaskOrder(storyIdsRef.current, nextLinks, {
+      const next = buildNormalizedTaskOrder(storyIdsInRenderOrder, nextLinks, {
         ...prev,
         [storyId]: [...(prev[storyId] || []), link.id],
       });
@@ -484,8 +275,7 @@ export default function StoryMapBoard({
 
     setTasksByStory(prev => {
       const next: Record<string, string[]> = {};
-      const ids = storyIdsRef.current;
-      ids.forEach(sid => {
+      storyIdsInRenderOrder.forEach(sid => {
         next[sid] = (prev[sid] || []).filter(id => id !== linkId);
       });
       taskOrderService.saveProjectOrder(projectId, next);
@@ -493,76 +283,6 @@ export default function StoryMapBoard({
       return next;
     });
   };
-
-  // Initialize Swapy.
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const swapy = createSwapy(containerRef.current, {
-      animation: 'dynamic',
-      enabled: !readOnly,
-      swapMode: 'drop',
-      dragAxis: 'both',
-      manualSwap: true,
-      autoScrollOnDrag: true,
-    });
-
-    swapyRef.current = swapy;
-
-    swapy.onSwapStart(() => {
-      isDraggingRef.current = true;
-      latestSwapRef.current = null;
-    });
-
-    swapy.onSwap((event) => {
-      latestSwapRef.current = event;
-    });
-
-    swapy.onSwapEnd((event) => {
-      isDraggingRef.current = false;
-      if (pendingSwapyUpdateRef.current) {
-        requestAnimationFrame(() => {
-          flushSwapyUpdate();
-        });
-      }
-      if (!event.hasChanged) return;
-      const next = event.slotItemMap.asArray;
-      const explicitMove = latestSwapRef.current
-        ? {
-            draggingItem: latestSwapRef.current.draggingItem,
-            fromSlot: latestSwapRef.current.fromSlot,
-            toSlot: latestSwapRef.current.toSlot,
-          }
-        : undefined;
-      latestSwapRef.current = null;
-      // Swapy fires onSwapEnd before it finishes its own DOM cleanup animation.
-      // Defer React persistence by two animation frames so the library can settle
-      // before we re-render the board and refresh slot/item bindings.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          void normalizeAndPersist(next, explicitMove);
-        });
-      });
-    });
-
-    return () => {
-      isDraggingRef.current = false;
-      pendingSwapyUpdateRef.current = false;
-      latestSwapRef.current = null;
-      swapy.destroy();
-      swapyRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, readOnly]);
-
-  // When DOM changes (slots count), refresh swapy.
-  useEffect(() => {
-    flushSwapyUpdate();
-  }, [canonicalSlotItemMap]);
-
-  useEffect(() => {
-    flushSwapyUpdate();
-  }, [collapsedRoles]);
 
   const toggleRoleCollapsed = (roleId: string) => {
     setCollapsedRoles(prev => ({
@@ -572,7 +292,7 @@ export default function StoryMapBoard({
   };
 
   return (
-    <div ref={containerRef} className="space-y-6">
+    <div className="space-y-6">
       {roles.map(role => (
         <Card
           key={role.id}
@@ -687,7 +407,7 @@ export default function StoryMapBoard({
                           <StoryColumn
                             storyId={story.id}
                             storyName={story.name}
-                            slots={slotsByStory[story.id] || [{ slotId: `${story.id}::0`, itemId: emptyId(story.id) }]}
+                            itemIds={slotsByStory[story.id] || []}
                             availableFunctionalities={functionalities.filter(
                               functionality =>
                                 !links.some(
@@ -701,9 +421,6 @@ export default function StoryMapBoard({
                             onAssignExisting={handleAssignExisting}
                             readOnly={readOnly}
                             renderItem={(itemId) => {
-                              if (isEmptyItem(itemId)) {
-                                return <TaskPlaceholderCard />;
-                              }
                               const link = linkById.get(itemId);
                               const f = link ? funcById.get(link.functionalityId) : undefined;
                               return (

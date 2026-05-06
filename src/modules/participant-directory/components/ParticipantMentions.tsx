@@ -1,28 +1,28 @@
 import React from 'react';
 import { Mentions } from 'antd';
 import type { MentionsProps } from 'antd';
-import type { SlackMember } from '../types/model';
+import type { ParticipantDirectoryMember } from '../types/model';
 
-export interface SlackMemberMentionsProps
+export interface ParticipantMentionsProps
   extends Omit<MentionsProps, 'options'> {
-  members: SlackMember[];
+  members: ParticipantDirectoryMember[];
   valueField?: 'id' | 'fullName' | 'username';
 }
 
 function getOptionValue(
-  member: SlackMember,
-  valueField: SlackMemberMentionsProps['valueField'] = 'username',
+  member: ParticipantDirectoryMember,
+  valueField: ParticipantMentionsProps['valueField'] = 'username',
 ) {
   if (valueField === 'fullName') return member.fullName;
   if (valueField === 'id') return member.id;
   return member.username;
 }
 
-export function SlackMemberMentions({
+export function ParticipantMentions({
   members,
   valueField = 'username',
   ...props
-}: SlackMemberMentionsProps) {
+}: ParticipantMentionsProps) {
   return (
     <Mentions
       options={members.map(member => ({
@@ -34,4 +34,4 @@ export function SlackMemberMentions({
   );
 }
 
-export default SlackMemberMentions;
+export default ParticipantMentions;

@@ -26,6 +26,7 @@ import {
   buildNextFunctionalityCode,
 } from '../../functionalities/services/functionalitiesService';
 import { useModules } from '../../settings/hooks/useModules';
+import { useRoles } from '../../settings/hooks/useRoles';
 import { useSprints } from '../../settings/hooks/useSprints';
 import { useWorkspaceAccess } from '../../workspace/hooks/useWorkspaceAccess';
 import { storyMapService } from '../services/storyMapService';
@@ -34,7 +35,6 @@ import { storyMapExportService } from '../services/storyMapExportService';
 import { getProjectStoryMap, saveProjectStoryMap } from '../services/projectStoryMapService';
 import type { StoryMapRoleNode } from '../types';
 import { StoryMapErrorBoundary } from './StoryMapErrorBoundary';
-import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const StoryMapBoard = lazy(() => import('./StoryMapBoard'));
@@ -43,11 +43,25 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const { message } = AntdApp.useApp();
   const { isViewer } = useWorkspaceAccess();
+  const validateOptionalUrl = async (_: unknown, value?: string) => {
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedValue) return;
+
+    try {
+      const parsed = new URL(normalizedValue);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
+      throw new Error('Ingresa una URL valida de Jira.');
+    }
+  };
   const {
     data: functionalitiesData,
     save: saveFunctionality,
   } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
+  const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
 
@@ -231,29 +245,15 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     funcForm.setFieldsValue({
       priority: Priority.MEDIUM,
       riskLevel: RiskLevel.MEDIUM,
+      roles: [],
       sprint: undefined,
       deliveryDate: undefined,
+      jiraTaskUrl: '',
       isCore: false,
       isRegression: false,
       isSmoke: false,
     });
     setCreateFuncModalOpen(true);
-  };
-
-  const handleMoveFunctionality = async (functionalityId: string, storyId: string) => {
-    const functionality = functionalities.find(item => item.id === functionalityId);
-    if (!functionality || functionality.storyId === storyId) {
-      return;
-    }
-
-    try {
-      await saveFunctionality({ ...functionality, storyId });
-      await persistStoryMapSnapshot();
-    } catch (error) {
-      console.error('Story Map move functionality error:', error);
-      reload();
-      message.error(t('storymap.move_error'));
-    }
   };
 
   const downloadTextFile = (filename: string, content: string, mime: string) => {
@@ -383,7 +383,6 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
                 onEditStory={openEditStory}
                 onEnsurePrimaryAssociation={ensurePrimaryAssociation}
                 onSyncPrimaryStoryAfterUnassign={syncPrimaryStoryAfterUnassign}
-                onMoveFunctionality={handleMoveFunctionality}
                 onStructureChange={() => {
                   void persistStoryMapSnapshot();
                 }}
@@ -413,15 +412,14 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               (values.module
                 ? buildNextFunctionalityCode(values.module, functionalities)
                 : '') || nextFunctionalityIdPreview;
-            const deliveryDateStr = values.deliveryDate
-              ? values.deliveryDate.format('YYYY-MM-DD')
-              : dayjs().format('YYYY-MM-DD');
+            const deliveryDateStr = values.deliveryDate.format('YYYY-MM-DD');
             const payload: Functionality = {
               id: newId,
               projectId,
               module: values.module,
               name: values.name,
-              roles: ['Todos'],
+              jiraTaskUrl: values.jiraTaskUrl?.trim() || '',
+              roles: values.roles,
               testTypes: [TestType.FUNCTIONAL],
               isCore: Boolean(values.isCore),
               isRegression: Boolean(values.isRegression),
@@ -460,6 +458,15 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             <Col span={24}>
               <Form.Item name="name" label={t('functionality.name')} rules={[{ required: true }]}>
                 <Input placeholder={t('functionality.name_placeholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item
+                name="jiraTaskUrl"
+                label="Link de tarea Jira"
+                rules={[{ validator: validateOptionalUrl }]}
+              >
+                <Input placeholder="Opcional: https://tuempresa.atlassian.net/browse/PROJ-123" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -528,8 +535,25 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="deliveryDate" label={t('functionality.delivery_date_optional')}>
+              <Form.Item
+                name="deliveryDate"
+                label={t('functionality.delivery_date')}
+                rules={[{ required: true }]}
+              >
                 <DatePicker className="w-full" format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item
+                name="roles"
+                label={t('functionality.authorized_roles')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder={t('functionality.roles_placeholder')}
+                  options={rolesData.map(role => ({ label: role.name, value: role.name }))}
+                />
               </Form.Item>
             </Col>
             <Col span={24}>

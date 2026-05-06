@@ -1,4 +1,4 @@
-export interface SlackMember {
+export interface ParticipantDirectoryMember {
   id: string;
   username: string;
   realName: string;
@@ -7,4 +7,5 @@ export interface SlackMember {
   email?: string;
   title?: string;
   avatarUrl?: string;
+  isExternal?: boolean;
 }

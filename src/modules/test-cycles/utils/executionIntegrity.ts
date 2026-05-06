@@ -1,4 +1,4 @@
-import type { SlackMember } from '../../slack-members/types/model';
+import type { ParticipantDirectoryMember } from '../../participant-directory/types/model';
 import type { Functionality, RegressionExecution } from '../../../types';
 import { ExecutionMode, TestResult } from '../../../types';
 
@@ -155,7 +155,7 @@ export function dedupeRegressionExecutions(executions: RegressionExecution[]) {
 
 export function resolveCycleTesterAssignments(
   testerValues: string[],
-  members: SlackMember[],
+  members: ParticipantDirectoryMember[],
 ) {
   return testerValues
     .map(value => {

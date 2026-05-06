@@ -2,6 +2,7 @@ export interface FunctionalityDto {
   documentId: string;
   code: string;
   name: string;
+  jiraTaskUrl?: string;
   testTypes?: string[];
   isCore?: boolean;
   isRegression?: boolean;

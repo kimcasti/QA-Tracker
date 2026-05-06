@@ -7,7 +7,7 @@ export const MAX_INLINE_IMAGE_SIZE_BYTES = MAX_INLINE_IMAGE_SIZE_MB * 1024 * 102
 export function validateInlineImageFile(file: File) {
   if (file.size > MAX_INLINE_IMAGE_SIZE_BYTES) {
     message.error(
-      `La imagen excede el tamano maximo permitido de ${MAX_INLINE_IMAGE_SIZE_MB} MB. Comprimela o usa una mas liviana antes de adjuntarla.`,
+      `La imagen excede el tamaño máximo permitido de ${MAX_INLINE_IMAGE_SIZE_MB} MB. Comprímela o usa una más liviana antes de adjuntarla.`,
     );
     return false;
   }
@@ -30,6 +30,6 @@ export function isPayloadTooLargeError(error: unknown) {
 
 export function showPayloadTooLargeMessage() {
   message.error(
-    `La evidencia supera el limite permitido por el servidor. Usa una imagen de hasta ${MAX_INLINE_IMAGE_SIZE_MB} MB.`,
+    `La evidencia supera el límite permitido por el servidor. Usa una imagen de hasta ${MAX_INLINE_IMAGE_SIZE_MB} MB.`,
   );
 }

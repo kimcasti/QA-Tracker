@@ -36,11 +36,12 @@ import {
   SaveOutlined,
 } from '@ant-design/icons';
 import { Suspense, lazy, useState, useEffect } from 'react';
-import type { FilterValue } from 'antd/es/table/interface';
+import type { ColumnsType, FilterDropdownProps, FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
-import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
-import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
+import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
+import { ParticipantSelect } from '../modules/participant-directory/components/ParticipantSelect';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
@@ -58,6 +59,8 @@ import {
   resolveSelectedTesterAssignment,
 } from '../modules/test-cycles/utils/executionIntegrity';
 import {
+  Browser,
+  DeviceType,
   RegressionCycle,
   TestResult,
   TestType,
@@ -69,6 +72,7 @@ import {
   Priority,
   RiskLevel,
   Functionality,
+  OperatingSystem,
 } from '../types';
 import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
@@ -89,6 +93,12 @@ const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 const RECENT_CHANGE_WINDOW_DAYS = 14;
 const EvidenceRichEditor = lazy(() => import('./EvidenceRichEditor'));
+const browserOptions = Object.values(Browser).map(value => ({ label: value, value }));
+const deviceTypeOptions = Object.values(DeviceType).map(value => ({ label: value, value }));
+const operatingSystemOptions = Object.values(OperatingSystem).map(value => ({
+  label: value,
+  value,
+}));
 
 function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
@@ -207,8 +217,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const latestCycle = Array.isArray(cycles) && cycles.length > 0 ? cycles[0] : null;
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { data: slackMembers = [], isLoading: isSlackMembersLoading } =
-    useSlackMembers(isModalOpen);
+  const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
+    useParticipantDirectoryMembers(isModalOpen);
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
@@ -228,14 +238,17 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     status: null,
   });
   const [detailSearch, setDetailSearch] = useState('');
-  const [detailFilter, setDetailFilter] = useState<'ALL' | 'FAILED'>('ALL');
+  const [detailFilter, setDetailFilter] = useState<'ALL' | 'FAILED' | 'PENDING'>('ALL');
 
   // Evidence Modal State
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [currentExecution, setCurrentExecution] = useState<RegressionExecution | null>(null);
   const [evidenceForm] = Form.useForm();
   const selectedTesterValues = (Form.useWatch('tester', form) as string[] | undefined) || [];
-  const availableTesterAssignments = resolveCycleTesterAssignments(selectedTesterValues, slackMembers);
+  const availableTesterAssignments = resolveCycleTesterAssignments(
+    selectedTesterValues,
+    participantDirectoryMembers,
+  );
   const availableTesterOptions = availableTesterAssignments.map(assignment => ({
     label: assignment.name,
     value: getCycleTesterAssignmentValue(assignment),
@@ -410,6 +423,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       tester: [],
       environment: undefined,
       buildVersion: '',
+      browser: undefined,
+      deviceType: undefined,
+      operatingSystem: undefined,
+      browserVersion: '',
+      osVersion: '',
+      resolution: '',
     });
     setIsModalOpen(true);
   };
@@ -431,6 +450,12 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       tester: parseTesterValue(cycle.tester),
       environment: cycle.environment,
       buildVersion: cycle.buildVersion || '',
+      browser: cycle.browser,
+      deviceType: cycle.deviceType,
+      operatingSystem: cycle.operatingSystem,
+      browserVersion: cycle.browserVersion || '',
+      osVersion: cycle.osVersion || '',
+      resolution: cycle.resolution || '',
     });
     setIsModalOpen(true);
   };
@@ -512,11 +537,11 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mb-0 mt-2">
-                        Asigna una QA al modulo y las funcionalidades heredaran ese valor.
+                        Asigna una QA al módulo y las funcionalidades heredarán ese valor.
                       </p>
                     </div>
                     <Select
-                      placeholder="Asignar tester al modulo"
+                      placeholder="Asignar tester al módulo"
                       className="min-w-[240px]"
                       value={moduleSelection}
                       options={availableTesterOptions}
@@ -569,7 +594,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                                 <Select
                                   placeholder={
                                     moduleSelection
-                                      ? 'Hereda del modulo'
+                                      ? 'Hereda del módulo'
                                       : 'Asignar tester a la funcionalidad'
                                   }
                                   className="w-full"
@@ -587,7 +612,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                                     {hasIndividualOverride
                                       ? 'Override individual para esta funcionalidad.'
                                       : moduleSelection
-                                        ? 'Heredando asignacion del modulo.'
+                                        ? 'Heredando asignación del módulo.'
                                         : 'Sin tester asignado todavia.'}
                                   </div>
                                 )}
@@ -605,7 +630,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         </div>
       ) : (
         <div className="px-4 py-5 text-sm text-slate-400">
-          No hay funcionalidades en esta categoria.
+          No hay funcionalidades en esta categoría.
         </div>
       )}
     </div>
@@ -629,7 +654,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     { text: 'En progreso', value: 'EN_PROGRESO' },
   ];
 
-  const columns = [
+  const columns: ColumnsType<RegressionCycle> = [
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">CICLO</span>
@@ -637,27 +662,27 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       dataIndex: 'cycleId',
       key: 'cycleId',
       filteredValue: tableFilters.cycleId,
-      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+      filterDropdown: (props: FilterDropdownProps) => (
         <div className="w-64 p-3" onKeyDown={event => event.stopPropagation()}>
           <Input
             autoFocus
             placeholder="Buscar ciclo..."
-            value={(selectedKeys[0] as string) || ''}
+            value={(props.selectedKeys[0] as string) || ''}
             onChange={event =>
-              setSelectedKeys(event.target.value ? [event.target.value] : [])
+              props.setSelectedKeys(event.target.value ? [event.target.value] : [])
             }
-            onPressEnter={() => confirm()}
+            onPressEnter={() => props.confirm()}
             className="h-9 rounded-lg"
           />
           <div className="mt-2 flex items-center gap-2">
-            <Button type="primary" size="small" onClick={() => confirm()}>
+            <Button type="primary" size="small" onClick={() => props.confirm()}>
               Aplicar
             </Button>
             <Button
               size="small"
               onClick={() => {
-                clearFilters?.();
-                confirm();
+                props.clearFilters?.();
+                props.confirm();
               }}
             >
               Limpiar
@@ -687,8 +712,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       dataIndex: 'date',
       key: 'date',
       filteredValue: tableFilters.date,
-      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => {
-        const serializedValue = (selectedKeys[0] as string) || '';
+      filterDropdown: (props: FilterDropdownProps) => {
+        const serializedValue = (props.selectedKeys[0] as string) || '';
         const [start, end] = serializedValue.split('|');
         const rangeValue =
           start && end ? ([dayjs(start), dayjs(end)] as [dayjs.Dayjs, dayjs.Dayjs]) : null;
@@ -700,24 +725,24 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               value={rangeValue}
               onChange={value => {
                 if (value?.[0] && value?.[1]) {
-                  setSelectedKeys([
+                  props.setSelectedKeys([
                     `${value[0].startOf('day').toISOString()}|${value[1].endOf('day').toISOString()}`,
                   ]);
                   return;
                 }
 
-                setSelectedKeys([]);
+                props.setSelectedKeys([]);
               }}
             />
             <div className="mt-2 flex items-center gap-2">
-              <Button type="primary" size="small" onClick={() => confirm()}>
+              <Button type="primary" size="small" onClick={() => props.confirm()}>
                 Aplicar
               </Button>
               <Button
                 size="small"
                 onClick={() => {
-                  clearFilters?.();
-                  confirm();
+                  props.clearFilters?.();
+                  props.confirm();
                 }}
               >
                 Limpiar
@@ -896,7 +921,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
     try {
       const values = await form.validateFields();
-      const testerAssignments = resolveCycleTesterAssignments(values.tester || [], slackMembers);
+      const testerAssignments = resolveCycleTesterAssignments(
+        values.tester || [],
+        participantDirectoryMembers,
+      );
 
       if (editingCycle) {
         const reassignedExecutions = editingCycle.executions.map(execution => {
@@ -912,7 +940,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
           if (!selectedAssignment) {
             throw new Error(
-              `Completa la asignacion manual para "${execution.functionalityName}" antes de guardar el ciclo.`,
+              `Completa la asignación manual para "${execution.functionalityName}" antes de guardar el ciclo.`,
             );
           }
 
@@ -931,7 +959,6 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           date: values.date.format('YYYY-MM-DD'),
           executions: reassignedExecutions,
         };
-        console.log('Payload - Update Regression Cycle:', updatedCycle);
         const savedCycle = await save(updatedCycle);
         setSelectedCycleId(savedCycle.id);
         message.success('Ciclo actualizado correctamente');
@@ -989,7 +1016,6 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           executions: initialExecutions,
         };
 
-        console.log('Payload - Create Regression Cycle:', newCycle);
         const savePromise = save(newCycle);
         resetCycleModal();
         message.loading({
@@ -1166,8 +1192,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   };
 
   const handleReopenCycle = async (cycle: RegressionCycle) => {
-    if (!canManageCycleConfig) {
-      message.error('Solo Owner y QA Lead pueden reabrir ciclos.');
+    if (!isOwner) {
+      message.error('Solo el admin de la organización puede reabrir ciclos.');
       return;
     }
 
@@ -1194,17 +1220,29 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     });
   };
 
+  const getExecutionDraft = (executionId: string) => executionDrafts[executionId] || {};
+
+  const mergeExecutionDraft = (execution: RegressionExecution): RegressionExecution => ({
+    ...execution,
+    ...getExecutionDraft(execution.id),
+  });
+
   const filteredExecutions = (selectedCycle?.executions || []).filter(ex => {
     if (!ex) return false;
+    const mergedExecution = mergeExecutionDraft(ex);
     const normalizedSearch = detailSearch.toLowerCase();
     const matchesSearch =
-      (ex.functionalityId || '').toLowerCase().includes(normalizedSearch) ||
-      (ex.module || '').toLowerCase().includes(normalizedSearch) ||
-      (ex.functionalityName || '').toLowerCase().includes(normalizedSearch) ||
-      (ex.assignedTesterName || '').toLowerCase().includes(normalizedSearch) ||
-      (ex.assignedTesterEmail || '').toLowerCase().includes(normalizedSearch);
+      (mergedExecution.functionalityId || '').toLowerCase().includes(normalizedSearch) ||
+      (mergedExecution.module || '').toLowerCase().includes(normalizedSearch) ||
+      (mergedExecution.functionalityName || '').toLowerCase().includes(normalizedSearch) ||
+      (mergedExecution.assignedTesterName || '').toLowerCase().includes(normalizedSearch) ||
+      (mergedExecution.assignedTesterEmail || '').toLowerCase().includes(normalizedSearch);
 
-    const matchesFilter = detailFilter === 'ALL' || ex.result === TestResult.FAILED;
+    const matchesFilter =
+      detailFilter === 'ALL' ||
+      (detailFilter === 'FAILED' && mergedExecution.result === TestResult.FAILED) ||
+      (detailFilter === 'PENDING' &&
+        (!mergedExecution.executed || mergedExecution.result === TestResult.NOT_EXECUTED));
 
     return matchesSearch && matchesFilter;
   });
@@ -1221,13 +1259,6 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     : 0;
 
   const functionalityLookup = new Map(functionalities.map(item => [item.id, item] as const));
-
-  const getExecutionDraft = (executionId: string) => executionDrafts[executionId] || {};
-
-  const mergeExecutionDraft = (execution: RegressionExecution): RegressionExecution => ({
-    ...execution,
-    ...getExecutionDraft(execution.id),
-  });
 
   const stageExecutionDraft = (
     executionId: string,
@@ -1381,11 +1412,29 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                       {selectedCycle.buildVersion}
                     </Tag>
                   )}
+                  {selectedCycle.browser && (
+                    <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Navegador:</span>{' '}
+                      {selectedCycle.browser}
+                    </Tag>
+                  )}
+                  {selectedCycle.deviceType && (
+                    <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Dispositivo:</span>{' '}
+                      {selectedCycle.deviceType}
+                    </Tag>
+                  )}
+                  {selectedCycle.operatingSystem && (
+                    <Tag className="rounded-full border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="font-semibold text-slate-500">Sistema operativo:</span>{' '}
+                      {selectedCycle.operatingSystem}
+                    </Tag>
+                  )}
                 </div>
               </div>
             </div>
             <Space size="middle">
-              {isReadOnly && canManageCycleConfig && !isViewer && (
+              {isReadOnly && isOwner && !isViewer && (
                 <Button
                   icon={<RollbackOutlined />}
                   onClick={() => void handleReopenCycle(selectedCycle)}
@@ -1406,7 +1455,14 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <Button
                 icon={<FileTextOutlined />}
                 className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
-                onClick={() => exportCycleToCSV(selectedCycle)}
+                onClick={() =>
+                  void runTrackedExport({
+                    projectId: projectId || '',
+                    action: () => exportCycleToCSV(selectedCycle),
+                  }).catch(() => {
+                    message.error('No fue posible exportar el reporte del ciclo.');
+                  })
+                }
               >
                 Export Report
               </Button>
@@ -1549,7 +1605,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               <div className="flex items-center gap-4 flex-1 max-w-md">
                 <Input
                   prefix={<SearchOutlined className="text-slate-400" />}
-                  placeholder="Buscar por modulo, funcionalidad o tester..."
+                  placeholder="Buscar por módulo, funcionalidad o tester..."
                   className="h-11 rounded-xl bg-slate-50 border-none"
                   value={detailSearch}
                   onChange={e => setDetailSearch(e.target.value)}
@@ -1569,6 +1625,13 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   onClick={() => setDetailFilter('FAILED')}
                 >
                   Failed Only
+                </Button>
+                <Button
+                  type={detailFilter === 'PENDING' ? 'primary' : 'default'}
+                  className="rounded-lg h-9"
+                  onClick={() => setDetailFilter('PENDING')}
+                >
+                  Pending Only
                 </Button>
               </div>
             </div>
@@ -2215,13 +2278,13 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 label={<span className="font-semibold text-slate-600">Tester</span>}
                 rules={[{ required: true }]}
               >
-                <SlackMemberSelect
-                  members={slackMembers}
+                <ParticipantSelect
+                  members={participantDirectoryMembers}
                   valueField="fullName"
                   multiple
-                  placeholder="Selecciona uno o mas testers desde Slack"
+                  placeholder="Selecciona uno o más testers del workspace"
                   className="h-10 rounded-lg"
-                  loading={isSlackMembersLoading}
+                  loading={isParticipantDirectoryLoading}
                 />
               </Form.Item>
             </Col>
@@ -2248,6 +2311,83 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 label={<span className="font-semibold text-slate-600">Build version</span>}
               >
                 <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                name="browser"
+                label={<span className="font-semibold text-slate-600">Navegador</span>}
+              >
+                <Select
+                  allowClear
+                  placeholder="Selecciona navegador"
+                  className="h-10 rounded-lg"
+                  options={browserOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="deviceType"
+                label={<span className="font-semibold text-slate-600">Tipo de dispositivo</span>}
+              >
+                <Select
+                  allowClear
+                  placeholder="Selecciona dispositivo"
+                  className="h-10 rounded-lg"
+                  options={deviceTypeOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="operatingSystem"
+                label={<span className="font-semibold text-slate-600">Sistema operativo</span>}
+              >
+                <Select
+                  allowClear
+                  placeholder="Selecciona sistema operativo"
+                  className="h-10 rounded-lg"
+                  options={operatingSystemOptions}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                name="browserVersion"
+                label={
+                  <span className="font-semibold text-slate-600">Versión del navegador</span>
+                }
+              >
+                <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="osVersion"
+                label={
+                  <span className="font-semibold text-slate-600">
+                    Versión del sistema operativo
+                  </span>
+                }
+              >
+                <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="resolution"
+                label={
+                  <span className="font-semibold text-slate-600">Resolución de pantalla</span>
+                }
+              >
+                <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>
@@ -2291,7 +2431,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   <Select
                     allowClear
                     size="small"
-                    placeholder="Filtrar por modulo"
+                    placeholder="Filtrar por módulo"
                     className="min-w-[180px]"
                     value={suggestionModuleFilter}
                     onChange={value => setSuggestionModuleFilter(value)}
@@ -2342,11 +2482,11 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                         </span>
                       </div>
                       <div className="mt-1 text-[11px] text-slate-400">
-                        La asignacion del modulo se puede sobrescribir por funcionalidad en la tabla.
+                        La asignación del módulo se puede sobrescribir por funcionalidad en la tabla.
                       </div>
                     </div>
                     <Select
-                      placeholder="Asignar tester al modulo"
+                      placeholder="Asignar tester al módulo"
                       className="min-w-[240px]"
                       value={moduleAssignmentSelections[group.module]}
                       options={availableTesterOptions}
@@ -2396,7 +2536,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                         <Select
                           placeholder={
                             moduleAssignmentSelections[row.module]
-                              ? 'Hereda del modulo'
+                              ? 'Hereda del módulo'
                               : 'Asignar tester'
                           }
                           className="min-w-[220px]"
@@ -2489,10 +2629,6 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               }
             }
 
-            console.log('Payload - Save Evidence:', {
-              executionId: mergedExecution.id,
-              ...evidencePayload,
-            });
             const didSave = await updateExecution(selectedCycle.id, mergedExecution.id, {
               executionMode: mergedExecution.executionMode,
               executed: mergedExecution.executed,
@@ -2539,6 +2675,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           <Form form={evidenceForm} layout="vertical">
             <Form.Item
               name="evidence"
+              required={isFailureEvidenceRequired}
               label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
               rules={
                 isFailureEvidenceRequired
@@ -2566,7 +2703,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
                 <Form.Item
                   name="bugTitle"
-                  label={<span className="font-semibold text-slate-600">* Título del bug</span>}
+                  required
+                  label={<span className="font-semibold text-slate-600">Título del bug</span>}
                   rules={[{ required: true, message: 'El título del bug es obligatorio.' }]}
                 >
                   <Input
@@ -2578,7 +2716,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
                 <Form.Item
                   name="severity"
-                  label={<span className="font-semibold text-slate-600">* Severidad</span>}
+                  required
+                  label={<span className="font-semibold text-slate-600">Severidad</span>}
                   rules={[{ required: true, message: 'La severidad es obligatoria.' }]}
                 >
                   <Select

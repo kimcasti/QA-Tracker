@@ -2,28 +2,28 @@ import React from 'react';
 import { Avatar, Segmented } from 'antd';
 import type { SegmentedProps } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import type { SlackMember } from '../types/model';
+import type { ParticipantDirectoryMember } from '../types/model';
 
-export interface SlackMemberSegmentedProps
+export interface ParticipantSegmentedProps
   extends Omit<SegmentedProps<string>, 'options'> {
-  members: SlackMember[];
+  members: ParticipantDirectoryMember[];
   valueField?: 'id' | 'fullName' | 'username';
 }
 
 function getOptionValue(
-  member: SlackMember,
-  valueField: SlackMemberSegmentedProps['valueField'] = 'id',
+  member: ParticipantDirectoryMember,
+  valueField: ParticipantSegmentedProps['valueField'] = 'id',
 ) {
   if (valueField === 'fullName') return member.fullName;
   if (valueField === 'username') return member.username;
   return member.id;
 }
 
-export function SlackMemberSegmented({
+export function ParticipantSegmented({
   members,
   valueField = 'id',
   ...props
-}: SlackMemberSegmentedProps) {
+}: ParticipantSegmentedProps) {
   return (
     <Segmented
       options={members.map(member => ({
@@ -45,4 +45,4 @@ export function SlackMemberSegmented({
   );
 }
 
-export default SlackMemberSegmented;
+export default ParticipantSegmented;

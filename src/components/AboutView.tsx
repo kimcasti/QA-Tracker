@@ -1,21 +1,21 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
   Button,
   Card,
   Col,
-  DatePicker,
-  Divider,
   Empty,
   Form,
   Input,
+  List,
   Modal,
   Progress,
   Row,
+  Select,
   Space,
+  Table,
   Tag,
-  TimePicker,
   Typography,
   Upload,
   message,
@@ -26,568 +26,848 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CopyOutlined,
+  CrownOutlined,
   EditOutlined,
-  EyeOutlined,
   FileTextOutlined,
+  FlagOutlined,
   MessageOutlined,
+  MinusOutlined,
   PlusOutlined,
+  ProfileOutlined,
   RobotOutlined,
-  SafetyOutlined,
   TeamOutlined,
   UploadOutlined,
-  UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
-import dayjs, { Dayjs } from 'dayjs';
-import { appBranding } from '../assets/branding';
+import dayjs from 'dayjs';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
+import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useMeetingNotes } from '../modules/meeting-notes/hooks/useMeetingNotes';
+import { ParticipantSelect } from '../modules/participant-directory/components/ParticipantSelect';
+import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
+import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
+import {
+  buildProjectUpgradeWhatsAppUrl,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 import { useProjects } from '../modules/projects/hooks/useProjects';
-import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
-import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
-import type { SlackMember } from '../modules/slack-members/types/model';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { MeetingNote, Project } from '../types';
+import { BugStatus, ProjectStatus, type MeetingNote, type Project } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
+import { readFileAsDataUrl, validateInlineImageFile } from '../utils/uploadValidation';
 
 const { Title, Text, Paragraph } = Typography;
-const RECENT_NOTES_LIMIT = 4;
 
-type NoteFormValues = {
-  title: string;
-  date: Dayjs;
-  time: Dayjs;
-  participants: string[];
-  notes: string;
+type AboutViewProps = {
+  project: Project;
 };
 
-function splitParticipants(value?: string) {
+const STATUS_META: Record<ProjectStatus, { label: string; color: string }> = {
+  [ProjectStatus.ACTIVE]: { label: 'Activo', color: qaPalette.functionalityStatus.completed },
+  [ProjectStatus.PAUSED]: { label: 'Pausado', color: qaPalette.functionalityStatus.inProgress },
+  [ProjectStatus.COMPLETED]: { label: 'Completado', color: qaPalette.primary },
+};
+
+function splitBusinessRules(value?: string) {
   return (value || '')
-    .split(',')
+    .split('\n')
     .map(item => item.trim())
     .filter(Boolean);
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map(word => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-function normalizeParticipantKey(value?: string) {
-  return (value || '').trim().toLowerCase();
-}
-
-function buildParticipantLookup(members: SlackMember[]) {
-  const entries: Array<[string, SlackMember]> = [];
-
-  members.forEach(member => {
-    [member.fullName, member.realName, member.displayName, member.username].forEach(candidate => {
-      const key = normalizeParticipantKey(candidate);
-      if (key) {
-        entries.push([key, member]);
-      }
-    });
-  });
-
-  return new Map(entries);
-}
-
-function normalizeRules(businessRules?: string) {
-  return (businessRules || '')
+function splitAiBullets(value?: string) {
+  return String(value || '')
     .split('\n')
-    .map(rule => rule.trim())
+    .map(item => item.replace(/^[\-\u2022]\s*/, '').trim())
     .filter(Boolean);
 }
 
-function getMeetingNoteTitle(note: Pick<MeetingNote, 'title' | 'date'>) {
-  return note.title?.trim() || `Minuta del ${note.date}`;
+function buildMeetingAiPreviewText(input: {
+  summary?: string;
+  decisions?: string;
+  actions?: string;
+  nextSteps?: string;
+}) {
+  const sections = [
+    input.summary?.trim() ? input.summary.trim() : null,
+    splitAiBullets(input.decisions).length
+      ? `Decisiones:\n${splitAiBullets(input.decisions)
+          .map(item => `- ${item}`)
+          .join('\n')}`
+      : null,
+    splitAiBullets(input.actions).length
+      ? `Acciones:\n${splitAiBullets(input.actions)
+          .map(item => `- ${item}`)
+          .join('\n')}`
+      : null,
+    splitAiBullets(input.nextSteps).length
+      ? `Próximos pasos\n${splitAiBullets(input.nextSteps)
+          .map(item => `- ${item}`)
+          .join('\n')}`
+      : null,
+  ].filter(Boolean);
+
+  return sections.join('\n\n');
 }
 
-function getMeetingNoteExcerpt(notes?: string, maxLength = 140) {
-  const normalized = (notes || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return 'Sin notas registradas todavia.';
-  }
-
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+function getInitials(value: string) {
+  return value
+    .split(' ')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() || '')
+    .join('');
 }
 
-function ExecutiveInfoCard({
-  icon,
+function SurfaceCard({
   title,
-  children,
+  icon,
   accent,
+  children,
+  extra,
+  className = '',
 }: {
-  icon: React.ReactNode;
   title: string;
-  children: React.ReactNode;
+  icon: React.ReactNode;
   accent: string;
+  children: React.ReactNode;
+  extra?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <Card
       variant="borderless"
-      className="h-full rounded-[28px] qa-surface-card"
-      styles={{ body: { padding: 28 } }}
+      className={`rounded-[28px] qa-surface-card ${className}`.trim()}
+      styles={{ body: { padding: 24 } }}
     >
-      <div className="flex items-start gap-4">
-        <div
-          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white shadow-sm"
-          style={{ color: accent }}
-        >
-          {icon}
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <IconBadge accent={accent}>{icon}</IconBadge>
+          <div>
+            <Title level={4} className="!mb-0 !text-slate-900">
+              {title}
+            </Title>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <Title level={4} className="!mb-2 !text-slate-900">
-            {title}
-          </Title>
-          <div className="text-slate-600">{children}</div>
-        </div>
+        {extra}
       </div>
+      {children}
     </Card>
   );
 }
 
-function MeetingInsightCard({
-  title,
-  value,
-  helper,
+function IconBadge({
   accent,
+  children,
+  className = '',
 }: {
-  title: string;
-  value: string | number;
-  helper: string;
   accent: string;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <Card
-      variant="borderless"
-      className="rounded-3xl"
-      styles={{ body: { padding: 18 } }}
+    <div
+      className={`flex h-12 w-12 items-center justify-center rounded-2xl border bg-white shadow-sm ${className}`.trim()}
       style={{
-        background: `linear-gradient(135deg, ${qaPalette.card} 0%, ${softSurface(accent)} 100%)`,
+        color: accent,
+        borderColor: softSurface(accent),
+        boxShadow: `0 14px 30px ${softSurface(accent)}`,
       }}
     >
-      <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-        {title}
-      </Text>
-      <div className="mt-2 text-3xl font-bold" style={{ color: accent }}>
-        {value}
-      </div>
-      <Text className="mt-2 block text-slate-500">{helper}</Text>
-    </Card>
+      {children}
+    </div>
   );
 }
 
-export default function AboutView({ project }: { project: Project }) {
-  const { isViewer } = useWorkspaceAccess();
-  const { save: saveProject } = useProjects();
+function MetricPill({
+  label,
+  value,
+  accent,
+  className = '',
+}: {
+  label: string;
+  value: number | string;
+  accent: string;
+  className?: string;
+}) {
+  const compactLabelLength = label.replace(/\s+/g, '').length;
+  const isSingleWord = !/\s/.test(label.trim());
+
+  const labelStyle: React.CSSProperties =
+    compactLabelLength >= 15
+      ? { fontSize: 9, letterSpacing: '0.08em', lineHeight: 1.25 }
+      : compactLabelLength >= 12
+        ? { fontSize: 10, letterSpacing: '0.12em', lineHeight: 1.25 }
+        : { fontSize: 11, letterSpacing: '0.18em', lineHeight: 1.25 };
+
+  return (
+    <div
+      className={`rounded-[22px] border px-4 py-3 ${className}`.trim()}
+      style={{
+        borderColor: softSurface(accent),
+        background: `linear-gradient(135deg, ${softSurface(accent)} 0%, rgba(255,255,255,0.96) 100%)`,
+      }}
+    >
+      <Text
+        className={`block min-h-[2.4em] font-bold uppercase text-slate-400 ${
+          isSingleWord ? 'whitespace-nowrap' : 'whitespace-normal'
+        }`}
+        style={labelStyle}
+      >
+        {label}
+      </Text>
+      <div className="mt-1 text-2xl font-bold" style={{ color: accent }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function HeaderActionButton({
+  icon,
+  label,
+  accent,
+  onClick,
+  loading = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  accent: string;
+  onClick?: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Button
+      onClick={onClick}
+      loading={loading}
+      disabled={disabled}
+      icon={!loading ? icon : undefined}
+      className="h-11 rounded-2xl border px-4 font-semibold shadow-none"
+      style={{
+        color: accent,
+        borderColor: softSurface(accent),
+        background: `linear-gradient(135deg, ${softSurface(accent)} 0%, rgba(255,255,255,0.96) 100%)`,
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function AiUpgradeBanner({
+  title = 'Funciones IA disponibles en Growth',
+  description = 'Desbloquea análisis del proyecto y briefs de wireframe para trabajar más rápido y con más claridad.',
+  ctaLabel = 'Actualizar a Growth',
+  compact = false,
+  onViewPlans,
+  onUpgradeGrowth,
+}: {
+  title?: string;
+  description?: string;
+  ctaLabel?: string;
+  compact?: boolean;
+  onViewPlans: () => void;
+  onUpgradeGrowth: () => void;
+}) {
+  return (
+    <div className="rounded-[28px] border border-[rgba(245,158,11,0.45)] bg-[linear-gradient(135deg,rgba(255,248,230,0.92)_0%,rgba(255,255,255,0.98)_38%,rgba(255,251,235,0.92)_100%)] px-5 py-4 shadow-[0_18px_40px_rgba(245,158,11,0.08)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[rgba(251,191,36,0.10)] text-amber-500">
+            <span className="text-[28px] leading-none">⚡</span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <Title
+              level={4}
+              className={`!text-slate-900 ${compact ? '!mb-0 !text-[13px] !font-normal !leading-5' : '!mb-1'}`}
+            >
+              {title}
+            </Title>
+            {!compact ? (
+              <Paragraph className="!mb-0 max-w-3xl text-base leading-7 text-slate-600">
+                {description}
+              </Paragraph>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
+          <Button
+            onClick={onViewPlans}
+            className="h-12 rounded-[20px] border-slate-200 bg-white px-6 font-semibold text-slate-700 shadow-sm"
+          >
+            Ver planes
+          </Button>
+          <Button
+            type="primary"
+            onClick={onUpgradeGrowth}
+            className="h-12 rounded-[20px] border-0 px-6 font-semibold !text-white shadow-[0_12px_28px_rgba(59,130,246,0.20)]"
+            style={{
+              background: 'linear-gradient(135deg, #1E5FAF 0%, #1DA9CF 100%)',
+              color: '#FFFFFF',
+              border: '1px solid rgba(29,169,207,0.9)',
+            }}
+          >
+            {ctaLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IconActionButton({
+  label,
+  title,
+  onClick,
+  children,
+}: {
+  label: string;
+  title: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={title}
+      className="ml-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-transparent p-0"
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function AboutView({ project }: AboutViewProps) {
+  const { isViewer, activeMembership, projectQuota, canUseAi } = useWorkspaceAccess();
+  const { save: saveProject, isSaving } = useProjects();
+  const { data: functionalities = [], isLoading: isLoadingFunctionalities } = useFunctionalities(
+    project.id,
+  );
+  const { data: testCases = [], isLoading: isLoadingTestCases } = useTestCases(project.id);
+  const { data: bugs = [], isLoading: isLoadingBugs } = useBugs(project.id);
   const {
     data: meetingNotes = [],
+    isLoading: isLoadingNotes,
     save: saveMeetingNote,
-    delete: deleteMeetingNote,
   } = useMeetingNotes(project.id);
-  const {
-    data: slackMembers = [],
-    isLoading: isSlackMembersLoading,
-    error: slackMembersError,
-  } = useSlackMembers(Boolean(project.id));
-
-  const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [isViewNoteModalOpen, setIsViewNoteModalOpen] = useState(false);
-  const [isAllNotesModalOpen, setIsAllNotesModalOpen] = useState(false);
-  const [isProjectAiModalOpen, setIsProjectAiModalOpen] = useState(false);
-  const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
-  const [isImproving, setIsImproving] = useState(false);
-  const [projectAiLoadingMode, setProjectAiLoadingMode] = useState<
-    'analysis' | 'wireframe' | null
-  >(null);
-  const [projectAiModalTitle, setProjectAiModalTitle] = useState('');
-  const [projectAiModalContent, setProjectAiModalContent] = useState('');
-
+  const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
+    useParticipantDirectoryMembers(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [isMeetingHistoryOpen, setIsMeetingHistoryOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isSavingLogo, setIsSavingLogo] = useState(false);
+  const [isSavingMeetingNote, setIsSavingMeetingNote] = useState(false);
+  const [isImprovingMeetingNotes, setIsImprovingMeetingNotes] = useState(false);
+  const [editingMeetingNote, setEditingMeetingNote] = useState<MeetingNote | null>(null);
+  const [activeAiAction, setActiveAiAction] = useState<'analysis' | 'brief' | null>(null);
+  const [openAiDetail, setOpenAiDetail] = useState<'analysis' | 'brief' | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | undefined>(project.logo);
   const [projectForm] = Form.useForm();
-  const [noteForm] = Form.useForm<NoteFormValues>();
+  const [meetingNoteForm] = Form.useForm();
+  const watchedMeetingParticipants = Form.useWatch('participants', meetingNoteForm) as
+    | string[]
+    | undefined;
+  const watchedMeetingAiSummary = Form.useWatch('aiSummary', meetingNoteForm) as string | undefined;
+  const watchedMeetingAiDecisions = Form.useWatch('aiDecisions', meetingNoteForm) as
+    | string
+    | undefined;
+  const watchedMeetingAiActions = Form.useWatch('aiActions', meetingNoteForm) as string | undefined;
+  const watchedMeetingAiNextSteps = Form.useWatch('aiNextSteps', meetingNoteForm) as
+    | string
+    | undefined;
 
-  const participantOptions = useMemo(() => {
-    const candidates = new Set<string>();
-    (project.teamMembers || []).forEach(member => {
-      if (member.trim()) candidates.add(member.trim());
-    });
-    meetingNotes.forEach(note => {
-      splitParticipants(note.participants).forEach(participant => candidates.add(participant));
-    });
-    return Array.from(candidates)
-      .sort((left, right) => left.localeCompare(right))
-      .map(value => ({ label: value, value }));
-  }, [meetingNotes, project.teamMembers]);
-
-  const participantLookup = useMemo(
-    () => buildParticipantLookup(slackMembers),
-    [slackMembers],
-  );
-
-  const businessRuleItems = useMemo(
-    () => normalizeRules(project.businessRules),
+  const businessRules = useMemo(
+    () => splitBusinessRules(project.businessRules),
     [project.businessRules],
   );
-
-  const noteStats = useMemo(() => {
-    const totalNotes = meetingNotes.length;
-    const aiEnhanced = meetingNotes.filter(note => Boolean(note.aiSummary)).length;
-    const allParticipants = new Set(
-      meetingNotes.flatMap(note => splitParticipants(note.participants)),
-    );
-    return {
-      totalNotes,
-      aiEnhanced,
-      uniqueParticipants: allParticipants.size,
-    };
-  }, [meetingNotes]);
-
-  const completionPercent = useMemo(() => {
-    const requirementCount = project.coreRequirements?.length || 0;
-    const ruleCount = businessRuleItems.length;
-    const total = requirementCount + ruleCount;
-    if (total === 0) return 0;
-    return Math.min(100, Math.round(((requirementCount + ruleCount) / Math.max(total, 4)) * 100));
-  }, [businessRuleItems.length, project.coreRequirements]);
-
-  const latestMeetingDate = useMemo(() => {
-    if (meetingNotes.length === 0) return null;
-    return [...meetingNotes].sort(
-      (left, right) => dayjs(right.date).valueOf() - dayjs(left.date).valueOf(),
-    )[0].date;
-  }, [meetingNotes]);
-
-  const sortedMeetingNotes = useMemo(
+  const meetingParticipantExtraOptions = useMemo(
+    () => (watchedMeetingParticipants || []).map(value => ({ label: value, value })),
+    [watchedMeetingParticipants],
+  );
+  const meetingAiPreview = useMemo(
+    () => ({
+      summary: watchedMeetingAiSummary,
+      decisions: splitAiBullets(watchedMeetingAiDecisions),
+      actions: splitAiBullets(watchedMeetingAiActions),
+      nextSteps: splitAiBullets(watchedMeetingAiNextSteps),
+    }),
+    [
+      watchedMeetingAiActions,
+      watchedMeetingAiDecisions,
+      watchedMeetingAiNextSteps,
+      watchedMeetingAiSummary,
+    ],
+  );
+  const meetingAiPreviewText = useMemo(
     () =>
-      [...meetingNotes].sort((left, right) => {
-        const leftDateTime = dayjs(`${left.date} ${left.time || '00:00'}`);
-        const rightDateTime = dayjs(`${right.date} ${right.time || '00:00'}`);
-        return rightDateTime.valueOf() - leftDateTime.valueOf();
+      buildMeetingAiPreviewText({
+        summary: watchedMeetingAiSummary,
+        decisions: watchedMeetingAiDecisions,
+        actions: watchedMeetingAiActions,
+        nextSteps: watchedMeetingAiNextSteps,
       }),
-    [meetingNotes],
+    [
+      watchedMeetingAiActions,
+      watchedMeetingAiDecisions,
+      watchedMeetingAiNextSteps,
+      watchedMeetingAiSummary,
+    ],
   );
-
-  const hasProjectContext =
-    Boolean(project.purpose?.trim()) ||
-    Boolean(project.description?.trim()) ||
-    Boolean(project.businessRules?.trim()) ||
-    Boolean(project.coreRequirements?.length);
-
-  const recentMeetingNotes = useMemo(
-    () => sortedMeetingNotes.slice(0, RECENT_NOTES_LIMIT),
-    [sortedMeetingNotes],
+  const statusMeta = STATUS_META[project.status] || STATUS_META[ProjectStatus.ACTIVE];
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeMembership?.organization?.plan,
   );
+  const effectiveOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const activeOrganizationName = activeMembership?.organization?.name;
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
+  const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const aiUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeOrganizationName,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+  });
 
-  const projectStatusMeta = useMemo(() => {
-    const statusMap = {
-      Active: {
-        label: 'Activo',
-        color: qaPalette.functionalityStatus.completed,
-      },
-      Paused: {
-        label: 'En pausa',
-        color: qaPalette.functionalityStatus.inProgress,
-      },
-      Completed: {
-        label: 'Completado',
-        color: qaPalette.primary,
-      },
-    } as const;
+  const stats = useMemo(() => {
+    const activeBugs = bugs.filter(bug => bug.status !== BugStatus.RESOLVED).length;
+    const latestMeetingDate =
+      meetingNotes.length > 0
+        ? [...meetingNotes]
+            .map(note => note.date)
+            .filter(Boolean)
+            .sort((left, right) => right.localeCompare(left))[0]
+        : null;
 
-    return statusMap[project.status] || statusMap.Active;
-  }, [project.status]);
+    const completedDocs = [
+      Boolean(project.description?.trim()),
+      Boolean(project.purpose?.trim()),
+      Boolean(project.coreRequirements?.length),
+      Boolean(businessRules.length),
+      meetingNotes.length > 0,
+      Boolean(project.aiProjectInsights?.trim()),
+      Boolean(project.aiWireframeBrief?.trim()),
+    ].filter(Boolean).length;
 
-  const handleEditProject = () => {
+    const documentationScore = Math.round((completedDocs / 7) * 100);
+
+    return {
+      activeBugs,
+      latestMeetingDate,
+      documentationScore,
+      participants: project.teamMembers?.length || 0,
+      notes: meetingNotes.length,
+      functionalities: functionalities.length,
+      testCases: testCases.length,
+    };
+  }, [
+    bugs,
+    businessRules.length,
+    functionalities.length,
+    meetingNotes,
+    project.aiProjectInsights,
+    project.aiWireframeBrief,
+    project.coreRequirements,
+    project.description,
+    project.purpose,
+    project.teamMembers,
+    testCases.length,
+  ]);
+
+  const isLoading =
+    isLoadingFunctionalities || isLoadingTestCases || isLoadingBugs || isLoadingNotes;
+
+  useEffect(() => {
+    setLogoPreview(project.logo);
     projectForm.setFieldsValue({
       name: project.name,
       description: project.description,
+      version: project.version,
+      status: project.status,
       purpose: project.purpose,
       teamMembers: project.teamMembers || [],
-      coreRequirements: Array.isArray(project.coreRequirements)
-        ? project.coreRequirements.join('\n')
-        : project.coreRequirements,
-      businessRules: project.businessRules,
+      coreRequirements: (project.coreRequirements || []).join('\n'),
+      businessRules: project.businessRules || '',
     });
-    setIsEditProjectModalOpen(true);
+  }, [project, projectForm]);
+
+  const handleOpenEdit = () => {
+    setLogoPreview(project.logo);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCloseEdit = () => {
+    setIsEditModalOpen(false);
+    setLogoPreview(project.logo);
+    projectForm.resetFields();
+  };
+
+  const openMeetingModal = (note?: MeetingNote) => {
+    const participants = note?.participants
+      ? note.participants
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean)
+      : project.teamMembers || [];
+
+    meetingNoteForm.setFieldsValue({
+      title: note?.title || '',
+      date: note?.date || dayjs().format('YYYY-MM-DD'),
+      time: note?.time || dayjs().format('HH:mm'),
+      participants,
+      notes: note?.notes || '',
+      aiSummary: note?.aiSummary || '',
+      aiDecisions: note?.aiDecisions || '',
+      aiActions: note?.aiActions || '',
+      aiNextSteps: note?.aiNextSteps || '',
+    });
+    if (note) {
+      setIsMeetingHistoryOpen(false);
+    }
+    setEditingMeetingNote(note || null);
+    setIsMeetingModalOpen(true);
+  };
+
+  const closeMeetingModal = () => {
+    setIsMeetingModalOpen(false);
+    setEditingMeetingNote(null);
+    meetingNoteForm.resetFields();
+  };
+
+  const persistProjectLogo = async (nextLogo?: string) => {
+    setIsSavingLogo(true);
+
+    try {
+      await saveProject({
+        ...project,
+        logo: nextLogo,
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to persist project logo:', error);
+      return false;
+    } finally {
+      setIsSavingLogo(false);
+    }
+  };
+
+  const ensureAiProvider = async () => {
+    if (!canUseAi) {
+      setIsUpgradeModalOpen(true);
+      message.warning('Las funciones IA en esta vista están disponibles en el plan Growth.');
+      return false;
+    }
+
+    const { hasAiProviderConfigured } = await import('../services/geminiService');
+    if (!hasAiProviderConfigured()) {
+      message.warning(
+        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleUpgradeClick = async (source: string) => {
+    try {
+      const { startUpgradeRequestFlow } = await import('../modules/plans/services/billingService');
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source,
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+
+  const handleEnterpriseClick = async () => {
+    try {
+      const { startUpgradeRequestFlow } = await import('../modules/plans/services/billingService');
+      await startUpgradeRequestFlow({
+        requestedPlan: 'enterprise',
+        source: 'about-view-upgrade-modal-enterprise',
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: null,
+        contactUrl: aiUpgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+
+  const buildProjectAiInput = () => ({
+    name: project.name,
+    description: project.description,
+    purpose: project.purpose,
+    coreRequirements: project.coreRequirements || [],
+    businessRules: project.businessRules || '',
+  });
+
+  const handleGenerateProjectAnalysis = async () => {
+    if (!(await ensureAiProvider())) return;
+
+    setActiveAiAction('analysis');
+    try {
+      const { analyzeProjectWithAI } = await import('../services/geminiService');
+      const aiProjectInsights = await analyzeProjectWithAI(buildProjectAiInput(), project.id);
+      await saveProject({ ...project, aiProjectInsights });
+      message.success('Análisis del proyecto generado con IA');
+    } catch (error) {
+      console.error('Failed to generate project analysis:', error);
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos generar el análisis del proyecto.',
+      );
+    } finally {
+      setActiveAiAction(null);
+    }
+  };
+
+  const handleGenerateWireframeBrief = async () => {
+    if (!(await ensureAiProvider())) return;
+
+    setActiveAiAction('brief');
+    try {
+      const { generateProjectWireframeBrief } = await import('../services/geminiService');
+      const aiWireframeBrief = await generateProjectWireframeBrief(
+        buildProjectAiInput(),
+        project.id,
+      );
+      await saveProject({ ...project, aiWireframeBrief });
+      message.success('Brief de wireframe generado con IA');
+    } catch (error) {
+      console.error('Failed to generate wireframe brief:', error);
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos generar el brief de wireframe.',
+      );
+    } finally {
+      setActiveAiAction(null);
+    }
+  };
+
+  const activeAiDetailTitle =
+    openAiDetail === 'analysis' ? 'Análisis del proyecto con IA' : 'Brief de wireframe con IA';
+  const activeAiDetailContent =
+    openAiDetail === 'analysis' ? project.aiProjectInsights : project.aiWireframeBrief;
+
+  const handleCopyAiDetail = async () => {
+    if (!activeAiDetailContent?.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(activeAiDetailContent);
+      message.success('Contenido copiado');
+    } catch (error) {
+      console.error('Failed to copy AI detail:', error);
+      message.error('No pudimos copiar el contenido.');
+    }
+  };
+
+  const handleImproveMeetingNotes = async () => {
+    if (!(await ensureAiProvider())) return;
+
+    try {
+      const values = await meetingNoteForm.validateFields(['notes']);
+      const rawNotes = String(values.notes || '').trim();
+
+      if (!rawNotes) {
+        message.warning('Escribe las notas base antes de pedir ayuda a la IA.');
+        return;
+      }
+
+      setIsImprovingMeetingNotes(true);
+      const { improveMeetingNotesWithAI } = await import('../services/geminiService');
+      const aiResult = await improveMeetingNotesWithAI(rawNotes, project.id);
+
+      meetingNoteForm.setFieldsValue({
+        aiSummary: aiResult.summary || '',
+        aiDecisions: aiResult.decisions || '',
+        aiActions: aiResult.actions || '',
+        aiNextSteps: aiResult.nextSteps || '',
+      });
+
+      message.success('La IA mejoró y estructuró la minuta.');
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Failed to improve meeting notes with AI:', error);
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos mejorar la minuta con IA.',
+      );
+    } finally {
+      setIsImprovingMeetingNotes(false);
+    }
+  };
+
+  const handleSaveMeetingNote = async () => {
+    try {
+      const values = await meetingNoteForm.validateFields();
+      setIsSavingMeetingNote(true);
+      await saveMeetingNote({
+        id: editingMeetingNote?.id || `note-${Date.now()}`,
+        projectId: project.id,
+        title: String(values.title || '').trim() || `Minuta del ${values.date}`,
+        date: values.date,
+        time: String(values.time || '').trim(),
+        participants: Array.isArray(values.participants)
+          ? values.participants
+              .map((item: string) => item.trim())
+              .filter(Boolean)
+              .join(', ')
+          : String(values.participants || '').trim(),
+        notes: String(values.notes || '').trim(),
+        aiSummary: String(values.aiSummary || '').trim() || undefined,
+        aiDecisions: String(values.aiDecisions || '').trim() || undefined,
+        aiActions: String(values.aiActions || '').trim() || undefined,
+        aiNextSteps: String(values.aiNextSteps || '').trim() || undefined,
+      });
+      message.success(
+        editingMeetingNote ? 'Minuta actualizada correctamente' : 'Minuta creada correctamente',
+      );
+      closeMeetingModal();
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Failed to save meeting note:', error);
+      message.error(error instanceof Error ? error.message : 'No pudimos guardar la minuta.');
+    } finally {
+      setIsSavingMeetingNote(false);
+    }
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    if (!validateInlineImageFile(file)) return false;
+
+    try {
+      const base64 = await readFileAsDataUrl(file);
+      const nextLogo = base64 || undefined;
+      const previousLogo = project.logo;
+
+      setLogoPreview(nextLogo);
+
+      const persisted = await persistProjectLogo(nextLogo);
+      if (!persisted) {
+        setLogoPreview(previousLogo);
+        message.error('No pudimos guardar el avatar del proyecto.');
+        return false;
+      }
+
+      message.success('Avatar del proyecto actualizado.');
+    } catch (error) {
+      console.error('Failed to read project logo:', error);
+      message.error('No pudimos cargar la imagen.');
+    }
+
+    return false;
   };
 
   const handleSaveProject = async () => {
     try {
       const values = await projectForm.validateFields();
-      const updatedProject = {
+      const updatedProject: Project = {
         ...project,
-        name: values.name,
-        description: values.description,
-        purpose: values.purpose,
-        teamMembers: (values.teamMembers || [])
-          .map((member: string) => member.trim())
-          .filter(Boolean),
-        coreRequirements: values.coreRequirements
-          ? values.coreRequirements
-              .split('\n')
-              .map((rule: string) => rule.trim())
-              .filter(Boolean)
+        name: values.name.trim(),
+        description: String(values.description || '').trim(),
+        version: String(values.version || '').trim(),
+        status: values.status,
+        purpose: String(values.purpose || '').trim(),
+        teamMembers: Array.isArray(values.teamMembers)
+          ? values.teamMembers.map((member: string) => member.trim()).filter(Boolean)
           : [],
-        businessRules: values.businessRules,
+        coreRequirements: String(values.coreRequirements || '')
+          .split('\n')
+          .map(item => item.trim())
+          .filter(Boolean),
+        businessRules: String(values.businessRules || '').trim(),
+        logo: logoPreview,
       };
+
       await saveProject(updatedProject);
-      setIsEditProjectModalOpen(false);
-      message.success('Informacion del proyecto actualizada');
+      message.success('Información del proyecto actualizada');
+      setIsEditModalOpen(false);
     } catch (error) {
-      console.error('Validation failed:', error);
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Failed to save project:', error);
+      message.error('No pudimos guardar los cambios del proyecto.');
     }
   };
 
-  const openProjectAiResult = (title: string, content: string) => {
-    setProjectAiModalTitle(title);
-    setProjectAiModalContent(content);
-    setIsProjectAiModalOpen(true);
-  };
-
-  const handleCopyProjectAiContent = async () => {
-    if (!projectAiModalContent.trim()) return;
-
-    try {
-      await navigator.clipboard.writeText(projectAiModalContent);
-      message.success('Contenido copiado');
-    } catch (error) {
-      console.error('Copy failed:', error);
-      message.error('No se pudo copiar el contenido');
-    }
-  };
-
-  const handleGenerateProjectAi = async (mode: 'analysis' | 'wireframe') => {
-    const {
-      analyzeProjectWithAI,
-      generateProjectWireframeBrief,
-      hasAiProviderConfigured,
-    } = await import('../services/geminiService');
-
-    if (!hasAiProviderConfigured()) {
-      message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar esta acción.');
-      return;
-    }
-
-    if (!hasProjectContext) {
-      message.warning(
-        'Completa al menos objetivo, descripcion, requisitos o normas antes de generar contenido con IA.',
-      );
-      return;
-    }
-
-    setProjectAiLoadingMode(mode);
-
-    try {
-      const input = {
-        name: project.name,
-        description: project.description,
-        purpose: project.purpose,
-        coreRequirements: project.coreRequirements || [],
-        businessRules: project.businessRules,
-      };
-
-      if (mode === 'analysis') {
-        const insights = await analyzeProjectWithAI(input);
-        if (!insights) return;
-
-        await saveProject({
-          ...project,
-          aiProjectInsights: insights,
-        });
-
-        openProjectAiResult('Analisis del proyecto con IA', insights);
-        message.success('Analisis generado y guardado en el proyecto');
-        return;
-      }
-
-      const brief = await generateProjectWireframeBrief(input);
-      if (!brief) return;
-
-      await saveProject({
-        ...project,
-        aiWireframeBrief: brief,
-      });
-
-      openProjectAiResult('Brief de wireframe', brief);
-      message.success('Brief generado y guardado en el proyecto');
-    } catch (error) {
-      console.error('Project AI generation failed:', error);
-      const anyErr = error as Error;
-      const code = anyErr?.message || '';
-
-      if (code === 'GEMINI_API_KEY_INVALID') {
-        message.error('La API key configurada para IA no es válida.');
-        return;
-      }
-
-      if (code === 'GEMINI_API_KEY_LEAKED') {
-        message.error('La API key configurada para IA fue reportada como expuesta. Genera una nueva.');
-        return;
-      }
-
-      message.error('No se pudo generar el contenido con IA.');
-    } finally {
-      setProjectAiLoadingMode(null);
-    }
-  };
-
-  const handleAddNote = () => {
-    setSelectedNote(null);
-    noteForm.resetFields();
-    noteForm.setFieldsValue({
-      title: '',
-      date: dayjs(),
-      time: dayjs().startOf('hour'),
-      participants: [],
-      notes: '',
-    });
-    setIsNoteModalOpen(true);
-  };
-
-  const handleEditNote = (note: MeetingNote) => {
-    setSelectedNote(note);
-    noteForm.setFieldsValue({
-      title: note.title,
-      date: dayjs(note.date),
-      time: dayjs(`2000-01-01T${note.time}`),
-      participants: splitParticipants(note.participants),
-      notes: note.notes,
-    });
-    setIsViewNoteModalOpen(false);
-    setIsNoteModalOpen(true);
-  };
-
-  const handleSaveNote = async () => {
-    try {
-      const values = await noteForm.validateFields();
-      const note: MeetingNote = {
-        id: selectedNote?.id || `note-${Date.now()}`,
-        projectId: project.id,
-        title: values.title.trim(),
-        date: values.date.format('YYYY-MM-DD'),
-        time: values.time.format('HH:mm'),
-        participants: values.participants.join(', '),
-        notes: values.notes,
-        aiSummary: selectedNote?.aiSummary,
-        aiDecisions: selectedNote?.aiDecisions,
-        aiActions: selectedNote?.aiActions,
-        aiNextSteps: selectedNote?.aiNextSteps,
-      };
-      await saveMeetingNote(note);
-      setIsNoteModalOpen(false);
-      setSelectedNote(null);
-      noteForm.resetFields();
-      message.success('Minuta guardada correctamente');
-    } catch (error) {
-      console.error('Validation failed:', error);
-    }
-  };
-
-  const handleImproveWithAI = async () => {
-    const notes = noteForm.getFieldValue('notes');
-    if (!notes) {
-      message.warning('Por favor ingresa algunas notas primero');
-      return;
-    }
-    const { hasAiProviderConfigured, improveMeetingNotesWithAI } = await import(
-      '../services/geminiService'
-    );
-    if (!hasAiProviderConfigured()) {
-      message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la mejora con IA.');
-      return;
-    }
-    setIsImproving(true);
-    try {
-      const result = await improveMeetingNotesWithAI(notes);
-      const formValues = noteForm.getFieldsValue();
-      setSelectedNote(prev =>
-        prev
-          ? {
-              ...prev,
-              aiSummary: result.summary,
-              aiDecisions: result.decisions,
-              aiActions: result.actions,
-              aiNextSteps: result.nextSteps,
-            }
-          : {
-              id: `note-${Date.now()}`,
-              projectId: project.id,
-              title: formValues.title || '',
-              date: formValues.date?.format?.('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
-              time: formValues.time?.format?.('HH:mm') || dayjs().format('HH:mm'),
-              participants: (formValues.participants || []).join(', '),
-              notes,
-              aiSummary: result.summary,
-              aiDecisions: result.decisions,
-              aiActions: result.actions,
-              aiNextSteps: result.nextSteps,
-            },
-      );
-      message.success('Notas mejoradas con IA');
-    } catch (error) {
-      console.error('AI Improvement failed:', error);
-      const anyErr: any = error as any;
-      const msg = (error instanceof Error ? error.message : anyErr?.message) || '';
-      const nestedMessage = (anyErr?.error?.message || anyErr?.message || '').toString();
-      const reason = anyErr?.error?.details?.[0]?.reason || anyErr?.details?.[0]?.reason;
-      const isLeakedKey = /reported as leaked/i.test(nestedMessage);
-      const isInvalidKey =
-        reason === 'API_KEY_INVALID' || /api key not valid/i.test(nestedMessage) || isLeakedKey;
-      if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
-        message.warning('Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la mejora con IA.');
-      } else if (isInvalidKey) {
-        message.error(
-          isLeakedKey
-            ? 'La API Key configurada en el entorno fue reportada como filtrada. Genera una nueva.'
-            : 'La API Key configurada en el entorno no es válida.',
-        );
-      } else {
-        message.error('Error al mejorar las notas con IA');
-      }
-    } finally {
-      setIsImproving(false);
-    }
-  };
-
-  const handleBeforeUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async event => {
-      const base64 = event.target?.result as string;
-      try {
-        await saveProject({ ...project, logo: base64 });
-        message.success('Logotipo actualizado');
-      } catch (error) {
-        console.error('Error updating logo:', error);
-        message.error('Error al actualizar el logotipo');
-      }
-    };
-    reader.readAsDataURL(file);
-    return false;
-  };
-
-  const renderNoteDetails = (note: MeetingNote) => {
-    setSelectedNote(note);
-    setIsViewNoteModalOpen(true);
-  };
+  const meetingHistoryColumns = [
+    {
+      title: 'Título',
+      dataIndex: 'title',
+      key: 'title',
+      render: (_: string, record: MeetingNote) => (
+        <div>
+          <Text strong className="text-slate-800">
+            {record.title || `Minuta del ${record.date}`}
+          </Text>
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1">
+              <CalendarOutlined />
+              {record.date}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <ClockCircleOutlined />
+              {record.time || 'Sin hora'}
+            </span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Participantes',
+      dataIndex: 'participants',
+      key: 'participants',
+      render: (value: string) => (
+        <Text className="text-sm text-slate-600">{value?.trim() || 'Sin participantes'}</Text>
+      ),
+    },
+    {
+      title: 'Resumen',
+      dataIndex: 'notes',
+      key: 'notes',
+      render: (value: string) => (
+        <Paragraph className="!mb-0 text-sm text-slate-500" ellipsis={{ rows: 2 }}>
+          {value?.trim() || 'Sin notas registradas.'}
+        </Paragraph>
+      ),
+    },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      width: 110,
+      render: (_: unknown, record: MeetingNote) =>
+        !isViewer ? (
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => openMeetingModal(record)}
+            className="text-slate-600"
+          />
+        ) : null,
+    },
+  ];
 
   return (
-    <div
-      className="space-y-6 pb-10"
-      style={{
-        background: `
-          radial-gradient(circle at 0% 0%, ${softSurface(qaPalette.accent)} 0%, transparent 22%),
-          radial-gradient(circle at 100% 18%, ${softSurface(qaPalette.primary)} 0%, transparent 18%)
-        `,
-      }}
-    >
+    <>
       <Row gutter={[24, 24]} align="stretch">
         <Col xs={24} xl={17}>
           <Card
@@ -599,444 +879,359 @@ export default function AboutView({ project }: { project: Project }) {
             }}
           >
             <div className="flex flex-col gap-8">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-start gap-5">
-                  <div className="relative shrink-0 group">
-                    <Avatar
-                      size={96}
-                      shape="square"
-                      src={project.logo || appBranding.logoUrl}
-                      className="border border-slate-100 shadow-lg"
-                      style={{
-                        borderRadius: 26,
-                        background:
-                          project.logo || appBranding.logoUrl
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex items-start gap-5">
+                    <div className="relative shrink-0 group">
+                      <Avatar
+                        size={96}
+                        shape="square"
+                        src={logoPreview}
+                        className="border border-slate-100 shadow-lg"
+                        style={{
+                          borderRadius: 26,
+                          background: logoPreview
                             ? undefined
                             : `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: 28,
-                      }}
-                    >
-                      {!project.logo &&
-                        !appBranding.logoUrl &&
-                        getInitials(project.name)}
-                    </Avatar>
-                    <Upload
-                      showUploadList={false}
-                      beforeUpload={handleBeforeUpload}
-                      accept=".png,.jpg,.jpeg,.svg"
-                      className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      <div className="flex h-full w-full cursor-pointer items-center justify-center rounded-[26px] bg-slate-950/25 text-white">
-                        <UploadOutlined className="text-xl" />
-                      </div>
-                    </Upload>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Space size={[8, 8]} wrap>
-                      <Tag
-                        variant="filled"
-                        className="rounded-full px-3 py-1 font-semibold"
-                        style={{
-                          color: qaPalette.primary,
-                          backgroundColor: softSurface(qaPalette.primary),
+                          color: '#fff',
+                          fontWeight: 700,
+                          fontSize: 28,
                         }}
                       >
-                        Project Overview
-                      </Tag>
-                      <Tag
-                        variant="filled"
-                        className="rounded-full px-3 py-1 font-semibold"
-                        style={{
-                          color: qaPalette.accent,
-                          backgroundColor: softSurface(qaPalette.accent),
-                        }}
-                      >
-                        Proyecto
-                      </Tag>
-                      <Tag
-                        variant="filled"
-                        className="rounded-full px-3 py-1 font-semibold"
-                        style={{
-                          color: projectStatusMeta.color,
-                          backgroundColor: softSurface(projectStatusMeta.color),
-                        }}
-                      >
-                        {projectStatusMeta.label}
-                      </Tag>
-                    </Space>
-
-                    <div>
-                      <Title level={2} className="!mb-2 !text-slate-950">
-                        {project.name}
-                      </Title>
-                      <Space size={16} wrap className="text-sm text-slate-500">
-                        <span className="inline-flex items-center gap-2">
-                          <FileTextOutlined />
-                          {project.version}
-                        </span>
-                        <span className="inline-flex items-center gap-2">
-                          <CalendarOutlined />
-                          {latestMeetingDate
-                            ? `Ultima actualizacion ${dayjs(latestMeetingDate).format('DD MMM YYYY')}`
-                            : 'Sin minutas registradas'}
-                        </span>
-                      </Space>
+                        {!logoPreview ? getInitials(project.name) : null}
+                      </Avatar>
+                      {!isViewer ? (
+                        <Upload
+                          showUploadList={false}
+                          beforeUpload={handleLogoUpload}
+                          accept=".png,.jpg,.jpeg,.webp,.svg"
+                          className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+                        >
+                          <div className="flex h-full w-full cursor-pointer items-center justify-center rounded-[26px] bg-slate-950/25 text-white">
+                            <UploadOutlined className="text-xl" />
+                          </div>
+                        </Upload>
+                      ) : null}
                     </div>
 
-                    <Paragraph className="!mb-0 max-w-3xl text-base leading-7 text-slate-500">
-                      {project.description ||
-                        'Gestiona el contexto del proyecto, su narrativa de negocio y las minutas clave del equipo QA en un solo espacio.'}
-                    </Paragraph>
+                    <div className="space-y-3">
+                      <Space size={[8, 8]} wrap>
+                        <Tag
+                          bordered={false}
+                          className="rounded-full px-3 py-1 font-semibold"
+                          style={{
+                            color: qaPalette.primary,
+                            backgroundColor: softSurface(qaPalette.primary),
+                          }}
+                        >
+                          Project Overview
+                        </Tag>
+                        <Tag
+                          bordered={false}
+                          className="rounded-full px-3 py-1 font-semibold"
+                          style={{
+                            color: qaPalette.accent,
+                            backgroundColor: softSurface(qaPalette.accent),
+                          }}
+                        >
+                          Proyecto
+                        </Tag>
+                        <Tag
+                          bordered={false}
+                          className="rounded-full px-3 py-1 font-semibold"
+                          style={{
+                            color: statusMeta.color,
+                            backgroundColor: softSurface(statusMeta.color),
+                          }}
+                        >
+                          {statusMeta.label}
+                        </Tag>
+                      </Space>
 
-                    <Space size={[10, 10]} wrap>
-                      <Tag variant="filled" className="rounded-full px-3 py-1 text-slate-500">
-                        {project.teamMembers?.length || 0} participantes base
-                      </Tag>
-                      <Tag variant="filled" className="rounded-full px-3 py-1 text-slate-500">
-                        {businessRuleItems.length} reglas activas
-                      </Tag>
-                    </Space>
+                      <div>
+                        <Title level={2} className="!mb-2 !text-slate-950">
+                          {project.name}
+                        </Title>
+                        <Space size={16} wrap className="text-sm text-slate-500">
+                          <span className="inline-flex items-center gap-2">
+                            <ProfileOutlined />
+                            {project.version || 'Sin versión registrada'}
+                          </span>
+                          <span className="inline-flex items-center gap-2">
+                            <CalendarOutlined />
+                            {stats.latestMeetingDate
+                              ? `Última actualización ${dayjs(stats.latestMeetingDate).format('DD MMM YYYY')}`
+                              : 'Sin minutas registradas'}
+                          </span>
+                        </Space>
+                      </div>
+
+                      <Paragraph className="!mb-0 max-w-3xl text-base leading-7 text-slate-500">
+                        {project.description ||
+                          'Gestiona el contexto del proyecto, su narrativa de negocio y las minutas clave del equipo QA en un solo espacio.'}
+                      </Paragraph>
+                    </div>
                   </div>
+
+                  {!isViewer ? (
+                    <div className="flex justify-end">
+                      <IconActionButton
+                        onClick={handleOpenEdit}
+                        label="Editar proyecto"
+                        title="Editar proyecto"
+                      >
+                        <IconBadge
+                          accent={qaPalette.primary}
+                          className="h-10 w-10 rounded-xl border-current bg-white text-current shadow-none"
+                        >
+                          <EditOutlined className="text-sm" />
+                        </IconBadge>
+                      </IconActionButton>
+                    </div>
+                  ) : null}
                 </div>
 
-                {!isViewer && (
-                  <Button
-                    type="primary"
-                    icon={<EditOutlined />}
-                    onClick={handleEditProject}
-                    className="h-12 rounded-2xl px-6 font-semibold"
-                  >
-                    Editar proyecto
-                  </Button>
-                )}
+                <div className="flex flex-wrap items-stretch justify-center gap-3">
+                  <MetricPill
+                    label="Funcionalidades"
+                    value={stats.functionalities}
+                    accent={qaPalette.primary}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Casos"
+                    value={stats.testCases}
+                    accent={qaPalette.accent}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Bugs activos"
+                    value={stats.activeBugs}
+                    accent={qaPalette.functionalityStatus.failed}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Minutas"
+                    value={stats.notes}
+                    accent={qaPalette.functionalityStatus.inProgress}
+                    className="w-full sm:w-[180px]"
+                  />
+                </div>
               </div>
 
-              <Row gutter={[20, 20]}>
-                <Col xs={24}>
-                  <ExecutiveInfoCard
-                    icon={<EyeOutlined className="text-2xl" />}
-                    title="Purpose and Vision"
-                    accent={qaPalette.accent}
-                  >
-                    <Paragraph className="!mb-0 text-base leading-8 text-slate-600">
-                      {project.purpose ||
-                        'Define aqui el objetivo estrategico del proyecto y la vision que guia al equipo.'}
-                    </Paragraph>
-                  </ExecutiveInfoCard>
-                </Col>
-              </Row>
+              {isLoading ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  className="rounded-2xl"
+                  message="Cargando contexto del proyecto"
+                  description="Estamos reuniendo funcionalidades, casos, bugs y minutas asociadas."
+                />
+              ) : null}
 
-              <Row gutter={[20, 20]}>
-                <Col xs={24}>
-                  <Card
-                    variant="borderless"
-                    className="rounded-[28px] qa-surface-card"
-                    styles={{ body: { padding: 28 } }}
-                  >
-                    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
-                          style={{ color: '#6d28d9' }}
-                        >
-                          <RobotOutlined className="text-xl" />
-                        </div>
-                        <div>
-                          <Title level={4} className="!mb-0 !text-slate-900">
-                            Insights con IA y brief de wireframe
-                          </Title>
-                          <Text className="text-slate-400">
-                            Reutiliza el analisis del proyecto y el prompt listo para herramientas de
-                            wireframing.
-                          </Text>
+              <SurfaceCard
+                title="Purpose and Vision"
+                icon={<BulbOutlined className="text-2xl" />}
+                accent={qaPalette.accent}
+              >
+                <Paragraph className="!mb-0 text-base leading-8 text-slate-600">
+                  {project.purpose ||
+                    'Define aquí el objetivo estratégico del proyecto y la visión que guía al equipo.'}
+                </Paragraph>
+              </SurfaceCard>
+
+              <SurfaceCard
+                title="Insights con IA y brief de wireframe"
+                icon={<RobotOutlined className="text-2xl" />}
+                accent="#6d28d9"
+                extra={
+                  !isViewer && canUseAi ? (
+                    <Space size={12} wrap>
+                      <HeaderActionButton
+                        icon={<RobotOutlined />}
+                        label={
+                          project.aiProjectInsights ? 'Regenerar análisis' : 'Generar análisis'
+                        }
+                        accent="#7c3aed"
+                        onClick={handleGenerateProjectAnalysis}
+                        loading={activeAiAction === 'analysis'}
+                        disabled={activeAiAction === 'brief'}
+                      />
+                      <HeaderActionButton
+                        icon={<FileTextOutlined />}
+                        label={project.aiWireframeBrief ? 'Regenerar brief' : 'Generar brief'}
+                        accent={qaPalette.accent}
+                        onClick={handleGenerateWireframeBrief}
+                        loading={activeAiAction === 'brief'}
+                        disabled={activeAiAction === 'analysis'}
+                      />
+                    </Space>
+                  ) : null
+                }
+              >
+                <div className="mb-6">
+                  <Text className="text-slate-400">
+                    Reutiliza el análisis del proyecto y el prompt listo para herramientas de
+                    wireframing.
+                  </Text>
+                </div>
+
+                {!isViewer && !canUseAi ? (
+                  <div className="mb-6">
+                    <AiUpgradeBanner
+                      onViewPlans={() => setIsUpgradeModalOpen(true)}
+                      onUpgradeGrowth={() => void handleUpgradeClick('about-view-ai-banner')}
+                    />
+                  </div>
+                ) : null}
+
+                <Row gutter={[20, 20]}>
+                  <Col xs={24} lg={12}>
+                    <Card
+                      variant="borderless"
+                      className="h-full rounded-[24px] border border-slate-100 bg-white/90"
+                      styles={{ body: { padding: 22 } }}
+                    >
+                      <div className="mb-4">
+                        <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-600">
+                          Análisis del proyecto
+                        </Text>
+                        <div className="mt-1 text-sm text-slate-400">
+                          Riesgos, vacíos y recomendaciones accionables
                         </div>
                       </div>
-
-                      {!isViewer && (
-                        <Space size={12} wrap>
-                          <Button
-                            icon={<BulbOutlined />}
-                            loading={projectAiLoadingMode === 'analysis'}
-                            disabled={projectAiLoadingMode === 'wireframe'}
-                            onClick={() => void handleGenerateProjectAi('analysis')}
-                            className="rounded-2xl"
-                          >
-                            Analizar con IA
-                          </Button>
-                          <Button
-                            icon={<FileTextOutlined />}
-                            loading={projectAiLoadingMode === 'wireframe'}
-                            disabled={projectAiLoadingMode === 'analysis'}
-                            onClick={() => void handleGenerateProjectAi('wireframe')}
-                            className="rounded-2xl"
-                          >
-                            Generar brief
-                          </Button>
-                        </Space>
-                      )}
-                    </div>
-
-                    <Row gutter={[20, 20]}>
-                      <Col xs={24} lg={12}>
-                        <Card
-                          variant="borderless"
-                          className="h-full rounded-[24px] border border-slate-100 bg-white/90"
-                          styles={{ body: { padding: 22 } }}
-                        >
-                          <div className="mb-4 flex items-center justify-between gap-3">
-                            <div>
-                              <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-600">
-                                Analisis del proyecto
-                              </Text>
-                              <div className="mt-1 text-sm text-slate-400">
-                                Riesgos, vacios y recomendaciones accionables
-                              </div>
-                            </div>
-                            {project.aiProjectInsights && (
-                              <Button
-                                size="small"
-                                icon={<EyeOutlined />}
-                                onClick={() =>
-                                  openProjectAiResult(
-                                    'Analisis del proyecto con IA',
-                                    project.aiProjectInsights || '',
-                                  )
-                                }
-                              >
-                                Ver
-                              </Button>
-                            )}
-                          </div>
-
-                          {project.aiProjectInsights ? (
-                            <Paragraph
-                              className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600"
-                              ellipsis={{ rows: 7, expandable: false }}
-                            >
+                      {project.aiProjectInsights ? (
+                        <div className="space-y-4">
+                          <div className="max-h-[420px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                            <Paragraph className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600">
                               {project.aiProjectInsights}
                             </Paragraph>
-                          ) : (
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="Aun no has generado el analisis del proyecto."
-                            />
-                          )}
-                        </Card>
-                      </Col>
-
-                      <Col xs={24} lg={12}>
-                        <Card
-                          variant="borderless"
-                          className="h-full rounded-[24px] border border-slate-100 bg-white/90"
-                          styles={{ body: { padding: 22 } }}
-                        >
-                          <div className="mb-4 flex items-center justify-between gap-3">
-                            <div>
-                              <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600">
-                                Brief de wireframe
-                              </Text>
-                              <div className="mt-1 text-sm text-slate-400">
-                                Texto listo para copiar en Stitch u otra herramienta
-                              </div>
-                            </div>
-                            {project.aiWireframeBrief && (
-                              <Button
-                                size="small"
-                                icon={<EyeOutlined />}
-                                onClick={() =>
-                                  openProjectAiResult(
-                                    'Brief de wireframe',
-                                    project.aiWireframeBrief || '',
-                                  )
-                                }
-                              >
-                                Ver
-                              </Button>
-                            )}
                           </div>
+                          <Button onClick={() => setOpenAiDetail('analysis')}>Ver detalle</Button>
+                        </div>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="Aún no has generado el análisis del proyecto."
+                        />
+                      )}
+                    </Card>
+                  </Col>
 
-                          {project.aiWireframeBrief ? (
-                            <Paragraph
-                              className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600"
-                              ellipsis={{ rows: 7, expandable: false }}
-                            >
+                  <Col xs={24} lg={12}>
+                    <Card
+                      variant="borderless"
+                      className="h-full rounded-[24px] border border-slate-100 bg-white/90"
+                      styles={{ body: { padding: 22 } }}
+                    >
+                      <div className="mb-4">
+                        <Text className="text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600">
+                          Brief de wireframe
+                        </Text>
+                        <div className="mt-1 text-sm text-slate-400">
+                          Texto listo para copiar en Stitch u otra herramienta
+                        </div>
+                      </div>
+                      {project.aiWireframeBrief ? (
+                        <div className="space-y-4">
+                          <div className="max-h-[420px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                            <Paragraph className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600">
                               {project.aiWireframeBrief}
                             </Paragraph>
-                          ) : (
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="Aun no has generado el brief de wireframe."
-                            />
-                          )}
-                        </Card>
-                      </Col>
-                    </Row>
-                  </Card>
-                </Col>
-              </Row>
+                          </div>
+                          <Button onClick={() => setOpenAiDetail('brief')}>
+                            Ver detalle completo
+                          </Button>
+                        </div>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="Aún no has generado el brief de wireframe."
+                        />
+                      )}
+                    </Card>
+                  </Col>
+                </Row>
+              </SurfaceCard>
 
               <Row gutter={[20, 20]}>
                 <Col xs={24}>
-                  <Card
-                    variant="borderless"
-                    className="rounded-[28px] qa-surface-card"
-                    styles={{ body: { padding: 28 } }}
+                  <SurfaceCard
+                    title="Participantes del proyecto"
+                    icon={<TeamOutlined className="text-2xl" />}
+                    accent={qaPalette.functionalityStatus.completed}
                   >
-                    <div className="mb-6 flex items-center gap-3">
-                      <div
-                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
-                        style={{ color: qaPalette.functionalityStatus.completed }}
-                      >
-                        <TeamOutlined className="text-xl" />
-                      </div>
-                      <div>
-                        <Title level={4} className="!mb-0 !text-slate-900">
-                          Participantes del proyecto
-                        </Title>
-                        <Text className="text-slate-400">
-                          {(project.teamMembers || []).length} personas base asociadas al proyecto
-                        </Text>
-                      </div>
-                    </div>
-
-                    {Array.isArray(project.teamMembers) && project.teamMembers.length > 0 ? (
+                    <Text className="mb-5 block text-slate-400">
+                      {stats.participants} personas base asociadas al proyecto
+                    </Text>
+                    {project.teamMembers && project.teamMembers.length > 0 ? (
                       <div className="flex flex-wrap gap-3">
-                        {project.teamMembers.map(member => {
-                          const matchedMember = participantLookup.get(normalizeParticipantKey(member));
-
-                          return (
-                            <Tag
-                              key={member}
-                              variant="filled"
-                              className="m-0 flex items-center gap-2 rounded-full px-3 py-2 text-slate-700"
-                              style={{ backgroundColor: softSurface(qaPalette.accent) }}
-                            >
-                              <Avatar
-                                size={24}
-                                src={matchedMember?.avatarUrl}
-                                icon={<UserOutlined />}
-                                style={{
-                                  backgroundColor: matchedMember?.avatarUrl
-                                    ? undefined
-                                    : qaPalette.primary,
-                                }}
-                              />
-                              <span>{member}</span>
-                            </Tag>
-                          );
-                        })}
+                        {project.teamMembers.map(member => (
+                          <Tag
+                            key={member}
+                            variant="filled"
+                            className="m-0 rounded-full px-4 py-2 text-slate-700"
+                            style={{ backgroundColor: softSurface(qaPalette.accent) }}
+                          >
+                            {member}
+                          </Tag>
+                        ))}
                       </div>
                     ) : (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="No hay participantes base definidos para este proyecto."
-                      />
+                      <Empty description="No hay participantes base definidos para este proyecto." />
                     )}
-                  </Card>
+                  </SurfaceCard>
                 </Col>
 
                 <Col xs={24} md={12}>
-                  <Card
-                    variant="borderless"
-                    className="h-full rounded-[28px] qa-surface-card"
-                    styles={{ body: { padding: 28 } }}
+                  <SurfaceCard
+                    title="Core Requirements"
+                    icon={<CheckCircleOutlined className="text-2xl" />}
+                    accent={qaPalette.primary}
                   >
-                    <div className="mb-6 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
-                          style={{ color: qaPalette.primary }}
-                        >
-                          <SafetyOutlined className="text-xl" />
-                        </div>
-                        <div>
-                          <Title level={4} className="!mb-0 !text-slate-900">
-                            Core Requirements
-                          </Title>
-                          <Text className="text-slate-400">
-                            {project.coreRequirements?.length || 0} items clave
-                          </Text>
-                        </div>
-                      </div>
-                    </div>
+                    {project.coreRequirements && project.coreRequirements.length > 0 ? (
+                      <List
+                        dataSource={project.coreRequirements}
+                        renderItem={item => (
+                          <List.Item className="!px-0">
+                            <Text className="text-base leading-7 text-slate-700">{item}</Text>
+                          </List.Item>
+                        )}
+                      />
+                    ) : (
+                      <Empty description="No hay requerimientos core definidos." />
+                    )}
+                  </SurfaceCard>
+                </Col>
 
-                    {Array.isArray(project.coreRequirements) &&
-                    project.coreRequirements.length > 0 ? (
+                <Col xs={24} md={12}>
+                  <SurfaceCard
+                    title="Business Rules"
+                    icon={<FlagOutlined className="text-2xl" />}
+                    accent={qaPalette.functionalityStatus.inProgress}
+                  >
+                    {businessRules.length > 0 ? (
                       <div className="space-y-4">
-                        {project.coreRequirements.map((requirement, index) => (
-                          <div key={`${requirement}-${index}`} className="flex items-start gap-3">
-                            <div
-                              className="mt-1 flex h-8 w-8 items-center justify-center rounded-xl"
-                              style={{
-                                backgroundColor: softSurface(qaPalette.primary),
-                                color: qaPalette.primary,
-                              }}
-                            >
-                              <CheckCircleOutlined />
-                            </div>
-                            <Text className="text-base leading-7 text-slate-700">
-                              {requirement}
+                        {businessRules.map((rule, index) => (
+                          <div
+                            key={`${rule}-${index}`}
+                            className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
+                            style={{
+                              borderLeft: `4px solid ${
+                                index % 2 === 0 ? qaPalette.primary : qaPalette.accent
+                              }`,
+                            }}
+                          >
+                            <Text className="block text-base font-semibold text-slate-800">
+                              {rule}
                             </Text>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="No hay requerimientos core definidos."
-                      />
+                      <Empty description="No hay reglas de negocio definidas." />
                     )}
-                  </Card>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Card
-                    variant="borderless"
-                    className="h-full rounded-[28px] qa-surface-card"
-                    styles={{ body: { padding: 28 } }}
-                  >
-                    <div className="mb-6 flex items-center gap-3">
-                      <div
-                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm"
-                        style={{ color: qaPalette.functionalityStatus.inProgress }}
-                      >
-                        <CheckCircleOutlined className="text-xl" />
-                      </div>
-                      <div>
-                        <Title level={4} className="!mb-0 !text-slate-900">
-                          Business Rules
-                        </Title>
-                        <Text className="text-slate-400">Lineamientos operativos del proyecto</Text>
-                      </div>
-                    </div>
-
-                    {businessRuleItems.length > 0 ? (
-                      <div className="space-y-4">
-                        {businessRuleItems.map((rule, index) => {
-                          const accent = index % 2 === 0 ? qaPalette.primary : qaPalette.accent;
-                          return (
-                            <div
-                              key={`${rule}-${index}`}
-                              className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
-                              style={{ borderLeft: `4px solid ${accent}` }}
-                            >
-                              <Text className="block text-base font-semibold text-slate-800">
-                                {rule}
-                              </Text>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="No hay reglas de negocio definidas."
-                      />
-                    )}
-                  </Card>
+                  </SurfaceCard>
                 </Col>
               </Row>
             </div>
@@ -1050,179 +1245,106 @@ export default function AboutView({ project }: { project: Project }) {
             styles={{ body: { padding: 24 } }}
           >
             <div className="flex h-full flex-col gap-6">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor: softSurface(qaPalette.primary),
-                      color: qaPalette.primary,
-                    }}
-                  >
-                    <MessageOutlined className="text-xl" />
-                  </div>
-                  <div>
-                    <Title level={4} className="!mb-0 !text-slate-900">
-                      Minutas de Reunion
-                    </Title>
-                    <Text className="text-slate-400">Seguimiento de conversaciones y acuerdos</Text>
-                  </div>
-                </div>
-                {!isViewer && (
-                  <Button
-                    type="text"
-                    icon={<PlusOutlined />}
-                    onClick={handleAddNote}
-                    className="rounded-2xl"
-                  />
-                )}
-              </div>
-
-              {meetingNotes.length > RECENT_NOTES_LIMIT && (
-                <div className="-mt-2 flex justify-end">
-                  <Button
-                    type="link"
-                    className="px-0 font-medium"
-                    onClick={() => setIsAllNotesModalOpen(true)}
-                  >
-                    Ver todas las minutas
-                  </Button>
-                </div>
-              )}
-
-              <Row gutter={[12, 12]}>
-                <Col span={12}>
-                  <MeetingInsightCard
-                    title="Minutas"
-                    value={noteStats.totalNotes}
-                    helper="sesiones registradas"
-                    accent={qaPalette.primary}
-                  />
-                </Col>
-                <Col span={12}>
-                  <MeetingInsightCard
-                    title="Participantes"
-                    value={noteStats.uniqueParticipants}
-                    helper="personas unicas"
-                    accent={qaPalette.accent}
-                  />
-                </Col>
-              </Row>
-
-              <div className="space-y-4">
-                {meetingNotes.length > 0 ? (
-                  recentMeetingNotes.map(note => {
-                      const noteParticipants = splitParticipants(note.participants);
-                      return (
-                        <Card
-                          key={note.id}
-                          hoverable
-                          variant="borderless"
-                          className="rounded-[24px] border border-slate-100 bg-white/90"
-                          styles={{ body: { padding: 18 } }}
-                          onClick={() => renderNoteDetails(note)}
+              <SurfaceCard
+                title="Minutas de Reunión"
+                icon={<MessageOutlined className="text-2xl" />}
+                accent={qaPalette.primary}
+                className="!rounded-[24px]"
+                extra={
+                  <div className="flex items-center gap-2">
+                    {meetingNotes.length > 3 ? (
+                      <Button
+                        type="text"
+                        onClick={() => setIsMeetingHistoryOpen(true)}
+                        className="rounded-2xl px-3 font-semibold text-slate-500 hover:!bg-slate-50 hover:!text-slate-700"
+                      >
+                        Ver más
+                      </Button>
+                    ) : null}
+                    {!isViewer ? (
+                      <IconActionButton
+                        onClick={openMeetingModal}
+                        label="Agregar minuta"
+                        title="Agregar minuta"
+                      >
+                        <IconBadge
+                          accent={qaPalette.primary}
+                          className="h-10 w-10 rounded-xl border-current bg-white text-current shadow-none"
                         >
-                          <div className="space-y-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <Tag
-                                variant="filled"
-                                className="rounded-full px-3 py-1 font-semibold"
-                                style={{
-                                  color: qaPalette.primary,
-                                  backgroundColor: softSurface(qaPalette.primary),
-                                }}
-                              >
-                                General
-                              </Tag>
-                              <Text className="text-xs text-slate-400">{note.date}</Text>
-                            </div>
-
-                            <div>
-                              <Title level={5} className="!mb-2 !text-slate-900">
-                                {getMeetingNoteTitle(note)}
-                              </Title>
-                              <Space size={12} wrap className="text-sm text-slate-500">
-                                <span className="inline-flex items-center gap-1">
-                                  <ClockCircleOutlined />
-                                  {note.time}
-                                </span>
-                              </Space>
-                              <Paragraph
-                                className="!mb-0 !mt-3 text-sm leading-6 text-slate-500"
-                                ellipsis={{ rows: 2, expandable: false }}
-                              >
-                                {getMeetingNoteExcerpt(note.notes)}
-                              </Paragraph>
-                            </div>
-
-                            <Avatar.Group size="small" max={{ count: 3 }}>
-                              {noteParticipants.map(participant => (
-                                <Avatar
-                                  key={`${note.id}-${participant}`}
-                                  src={participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl}
-                                  style={{
-                                    background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
-                                  }}
-                                >
-                                  {getInitials(participant)}
-                                </Avatar>
-                              ))}
-                            </Avatar.Group>
-
-                            <Space size={[8, 8]} wrap>
-                              {note.aiSummary && (
-                                <Tag
-                                  variant="filled"
-                                  className="rounded-full px-3 py-1"
-                                  style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}
-                                >
-                                  IA
-                                </Tag>
-                              )}
-                              {noteParticipants.slice(0, 2).map(participant => (
-                                <Tag
-                                  key={`${note.id}-tag-${participant}`}
-                                  variant="filled"
-                                  className="rounded-full px-3 py-1 text-slate-500"
-                                >
-                                  {participant}
-                                </Tag>
-                              ))}
-                            </Space>
-                          </div>
-                        </Card>
-                      );
-                    })
-                ) : null}
-
-                {!isViewer && (
-                <button
-                  type="button"
-                  onClick={handleAddNote}
-                  className="flex w-full items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-white/55 px-6 py-10 text-center transition-all hover:-translate-y-0.5 hover:border-[var(--qa-color-accent)] hover:bg-white"
-                >
-                  <div className="space-y-3">
-                    <div
-                      className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-                      style={{
-                        backgroundColor: softSurface(qaPalette.primary),
-                        color: qaPalette.primary,
-                      }}
-                    >
-                      <PlusOutlined className="text-lg" />
-                    </div>
-                    <div>
-                      <Text className="block text-base font-semibold text-slate-700">
-                        Nueva minuta de reunión
-                      </Text>
-                      <Text className="text-slate-400">
-                        Documenta acuerdos, bloqueos y siguientes pasos.
-                      </Text>
-                    </div>
+                          <PlusOutlined className="text-lg" />
+                        </IconBadge>
+                      </IconActionButton>
+                    ) : null}
                   </div>
-                </button>
+                }
+              >
+                <Text className="mb-5 block text-slate-400">
+                  Seguimiento de conversaciones y acuerdos
+                </Text>
+
+                <Row gutter={[12, 12]} className="mb-4">
+                  <Col span={12}>
+                    <MetricPill label="Minutas" value={stats.notes} accent={qaPalette.primary} />
+                  </Col>
+                  <Col span={12}>
+                    <MetricPill
+                      label="Participantes"
+                      value={stats.participants}
+                      accent={qaPalette.accent}
+                    />
+                  </Col>
+                </Row>
+
+                {meetingNotes.length > 0 ? (
+                  <div className="space-y-5">
+                    {meetingNotes.slice(0, 3).map(note => (
+                      <Card
+                        key={note.id}
+                        hoverable
+                        variant="borderless"
+                        className="rounded-[24px] border border-slate-100 bg-white/90"
+                        styles={{ body: { padding: 18 } }}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <Tag
+                              bordered={false}
+                              className="rounded-full px-3 py-1 font-semibold"
+                              style={{
+                                color: qaPalette.primary,
+                                backgroundColor: softSurface(qaPalette.primary),
+                              }}
+                            >
+                              General
+                            </Tag>
+                            <Text className="text-xs text-slate-400">{note.date}</Text>
+                          </div>
+
+                          <div>
+                            <Title level={5} className="!mb-1 !text-slate-900">
+                              {note.title || `Minuta del ${note.date}`}
+                            </Title>
+                            <Space size={12} wrap className="text-sm text-slate-500">
+                              <span className="inline-flex items-center gap-1">
+                                <ClockCircleOutlined />
+                                {note.time || 'Sin hora'}
+                              </span>
+                            </Space>
+                            <Paragraph
+                              className="!mb-0 !mt-3 text-sm leading-6 text-slate-500"
+                              ellipsis={{ rows: 2, expandable: false }}
+                            >
+                              {note.notes || 'Sin notas registradas.'}
+                            </Paragraph>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description="No hay minutas registradas todavía." />
                 )}
-              </div>
+              </SurfaceCard>
 
               <div
                 className="mt-auto rounded-[28px] p-6 text-white"
@@ -1232,20 +1354,52 @@ export default function AboutView({ project }: { project: Project }) {
               >
                 <div className="mb-3 flex items-center justify-between">
                   <Text className="!text-white">Project Progress</Text>
-                  <Text className="!text-white/75">{completionPercent}%</Text>
+                  <Text className="!text-white/75">{stats.documentationScore}%</Text>
                 </div>
                 <Progress
-                  percent={completionPercent}
+                  percent={stats.documentationScore}
                   showInfo={false}
                   strokeColor={qaPalette.accent}
-                  railColor="rgba(255,255,255,0.16)"
+                  trailColor="rgba(255,255,255,0.16)"
                   size={{ height: 8 }}
                 />
                 <Text className="mt-4 block !text-white/80">
-                  {noteStats.aiEnhanced} minutas mejoradas con IA y{' '}
-                  {project.coreRequirements?.length || 0} requerimientos documentados.
+                  {stats.notes} minutas registradas, {stats.functionalities} funcionalidades y{' '}
+                  {stats.testCases} casos documentados.
                 </Text>
               </div>
+
+              <Card
+                variant="borderless"
+                className="rounded-[28px] border border-slate-100 bg-white/90"
+                styles={{ body: { padding: 22 } }}
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <WarningOutlined
+                    className="text-xl"
+                    style={{ color: qaPalette.functionalityStatus.failed }}
+                  />
+                  <Title level={5} className="!mb-0 !text-slate-900">
+                    Salud QA rápida
+                  </Title>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <Text className="text-slate-500">Bugs activos</Text>
+                    <Text className="font-semibold text-slate-900">{stats.activeBugs}</Text>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <Text className="text-slate-500">Requisitos core</Text>
+                    <Text className="font-semibold text-slate-900">
+                      {project.coreRequirements?.length || 0}
+                    </Text>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <Text className="text-slate-500">Reglas de negocio</Text>
+                    <Text className="font-semibold text-slate-900">{businessRules.length}</Text>
+                  </div>
+                </div>
+              </Card>
             </div>
           </Card>
         </Col>
@@ -1253,85 +1407,149 @@ export default function AboutView({ project }: { project: Project }) {
 
       <Modal
         title={
-          <span className="text-lg font-bold text-slate-800">
-            Editar Información del Proyecto
-          </span>
+          <span className="text-lg font-bold text-slate-800">Editar información del proyecto</span>
         }
-        open={isEditProjectModalOpen}
+        open={isEditModalOpen}
         onOk={!isViewer ? handleSaveProject : undefined}
-        onCancel={() => setIsEditProjectModalOpen(false)}
-        width={760}
+        onCancel={handleCloseEdit}
+        width={920}
         centered
         okText="Guardar cambios"
         cancelText="Cancelar"
-        forceRender
         destroyOnHidden
-        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
+        okButtonProps={{
+          loading: isSaving || isSavingLogo,
+          style: { display: isViewer ? 'none' : undefined },
+        }}
       >
         <Form form={projectForm} layout="vertical" className="mt-4" disabled={isViewer}>
+          <div className="mb-5 flex items-center gap-4 rounded-[24px] border border-slate-100 bg-slate-50/80 p-4">
+            <Avatar
+              size={72}
+              shape="square"
+              src={logoPreview}
+              style={{
+                borderRadius: 20,
+                background: logoPreview
+                  ? undefined
+                  : `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 24,
+              }}
+            >
+              {!logoPreview ? getInitials(project.name) : null}
+            </Avatar>
+            <div className="flex-1">
+              <Text className="block text-sm font-semibold text-slate-700">
+                Avatar del proyecto
+              </Text>
+              <Text className="block text-slate-400">
+                Sube un logo en PNG, JPG, WEBP o SVG para personalizar esta vista.
+              </Text>
+            </div>
+            {!isViewer ? (
+              <Upload
+                showUploadList={false}
+                beforeUpload={handleLogoUpload}
+                accept=".png,.jpg,.jpeg,.webp,.svg"
+              >
+                <Button icon={<UploadOutlined />} className="rounded-2xl" loading={isSavingLogo}>
+                  Subir avatar
+                </Button>
+              </Upload>
+            ) : null}
+          </div>
+
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item
-                name="name"
-                label="Nombre del proyecto"
-                rules={[{ required: true }]}
-              >
+              <Form.Item name="name" label="Nombre del proyecto" rules={[{ required: true }]}>
                 <Input size="large" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="description" label="Descripcion general">
+              <Form.Item name="description" label="Descripción general">
                 <Input size="large" />
               </Form.Item>
             </Col>
           </Row>
+
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item name="version" label="Versión" rules={[{ required: true }]}>
+                <Input size="large" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="status" label="Estado del proyecto" rules={[{ required: true }]}>
+                <Select
+                  size="large"
+                  options={[
+                    { label: 'Activo', value: ProjectStatus.ACTIVE },
+                    { label: 'Pausado', value: ProjectStatus.PAUSED },
+                    { label: 'Completado', value: ProjectStatus.COMPLETED },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Form.Item name="purpose" label="Objetivo del proyecto">
             <Input.TextArea rows={4} />
           </Form.Item>
+
           <Form.Item name="teamMembers" label="Participantes del proyecto">
-            <SlackMemberSelect
+            <ParticipantSelect
               size="large"
-              members={slackMembers}
+              members={participantDirectoryMembers}
               valueField="fullName"
-              extraOptions={participantOptions}
-              placeholder="Selecciona o escribe participantes base del proyecto"
+              placeholder="Selecciona participantes base del proyecto"
               className="rounded-2xl"
-              loading={isSlackMembersLoading}
+              loading={isParticipantDirectoryLoading}
             />
           </Form.Item>
-          <Form.Item name="coreRequirements" label="Requisitos basicos (uno por linea)">
+
+          <Form.Item name="coreRequirements" label="Requisitos básicos (uno por línea)">
             <Input.TextArea
               rows={5}
-              placeholder="Ej: Autenticación biometrica&#10;Pasarela de pagos"
+              placeholder="Ej: Autenticación biométrica&#10;Pasarela de pagos"
             />
           </Form.Item>
+
           <Form.Item name="businessRules" label="Normas empresariales">
             <Input.TextArea rows={5} />
           </Form.Item>
         </Form>
       </Modal>
 
+      <UpgradeModal
+        open={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        organizationName={activeOrganizationName}
+        currentPlan={effectiveOrganizationPlan}
+        title="Desbloquea IA para analizar y aterrizar el proyecto"
+        description="Si quieres generar análisis del proyecto y briefs de wireframe directamente desde esta vista, aquí puedes comparar el siguiente paso con claridad."
+        onUpgradeGrowth={() => void handleUpgradeClick('about-view-upgrade-modal-growth')}
+        onContactEnterprise={() => void handleEnterpriseClick()}
+      />
+
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">{projectAiModalTitle}</span>}
-        open={isProjectAiModalOpen}
-        onCancel={() => setIsProjectAiModalOpen(false)}
-        width={920}
+        title={<span className="text-lg font-bold text-slate-800">{activeAiDetailTitle}</span>}
+        open={Boolean(openAiDetail)}
+        onCancel={() => setOpenAiDetail(null)}
+        width={1020}
         centered
         destroyOnHidden
         footer={[
-          <Button
-            key="copy"
-            icon={<CopyOutlined />}
-            onClick={() => void handleCopyProjectAiContent()}
-          >
+          <Button key="copy" icon={<CopyOutlined />} onClick={() => void handleCopyAiDetail()}>
             Copiar
           </Button>,
-          <Button key="close" type="primary" onClick={() => setIsProjectAiModalOpen(false)}>
+          <Button key="close" type="primary" onClick={() => setOpenAiDetail(null)}>
             Cerrar
           </Button>,
         ]}
       >
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-5">
           <Alert
             type="info"
             showIcon
@@ -1339,419 +1557,265 @@ export default function AboutView({ project }: { project: Project }) {
             message="Resultado reutilizable"
             description="Este contenido queda asociado al proyecto actual para que puedas reabrirlo y copiarlo cuando lo necesites."
           />
-          <div className="max-h-[68vh] overflow-y-auto rounded-3xl border border-slate-100 bg-slate-50/70 p-6">
-            <Paragraph className="!mb-0 whitespace-pre-wrap leading-8 text-slate-700">
-              {projectAiModalContent}
+
+          <div className="max-h-[65vh] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-6">
+            <Paragraph className="!mb-0 whitespace-pre-wrap text-base leading-8 text-slate-700">
+              {activeAiDetailContent || 'No hay contenido disponible todavía.'}
             </Paragraph>
           </div>
         </div>
       </Modal>
 
       <Modal
+        title={<span className="text-lg font-bold text-slate-800">Minutas registradas</span>}
+        open={isMeetingHistoryOpen}
+        onCancel={() => setIsMeetingHistoryOpen(false)}
+        footer={null}
+        width={920}
+        centered
+        destroyOnHidden
+      >
+        <div className="mt-4">
+          <Table
+            rowKey="id"
+            columns={meetingHistoryColumns}
+            dataSource={meetingNotes}
+            pagination={{
+              pageSize: 6,
+              showTotal: total => `${total} minuta${total === 1 ? '' : 's'}`,
+            }}
+            locale={{ emptyText: 'No hay minutas registradas todav??a.' }}
+            expandable={{
+              columnWidth: 56,
+              expandIcon: ({ expanded, onExpand, record }) => (
+                <button
+                  type="button"
+                  aria-label={expanded ? 'Ocultar detalle de la minuta' : 'Ver detalle de la minuta'}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600"
+                  onClick={event => onExpand(record, event)}
+                >
+                  {expanded ? (
+                    <MinusOutlined className="text-[10px]" />
+                  ) : (
+                    <PlusOutlined className="text-[10px]" />
+                  )}
+                </button>
+              ),
+              expandedRowRender: record => (
+                <div className="rounded-xl bg-slate-50 p-5">
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <Text strong>Participantes:</Text>
+                      <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                        {record.participants || 'Sin participantes registrados.'}
+                      </Paragraph>
+                    </div>
+                    <div>
+                      <Text strong>Fecha y hora:</Text>
+                      <Paragraph className="!mb-0 !mt-2 text-sm text-slate-700">
+                        {record.date} {record.time ? `a las ${record.time}` : ''}
+                      </Paragraph>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Text strong>Notas:</Text>
+                      <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                        {record.notes || 'Sin notas registradas.'}
+                      </Paragraph>
+                    </div>
+                    {record.aiSummary ? (
+                      <div className="md:col-span-2">
+                        <Text strong>Resumen IA:</Text>
+                        <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                          {record.aiSummary}
+                        </Paragraph>
+                      </div>
+                    ) : null}
+                    {record.aiDecisions ? (
+                      <div>
+                        <Text strong>Decisiones:</Text>
+                        <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                          {record.aiDecisions}
+                        </Paragraph>
+                      </div>
+                    ) : null}
+                    {record.aiActions ? (
+                      <div>
+                        <Text strong>Acciones:</Text>
+                        <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                          {record.aiActions}
+                        </Paragraph>
+                      </div>
+                    ) : null}
+                    {record.aiNextSteps ? (
+                      <div className="md:col-span-2">
+                        <Text strong>Pr??ximos pasos:</Text>
+                        <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                          {record.aiNextSteps}
+                        </Paragraph>
+                      </div>
+                    ) : null}
+                    {!isViewer ? (
+                      <div className="md:col-span-2">
+                        <Button icon={<EditOutlined />} onClick={() => openMeetingModal(record)}>
+                          Editar minuta
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ),
+            }}
+          />
+        </div>
+      </Modal>
+
+      <Modal
         title={
           <span className="text-lg font-bold text-slate-800">
-            {selectedNote ? 'Editar Minuta' : 'Nueva Minuta de Reunión'}
+            {editingMeetingNote ? 'Editar minuta de reunión' : 'Nueva minuta de reunión'}
           </span>
         }
-        open={isNoteModalOpen}
-        onOk={!isViewer ? handleSaveNote : undefined}
-        onCancel={() => setIsNoteModalOpen(false)}
-        width={860}
+        open={isMeetingModalOpen}
+        onCancel={closeMeetingModal}
+        onOk={handleSaveMeetingNote}
+        width={640}
         centered
-        okText="Guardar minuta"
+        okText={editingMeetingNote ? 'Actualizar minuta' : 'Guardar minuta'}
         cancelText="Cancelar"
-        forceRender
         destroyOnHidden
-        okButtonProps={{ style: { display: isViewer ? 'none' : undefined } }}
+        okButtonProps={{
+          loading: isSavingMeetingNote,
+          className: 'rounded-2xl px-5 font-semibold',
+        }}
+        cancelButtonProps={{ className: 'rounded-2xl px-5 font-semibold' }}
       >
-        <Form form={noteForm} layout="vertical" className="mt-4" disabled={isViewer}>
+        <Form form={meetingNoteForm} layout="vertical" className="mt-4">
           <Form.Item
             name="title"
-            label="Titulo de la minuta"
-            rules={[{ required: true, message: 'Ingresa un titulo para la minuta' }]}
+            label="Título"
+            rules={[{ required: true, message: 'Ingresa un título para la minuta.' }]}
           >
-            <Input
-              className="h-11 rounded-2xl"
-              placeholder="Ej: Reunion de avance semanal"
-              maxLength={120}
-            />
+            <Input size="large" className="rounded-2xl" placeholder="Ej. Seguimiento sprint 12" />
           </Form.Item>
 
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item name="date" label="Fecha de la reunión" rules={[{ required: true }]}>
-                <DatePicker className="h-11 w-full rounded-2xl" format="DD/MM/YYYY" />
+              <Form.Item
+                name="date"
+                label="Fecha"
+                rules={[{ required: true, message: 'Selecciona una fecha.' }]}
+              >
+                <Input size="large" type="date" className="rounded-2xl" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="time" label="Hora de la reunión" rules={[{ required: true }]}>
-                <TimePicker className="h-11 w-full rounded-2xl" format="HH:mm" minuteStep={5} />
+              <Form.Item name="time" label="Hora">
+                <Input size="large" type="time" className="rounded-2xl" />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="participants" label="Participantes" rules={[{ required: true }]}>
-            <SlackMemberSelect
-              size="large"
-              members={slackMembers}
-              valueField="fullName"
-              extraOptions={participantOptions}
-              placeholder="Selecciona participantes de la reunión"
+          <Form.Item name="participants" label="Participantes">
+            <ParticipantSelect
               className="rounded-2xl"
-              loading={isSlackMembersLoading}
+              size="large"
+              members={participantDirectoryMembers}
+              valueField="fullName"
+              multiple
+              allowCustomOptions
+              extraOptions={meetingParticipantExtraOptions}
+              loading={isParticipantDirectoryLoading}
+              placeholder="Selecciona miembros del workspace o escribe un participante externo"
             />
           </Form.Item>
 
-          {slackMembersError ? (
-            <Alert
-              type="warning"
-              showIcon
-              className="mb-4 rounded-2xl"
-              message="No se pudieron cargar los miembros de Slack"
-              description="Puedes seguir escribiendo participantes manualmente mientras revisamos la configuracion del token o los permisos users:read."
-            />
-          ) : (
-            <div className="mb-4 text-xs text-slate-500">
-              Selecciona desde Slack o escribe nombres manualmente si necesitas agregar invitados.
+          {!isViewer && !canUseAi ? (
+            <div className="mb-5">
+              <AiUpgradeBanner
+                title="✨ IA disponible en Growth — Escribe minutas más claras sin esfuerzo"
+                description="Activa sugerencias automáticas para este flujo y convierte notas rápidas en minutas más claras y accionables."
+                ctaLabel="Probar IA ✨"
+                compact
+                onViewPlans={() => setIsUpgradeModalOpen(true)}
+                onUpgradeGrowth={() =>
+                  void handleUpgradeClick('about-view-meeting-notes-ai-banner')
+                }
+              />
             </div>
-          )}
+          ) : null}
 
           <Form.Item
             name="notes"
             label={
               <div className="flex w-full items-center justify-between gap-3">
-                <span>Notas de la reunion</span>
-                <Space size={8}>
-                  {!isViewer && (
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<RobotOutlined />}
-                      onClick={handleImproveWithAI}
-                      loading={isImproving}
-                      className="rounded-full text-[10px] font-bold h-7"
-                    >
-                      Mejorar con IA
-                    </Button>
-                  )}
-                </Space>
+                <span>Notas</span>
+                {!isViewer && canUseAi ? (
+                  <Button
+                    type="default"
+                    icon={<RobotOutlined />}
+                    onClick={() => void handleImproveMeetingNotes()}
+                    loading={isImprovingMeetingNotes}
+                    className="rounded-2xl border-slate-200 px-4 font-semibold text-violet-700"
+                  >
+                    Mejorar nota con IA
+                  </Button>
+                ) : null}
               </div>
             }
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: 'Agrega el contenido principal de la minuta.' }]}
           >
             <Input.TextArea
-              rows={8}
+              rows={6}
               className="rounded-2xl"
-              placeholder="Escribe acuerdos, bloqueos, decisiones y proximos pasos..."
+              placeholder="Acuerdos, decisiones, bloqueos y próximos pasos"
             />
           </Form.Item>
 
-          {selectedNote?.aiSummary && (
-            <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <RobotOutlined className="text-purple-600" />
-                <span className="text-sm font-bold text-purple-800">Vista previa de mejora IA</span>
+          <Form.Item name="aiSummary" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="aiDecisions" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="aiActions" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="aiNextSteps" hidden>
+            <Input />
+          </Form.Item>
+
+          {canUseAi &&
+          (meetingAiPreview.summary ||
+            meetingAiPreview.decisions.length ||
+            meetingAiPreview.actions.length ||
+            meetingAiPreview.nextSteps.length) ? (
+            <div className="rounded-[24px] border border-violet-100 bg-[linear-gradient(135deg,rgba(124,58,237,0.06)_0%,rgba(255,255,255,0.98)_100%)] p-5">
+              <div className="mb-4 flex items-center gap-3">
+                <IconBadge accent="#7c3aed" className="h-10 w-10 rounded-xl shadow-none">
+                  <RobotOutlined className="text-base" />
+                </IconBadge>
+                <div>
+                  <Text className="block text-[11px] font-bold uppercase tracking-[0.18em] text-violet-500">
+                    Mejora IA
+                  </Text>
+                  <Title level={5} className="!mb-0 !mt-1 !text-slate-900">
+                    Nota resumida por IA
+                  </Title>
+                </div>
               </div>
-              <Text className="text-sm text-slate-700">{selectedNote.aiSummary}</Text>
+
+              <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+                <Text className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                  Vista previa IA
+                </Text>
+                <Paragraph className="!mb-0 !mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                  {meetingAiPreviewText}
+                </Paragraph>
+              </div>
             </div>
-          )}
+          ) : null}
         </Form>
       </Modal>
-
-      <Modal
-        title={<span className="text-lg font-bold text-slate-800">Historial de minutas</span>}
-        open={isAllNotesModalOpen}
-        onCancel={() => setIsAllNotesModalOpen(false)}
-        footer={[
-          <Button key="close" onClick={() => setIsAllNotesModalOpen(false)}>
-            Cerrar
-          </Button>,
-        ]}
-        width={860}
-        centered
-        destroyOnHidden
-      >
-        <div className="mt-4 max-h-[70vh] space-y-4 overflow-y-auto pr-2 custom-scrollbar">
-          {sortedMeetingNotes.length > 0 ? (
-            sortedMeetingNotes.map(note => {
-              const noteParticipants = splitParticipants(note.participants);
-              return (
-                <Card
-                  key={`history-${note.id}`}
-                  hoverable
-                  variant="borderless"
-                  className="rounded-[24px] border border-slate-100 bg-white/90"
-                  styles={{ body: { padding: 18 } }}
-                  onClick={() => {
-                    setIsAllNotesModalOpen(false);
-                    renderNoteDetails(note);
-                  }}
-                >
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <Tag
-                        variant="filled"
-                        className="rounded-full px-3 py-1 font-semibold"
-                        style={{
-                          color: qaPalette.primary,
-                          backgroundColor: softSurface(qaPalette.primary),
-                        }}
-                      >
-                        General
-                      </Tag>
-                      <Text className="text-xs text-slate-400">{note.date}</Text>
-                    </div>
-
-                    <div>
-                      <Title level={5} className="!mb-2 !text-slate-900">
-                        {getMeetingNoteTitle(note)}
-                      </Title>
-                      <Space size={12} wrap className="text-sm text-slate-500">
-                        <span className="inline-flex items-center gap-1">
-                          <ClockCircleOutlined />
-                          {note.time}
-                        </span>
-                      </Space>
-                      <Paragraph
-                        className="!mb-0 !mt-3 text-sm leading-6 text-slate-500"
-                        ellipsis={{ rows: 2, expandable: false }}
-                      >
-                        {getMeetingNoteExcerpt(note.notes)}
-                      </Paragraph>
-                    </div>
-
-                    <Avatar.Group size="small" max={{ count: 4 }}>
-                      {noteParticipants.map(participant => (
-                        <Avatar
-                          key={`${note.id}-history-${participant}`}
-                          src={participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl}
-                          style={{
-                            background: `linear-gradient(135deg, ${qaPalette.primary} 0%, ${qaPalette.accent} 100%)`,
-                          }}
-                        >
-                          {getInitials(participant)}
-                        </Avatar>
-                      ))}
-                    </Avatar.Group>
-
-                    <Space size={[8, 8]} wrap>
-                      {note.aiSummary && (
-                        <Tag
-                          variant="filled"
-                          className="rounded-full px-3 py-1"
-                          style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}
-                        >
-                          IA
-                        </Tag>
-                      )}
-                      {noteParticipants.slice(0, 3).map(participant => (
-                        <Tag
-                          key={`${note.id}-history-tag-${participant}`}
-                          variant="filled"
-                          className="rounded-full px-3 py-1 text-slate-500"
-                        >
-                          {participant}
-                        </Tag>
-                      ))}
-                    </Space>
-                  </div>
-                </Card>
-              );
-            })
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="No hay minutas registradas todavía."
-            />
-          )}
-        </div>
-      </Modal>
-
-      <Modal
-        title={null}
-        open={isViewNoteModalOpen}
-        onCancel={() => setIsViewNoteModalOpen(false)}
-        footer={[
-          ...(!isViewer
-            ? [
-                <Button
-                  key="edit"
-                  type="primary"
-                  onClick={() => {
-                    if (!selectedNote) return;
-                    handleEditNote(selectedNote);
-                  }}
-                >
-                  Editar minuta
-                </Button>,
-                <Button
-                  key="delete"
-                  danger
-                  onClick={() => {
-                    if (!selectedNote) return;
-                    Modal.confirm({
-                      title: 'Eliminar minuta',
-                      content: 'Esta accion no se puede deshacer.',
-                      onOk: async () => {
-                        await deleteMeetingNote(selectedNote.id);
-                        setIsViewNoteModalOpen(false);
-                      },
-                    });
-                  }}
-                >
-                  Eliminar
-                </Button>,
-              ]
-            : []),
-          <Button key="close" onClick={() => setIsViewNoteModalOpen(false)}>
-            Cerrar
-          </Button>,
-        ]}
-        width={960}
-        centered
-        destroyOnHidden
-      >
-        {selectedNote && (
-          <div className="pt-6">
-            <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-4">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl"
-                  style={{
-                    backgroundColor: softSurface(qaPalette.primary),
-                    color: qaPalette.primary,
-                  }}
-                >
-                  <FileTextOutlined className="text-2xl" />
-                </div>
-                <div>
-                  <Title level={4} className="!mb-1 !text-slate-900">
-                    {getMeetingNoteTitle(selectedNote)}
-                  </Title>
-                  <Space size={16} wrap className="text-sm text-slate-400">
-                    <span className="inline-flex items-center gap-2">
-                      <CalendarOutlined />
-                      {selectedNote.date}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <ClockCircleOutlined />
-                      {selectedNote.time}
-                    </span>
-                  </Space>
-                </div>
-              </div>
-
-              {selectedNote.aiSummary && (
-                <Tag
-                  variant="filled"
-                  className="rounded-full px-4 py-1 font-bold"
-                  style={{ color: '#6d28d9', backgroundColor: '#efe7ff' }}
-                >
-                  <RobotOutlined /> Mejorado con IA
-                </Tag>
-              )}
-            </div>
-
-            <Row gutter={[24, 24]}>
-              <Col xs={24} lg={selectedNote.aiSummary ? 11 : 24}>
-                <div className="space-y-6">
-                  <Card
-                    variant="borderless"
-                    className="rounded-[24px] qa-surface-card"
-                    styles={{ body: { padding: 24 } }}
-                  >
-                    <Text className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                      Participantes
-                    </Text>
-                    <Space size={[8, 8]} wrap>
-                      {splitParticipants(selectedNote.participants).map(participant => (
-                        <Tag
-                          key={`${selectedNote.id}-${participant}`}
-                          variant="filled"
-                          className="rounded-full px-3 py-1"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <Avatar
-                              size={20}
-                              src={
-                                participantLookup.get(normalizeParticipantKey(participant))?.avatarUrl
-                              }
-                              icon={<UserOutlined />}
-                            />
-                            <span>{participant}</span>
-                          </span>
-                        </Tag>
-                      ))}
-                    </Space>
-                  </Card>
-
-                  <Card
-                    variant="borderless"
-                    className="rounded-[24px] qa-surface-card"
-                    styles={{ body: { padding: 24 } }}
-                  >
-                    <Text className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                      Notas originales
-                    </Text>
-                    <Paragraph className="!mb-0 whitespace-pre-wrap leading-8 text-slate-700">
-                      {selectedNote.notes}
-                    </Paragraph>
-                  </Card>
-                </div>
-              </Col>
-
-              {selectedNote.aiSummary && (
-                <Col xs={24} lg={13}>
-                  <Card
-                    variant="borderless"
-                    className="h-full rounded-[24px]"
-                    styles={{ body: { padding: 24 } }}
-                    style={{ background: 'linear-gradient(180deg, #f7f2ff 0%, #ffffff 100%)' }}
-                  >
-                    <div className="space-y-5">
-                      <div>
-                        <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
-                          Resumen de la reunion
-                        </Text>
-                        <Paragraph className="!mb-0 text-slate-700">
-                          {selectedNote.aiSummary}
-                        </Paragraph>
-                      </div>
-                      <Divider className="my-0" />
-                      <div>
-                        <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
-                          Decisiones
-                        </Text>
-                        <Paragraph className="!mb-0 text-slate-700">
-                          {selectedNote.aiDecisions}
-                        </Paragraph>
-                      </div>
-                      <Divider className="my-0" />
-                      <div>
-                        <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
-                          Acciones a realizar
-                        </Text>
-                        <Paragraph className="!mb-0 text-slate-700">
-                          {selectedNote.aiActions}
-                        </Paragraph>
-                      </div>
-                      <Divider className="my-0" />
-                      <div>
-                        <Text className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-purple-600">
-                          Proximos pasos
-                        </Text>
-                        <Paragraph className="!mb-0 text-slate-700">
-                          {selectedNote.aiNextSteps}
-                        </Paragraph>
-                      </div>
-                    </div>
-                  </Card>
-                </Col>
-              )}
-            </Row>
-          </div>
-        )}
-      </Modal>
-    </div>
+    </>
   );
 }

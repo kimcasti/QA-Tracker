@@ -114,7 +114,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
                 <Form.Item
                   name="version"
                   label="Versión"
-                  rules={[{ required: true, message: 'La version es requerida' }]}
+                  rules={[{ required: true, message: 'La versión es requerida' }]}
                 >
                   <Input placeholder="v1.0.0" className="h-10 rounded-lg" />
                 </Form.Item>

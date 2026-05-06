@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -26,6 +26,7 @@ import {
   FileTextOutlined,
   FilterOutlined,
   LineChartOutlined,
+  LockOutlined,
   PrinterOutlined,
   ProjectOutlined,
   SafetyCertificateOutlined,
@@ -47,16 +48,42 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
+import {
+  authorizeReportAccess,
+  runTrackedExport,
+} from '../modules/plans/services/planAccessService';
+import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { PlanCenterSection } from '../modules/plans/components/PlanCenterSection';
+import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
+import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
+import {
+  buildProjectUpgradeWhatsAppUrl,
+  normalizeOrganizationPlan,
+} from '../modules/projects/utils/projectUpgrade';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
 import { useRegressionCycles } from '../modules/test-cycles/hooks/useRegressionCycles';
 import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
-import { BugStatus, ExecutionMode, RegressionCycle, RiskLevel, TestResult, TestStatus } from '../types';
+import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
+import {
+  BugStatus,
+  ExecutionMode,
+  RegressionCycle,
+  RiskLevel,
+  TestResult,
+  TestStatus,
+} from '../types';
 
 const { Title, Text, Paragraph } = Typography;
+
+const REPORT_ACCESS_KEYS = {
+  QA_STATUS_SUMMARY: 'qaStatusSummary',
+  QA_PROGRESS_REPORT: 'qaProgress',
+  PROJECT_STATUS_REPORT: 'executiveProjectStatus',
+} as const;
 
 type ReportVariant = 'QA_STATUS_SUMMARY' | 'QA_PROGRESS_REPORT' | 'PROJECT_STATUS_REPORT';
 
@@ -73,6 +100,7 @@ interface SelectionCardProps {
   selected: boolean;
   onSelect: (type: ReportVariant) => void;
   icon: React.ReactNode;
+  locked?: boolean;
 }
 
 const normalizeSprintKey = (value?: string | null) =>
@@ -83,8 +111,8 @@ const normalizeSprintKey = (value?: string | null) =>
 
 const getCycleTypeLabel = (cycle: RegressionCycle) => {
   if (cycle.type === 'SMOKE') return 'Smoke';
-  if (cycle.type === 'REGRESSION') return 'Regresion';
-  return cycle.cycleId?.startsWith('S-') ? 'Smoke' : 'Regresion';
+  if (cycle.type === 'REGRESSION') return 'Regresión';
+  return cycle.cycleId?.startsWith('S-') ? 'Smoke' : 'Regresión';
 };
 
 const getExecutedCount = (cycle: RegressionCycle) =>
@@ -97,7 +125,8 @@ const getAutomatedCount = (cycle: RegressionCycle) =>
     execution => getExecutionModeLabel(execution.executionMode) === ExecutionMode.AUTOMATED,
   ).length;
 
-const getManualCount = (cycle: RegressionCycle) => Math.max(cycle.executions.length - getAutomatedCount(cycle), 0);
+const getManualCount = (cycle: RegressionCycle) =>
+  Math.max(cycle.executions.length - getAutomatedCount(cycle), 0);
 
 const getAutomationRate = (cycle: RegressionCycle) =>
   cycle.totalTests > 0 ? Math.round((getAutomatedCount(cycle) / cycle.totalTests) * 100) : 0;
@@ -151,6 +180,7 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
   selected,
   onSelect,
   icon,
+  locked = false,
 }) => (
   <Card
     hoverable
@@ -159,9 +189,19 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
     }`}
     onClick={() => onSelect(type)}
   >
+    {locked && (
+      <div className="absolute inset-0 z-10 rounded-[inherit] bg-white/55 backdrop-blur-[1px]" />
+    )}
     {selected && (
       <div className="absolute top-3 right-3 text-blue-500 text-xl">
         <CheckCircleFilled />
+      </div>
+    )}
+    {locked && (
+      <div className="absolute right-3 top-3 z-20">
+        <Tag color="gold" className="rounded-full px-3 py-1 font-semibold">
+          <LockOutlined /> Disponible en Growth
+        </Tag>
       </div>
     )}
     <div className="flex flex-col gap-4">
@@ -179,6 +219,11 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
         <Paragraph type="secondary" className="text-xs !mb-3 line-clamp-2">
           {description}
         </Paragraph>
+        {locked ? (
+          <Text className="mb-3 block text-xs font-semibold text-amber-600">
+            Reporte premium disponible en Growth
+          </Text>
+        ) : null}
         <Tag
           color={selected ? 'blue' : 'default'}
           className="rounded-full px-3 border-none font-medium"
@@ -203,17 +248,17 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
     [cycleId, regressionCycles, smokeCycles],
   );
 
-  if (!cycle) return <Empty description="Seleccione un ciclo para ver el reporte" />;
-
   const cycleBugs = useMemo(
-    () => bugs.filter(bug => bug.cycleId === cycle.cycleId),
-    [bugs, cycle.cycleId],
+    () => (cycle ? bugs.filter(bug => bug.cycleId === cycle.cycleId) : []),
+    [bugs, cycle],
   );
 
   const activeCycleBugs = useMemo(
     () => cycleBugs.filter(bug => bug.status !== BugStatus.RESOLVED),
     [cycleBugs],
   );
+
+  if (!cycle) return <Empty description="Seleccione un ciclo para ver el reporte" />;
 
   const executedTests = getExecutedCount(cycle);
   const executionCoverage = getPercent(executedTests, cycle.totalTests);
@@ -240,7 +285,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
       value: <Tag color={riskTone.color}>{riskTone.label}</Tag>,
     },
     {
-      label: 'Cobertura de ejecucion',
+      label: 'Cobertura de ejecución',
       value: <Text strong>{executionCoverage}%</Text>,
     },
     {
@@ -289,7 +334,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
         <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
-              title="Tasa de aprobacion"
+              title="Tasa de aprobación"
               value={cycle.passRate}
               suffix="%"
               valueStyle={{ color: '#10b981', fontWeight: 800 }}
@@ -324,7 +369,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
         <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
-              title="Ejecucion automatizada"
+              title="Ejecución automatizada"
               value={automationRate}
               suffix="%"
               valueStyle={{ color: '#2563eb', fontWeight: 800 }}
@@ -338,7 +383,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
 
       <Row gutter={24}>
         <Col span={12}>
-          <Card title="Distribucion de resultados" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Distribución de resultados" className="rounded-2xl border-slate-100 h-full">
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -373,7 +418,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="Metricas de calidad" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Métricas de calidad" className="rounded-2xl border-slate-100 h-full">
             <div className="space-y-4">
               {qualityMetrics.map((metric, index) => (
                 <React.Fragment key={metric.label}>
@@ -389,7 +434,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
         </Col>
       </Row>
 
-      <Card title="Detalle de ejecucion" className="rounded-2xl border-slate-100 overflow-hidden">
+      <Card title="Detalle de ejecución" className="rounded-2xl border-slate-100 overflow-hidden">
         <Table
           dataSource={cycle.executions}
           rowKey="id"
@@ -397,11 +442,15 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
             { title: 'Funcionalidad', dataIndex: 'functionalityName', key: 'name' },
             { title: 'Modulo', dataIndex: 'module', key: 'module' },
             {
-              title: 'Ejecucion',
+              title: 'Ejecución',
               dataIndex: 'executionMode',
               key: 'executionMode',
               render: mode => (
-                <Tag color={getExecutionModeLabel(mode) === ExecutionMode.AUTOMATED ? 'blue' : 'default'}>
+                <Tag
+                  color={
+                    getExecutionModeLabel(mode) === ExecutionMode.AUTOMATED ? 'blue' : 'default'
+                  }
+                >
                   {getExecutionModeLabel(mode)}
                 </Tag>
               ),
@@ -476,14 +525,14 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
     const lastCycle = filteredCycles[filteredCycles.length - 1];
 
     if (!firstCycle || !lastCycle) {
-        return {
-          casesGrowth: 0,
-          failureReduction: 0,
-          executionVelocity: 0,
-          latestExecutionCoverage: 0,
-          averageAutomationRate: 0,
-        };
-      }
+      return {
+        casesGrowth: 0,
+        failureReduction: 0,
+        executionVelocity: 0,
+        latestExecutionCoverage: 0,
+        averageAutomationRate: 0,
+      };
+    }
 
     const firstExecutionCoverage = getPercent(getExecutedCount(firstCycle), firstCycle.totalTests);
     const latestExecutionCoverage = getPercent(getExecutedCount(lastCycle), lastCycle.totalTests);
@@ -523,8 +572,8 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
             Reporte de Progreso QA
           </Title>
           <Paragraph type="secondary">
-            Tendencia de calidad funcional y evolucion de los ciclos
-            {sprint ? ` en ${sprint}` : ' en los ultimos ciclos'}.
+            Tendencia de calidad funcional y evolución de los ciclos
+            {sprint ? ` en ${sprint}` : ' en los últimos ciclos'}.
           </Paragraph>
         </div>
         {sprint && (
@@ -534,7 +583,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
         )}
       </div>
 
-      <Card title="Tendencia de tasa de aprobacion (%)" className="rounded-2xl border-slate-100">
+      <Card title="Tendencia de tasa de aprobación (%)" className="rounded-2xl border-slate-100">
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
@@ -568,7 +617,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
 
       <Row gutter={24}>
         <Col span={12}>
-          <Card title="Metricas de evolucion" className="rounded-2xl border-slate-100">
+          <Card title="Métricas de evolución" className="rounded-2xl border-slate-100">
             <div className="space-y-6">
               <div>
                 <div className="flex justify-between mb-2">
@@ -598,7 +647,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <Text strong>Velocidad de ejecucion</Text>
+                  <Text strong>Velocidad de ejecución</Text>
                   <Text type={evolutionMetrics.executionVelocity >= 0 ? 'success' : 'danger'}>
                     {evolutionMetrics.executionVelocity > 0 ? '+' : ''}
                     {evolutionMetrics.executionVelocity}%
@@ -614,10 +663,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
                   <Text strong>Promedio automatizado</Text>
                   <Text>{evolutionMetrics.averageAutomationRate}%</Text>
                 </div>
-                <Progress
-                  percent={evolutionMetrics.averageAutomationRate}
-                  strokeColor="#2563eb"
-                />
+                <Progress percent={evolutionMetrics.averageAutomationRate} strokeColor="#2563eb" />
               </div>
             </div>
           </Card>
@@ -765,7 +811,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
             Reporte de Estado del Proyecto
           </Title>
           <Paragraph type="secondary">
-            Vision global del avance funcional, cobertura por casos y riesgos
+            Visión global del avance funcional, cobertura por casos y riesgos
             {sprint ? ` para ${sprint}` : ''}.
           </Paragraph>
         </div>
@@ -778,7 +824,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
 
       <Row gutter={24}>
         <Col span={15}>
-          <Card title="Avance por categoria" className="rounded-2xl border-slate-100 h-full">
+          <Card title="Avance por categoría" className="rounded-2xl border-slate-100 h-full">
             <div className="mb-4 flex flex-wrap gap-2">
               {barData.map(item => (
                 <Tag
@@ -796,7 +842,12 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} />
                   <YAxis axisLine={false} tickLine={false} />
-                  <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={44} isAnimationActive={false} />
+                  <Bar
+                    dataKey="value"
+                    radius={[10, 10, 0, 0]}
+                    barSize={44}
+                    isAnimationActive={false}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -815,7 +866,12 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
                     {stats.completed}/{stats.total || 0}
                   </span>
                 </div>
-                <Progress percent={stats.progress} showInfo={false} strokeColor="#3b82f6" className="mt-3" />
+                <Progress
+                  percent={stats.progress}
+                  showInfo={false}
+                  strokeColor="#3b82f6"
+                  className="mt-3"
+                />
               </div>
               <Divider />
               <div className="space-y-2">
@@ -855,7 +911,7 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
         </Col>
       </Row>
 
-      <Card title="Analisis de riesgos" className="rounded-2xl border-slate-100">
+      <Card title="Análisis de riesgos" className="rounded-2xl border-slate-100">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100">
             <div className="flex items-center gap-2 mb-2 text-rose-700">
@@ -892,8 +948,8 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
             </div>
             <Text className="text-xs text-blue-700">
               {stats.activeBugsCount > 0
-                ? `Hay ${stats.activeBugsCount} bugs activos y una tasa promedio de aprobacion de ${stats.averagePassRate}%.`
-                : `No hay bugs activos y la tasa promedio de aprobacion de los ciclos es ${stats.averagePassRate}%.`}
+                ? `Hay ${stats.activeBugsCount} bugs activos y una tasa promedio de aprobación de ${stats.averagePassRate}%.`
+                : `No hay bugs activos y la tasa promedio de aprobación de los ciclos es ${stats.averagePassRate}%.`}
             </Text>
           </div>
         </div>
@@ -907,13 +963,52 @@ export default function Reports({ projectId }: { projectId: string }) {
   const [selectedSprint, setSelectedSprint] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const { activeMembership, projectQuota, canUseExports } = useWorkspaceAccess();
+  const activeOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const effectiveOrganizationPlan = normalizeOrganizationPlan(
+    projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
+  );
+  const activeBillingState = {
+    planStatus:
+      projectQuota?.billing?.planStatus || activeMembership?.organization?.planStatus || 'active',
+    planExpiresAt:
+      projectQuota?.billing?.planExpiresAt || activeMembership?.organization?.planExpiresAt || null,
+    gracePeriodEndsAt:
+      projectQuota?.billing?.gracePeriodEndsAt ||
+      activeMembership?.organization?.gracePeriodEndsAt ||
+      null,
+    inGracePeriod: projectQuota?.billing?.inGracePeriod ?? false,
+    downgradedToStarter: projectQuota?.billing?.downgradedToStarter ?? false,
+  };
+  const activeOrganizationName = activeMembership?.organization?.name;
+  const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
+  const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
+  const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const upgradeUrl = buildProjectUpgradeWhatsAppUrl({
+    organizationName: activeOrganizationName,
+    currentCount: projectUsageCount,
+    limit: projectLimit,
+    upgradePriceMonthlyUsd,
+  });
+  const reportAccess = {
+    QA_STATUS_SUMMARY: projectQuota?.reports?.qaStatusSummary ?? false,
+    QA_PROGRESS_REPORT: projectQuota?.reports?.qaProgress ?? false,
+    PROJECT_STATUS_REPORT: projectQuota?.reports?.executiveProjectStatus ?? false,
+  } as const;
+  const selectedReportLocked = !reportAccess[selectedVariant];
 
   const { data: regressionCycleSummaries = [] } = useRegressionCycleSummaries(projectId);
   const { data: smokeCycleSummaries = [] } = useSmokeCycleSummaries(projectId);
   const { data: sprints = [] } = useSprints(projectId);
 
   const allCycles = useMemo(
-    () => [...regressionCycleSummaries, ...smokeCycleSummaries],
+    () =>
+      [...regressionCycleSummaries, ...smokeCycleSummaries].filter(
+        cycle => cycle.status === 'FINALIZADA',
+      ),
     [regressionCycleSummaries, smokeCycleSummaries],
   );
 
@@ -923,9 +1018,30 @@ export default function Reports({ projectId }: { projectId: string }) {
     return allCycles.filter(cycle => normalizeSprintKey(cycle.sprint) === selectedKey);
   }, [allCycles, selectedSprint]);
 
-  const handleGenerate = () => {
+  useEffect(() => {
+    if (!selectedCycleId) return;
+
+    const cycleStillAvailable = filteredCycles.some(cycle => cycle.id === selectedCycleId);
+    if (!cycleStillAvailable) {
+      setSelectedCycleId(null);
+    }
+  }, [filteredCycles, selectedCycleId]);
+
+  const handleGenerate = async () => {
+    if (selectedReportLocked) {
+      message.warning('Este reporte está disponible en Growth.');
+      return;
+    }
+
     if (selectedVariant === 'QA_STATUS_SUMMARY' && !selectedCycleId) {
       message.warning('Por favor seleccione un ciclo para este tipo de reporte');
+      return;
+    }
+
+    try {
+      await authorizeReportAccess(projectId, REPORT_ACCESS_KEYS[selectedVariant]);
+    } catch (error) {
+      message.warning(error instanceof Error ? error.message : 'No tienes acceso a este reporte.');
       return;
     }
 
@@ -934,19 +1050,24 @@ export default function Reports({ projectId }: { projectId: string }) {
 
   const handleExportPdf = async () => {
     try {
-      document.body.classList.add('report-print-mode');
+      await runTrackedExport({
+        projectId,
+        action: async () => {
+          document.body.classList.add('report-print-mode');
 
-      const cleanupPrintMode = () => {
-        document.body.classList.remove('report-print-mode');
-        window.removeEventListener('afterprint', cleanupPrintMode);
-      };
+          const cleanupPrintMode = () => {
+            document.body.classList.remove('report-print-mode');
+            window.removeEventListener('afterprint', cleanupPrintMode);
+          };
 
-      window.addEventListener('afterprint', cleanupPrintMode);
-      window.print();
+          window.addEventListener('afterprint', cleanupPrintMode);
+          window.print();
 
-      window.setTimeout(() => {
-        cleanupPrintMode();
-      }, 1200);
+          window.setTimeout(() => {
+            cleanupPrintMode();
+          }, 1200);
+        },
+      });
     } catch (error) {
       message.error('Error al preparar la impresion del reporte');
     }
@@ -960,6 +1081,40 @@ export default function Reports({ projectId }: { projectId: string }) {
     }
   };
 
+  const handleUpgradeClick = async (source: string) => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'growth',
+        source,
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: upgradePriceMonthlyUsd,
+        contactUrl: upgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+
+  const handleEnterpriseClick = async () => {
+    try {
+      await startUpgradeRequestFlow({
+        requestedPlan: 'enterprise',
+        source: 'reports-upgrade-modal-enterprise',
+        currentCount: projectUsageCount,
+        limitValue: projectLimit,
+        priceMonthlyUsd: null,
+        contactUrl: upgradeUrl,
+      });
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos iniciar la solicitud de upgrade.',
+      );
+    }
+  };
+
   if (view === 'REPORT') {
     return (
       <div className="report-page-shell max-w-6xl mx-auto space-y-6 pb-12">
@@ -969,14 +1124,15 @@ export default function Reports({ projectId }: { projectId: string }) {
             onClick={() => setView('CONFIG')}
             className="rounded-xl border-slate-200 hover:text-blue-500"
           >
-            Volver a configuracion
+            Volver a configuración
           </Button>
           <Space>
             <Button
               type="primary"
               icon={<PrinterOutlined />}
               onClick={handlePrintReport}
-              className="rounded-xl border-none bg-[#0f4d7a] hover:bg-[#13608f]"
+              disabled={!canUseExports}
+              className="rounded-xl border-none bg-[#0f4d7a] !text-white hover:bg-[#13608f] hover:!text-white"
             >
               Imprimir / Guardar PDF
             </Button>
@@ -1003,9 +1159,25 @@ export default function Reports({ projectId }: { projectId: string }) {
           Generar Reportes de Proyecto
         </Title>
         <Paragraph type="secondary" className="text-lg">
-          Seleccione el tipo de reporte y configure los filtros para obtener informacion detallada.
+          Selecciona el tipo de reporte y configura los filtros para obtener información detallada.
         </Paragraph>
       </div>
+
+      <PlanCenterSection
+        title="Mantén reportes, exportaciones e IA bajo control"
+        description="Antes de generar reportes, revisa el estado del plan, el cupo mensual disponible y la ruta más simple para ampliar capacidad cuando el equipo lo necesite."
+        organizationName={activeOrganizationName}
+        contractedPlan={activeOrganizationPlan}
+        effectivePlan={effectiveOrganizationPlan}
+        billing={activeBillingState}
+        aiUsage={projectQuota?.aiUsage}
+        exportUsage={projectQuota?.exportUsage}
+        upgradePriceMonthlyUsd={upgradePriceMonthlyUsd}
+        onViewPlans={() => setIsUpgradeModalOpen(true)}
+        onUpgradeAi={() => handleUpgradeClick('reports-ai-usage')}
+        onUpgradeExport={() => handleUpgradeClick('reports-export-usage')}
+        onRenewPlan={() => handleUpgradeClick('reports-billing-banner')}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <SelectionCard
@@ -1016,6 +1188,7 @@ export default function Reports({ projectId }: { projectId: string }) {
           icon={<FileTextOutlined />}
           selected={selectedVariant === 'QA_STATUS_SUMMARY'}
           onSelect={setSelectedVariant}
+          locked={!reportAccess.QA_STATUS_SUMMARY}
         />
         <SelectionCard
           type="QA_PROGRESS_REPORT"
@@ -1025,6 +1198,7 @@ export default function Reports({ projectId }: { projectId: string }) {
           icon={<LineChartOutlined />}
           selected={selectedVariant === 'QA_PROGRESS_REPORT'}
           onSelect={setSelectedVariant}
+          locked={!reportAccess.QA_PROGRESS_REPORT}
         />
         <SelectionCard
           type="PROJECT_STATUS_REPORT"
@@ -1034,8 +1208,37 @@ export default function Reports({ projectId }: { projectId: string }) {
           icon={<ProjectOutlined />}
           selected={selectedVariant === 'PROJECT_STATUS_REPORT'}
           onSelect={setSelectedVariant}
+          locked={!reportAccess.PROJECT_STATUS_REPORT}
         />
       </div>
+
+      {selectedReportLocked ? (
+        <PlanUpgradeCard
+          title="Desbloquea los reportes avanzados"
+          description="Actualiza a Growth para acceder a tendencias, comparativos y vistas ejecutivas del proyecto."
+          benefits={[
+            'Reporte de Progreso QA',
+            'Estado del Proyecto',
+            'Mas exportaciones y capacidad',
+            'IA y auditoría disponibles',
+          ]}
+          ctaHref={upgradeUrl}
+          onCtaClick={() => handleUpgradeClick('reports-advanced-reports-lock')}
+          onSecondaryAction={() => setIsUpgradeModalOpen(true)}
+          className="shadow-sm"
+        />
+      ) : null}
+
+      <UpgradeModal
+        open={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        organizationName={activeOrganizationName}
+        currentPlan={effectiveOrganizationPlan}
+        title="Elige el plan para desbloquear más visibilidad"
+        description="Si tu equipo ya necesita reportes avanzados, IA y mas capacidad operativa, aqui puedes comparar el siguiente paso con claridad."
+        onUpgradeGrowth={() => handleUpgradeClick('reports-upgrade-modal-growth')}
+        onContactEnterprise={() => handleEnterpriseClick()}
+      />
 
       <Card className="rounded-3xl border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 bg-slate-50/50 border-b border-slate-100">

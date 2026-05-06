@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { toApiError } from '../../../config/http';
 import type { QABug } from '../../../types';
 import {
   bugOriginFromApi,
@@ -99,15 +100,7 @@ export async function saveBug(bug: QABug) {
     throw new Error(`Project ${bug.projectId} is not available in the workspace.`);
   }
 
-  const documents = await listDocuments<BugDto>('/api/bugs', {
-    'filters[internalBugId][$eq]': bug.internalBugId,
-    'filters[project][documentId][$eq]': context.documentId,
-    'pagination[pageSize]': 1,
-  }, {
-    paginateAll: false,
-  });
-
-  const saved = await upsertDocument<BugDto>('/api/bugs', documents[0]?.documentId || null, {
+  const payload = {
     internalBugId: bug.internalBugId,
     externalBugId: bug.externalBugId || null,
     title: bug.title,
@@ -130,9 +123,69 @@ export async function saveBug(bug: QABug) {
     testCase: bug.testCaseId || bug.testCaseTitle || null,
     testRun: bug.testRunId || null,
     testCycle: bug.cycleId || null,
-  });
+  };
 
-  return mapBug(saved);
+  const existingByInternalId = await listDocuments<BugDto>(
+    '/api/bugs',
+    {
+      'filters[internalBugId][$eq]': bug.internalBugId,
+      'pagination[pageSize]': 1,
+    },
+    {
+      paginateAll: false,
+    },
+  );
+
+  const existingByLinkedSource =
+    existingByInternalId[0] || !bug.linkedSourceId
+      ? []
+      : await listDocuments<BugDto>(
+          '/api/bugs',
+          {
+            'filters[linkedSourceId][$eq]': bug.linkedSourceId,
+            'filters[project][documentId][$eq]': context.documentId,
+            'pagination[pageSize]': 1,
+          },
+          {
+            paginateAll: false,
+          },
+        );
+
+  const existingDocumentId = existingByInternalId[0]?.documentId || existingByLinkedSource[0]?.documentId;
+
+  try {
+    const saved = await upsertDocument<BugDto>('/api/bugs', existingDocumentId, payload);
+    return mapBug(saved);
+  } catch (error) {
+    const apiError = toApiError(error);
+    const isDuplicateInternalId =
+      apiError.status === 400 &&
+      apiError.message.toLowerCase().includes('unique');
+
+    if (!isDuplicateInternalId || existingDocumentId) {
+      throw error;
+    }
+
+    const retryDocuments = await listDocuments<BugDto>(
+      '/api/bugs',
+      {
+        'filters[internalBugId][$eq]': bug.internalBugId,
+        'pagination[pageSize]': 1,
+      },
+      {
+        paginateAll: false,
+      },
+    );
+
+    const retryDocumentId = retryDocuments[0]?.documentId;
+
+    if (!retryDocumentId) {
+      throw error;
+    }
+
+    const saved = await upsertDocument<BugDto>('/api/bugs', retryDocumentId, payload);
+    return mapBug(saved);
+  }
 }
 
 export async function removeBug(internalBugId: string, projectId?: string) {

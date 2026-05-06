@@ -27,8 +27,8 @@ import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { useModules } from '../modules/settings/hooks/useModules';
-import { SlackMemberSelect } from '../modules/slack-members/components/SlackMemberSelect';
-import { useSlackMembers } from '../modules/slack-members/hooks/useSlackMembers';
+import { ParticipantSelect } from '../modules/participant-directory/components/ParticipantSelect';
+import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestPlans } from '../modules/test-plans/hooks/useTestPlans';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
@@ -80,7 +80,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<TestPlan | null>(null);
   const [planForm] = Form.useForm();
-  const { data: slackMembers = [] } = useSlackMembers(isEventModalOpen);
+  const { data: participantDirectoryMembers = [] } = useParticipantDirectoryMembers(isEventModalOpen);
   const selectedEventType =
     Form.useWatch('eventType', planForm) || editingPlan?.eventType || CalendarEventType.TEST;
   const watchedOwnerSelection = Form.useWatch('ownerSelection', planForm) as string[] | undefined;
@@ -387,12 +387,12 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="ownerSelection" label="Responsable">
-                <SlackMemberSelect
-                  members={slackMembers}
+                <ParticipantSelect
+                  members={participantDirectoryMembers}
                   valueField="fullName"
                   multiple
                   maxCount={1}
-                  placeholder="Selecciona desde Slack o escribe un responsable"
+                  placeholder="Selecciona un responsable del workspace o escribe uno manualmente"
                   extraOptions={ownerExtraOptions}
                   onChange={values => planForm.setFieldValue('ownerSelection', values.slice(-1))}
                 />
@@ -400,11 +400,11 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
             </Col>
             <Col span={12}>
               <Form.Item name="attendeeList" label="Participantes">
-                <SlackMemberSelect
-                  members={slackMembers}
+                <ParticipantSelect
+                  members={participantDirectoryMembers}
                   valueField="fullName"
                   multiple
-                  placeholder="Selecciona desde Slack o escribe participantes extra"
+                  placeholder="Selecciona participantes del workspace o escribe participantes extra"
                   extraOptions={attendeeExtraOptions}
                 />
               </Form.Item>

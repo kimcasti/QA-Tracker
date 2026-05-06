@@ -7,6 +7,7 @@ export function useWorkspaceAccess() {
   return useMemo(() => {
     const activeMembership = workspaceQuery.data?.memberships?.[0];
     const projectQuota = workspaceQuery.data?.projectQuota;
+    const isSuperAdmin = Boolean(workspaceQuery.data?.user?.isSuperAdmin);
     const activeRoleCode = activeMembership?.role?.code || '';
     const activeRoleName =
       activeMembership?.role?.name ||
@@ -26,11 +27,16 @@ export function useWorkspaceAccess() {
     const canCreateProjectsByRole = projectQuota?.allowedByRole ?? canManageCycleConfig;
     const hasReachedProjectLimit = projectQuota?.limitReached ?? false;
     const canCreateProjects = projectQuota?.canCreate ?? canCreateProjectsByRole;
+    const canUseAi = projectQuota?.aiUsage?.canUse ?? Boolean(projectQuota?.features?.ai);
+    const canUseExports = projectQuota?.exportUsage?.canUse ?? Boolean(projectQuota?.features?.exports);
+    const canUseAdvancedReports =
+      Boolean(projectQuota?.reports?.qaProgress) || Boolean(projectQuota?.reports?.executiveProjectStatus);
 
     return {
       ...workspaceQuery,
       activeMembership,
       projectQuota,
+      isSuperAdmin,
       activeRoleCode,
       activeRoleName,
       isOwner,
@@ -39,9 +45,13 @@ export function useWorkspaceAccess() {
       canManageOrganization,
       canManageCycleConfig,
       canMutateWorkspace,
+      canAccessSuperAdmin: isSuperAdmin,
       canCreateProjectsByRole,
       hasReachedProjectLimit,
       canCreateProjects,
+      canUseAi,
+      canUseExports,
+      canUseAdvancedReports,
     };
   }, [workspaceQuery]);
 }

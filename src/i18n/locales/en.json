@@ -115,7 +115,10 @@
   "functionality.risk": "Risk level",
   "functionality.sprint": "Sprint",
   "functionality.sprint_placeholder": "Select a sprint",
+  "functionality.delivery_date": "Delivery date",
   "functionality.delivery_date_optional": "Delivery date (optional)",
+  "functionality.authorized_roles": "Authorized roles",
+  "functionality.roles_placeholder": "Select roles",
   "functionality.id_auto_hint": "The ID is generated automatically based on the module.",
   "functionality.tests": "Tests"
 }

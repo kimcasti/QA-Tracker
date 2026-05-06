@@ -13,6 +13,8 @@ const JWT_STORAGE_KEY = 'qa_tracker_api_jwt';
 const AUTH_CLEARED_EVENT = 'qa-tracker-auth-cleared';
 export const ACTIVE_MEMBERSHIP_REQUIRED_MESSAGE =
   'An active organization membership is required.';
+export const INACTIVE_MEMBERSHIP_MESSAGE = 'Your organization membership is inactive.';
+export const INACTIVE_ORGANIZATION_MESSAGE = 'Your organization is inactive.';
 
 export interface ApiError {
   error?: {
@@ -97,6 +99,32 @@ export function isActiveMembershipRequiredError(error: unknown) {
     error.response?.status === HttpStatusCode.Forbidden &&
     message === ACTIVE_MEMBERSHIP_REQUIRED_MESSAGE
   );
+}
+
+export function getAccessRestrictionReason(error: unknown) {
+  if (!isAxiosError<ApiError>(error)) {
+    return null;
+  }
+
+  const message =
+    error.response?.data?.error?.message || error.response?.data?.message || error.message;
+
+  if (error.response?.status !== HttpStatusCode.Forbidden) {
+    return null;
+  }
+
+  if (message === INACTIVE_ORGANIZATION_MESSAGE) {
+    return 'inactive_organization' as const;
+  }
+
+  if (
+    message === INACTIVE_MEMBERSHIP_MESSAGE ||
+    message === ACTIVE_MEMBERSHIP_REQUIRED_MESSAGE
+  ) {
+    return 'inactive_membership' as const;
+  }
+
+  return null;
 }
 
 export function isDomainBackendError<T = any, D = any>(error: unknown): error is AxiosError<T, D> {

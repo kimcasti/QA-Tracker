@@ -1,5 +1,5 @@
 import { Button, Tag, Typography } from 'antd';
-import { CloseCircleFilled, DeleteOutlined, DragOutlined } from '@ant-design/icons';
+import { CloseCircleFilled, DeleteOutlined } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTestCases } from '../../test-cases/hooks/useTestCases';
@@ -10,21 +10,6 @@ import { qaPalette } from '../../../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../../../theme/statusStyles';
 
 const { Text } = Typography;
-
-export function TaskPlaceholderCard() {
-  const { t } = useTranslation();
-
-  return (
-    <div
-      data-swapy-no-drag
-      className="rounded-xl bg-slate-50 border border-dashed border-slate-200 px-3 py-2 shadow-sm"
-    >
-      <Text type="secondary" className="text-xs">
-        {t('storymap.drop_here')}
-      </Text>
-    </div>
-  );
-}
 
 export function TaskCard({
   projectId,
@@ -98,67 +83,59 @@ export function TaskCard({
   return (
     <div className="rounded-xl qa-story-surface px-3 py-2 shadow-sm hover:shadow transition-shadow">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div
-            data-swapy-handle={!readOnly ? true : undefined}
-            className={readOnly ? 'text-slate-300' : 'cursor-grab text-slate-400 hover:text-slate-600'}
-          >
-            <DragOutlined />
-          </div>
-          <div className="min-w-0 w-full">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-slate-700">{functionality?.id}</span>
-                  {functionality?.module && (
-                    <Tag className="m-0 text-[10px]">{functionality.module}</Tag>
-                  )}
-                </div>
-                <div
-                  className="text-sm font-semibold text-slate-800 truncate"
-                  title={functionality?.name}
-                >
-                  {functionality?.name}
-                </div>
+        <div className="min-w-0 w-full">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-700">{functionality?.id}</span>
+                {functionality?.module && (
+                  <Tag className="m-0 text-[10px]">{functionality.module}</Tag>
+                )}
               </div>
-              {status && (
-                <span
-                  className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black"
-                  style={statusStyle}
-                >
-                  {labelTestStatus(status, t)}
-                </span>
-              )}
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-2">
-              {functionality?.priority && (
-                <Tag className="m-0 text-[10px]">
-                  {t('functionality.priority')}: {labelPriority(functionality.priority, t)}
-                </Tag>
-              )}
-              {functionality?.riskLevel && (
-                <Tag className="m-0 text-[10px]">
-                  {t('functionality.risk')}: {labelRisk(functionality.riskLevel, t)}
-                </Tag>
-              )}
-            </div>
-
-            {totalTests > 0 && (
-              <div className="mt-2 text-[11px] text-slate-600 font-semibold">
-                <span>
-                  {t('functionality.tests')}: {totalTests} |{' '}
-                </span>
-                <span
-                  className="inline-flex items-center gap-1"
-                  style={{ color: qaPalette.functionalityStatus.failed }}
-                >
-                  <CloseCircleFilled />
-                  <span>{failedTests}</span>
-                </span>
+              <div
+                className="text-sm font-semibold text-slate-800 truncate"
+                title={functionality?.name}
+              >
+                {functionality?.name}
               </div>
+            </div>
+            {status && (
+              <span
+                className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black"
+                style={statusStyle}
+              >
+                {labelTestStatus(status, t)}
+              </span>
             )}
           </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            {functionality?.priority && (
+              <Tag className="m-0 text-[10px]">
+                {t('functionality.priority')}: {labelPriority(functionality.priority, t)}
+              </Tag>
+            )}
+            {functionality?.riskLevel && (
+              <Tag className="m-0 text-[10px]">
+                {t('functionality.risk')}: {labelRisk(functionality.riskLevel, t)}
+              </Tag>
+            )}
+          </div>
+
+          {totalTests > 0 && (
+            <div className="mt-2 text-[11px] text-slate-600 font-semibold">
+              <span>
+                {t('functionality.tests')}: {totalTests} |{' '}
+              </span>
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ color: qaPalette.functionalityStatus.failed }}
+              >
+                <CloseCircleFilled />
+                <span>{failedTests}</span>
+              </span>
+            </div>
+          )}
         </div>
         {!readOnly && onUnassign && (
           <Button

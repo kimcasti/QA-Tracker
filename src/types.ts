@@ -60,6 +60,7 @@ export interface Functionality {
   projectId: string;
   module: string;
   name: string;
+  jiraTaskUrl?: string;
   roles: string[];
   testTypes: TestType[];
   isCore?: boolean;
@@ -161,6 +162,27 @@ export enum Environment {
   PRODUCTION = 'Producción',
 }
 
+export enum Browser {
+  CHROME = 'Chrome',
+  FIREFOX = 'Firefox',
+  EDGE = 'Edge',
+  SAFARI = 'Safari',
+}
+
+export enum DeviceType {
+  DESKTOP = 'Desktop',
+  MOBILE = 'Mobile',
+  TABLET = 'Tablet',
+}
+
+export enum OperatingSystem {
+  WINDOWS = 'Windows',
+  MACOS = 'macOS',
+  LINUX = 'Linux',
+  ANDROID = 'Android',
+  IOS = 'iOS',
+}
+
 export interface TestPlan {
   id: string;
   projectId: string;
@@ -232,6 +254,12 @@ export interface TestRun {
   tester: string;
   buildVersion?: string;
   environment?: Environment;
+  browser?: Browser;
+  deviceType?: DeviceType;
+  operatingSystem?: OperatingSystem;
+  browserVersion?: string;
+  osVersion?: string;
+  resolution?: string;
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];
@@ -288,6 +316,12 @@ export interface RegressionCycle {
   tester?: string;
   buildVersion?: string;
   environment?: Environment;
+  browser?: Browser;
+  deviceType?: DeviceType;
+  operatingSystem?: OperatingSystem;
+  browserVersion?: string;
+  osVersion?: string;
+  resolution?: string;
   executions: RegressionExecution[];
 }
 
