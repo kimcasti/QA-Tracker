@@ -55,6 +55,7 @@ import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import {
+  authorizeAiAccess,
   authorizeReportAccess,
   runTrackedExport,
 } from '../modules/plans/services/planAccessService';
@@ -75,7 +76,12 @@ import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCyc
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { generateDeliveryUnitSummaryWithAI } from '../services/geminiService';
+import {
+  analyzeTechnicalReportWithAI,
+  generateDeliveryUnitSummaryWithAI,
+  hasAiProviderConfigured,
+  type TechnicalReportAnalysisInput,
+} from '../services/geminiService';
 import { exportDeliveryUnitProgressToDocx } from '../utils/reportUtils';
 import {
   BugStatus,
@@ -118,6 +124,14 @@ interface SelectionCardProps {
   onSelect: (type: ReportVariant) => void;
   icon: React.ReactNode;
   locked?: boolean;
+}
+
+interface TechnicalAnalysisCardProps {
+  projectId: string;
+  input: TechnicalReportAnalysisInput;
+  resetKey: string;
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
 }
 
 const normalizeSprintKey = (value?: string | null) =>
@@ -277,6 +291,175 @@ const getPriorityTag = (priority?: string) => {
   );
 };
 
+const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
+  projectId,
+  input,
+  resetKey,
+  canUseAi,
+  onRequireUpgrade,
+}) => {
+  const [analysis, setAnalysis] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    setAnalysis('');
+  }, [resetKey]);
+
+  const handleGenerate = async () => {
+    if (!canUseAi) {
+      onRequireUpgrade();
+      message.warning('El análisis técnico con IA está disponible en el plan Growth.');
+      return;
+    }
+
+    if (!hasAiProviderConfigured()) {
+      message.warning(
+        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
+      );
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      await authorizeAiAccess(projectId);
+      const result = await analyzeTechnicalReportWithAI(input, projectId);
+      setAnalysis(String(result || '').trim());
+      message.success('Análisis técnico generado con IA.');
+    } catch (error) {
+      console.error('Technical report AI analysis failed:', error);
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos generar el análisis técnico.',
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-slate-800">
+          <ReadOutlined />
+          <Title level={4} className="!mb-0">
+            Análisis técnico con IA
+          </Title>
+        </div>
+        <Button onClick={() => void handleGenerate()} loading={isGenerating}>
+          Generar análisis IA
+        </Button>
+      </div>
+      <Paragraph className="!mb-4 max-w-4xl text-sm leading-7 text-slate-500">
+        La IA interpreta este reporte con base exclusiva en sus métricas, alcance y señales de
+        riesgo para devolver una lectura técnica alineada al objetivo del informe.
+      </Paragraph>
+      <TextArea
+        rows={14}
+        value={analysis}
+        onChange={event => setAnalysis(event.target.value)}
+        placeholder="Aquí aparecerá un análisis técnico accionable con foco en este reporte."
+        className="rounded-2xl"
+      />
+    </Card>
+  );
+};
+
+const QAStatusExecutiveAnalysisCard: React.FC<{
+  projectId: string;
+  input: TechnicalReportAnalysisInput;
+  resetKey: string;
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
+  insightCards: Array<{
+    title: string;
+    value: string;
+    helper?: string;
+  }>;
+}> = ({ projectId, input, resetKey, canUseAi, onRequireUpgrade, insightCards }) => {
+  const [analysis, setAnalysis] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    setAnalysis('');
+  }, [resetKey]);
+
+  const handleGenerate = async () => {
+    if (!canUseAi) {
+      onRequireUpgrade();
+      message.warning('El analisis ejecutivo con IA esta disponible en el plan Growth.');
+      return;
+    }
+
+    if (!hasAiProviderConfigured()) {
+      message.warning(
+        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generacion con IA.',
+      );
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      await authorizeAiAccess(projectId);
+      const result = await analyzeTechnicalReportWithAI(input, projectId);
+      setAnalysis(String(result || '').trim());
+      message.success('Analisis ejecutivo del ciclo generado con IA.');
+    } catch (error) {
+      console.error('QA status executive AI analysis failed:', error);
+      message.error(
+        error instanceof Error ? error.message : 'No pudimos generar el analisis del ciclo.',
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-slate-800">
+          <ReadOutlined />
+          <Title level={4} className="!mb-0">
+            Analisis ejecutivo y tecnico con IA
+          </Title>
+        </div>
+        <Button onClick={() => void handleGenerate()} loading={isGenerating}>
+          Generar analisis IA
+        </Button>
+      </div>
+      <Paragraph className="!mb-4 max-w-4xl text-sm leading-7 text-slate-500">
+        Este bloque sintetiza el estado del ciclo con una lectura profesional, facil de revisar y
+        lista para compartir en PDF con clientes o lideres tecnicos.
+      </Paragraph>
+      <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {insightCards.map(card => (
+          <div
+            key={card.title}
+            className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-4"
+          >
+            <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              {card.title}
+            </Text>
+            <Text strong className="mt-2 block text-base text-slate-900">
+              {card.value}
+            </Text>
+            {card.helper ? (
+              <Text className="mt-1 block text-xs leading-6 text-slate-500">{card.helper}</Text>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+        <div className="mb-3 flex items-center gap-2 text-slate-700">
+          <FileTextOutlined />
+          <Text strong>Lectura del ciclo</Text>
+        </div>
+        <div className="min-h-[280px] whitespace-pre-line text-sm leading-7 text-slate-700">
+          {analysis || 'Aqui aparecera un analisis ejecutivo y tecnico listo para compartir.'}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
 const SelectionCard: React.FC<SelectionCardProps> = ({
   type,
   title,
@@ -340,9 +523,16 @@ const SelectionCard: React.FC<SelectionCardProps> = ({
   </Card>
 );
 
-const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> = ({
+const QAStatusSummary: React.FC<{
+  projectId: string;
+  cycleId: string | null;
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
+}> = ({
   projectId,
   cycleId,
+  canUseAi,
+  onRequireUpgrade,
 }) => {
   const { data: bugs = [] } = useBugs(projectId);
   const { data: regressionCycles = [] } = useRegressionCycles(projectId);
@@ -404,6 +594,97 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
           {executedTests}/{cycle.totalTests}
         </Text>
       ),
+    },
+  ];
+
+  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput>(
+    () => ({
+      reportType: 'qa-status-summary',
+      reportTitle: 'Resumen de Estado QA',
+      reportPurpose:
+        'Evaluar la salud técnica de un ciclo puntual, su cobertura real de ejecución, estabilidad y hallazgos de calidad.',
+      scope: {
+        cycleId: cycle.cycleId,
+        cycleType: getCycleTypeLabel(cycle),
+        sprint: cycle.sprint || 'N/A',
+        executionDate: dayjs(cycle.date).format('YYYY-MM-DD'),
+      },
+      metrics: {
+        passRate: cycle.passRate,
+        totalTests: cycle.totalTests,
+        executedTests,
+        executionCoverage,
+        automatedCount,
+        manualCount,
+        automationRate,
+        failed: cycle.failed,
+        blocked: cycle.blocked,
+        pending: cycle.pending,
+        activeBugs: activeCycleBugs.length,
+      },
+      highlights: [
+        `La estabilidad del sistema para este ciclo fue catalogada como ${stabilityTone.label}.`,
+        `El riesgo operativo del ciclo quedó en nivel ${riskTone.label}.`,
+        `${executedTests} de ${cycle.totalTests} pruebas fueron ejecutadas.`,
+      ],
+      risks: [
+        cycle.failed > 0 ? `${cycle.failed} pruebas fallidas requieren validación funcional o técnica.` : null,
+        cycle.blocked > 0 ? `${cycle.blocked} pruebas bloqueadas limitan la lectura completa del ciclo.` : null,
+        activeCycleBugs.length > 0 ? `${activeCycleBugs.length} bugs activos siguen abiertos para este ciclo.` : null,
+      ].filter(Boolean),
+      details: {
+        impactedModules: Array.from(
+          new Set(cycle.executions.map(execution => execution.module).filter(Boolean)),
+        ),
+        relatedBugs: cycleBugs.map(bug => ({
+          id: bug.internalBugId,
+          title: bug.title || 'Bug relacionado',
+          status: bug.status,
+          severity: bug.severity || null,
+        })),
+        executions: cycle.executions.slice(0, 15).map(execution => ({
+          functionalityName: execution.functionalityName,
+          module: execution.module,
+          executionMode: getExecutionModeLabel(execution.executionMode),
+          result: execution.result,
+          bugId: execution.bugId || execution.linkedBugId || null,
+        })),
+      },
+    }),
+    [
+      activeCycleBugs.length,
+      automatedCount,
+      automationRate,
+      cycle,
+      cycleBugs,
+      executedTests,
+      executionCoverage,
+      manualCount,
+      riskTone.label,
+      stabilityTone.label,
+    ],
+  );
+
+  const insightCards = [
+    {
+      title: 'Estado del ciclo',
+      value: `${cycle.passRate}% de aprobacion`,
+      helper: `${executedTests} de ${cycle.totalTests} pruebas ejecutadas`,
+    },
+    {
+      title: 'Cobertura real',
+      value: `${executionCoverage}% de cobertura`,
+      helper: `${cycle.pending} pendientes y ${cycle.blocked} bloqueadas`,
+    },
+    {
+      title: 'Riesgo actual',
+      value: riskTone.label,
+      helper: `${activeCycleBugs.length} bugs activos en el ciclo`,
+    },
+    {
+      title: 'Automatizacion',
+      value: `${automationRate}% automatizada`,
+      helper: `${automatedCount} automatizadas y ${manualCount} manuales`,
     },
   ];
 
@@ -486,8 +767,8 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
         </Col>
       </Row>
 
-      <Row gutter={24}>
-        <Col span={12}>
+      <Row gutter={[32, 24]} className="mt-2">
+        <Col xs={24} lg={12} className="!px-1">
           <Card title="Distribución de resultados" className="rounded-2xl border-slate-100 h-full">
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -522,7 +803,7 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
             </div>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12} className="!px-1">
           <Card title="Métricas de calidad" className="rounded-2xl border-slate-100 h-full">
             <div className="space-y-4">
               {qualityMetrics.map((metric, index) => (
@@ -539,7 +820,17 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
         </Col>
       </Row>
 
-      <Card title="Detalle de ejecución" className="rounded-2xl border-slate-100 overflow-hidden">
+      <QAStatusExecutiveAnalysisCard
+        projectId={projectId}
+        input={technicalAnalysisInput}
+        resetKey={cycle.id}
+        canUseAi={canUseAi}
+        onRequireUpgrade={onRequireUpgrade}
+        insightCards={insightCards}
+      />
+
+      <div className="pt-3">
+        <Card title="Detalle de ejecución" className="rounded-2xl border-slate-100 overflow-hidden">
         <Table
           dataSource={cycle.executions}
           rowKey="id"
@@ -590,15 +881,24 @@ const QAStatusSummary: React.FC<{ projectId: string; cycleId: string | null }> =
           pagination={false}
           size="small"
         />
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 };
 
-const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> = ({
+const QAProgressReport: React.FC<{
+  projectId: string;
+  sprint: string | null;
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
+}> = ({
   projectId,
   sprint,
+  canUseAi,
+  onRequireUpgrade,
 }) => {
+  const { data: bugs = [] } = useBugs(projectId);
   const { data: regressionCycles = [] } = useRegressionCycles(projectId);
   const { data: smokeCycles = [] } = useSmokeCycles(projectId);
 
@@ -662,6 +962,91 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
     [filteredCycles],
   );
 
+  const averageExecutionFrequencyDays = useMemo(() => {
+    if (filteredCycles.length < 2) return null;
+
+    const gaps = filteredCycles
+      .slice(1)
+      .map((cycle, index) => dayjs(cycle.date).diff(dayjs(filteredCycles[index].date), 'day'))
+      .filter(value => value >= 0);
+
+    if (gaps.length === 0) return null;
+    return average(gaps);
+  }, [filteredCycles]);
+
+  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput>(
+    () => ({
+      reportType: 'qa-progress-report',
+      reportTitle: 'Reporte de Progreso QA',
+      reportPurpose:
+        'Analizar la evolución de la calidad por ciclos, identificar tendencias y detectar cambios en cobertura y automatización.',
+      scope: {
+        sprint: sprint || 'ultimos-ciclos',
+        analyzedCycles: filteredCycles.length,
+        executionFrequencyDays: averageExecutionFrequencyDays,
+        dateRange:
+          filteredCycles.length > 0
+            ? {
+                from: dayjs(filteredCycles[0].date).format('YYYY-MM-DD'),
+                to: dayjs(filteredCycles[filteredCycles.length - 1].date).format('YYYY-MM-DD'),
+              }
+            : null,
+      },
+      metrics: {
+        averagePassRate: average(filteredCycles.map(cycle => cycle.passRate)),
+        averageAutomationRate: evolutionMetrics.averageAutomationRate,
+        latestExecutionCoverage: evolutionMetrics.latestExecutionCoverage,
+        casesGrowth: evolutionMetrics.casesGrowth,
+        failureReduction: evolutionMetrics.failureReduction,
+        executionVelocity: evolutionMetrics.executionVelocity,
+        totalBugsFound: filteredCycles.reduce(
+          (sum, cycle) => sum + bugs.filter(bug => bug.cycleId === cycle.cycleId).length,
+          0,
+        ),
+      },
+      highlights: recentMilestones.map(
+        cycle =>
+          `${cycle.cycleId} (${getCycleTypeLabel(cycle)}): ${cycle.passRate}% pass rate, ${cycle.failed} fallidas, ${getAutomationRate(cycle)}% automatización.`,
+      ),
+      risks: [
+        evolutionMetrics.failureReduction < 0
+          ? 'La reducción de fallos es negativa y sugiere deterioro frente al ciclo base.'
+          : null,
+        evolutionMetrics.latestExecutionCoverage < 80
+          ? 'La cobertura de ejecución más reciente sigue por debajo del 80%.'
+          : null,
+        evolutionMetrics.averageAutomationRate < 40
+          ? 'La automatización promedio es baja para sostener velocidad y repetibilidad.'
+          : null,
+      ].filter(Boolean),
+      details: {
+        cycles: filteredCycles.map(cycle => ({
+          cycleId: cycle.cycleId,
+          cycleType: getCycleTypeLabel(cycle),
+          sprint: cycle.sprint,
+          date: dayjs(cycle.date).format('YYYY-MM-DD'),
+          passRate: cycle.passRate,
+          totalTests: cycle.totalTests,
+          executed: getExecutedCount(cycle),
+          failed: cycle.failed,
+          automationRate: getAutomationRate(cycle),
+          bugsFound: bugs.filter(bug => bug.cycleId === cycle.cycleId).length,
+          impactedModules: Array.from(
+            new Set(cycle.executions.map(execution => execution.module).filter(Boolean)),
+          ),
+          includedFunctionalities: cycle.executions.map(execution => execution.functionalityName),
+          resultsSummary: {
+            passed: cycle.passed,
+            failed: cycle.failed,
+            blocked: cycle.blocked,
+            pending: cycle.pending,
+          },
+        })),
+      },
+    }),
+    [averageExecutionFrequencyDays, bugs, evolutionMetrics, filteredCycles, recentMilestones, sprint],
+  );
+
   if (filteredCycles.length === 0) {
     return <Empty description="No hay ciclos finalizados para el filtro seleccionado" />;
   }
@@ -720,8 +1105,9 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
         </div>
       </Card>
 
-      <Row gutter={24}>
-        <Col span={12}>
+      <div className="px-2 pt-2">
+        <Row gutter={[36, 24]}>
+        <Col xs={24} lg={12} className="!px-2">
           <Card title="Métricas de evolución" className="rounded-2xl border-slate-100">
             <div className="space-y-6">
               <div>
@@ -773,7 +1159,7 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
             </div>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12} className="!px-2">
           <Card title="Hitos recientes" className="rounded-2xl border-slate-100">
             <div className="space-y-4">
               {recentMilestones.map(cycle => {
@@ -816,14 +1202,30 @@ const QAProgressReport: React.FC<{ projectId: string; sprint: string | null }> =
             </div>
           </Card>
         </Col>
-      </Row>
+        </Row>
+      </div>
+
+      <TechnicalReportAnalysisCard
+        projectId={projectId}
+        input={technicalAnalysisInput}
+        resetKey={`${sprint || 'all'}-${filteredCycles.map(cycle => cycle.id).join(',')}`}
+        canUseAi={canUseAi}
+        onRequireUpgrade={onRequireUpgrade}
+      />
     </div>
   );
 };
 
-const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }> = ({
+const ProjectStatusReport: React.FC<{
+  projectId: string;
+  sprint: string | null;
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
+}> = ({
   projectId,
   sprint,
+  canUseAi,
+  onRequireUpgrade,
 }) => {
   const { data: functionalities = [] } = useFunctionalities(projectId);
   const { data: testCases = [] } = useTestCases(projectId);
@@ -904,6 +1306,123 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
     { name: 'Bugs activos', value: stats.activeBugsCount, fill: '#ef4444' },
     { name: 'Ciclos', value: stats.cycleCount, fill: '#f59e0b' },
   ];
+
+  const selectedSprintKey = normalizeSprintKey(sprint);
+  const filteredFunctionalities = useMemo(
+    () =>
+      sprint
+        ? functionalities.filter(item => normalizeSprintKey(item.sprint) === selectedSprintKey)
+        : functionalities,
+    [functionalities, selectedSprintKey, sprint],
+  );
+
+  const filteredCycles = useMemo(
+    () =>
+      [...regressionCycles, ...smokeCycles].filter(cycle => {
+        if (!sprint) return true;
+        return normalizeSprintKey(cycle.sprint) === selectedSprintKey;
+      }),
+    [regressionCycles, selectedSprintKey, smokeCycles, sprint],
+  );
+
+  const filteredBugs = useMemo(
+    () => {
+      if (!sprint) return bugs;
+      const functionalityIds = new Set(filteredFunctionalities.map(item => item.id));
+      return bugs.filter(bug => {
+        const bugSprintMatches = normalizeSprintKey(bug.sprint) === selectedSprintKey;
+        const bugFunctionalityMatches = functionalityIds.has(bug.functionalityId);
+        const bugCycleMatches = filteredCycles.some(cycle => cycle.cycleId === bug.cycleId);
+        return bugSprintMatches || bugFunctionalityMatches || bugCycleMatches;
+      });
+    },
+    [bugs, filteredCycles, filteredFunctionalities, selectedSprintKey, sprint],
+  );
+
+  const activeProjectBugs = useMemo(
+    () => filteredBugs.filter(bug => bug.status !== BugStatus.RESOLVED),
+    [filteredBugs],
+  );
+
+  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput>(
+    () => ({
+      reportType: 'project-status-report',
+      reportTitle: 'Estado del Proyecto',
+      reportPurpose:
+        'Ofrecer una lectura técnica del avance global del proyecto, su cobertura de prueba y el riesgo actual para la operación QA.',
+      scope: {
+        sprint: sprint || 'global',
+      },
+      metrics: {
+        totalFunctionalities: stats.total,
+        completedFunctionalities: stats.completed,
+        progressPercent: stats.progress,
+        highRiskFunctionalities: stats.highRisk,
+        testCasesCount: stats.testCasesCount,
+        activeBugsCount: stats.activeBugsCount,
+        cycleCount: stats.cycleCount,
+        averagePassRate: stats.averagePassRate,
+        averageAutomationRate: stats.averageAutomationRate,
+        pendingCycleTests: stats.pendingCycleTests,
+        coreFunctionalities: stats.core,
+        regressionFunctionalities: stats.regression,
+        smokeFunctionalities: stats.smoke,
+        projectRiskLevel: stats.riskTone.label,
+      },
+      highlights: [
+        `El proyecto presenta un avance funcional del ${stats.progress}%.`,
+        `La tasa promedio de aprobación en ciclos es ${stats.averagePassRate}%.`,
+        `Actualmente existen ${stats.activeBugsCount} bugs activos en el alcance analizado.`,
+      ],
+      risks: [
+        stats.highRisk > 0
+          ? `${stats.highRisk} funcionalidades están marcadas con riesgo alto.`
+          : null,
+        stats.pendingCycleTests > 0
+          ? `${stats.pendingCycleTests} pruebas siguen pendientes o bloqueadas en ciclos asociados.`
+          : null,
+        stats.averagePassRate < 85
+          ? `La tasa promedio de aprobación aún está por debajo del objetivo saludable (85%).`
+          : null,
+      ].filter(Boolean),
+      details: {
+        categoryBars: barData,
+        impactedModules: Array.from(
+          new Set(filteredFunctionalities.map(item => item.module).filter(Boolean)),
+        ),
+        functionalityStatusBreakdown: {
+          completed: filteredFunctionalities.filter(item => item.status === TestStatus.COMPLETED)
+            .length,
+          inProgress: filteredFunctionalities.filter(item => item.status === TestStatus.IN_PROGRESS)
+            .length,
+          failed: filteredFunctionalities.filter(item => item.status === TestStatus.FAILED).length,
+          other:
+            filteredFunctionalities.length -
+            filteredFunctionalities.filter(item =>
+              [TestStatus.COMPLETED, TestStatus.IN_PROGRESS, TestStatus.FAILED].includes(
+                item.status as TestStatus,
+              ),
+            ).length,
+        },
+        activeBugs: activeProjectBugs.slice(0, 20).map(bug => ({
+          id: bug.internalBugId,
+          title: bug.title,
+          severity: bug.severity || null,
+          module: bug.module,
+          status: bug.status,
+        })),
+        cycles: filteredCycles.map(cycle => ({
+          cycleId: cycle.cycleId,
+          sprint: cycle.sprint,
+          type: getCycleTypeLabel(cycle),
+          passRate: cycle.passRate,
+          pending: cycle.pending,
+          blocked: cycle.blocked,
+        })),
+      },
+    }),
+    [activeProjectBugs, barData, filteredCycles, filteredFunctionalities, sprint, stats],
+  );
 
   return (
     <div
@@ -1059,6 +1578,16 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
           </div>
         </div>
       </Card>
+
+      <div className="pt-3">
+        <TechnicalReportAnalysisCard
+        projectId={projectId}
+        input={technicalAnalysisInput}
+        resetKey={`${sprint || 'global'}-${stats.total}-${stats.activeBugsCount}-${stats.averagePassRate}`}
+        canUseAi={canUseAi}
+        onRequireUpgrade={onRequireUpgrade}
+        />
+      </div>
     </div>
   );
 };
@@ -1069,7 +1598,17 @@ const DeliveryUnitProgressReport: React.FC<{
   projectName?: string;
   proposalOwner?: string;
   canUseExports?: boolean;
-}> = ({ projectId, deliveryUnitId, projectName, proposalOwner, canUseExports = false }) => {
+  canUseAi: boolean;
+  onRequireUpgrade: () => void;
+}> = ({
+  projectId,
+  deliveryUnitId,
+  projectName,
+  proposalOwner,
+  canUseExports = false,
+  canUseAi,
+  onRequireUpgrade,
+}) => {
   const { data: deliveryUnits = [] } = useDeliveryUnits(projectId);
   const { data: functionalities = [] } = useFunctionalities(projectId);
   const { data: testCases = [] } = useTestCases(projectId);
@@ -1121,7 +1660,7 @@ const DeliveryUnitProgressReport: React.FC<{
   const progressPercent = scopedFunctionalities.length
     ? Math.round((completedCount / scopedFunctionalities.length) * 100)
     : 0;
-  const selectedActivities = Array.isArray(selectedDeliveryUnit.activities)
+  const selectedActivities = Array.isArray(selectedDeliveryUnit?.activities)
     ? selectedDeliveryUnit.activities
     : [];
 
@@ -1188,17 +1727,18 @@ const DeliveryUnitProgressReport: React.FC<{
     };
   });
 
-  const typeLabel = getDeliveryUnitTypeLabel(selectedDeliveryUnit.type);
-  const statusLabel = getDeliveryUnitStatusLabel(selectedDeliveryUnit.status);
+  const typeLabel = getDeliveryUnitTypeLabel(selectedDeliveryUnit?.type);
+  const statusLabel = getDeliveryUnitStatusLabel(selectedDeliveryUnit?.status);
   const periodText = getDeliveryUnitPeriodText(selectedDeliveryUnit);
 
   const executiveSummary = `Durante esta unidad de entrega se registraron ${selectedActivities.length} actividades realizadas y ${scopedFunctionalities.length} funcionalidades asociadas. De las funcionalidades asociadas, ${completedCount} estan completadas, ${inProgressCount} en progreso y ${pendingCount + failedCount} pendientes, fallidas o con riesgo operativo.`;
   const generatedAtLabel = dayjs().format('DD/MM/YYYY');
 
   const buildConservativeFallback = () => {
-    const introduction = selectedDeliveryUnit.baseDescription?.trim()
-      ? `La unidad de entrega "${selectedDeliveryUnit.name}" se presenta con base en el alcance definido y la informacion operativa registrada para su seguimiento.`
-      : `La unidad de entrega "${selectedDeliveryUnit.name}" consolida la informacion operativa y funcional registrada para esta etapa del proyecto.`;
+    const deliveryUnitName = selectedDeliveryUnit?.name || 'la unidad seleccionada';
+    const introduction = selectedDeliveryUnit?.baseDescription?.trim()
+      ? `La unidad de entrega "${deliveryUnitName}" se presenta con base en el alcance definido y la informacion operativa registrada para su seguimiento.`
+      : `La unidad de entrega "${deliveryUnitName}" consolida la informacion operativa y funcional registrada para esta etapa del proyecto.`;
 
     const objectivesLines = [
       selectedActivities.length > 0
@@ -1315,6 +1855,92 @@ const DeliveryUnitProgressReport: React.FC<{
     ],
   );
 
+  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput>(
+    () => ({
+      reportType: 'delivery-unit-progress-report',
+      reportTitle: 'Progreso por Unidad',
+      reportPurpose:
+        'Interpretar el avance técnico y funcional de una unidad de entrega, su nivel de riesgo y la preparación QA del alcance asociado.',
+      scope: {
+        deliveryUnitName: selectedDeliveryUnit?.name || 'Unidad de entrega',
+        deliveryUnitType: typeLabel,
+        status: statusLabel,
+        period: periodText,
+      },
+      metrics: {
+        totalFunctionalities: scopedFunctionalities.length,
+        completedCount,
+        inProgressCount,
+        pendingCount,
+        failedCount,
+        activeBugsCount: activeBugs.length,
+        testCasesCount: scopedTestCases.length,
+        progressPercent,
+        highRiskCount,
+        mediumRiskCount,
+        activitiesCount: selectedActivities.length,
+      },
+      highlights: [
+        executiveSummary,
+        `La unidad registra ${selectedActivities.length} actividades operativas y ${scopedFunctionalities.length} funcionalidades asociadas.`,
+      ],
+      risks: [
+        highRiskCount > 0 ? `${highRiskCount} funcionalidades de esta unidad tienen riesgo alto.` : null,
+        failedCount > 0 ? `${failedCount} funcionalidades aparecen como fallidas dentro de la unidad.` : null,
+        activeBugs.length > 0 ? `${activeBugs.length} bugs activos impactan el alcance de la unidad.` : null,
+      ].filter(Boolean),
+      details: {
+        unitSummary: {
+          name: selectedDeliveryUnit?.name || 'Unidad de entrega',
+          status: statusLabel,
+          type: typeLabel,
+          period: periodText,
+        },
+        impactedModules: Array.from(
+          new Set(reportRows.map(row => row.module).filter(Boolean)),
+        ),
+        bugDetails: activeBugs.map(bug => ({
+          id: bug.internalBugId,
+          title: bug.title,
+          severity: bug.severity || null,
+          module: bug.module,
+          status: bug.status,
+        })),
+        functionalities: reportRows.map(row => ({
+          functionality: row.functionality,
+          module: row.module,
+          status: row.status,
+          priority: row.priority,
+          bugs: row.bugs,
+          observations: row.observations,
+        })),
+        activities: selectedActivities.map(activity => ({
+          name: activity.name,
+          description: activity.description,
+        })),
+      },
+    }),
+    [
+      activeBugs.length,
+      completedCount,
+      executiveSummary,
+      failedCount,
+      highRiskCount,
+      inProgressCount,
+      mediumRiskCount,
+      pendingCount,
+      periodText,
+      progressPercent,
+      reportRows,
+      scopedFunctionalities.length,
+      scopedTestCases.length,
+      selectedActivities,
+      selectedDeliveryUnit,
+      statusLabel,
+      typeLabel,
+    ],
+  );
+
   const handleExportWord = async () => {
     try {
       await runTrackedExport({
@@ -1399,7 +2025,7 @@ const DeliveryUnitProgressReport: React.FC<{
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+      <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-12">
         <Card className="rounded-2xl border-slate-100 md:col-span-3">
           <Statistic title="Funcionalidades" value={scopedFunctionalities.length} />
         </Card>
@@ -1431,7 +2057,8 @@ const DeliveryUnitProgressReport: React.FC<{
         </Card>
       </div>
 
-      <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="pt-3">
+        <Card className="rounded-3xl border-slate-100 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-slate-800">
             <CheckCircleOutlined />
@@ -1464,9 +2091,11 @@ const DeliveryUnitProgressReport: React.FC<{
             <Text strong className="text-base text-slate-900">{scopedTestCases.length}</Text>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
 
-      <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="pt-3">
+        <Card className="rounded-3xl border-slate-100 shadow-sm">
         <div className="mb-4 flex items-center gap-2 text-slate-800">
           <ReadOutlined />
           <Title level={4} className="!mb-0">
@@ -1523,9 +2152,21 @@ const DeliveryUnitProgressReport: React.FC<{
             />
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
 
-      <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="pt-3">
+        <TechnicalReportAnalysisCard
+          projectId={projectId}
+          input={technicalAnalysisInput}
+          resetKey={selectedDeliveryUnit.documentId || selectedDeliveryUnit.id}
+          canUseAi={canUseAi}
+          onRequireUpgrade={onRequireUpgrade}
+        />
+      </div>
+
+      <div className="pt-3">
+        <Card className="rounded-3xl border-slate-100 shadow-sm">
         <div className="mb-4 flex items-center gap-2 text-slate-800">
           <FolderOpenOutlined />
           <Title level={4} className="!mb-0">
@@ -1565,9 +2206,11 @@ const DeliveryUnitProgressReport: React.FC<{
         ) : (
           <Empty description="No hay actividades operativas seleccionadas en esta unidad." />
         )}
-      </Card>
+        </Card>
+      </div>
 
-      <Card className="rounded-3xl border-slate-100 shadow-sm">
+      <div className="pt-3">
+        <Card className="rounded-3xl border-slate-100 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <Title level={4} className="!mb-0">
             Funcionalidades incluidas en esta unidad de entrega
@@ -1616,7 +2259,8 @@ const DeliveryUnitProgressReport: React.FC<{
           locale={{ emptyText: 'No hay funcionalidades asociadas a esta unidad de entrega.' }}
           rowClassName={() => 'align-top'}
         />
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 };
@@ -1628,7 +2272,7 @@ export default function Reports({ projectId }: { projectId: string }) {
   const [selectedDeliveryUnitId, setSelectedDeliveryUnitId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const { activeMembership, projectQuota, canUseExports } = useWorkspaceAccess();
+  const { activeMembership, projectQuota, canUseAi, canUseExports } = useWorkspaceAccess();
   const activeOrganizationPlan = normalizeOrganizationPlan(
     projectQuota?.plan || activeMembership?.organization?.plan,
   );
@@ -1816,13 +2460,28 @@ export default function Reports({ projectId }: { projectId: string }) {
         </div>
 
         {selectedVariant === 'QA_STATUS_SUMMARY' && (
-          <QAStatusSummary projectId={projectId} cycleId={selectedCycleId} />
+          <QAStatusSummary
+            projectId={projectId}
+            cycleId={selectedCycleId}
+            canUseAi={canUseAi}
+            onRequireUpgrade={() => setIsUpgradeModalOpen(true)}
+          />
         )}
         {selectedVariant === 'QA_PROGRESS_REPORT' && (
-          <QAProgressReport projectId={projectId} sprint={selectedSprint} />
+          <QAProgressReport
+            projectId={projectId}
+            sprint={selectedSprint}
+            canUseAi={canUseAi}
+            onRequireUpgrade={() => setIsUpgradeModalOpen(true)}
+          />
         )}
         {selectedVariant === 'PROJECT_STATUS_REPORT' && (
-          <ProjectStatusReport projectId={projectId} sprint={selectedSprint} />
+          <ProjectStatusReport
+            projectId={projectId}
+            sprint={selectedSprint}
+            canUseAi={canUseAi}
+            onRequireUpgrade={() => setIsUpgradeModalOpen(true)}
+          />
         )}
           {selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT' && (
             <DeliveryUnitProgressReport
@@ -1831,6 +2490,8 @@ export default function Reports({ projectId }: { projectId: string }) {
               projectName={currentProject?.name}
               proposalOwner={currentProject?.proposalOwner}
               canUseExports={canUseExports}
+              canUseAi={canUseAi}
+              onRequireUpgrade={() => setIsUpgradeModalOpen(true)}
             />
           )}
       </div>

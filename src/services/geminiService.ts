@@ -66,6 +66,17 @@ export type DeliveryUnitAiSummary = {
   conclusion: string;
 };
 
+export type TechnicalReportAnalysisInput = {
+  reportType: string;
+  reportTitle: string;
+  reportPurpose: string;
+  scope?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+  highlights?: unknown[];
+  risks?: unknown[];
+  details?: Record<string, unknown>;
+};
+
 function toServiceError(error: unknown) {
   const apiError = toApiError(error);
   throw new Error(apiError.message);
@@ -144,6 +155,16 @@ export async function generateDeliveryUnitSummaryWithAI(
   projectId?: string,
 ) {
   return postAi<DeliveryUnitAiSummary>('/api/ai/delivery-units/summary', {
+    ...input,
+    projectId,
+  });
+}
+
+export async function analyzeTechnicalReportWithAI(
+  input: TechnicalReportAnalysisInput,
+  projectId?: string,
+) {
+  return postAi<string>('/api/ai/reports/technical-analysis', {
     ...input,
     projectId,
   });
