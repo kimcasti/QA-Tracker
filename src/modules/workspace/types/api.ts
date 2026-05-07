@@ -1,3 +1,5 @@
+import type { ProjectServiceBillingPhase } from '../../../types';
+
 export interface WorkspaceUserDto {
   id?: number;
   username?: string;
@@ -48,6 +50,15 @@ export interface WorkspaceProjectDto {
   businessRules?: string;
   aiProjectInsights?: string;
   aiWireframeBrief?: string;
+  serviceBillingPhases?: ProjectServiceBillingPhase[] | string | null;
+  proposalType?: string | null;
+  proposalSentAt?: string | null;
+  projectStartAt?: string | null;
+  contractNumber?: string | null;
+  proposalNumber?: string | null;
+  currency?: string | null;
+  paymentTermsDays?: number | null;
+  proposalOwner?: string | null;
   organization?: {
     documentId: string;
     name: string;
@@ -108,6 +119,7 @@ export interface WorkspaceProjectQuotaDto {
     qaStatusSummary: boolean;
     qaProgress: boolean;
     executiveProjectStatus: boolean;
+    deliveryUnitProgress?: boolean;
   };
   exportUsage?: {
     usedThisMonth: number;

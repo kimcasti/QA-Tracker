@@ -102,6 +102,7 @@ export interface WorkspaceProjectQuota {
     qaStatusSummary: boolean;
     qaProgress: boolean;
     executiveProjectStatus: boolean;
+    deliveryUnitProgress?: boolean;
   };
   exportUsage?: {
     usedThisMonth: number;

@@ -35,6 +35,91 @@ export enum ProjectStatus {
   COMPLETED = 'Completed',
 }
 
+export enum ProposalType {
+  PHASES = 'phases',
+  SERVICES = 'services',
+  MIXED = 'mixed',
+}
+
+export enum DeliveryUnitType {
+  PHASE = 'phase',
+  SERVICE = 'service',
+  MAINTENANCE = 'maintenance',
+  SUPPORT = 'support',
+  MILESTONE = 'milestone',
+  OTHER = 'other',
+}
+
+export enum DeliveryUnitStatus {
+  PLANNED = 'planned',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  PAUSED = 'paused',
+  CANCELLED = 'cancelled',
+}
+
+export interface ProjectProposalSettings {
+  proposalType?: ProposalType;
+  proposalSentAt?: string;
+  projectStartAt?: string;
+  contractNumber?: string;
+  proposalNumber?: string;
+  currency?: string;
+  paymentTermsDays?: number;
+  proposalOwner?: string;
+}
+
+export interface DeliveryUnit {
+  documentId?: string;
+  id: string;
+  projectId: string;
+  name: string;
+  type: DeliveryUnitType;
+  baseDescription?: string;
+  startDate?: string;
+  estimatedEndDate?: string;
+  periodLabel?: string;
+  amount?: number;
+  status: DeliveryUnitStatus;
+  sortOrder?: number;
+  activities?: DeliveryActivityTemplate[];
+  activityIds?: string[];
+}
+
+export interface DeliveryActivityTemplate {
+  documentId?: string;
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export type ProjectServiceBillingMode = 'monthly' | 'phase_total' | 'one_time';
+
+export interface ProjectServiceBillingSupportReport {
+  title?: string;
+  summary?: string;
+  referenceUrl?: string;
+}
+
+export interface ProjectServiceBillingItem {
+  id: string;
+  serviceName: string;
+  relatedProcesses: string[];
+  billingMode: ProjectServiceBillingMode;
+  monthlyCost?: number;
+  totalCost?: number;
+  supportReport?: ProjectServiceBillingSupportReport;
+}
+
+export interface ProjectServiceBillingPhase {
+  id: string;
+  phaseName: string;
+  description?: string;
+  services: ProjectServiceBillingItem[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -51,6 +136,15 @@ export interface Project {
   businessRules?: string;
   aiProjectInsights?: string;
   aiWireframeBrief?: string;
+  serviceBillingPhases?: ProjectServiceBillingPhase[];
+  proposalType?: ProposalType;
+  proposalSentAt?: string;
+  projectStartAt?: string;
+  contractNumber?: string;
+  proposalNumber?: string;
+  currency?: string;
+  paymentTermsDays?: number;
+  proposalOwner?: string;
   storyMapData?: import('./modules/storymap/types').StoryMapSnapshot;
 }
 
@@ -73,6 +167,8 @@ export interface Functionality {
   riskLevel: RiskLevel;
   sprint?: string;
   storyId?: string;
+  deliveryUnitId?: string;
+  deliveryUnitName?: string;
 }
 
 export interface TestCase {

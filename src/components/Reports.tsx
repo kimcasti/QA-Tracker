@@ -5,6 +5,7 @@ import {
   Col,
   Divider,
   Empty,
+  Input,
   Progress,
   Row,
   Select,
@@ -21,14 +22,18 @@ import {
   CalendarOutlined,
   CheckCircleFilled,
   CheckCircleOutlined,
+  CheckOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   FileTextOutlined,
+  FlagOutlined,
   FilterOutlined,
+  FolderOpenOutlined,
   LineChartOutlined,
   LockOutlined,
   PrinterOutlined,
   ProjectOutlined,
+  ReadOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import {
@@ -48,12 +53,14 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
+import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import {
   authorizeReportAccess,
   runTrackedExport,
 } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
+import { useProjects } from '../modules/projects/hooks/useProjects';
 import { PlanCenterSection } from '../modules/plans/components/PlanCenterSection';
 import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
 import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
@@ -68,8 +75,12 @@ import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCyc
 import { useSmokeCycles } from '../modules/test-cycles/hooks/useSmokeCycles';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
+import { generateDeliveryUnitSummaryWithAI } from '../services/geminiService';
+import { exportDeliveryUnitProgressToDocx } from '../utils/reportUtils';
 import {
   BugStatus,
+  DeliveryUnit,
+  DeliveryUnitType,
   ExecutionMode,
   RegressionCycle,
   RiskLevel,
@@ -78,14 +89,20 @@ import {
 } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 const REPORT_ACCESS_KEYS = {
   QA_STATUS_SUMMARY: 'qaStatusSummary',
   QA_PROGRESS_REPORT: 'qaProgress',
   PROJECT_STATUS_REPORT: 'executiveProjectStatus',
+  DELIVERY_UNIT_PROGRESS_REPORT: 'deliveryUnitProgress',
 } as const;
 
-type ReportVariant = 'QA_STATUS_SUMMARY' | 'QA_PROGRESS_REPORT' | 'PROJECT_STATUS_REPORT';
+type ReportVariant =
+  | 'QA_STATUS_SUMMARY'
+  | 'QA_PROGRESS_REPORT'
+  | 'PROJECT_STATUS_REPORT'
+  | 'DELIVERY_UNIT_PROGRESS_REPORT';
 
 type RiskTone = {
   label: string;
@@ -170,6 +187,94 @@ const getProjectRiskTone = (
   }
 
   return { label: 'Bajo', color: 'green' };
+};
+
+const getDeliveryUnitStatusTag = (status?: string) => {
+  const value = String(status || '').toLowerCase();
+  if (value === 'completed') return <Tag color="green">Completada</Tag>;
+  if (value === 'in_progress') return <Tag color="blue">En progreso</Tag>;
+  if (value === 'paused') return <Tag color="orange">Pausada</Tag>;
+  if (value === 'cancelled') return <Tag color="red">Cancelada</Tag>;
+  return <Tag color="default">Planeada</Tag>;
+};
+
+const getDeliveryUnitStatusLabel = (status?: string) => {
+  const value = String(status || '').toLowerCase();
+  if (value === 'completed') return 'Completada';
+  if (value === 'in_progress') return 'En progreso';
+  if (value === 'paused') return 'Pausada';
+  if (value === 'cancelled') return 'Cancelada';
+  return 'Planeada';
+};
+
+const getDeliveryUnitTypeLabel = (type?: DeliveryUnitType) => {
+  if (type === DeliveryUnitType.PHASE) return 'Fase';
+  if (type === DeliveryUnitType.SERVICE) return 'Servicio';
+  if (type === DeliveryUnitType.MAINTENANCE) return 'Mantenimiento';
+  if (type === DeliveryUnitType.SUPPORT) return 'Soporte';
+  if (type === DeliveryUnitType.MILESTONE) return 'Hito';
+  return 'Otro';
+};
+
+const getDeliveryUnitPeriodText = (unit?: DeliveryUnit | null) => {
+  if (!unit) return '-';
+  if (unit.periodLabel) return unit.periodLabel;
+
+  const start = unit.startDate ? dayjs(unit.startDate).format('DD/MM/YYYY') : '-';
+  const end = unit.estimatedEndDate ? dayjs(unit.estimatedEndDate).format('DD/MM/YYYY') : '-';
+  return `${start} - ${end}`;
+};
+
+const getFunctionalityStatusTag = (status?: string) => {
+  const value = String(status || '');
+  if (value === TestStatus.COMPLETED) return <Tag color="green">Completado</Tag>;
+  if (value === TestStatus.IN_PROGRESS) return <Tag color="blue">En progreso</Tag>;
+  if (value === TestStatus.FAILED) return <Tag color="red">Fallido</Tag>;
+  if (value === TestStatus.MVP) return <Tag color="gold">MVP</Tag>;
+  if (value === TestStatus.POST_MVP) return <Tag color="purple">Post MVP</Tag>;
+  return <Tag color="default">Backlog</Tag>;
+};
+
+const getQaStatusTag = (status?: string) => {
+  const value = String(status || '');
+  const color =
+    value === TestStatus.COMPLETED
+      ? '#16a34a'
+      : value === TestStatus.IN_PROGRESS
+        ? '#2563eb'
+        : value === TestStatus.FAILED
+          ? '#dc2626'
+          : '#64748b';
+
+  return (
+    <Tag
+      className="rounded-full border px-3 py-0.5 text-xs font-medium"
+      style={{ color, borderColor: `${color}33`, backgroundColor: '#ffffff' }}
+    >
+      {value || 'Sin estado'}
+    </Tag>
+  );
+};
+
+const getPriorityTag = (priority?: string) => {
+  const value = String(priority || '');
+  const color =
+    value === 'Crítico'
+      ? '#be123c'
+      : value === 'Alto'
+        ? '#dc2626'
+        : value === 'Medio'
+          ? '#d97706'
+          : '#059669';
+
+  return (
+    <Tag
+      className="rounded-full border-none px-2.5 py-0.5 text-[11px] font-semibold"
+      style={{ color, backgroundColor: `${color}14` }}
+    >
+      {value || 'Sin prioridad'}
+    </Tag>
+  );
 };
 
 const SelectionCard: React.FC<SelectionCardProps> = ({
@@ -958,10 +1063,569 @@ const ProjectStatusReport: React.FC<{ projectId: string; sprint: string | null }
   );
 };
 
+const DeliveryUnitProgressReport: React.FC<{
+  projectId: string;
+  deliveryUnitId: string | null;
+  projectName?: string;
+  proposalOwner?: string;
+  canUseExports?: boolean;
+}> = ({ projectId, deliveryUnitId, projectName, proposalOwner, canUseExports = false }) => {
+  const { data: deliveryUnits = [] } = useDeliveryUnits(projectId);
+  const { data: functionalities = [] } = useFunctionalities(projectId);
+  const { data: testCases = [] } = useTestCases(projectId);
+  const { data: bugs = [] } = useBugs(projectId);
+
+  const selectedDeliveryUnit = useMemo(
+    () => deliveryUnits.find(item => (item.documentId || item.id) === deliveryUnitId) || null,
+    [deliveryUnitId, deliveryUnits],
+  );
+
+  const scopedFunctionalities = useMemo(
+    () =>
+      functionalities.filter(
+        item => item.deliveryUnitId && item.deliveryUnitId === (selectedDeliveryUnit?.documentId || selectedDeliveryUnit?.id),
+      ),
+    [functionalities, selectedDeliveryUnit],
+  );
+
+  const functionalityIds = useMemo(
+    () => new Set(scopedFunctionalities.map(item => item.id)),
+    [scopedFunctionalities],
+  );
+
+  const scopedTestCases = useMemo(
+    () => testCases.filter(item => functionalityIds.has(item.functionalityId)),
+    [functionalityIds, testCases],
+  );
+
+  const scopedBugs = useMemo(
+    () => bugs.filter(item => functionalityIds.has(item.functionalityId)),
+    [bugs, functionalityIds],
+  );
+
+  const activeBugs = useMemo(
+    () => scopedBugs.filter(item => item.status !== BugStatus.RESOLVED),
+    [scopedBugs],
+  );
+  const [isGeneratingAiSummary, setIsGeneratingAiSummary] = useState(false);
+  const [aiIntroduction, setAiIntroduction] = useState('');
+  const [aiObjectives, setAiObjectives] = useState('');
+  const [aiConclusion, setAiConclusion] = useState('');
+
+  const completedCount = scopedFunctionalities.filter(item => item.status === TestStatus.COMPLETED).length;
+  const inProgressCount = scopedFunctionalities.filter(item => item.status === TestStatus.IN_PROGRESS).length;
+  const failedCount = scopedFunctionalities.filter(item => item.status === TestStatus.FAILED).length;
+  const pendingCount = scopedFunctionalities.length - completedCount - inProgressCount - failedCount;
+  const highRiskCount = scopedFunctionalities.filter(item => item.riskLevel === RiskLevel.HIGH).length;
+  const mediumRiskCount = scopedFunctionalities.filter(item => item.riskLevel === RiskLevel.MEDIUM).length;
+  const progressPercent = scopedFunctionalities.length
+    ? Math.round((completedCount / scopedFunctionalities.length) * 100)
+    : 0;
+  const selectedActivities = Array.isArray(selectedDeliveryUnit.activities)
+    ? selectedDeliveryUnit.activities
+    : [];
+
+  const aiContext = useMemo(
+    () => ({
+      deliveryUnit: {
+        name: selectedDeliveryUnit?.name || '',
+        type: selectedDeliveryUnit?.type,
+        status: selectedDeliveryUnit?.status,
+        periodLabel: selectedDeliveryUnit?.periodLabel,
+        startDate: selectedDeliveryUnit?.startDate,
+        estimatedEndDate: selectedDeliveryUnit?.estimatedEndDate,
+        baseDescription: selectedDeliveryUnit?.baseDescription,
+      },
+      activities: selectedActivities.map(activity => ({
+        name: activity.name,
+        description: activity.description,
+      })),
+      functionalities: scopedFunctionalities.map(item => ({
+        name: item.name,
+        status: item.status,
+        priority: item.priority,
+        module: item.module,
+      })),
+      metrics: {
+        totalFunctionalities: scopedFunctionalities.length,
+        completed: completedCount,
+        inProgress: inProgressCount,
+        pending: pendingCount,
+        activeBugs: activeBugs.length,
+        testCasesCount: scopedTestCases.length,
+        progressPercent,
+      },
+    }),
+    [
+      activeBugs.length,
+      completedCount,
+      inProgressCount,
+      pendingCount,
+      progressPercent,
+      scopedFunctionalities,
+      scopedTestCases.length,
+      selectedActivities,
+      selectedDeliveryUnit,
+    ],
+  );
+
+  const reportRows = scopedFunctionalities.map(item => {
+    const itemBugs = activeBugs.filter(bug => bug.functionalityId === item.id);
+    return {
+      key: item.id,
+      functionality: item.name,
+      module: item.module,
+      status: item.status,
+      priority: item.priority,
+      qaStatus: item.status,
+      bugs: itemBugs.length,
+      observations:
+        itemBugs.length > 0
+          ? `${itemBugs.length} bug(s) activo(s)`
+          : item.riskLevel === RiskLevel.HIGH
+            ? 'Riesgo alto detectado'
+            : 'Sin alertas críticas',
+    };
+  });
+
+  const typeLabel = getDeliveryUnitTypeLabel(selectedDeliveryUnit.type);
+  const statusLabel = getDeliveryUnitStatusLabel(selectedDeliveryUnit.status);
+  const periodText = getDeliveryUnitPeriodText(selectedDeliveryUnit);
+
+  const executiveSummary = `Durante esta unidad de entrega se registraron ${selectedActivities.length} actividades realizadas y ${scopedFunctionalities.length} funcionalidades asociadas. De las funcionalidades asociadas, ${completedCount} estan completadas, ${inProgressCount} en progreso y ${pendingCount + failedCount} pendientes, fallidas o con riesgo operativo.`;
+  const generatedAtLabel = dayjs().format('DD/MM/YYYY');
+
+  const buildConservativeFallback = () => {
+    const introduction = selectedDeliveryUnit.baseDescription?.trim()
+      ? `La unidad de entrega "${selectedDeliveryUnit.name}" se presenta con base en el alcance definido y la informacion operativa registrada para su seguimiento.`
+      : `La unidad de entrega "${selectedDeliveryUnit.name}" consolida la informacion operativa y funcional registrada para esta etapa del proyecto.`;
+
+    const objectivesLines = [
+      selectedActivities.length > 0
+        ? `- Ejecutar las actividades operativas registradas para la unidad seleccionada.`
+        : `- Mantener seguimiento operativo del alcance definido para la unidad seleccionada.`,
+      scopedFunctionalities.length > 0
+        ? `- Dar trazabilidad a las funcionalidades asociadas dentro del alcance actual.`
+        : `- Preparar el seguimiento funcional conforme se registren nuevas funcionalidades en la unidad.`,
+      activeBugs.length > 0
+        ? `- Dar visibilidad a los hallazgos activos relacionados con esta unidad de entrega.`
+        : `- Mantener control del avance funcional y de la cobertura registrada para esta unidad.`,
+    ].join('\n');
+
+    const conclusion =
+      scopedFunctionalities.length > 0
+        ? `Actualmente se registran ${scopedFunctionalities.length} funcionalidades asociadas, con ${completedCount} completadas y ${inProgressCount} en progreso. La informacion disponible permite continuar el seguimiento de la unidad y preparar la siguiente etapa con base en datos reales.`
+        : `La unidad cuenta con informacion operativa disponible y puede seguir ampliandose a medida que se registren funcionalidades y evidencias adicionales.`;
+
+    return {
+      introduction,
+      objectives: objectivesLines,
+      conclusion,
+    };
+  };
+
+  const handleGenerateAiSummary = async () => {
+    setIsGeneratingAiSummary(true);
+
+    try {
+      const result = await generateDeliveryUnitSummaryWithAI(aiContext, projectId);
+      setAiIntroduction(String(result?.introduction || '').trim());
+      setAiObjectives(String(result?.objectives || '').trim());
+      setAiConclusion(String(result?.conclusion || '').trim());
+      message.success('Resumen IA generado correctamente.');
+    } catch (error) {
+      console.error('AI delivery unit summary failed:', error);
+      const fallback = buildConservativeFallback();
+      setAiIntroduction(fallback.introduction);
+      setAiObjectives(fallback.objectives);
+      setAiConclusion(fallback.conclusion);
+      message.warning('No se pudo generar el resumen con IA. Se cargo un borrador conservador.');
+    } finally {
+      setIsGeneratingAiSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    setAiIntroduction('');
+    setAiObjectives('');
+    setAiConclusion('');
+  }, [deliveryUnitId]);
+
+  const deliveryUnitDocxData = useMemo(
+    () => ({
+      projectName: projectName || 'Proyecto actual',
+      deliveryUnitName: selectedDeliveryUnit?.name || 'Unidad de entrega',
+      typeLabel,
+      statusLabel,
+      generatedAtLabel,
+      periodLabel: periodText,
+      proposalOwner: proposalOwner || 'No definido',
+      scopeDescription:
+        selectedDeliveryUnit?.baseDescription || 'Sin descripcion base registrada.',
+      executiveSummary,
+      aiIntroduction: aiIntroduction.trim(),
+      aiObjectives: aiObjectives.trim(),
+      aiConclusion: aiConclusion.trim(),
+      metrics: {
+        totalFunctionalities: scopedFunctionalities.length,
+        completedCount,
+        inProgressCount,
+        pendingCount,
+        failedCount,
+        activeBugsCount: activeBugs.length,
+        testCasesCount: scopedTestCases.length,
+        progressPercent,
+      },
+      activities: selectedActivities.map(activity => ({
+        name: activity.name,
+        description: activity.description,
+      })),
+      functionalities: reportRows.map(row => ({
+        functionality: row.functionality,
+        module: row.module,
+        status: row.status,
+        priority: row.priority,
+        qaStatus: row.qaStatus,
+        bugs: row.bugs,
+        observations: row.observations,
+      })),
+    }),
+    [
+      activeBugs.length,
+      aiConclusion,
+      aiIntroduction,
+      aiObjectives,
+      completedCount,
+      executiveSummary,
+      failedCount,
+      generatedAtLabel,
+      inProgressCount,
+      pendingCount,
+      periodText,
+      projectName,
+      progressPercent,
+      proposalOwner,
+      reportRows,
+      scopedFunctionalities.length,
+      scopedTestCases.length,
+      selectedActivities,
+      selectedDeliveryUnit,
+      statusLabel,
+      typeLabel,
+    ],
+  );
+
+  const handleExportWord = async () => {
+    try {
+      await runTrackedExport({
+        projectId,
+        action: () => exportDeliveryUnitProgressToDocx(deliveryUnitDocxData),
+      });
+      message.success('Reporte Word generado correctamente.');
+    } catch (error) {
+      console.error('Delivery unit DOCX export failed:', error);
+      message.error('No se pudo generar el reporte en Word.');
+    }
+  };
+
+  if (!selectedDeliveryUnit) {
+    return <Empty description="Selecciona una unidad de entrega para ver el reporte." />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="overflow-hidden rounded-3xl border-slate-200 shadow-sm print:shadow-none">
+        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-6 py-8">
+          <div className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-6">
+            <div className="space-y-3">
+              <Text className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                Reporte de progreso
+              </Text>
+              <Title level={2} className="!mb-0 !text-slate-900">
+                {selectedDeliveryUnit.name}
+              </Title>
+              <Space wrap size={[8, 8]}>
+                <Tag color="blue">{typeLabel}</Tag>
+                {getDeliveryUnitStatusTag(selectedDeliveryUnit.status)}
+                {selectedDeliveryUnit.periodLabel ? <Tag>{selectedDeliveryUnit.periodLabel}</Tag> : null}
+              </Space>
+            </div>
+            <div className="grid min-w-[260px] grid-cols-1 gap-3 text-sm text-slate-600 md:grid-cols-2">
+              <div>
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Proyecto
+                </Text>
+                <Text strong>{projectName || 'Proyecto actual'}</Text>
+              </div>
+              <div>
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Fecha de generación
+                </Text>
+                <Text strong>{generatedAtLabel}</Text>
+              </div>
+              <div>
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Periodo
+                </Text>
+                <Text strong>{periodText}</Text>
+              </div>
+              <div>
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Responsable
+                </Text>
+                <Text strong>{proposalOwner || 'No definido'}</Text>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex justify-end">
+            <Button
+              icon={<FileTextOutlined />}
+              onClick={() => void handleExportWord()}
+              disabled={!canUseExports}
+            >
+              Exportar Word (.docx)
+            </Button>
+          </div>
+
+          <div className="mt-5 space-y-2">
+            <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Alcance de la unidad
+            </Text>
+            <Paragraph className="!mb-0 max-w-4xl text-sm leading-7 text-slate-600">
+              {selectedDeliveryUnit.baseDescription || 'Sin descripcion base registrada.'}
+            </Paragraph>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+        <Card className="rounded-2xl border-slate-100 md:col-span-3">
+          <Statistic title="Funcionalidades" value={scopedFunctionalities.length} />
+        </Card>
+        <Card className="rounded-2xl border-slate-100 md:col-span-3">
+          <Statistic title="Completadas" value={completedCount} />
+        </Card>
+        <Card className="rounded-2xl border-slate-100 md:col-span-3">
+          <Statistic title="En progreso" value={inProgressCount} />
+        </Card>
+        <Card className="rounded-2xl border-slate-100 md:col-span-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <Text className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Avance general
+              </Text>
+              <Title level={3} className="!mb-0 !text-slate-900">
+                {progressPercent}%
+              </Title>
+            </div>
+            <CheckCircleOutlined className="text-lg text-emerald-500" />
+          </div>
+          <Progress
+            percent={progressPercent}
+            showInfo={false}
+            strokeColor="#2563eb"
+            trailColor="#e2e8f0"
+            strokeWidth={12}
+          />
+        </Card>
+      </div>
+
+      <Card className="rounded-3xl border-slate-100 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-slate-800">
+            <CheckCircleOutlined />
+            <Title level={4} className="!mb-0">
+              Resumen ejecutivo
+            </Title>
+          </div>
+          <Button
+            type="default"
+            onClick={() => void handleGenerateAiSummary()}
+            loading={isGeneratingAiSummary}
+          >
+            Generar resumen IA
+          </Button>
+        </div>
+        <Paragraph className="!mb-5 max-w-4xl text-base leading-8 text-slate-600">
+          {executiveSummary}
+        </Paragraph>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-4">
+            <Text className="block text-xs uppercase tracking-wider text-slate-400">Pendientes / backlog</Text>
+            <Text strong className="text-base text-slate-900">{pendingCount}</Text>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-rose-50/60 px-4 py-4">
+            <Text className="block text-xs uppercase tracking-wider text-slate-400">Bugs activos</Text>
+            <Text strong className="text-base text-slate-900">{activeBugs.length}</Text>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-emerald-50/50 px-4 py-4">
+            <Text className="block text-xs uppercase tracking-wider text-slate-400">Casos asociados</Text>
+            <Text strong className="text-base text-slate-900">{scopedTestCases.length}</Text>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="rounded-3xl border-slate-100 shadow-sm">
+        <div className="mb-4 flex items-center gap-2 text-slate-800">
+          <ReadOutlined />
+          <Title level={4} className="!mb-0">
+            Resumen asistido por IA
+          </Title>
+        </div>
+        <div className="grid grid-cols-1 gap-4">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FileTextOutlined className="text-slate-400" />
+              <Text strong className="text-slate-800">
+                Introducción
+              </Text>
+            </div>
+            <TextArea
+              rows={4}
+              value={aiIntroduction}
+              onChange={event => setAiIntroduction(event.target.value)}
+              bordered={false}
+              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
+              placeholder="Aqui se mostrara la introduccion generada con base exclusiva en esta unidad."
+            />
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FlagOutlined className="text-slate-400" />
+              <Text strong className="text-slate-800">
+                Objetivos
+              </Text>
+            </div>
+            <TextArea
+              rows={5}
+              value={aiObjectives}
+              onChange={event => setAiObjectives(event.target.value)}
+              bordered={false}
+              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
+              placeholder="Aqui se mostraran los objetivos generados con base exclusiva en esta unidad."
+            />
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <CheckOutlined className="text-slate-400" />
+              <Text strong className="text-slate-800">
+                Conclusión
+              </Text>
+            </div>
+            <TextArea
+              rows={4}
+              value={aiConclusion}
+              onChange={event => setAiConclusion(event.target.value)}
+              bordered={false}
+              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
+              placeholder="Aqui se mostrara la conclusion generada con base exclusiva en esta unidad."
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="rounded-3xl border-slate-100 shadow-sm">
+        <div className="mb-4 flex items-center gap-2 text-slate-800">
+          <FolderOpenOutlined />
+          <Title level={4} className="!mb-0">
+            Actividades realizadas
+          </Title>
+        </div>
+        {selectedActivities.length > 0 ? (
+          <div className="space-y-4">
+            {selectedActivities.map((activity, index) => (
+              <div key={activity.documentId || activity.id} className="flex gap-4">
+                <div className="flex w-10 flex-col items-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <CalendarOutlined />
+                  </div>
+                  {index < selectedActivities.length - 1 ? (
+                    <div className="mt-2 h-full w-px bg-slate-200" />
+                  ) : null}
+                </div>
+                <div
+                  className="flex-1 rounded-2xl border border-slate-100 bg-slate-50/70 px-5 py-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <Text strong className="text-slate-800">{activity.name}</Text>
+                    {selectedDeliveryUnit.periodLabel ? (
+                      <Tag className="rounded-full border-none bg-slate-100 px-3 py-1 text-xs text-slate-500">
+                        {selectedDeliveryUnit.periodLabel}
+                      </Tag>
+                    ) : null}
+                  </div>
+                  <Text type="secondary" className="mt-2 block text-sm leading-7">
+                    {activity.description || 'Sin descripcion adicional.'}
+                  </Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty description="No hay actividades operativas seleccionadas en esta unidad." />
+        )}
+      </Card>
+
+      <Card className="rounded-3xl border-slate-100 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <Title level={4} className="!mb-0">
+            Funcionalidades incluidas en esta unidad de entrega
+          </Title>
+          <Space wrap>
+            <Tag color={highRiskCount > 0 ? 'red' : mediumRiskCount > 0 ? 'orange' : 'green'}>
+              Riesgo {highRiskCount > 0 ? 'alto' : mediumRiskCount > 0 ? 'medio' : 'bajo'}
+            </Tag>
+            <Tag color={failedCount > 0 ? 'red' : 'blue'}>
+              Fallidas / bloqueadas: {failedCount}
+            </Tag>
+          </Space>
+        </div>
+        <Table
+          dataSource={reportRows}
+          pagination={false}
+          columns={[
+            {
+              title: 'Funcionalidad',
+              dataIndex: 'functionality',
+              key: 'functionality',
+              render: (value: string) => <Text strong className="text-slate-800">{value}</Text>,
+            },
+            { title: 'Modulo', dataIndex: 'module', key: 'module' },
+            {
+              title: 'Estado',
+              dataIndex: 'status',
+              key: 'status',
+              render: (value: string) => getFunctionalityStatusTag(value),
+            },
+            {
+              title: 'Prioridad',
+              dataIndex: 'priority',
+              key: 'priority',
+              render: (value: string) => getPriorityTag(value),
+            },
+            {
+              title: 'QA status',
+              dataIndex: 'qaStatus',
+              key: 'qaStatus',
+              render: (value: string) => getQaStatusTag(value),
+            },
+            { title: 'Bugs relacionados', dataIndex: 'bugs', key: 'bugs' },
+            { title: 'Observaciones', dataIndex: 'observations', key: 'observations' },
+          ]}
+          locale={{ emptyText: 'No hay funcionalidades asociadas a esta unidad de entrega.' }}
+          rowClassName={() => 'align-top'}
+        />
+      </Card>
+    </div>
+  );
+};
+
 export default function Reports({ projectId }: { projectId: string }) {
   const [selectedVariant, setSelectedVariant] = useState<ReportVariant>('QA_STATUS_SUMMARY');
   const [selectedSprint, setSelectedSprint] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [selectedDeliveryUnitId, setSelectedDeliveryUnitId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const { activeMembership, projectQuota, canUseExports } = useWorkspaceAccess();
@@ -997,12 +1661,19 @@ export default function Reports({ projectId }: { projectId: string }) {
     QA_STATUS_SUMMARY: projectQuota?.reports?.qaStatusSummary ?? false,
     QA_PROGRESS_REPORT: projectQuota?.reports?.qaProgress ?? false,
     PROJECT_STATUS_REPORT: projectQuota?.reports?.executiveProjectStatus ?? false,
+    DELIVERY_UNIT_PROGRESS_REPORT: projectQuota?.reports?.deliveryUnitProgress ?? false,
   } as const;
   const selectedReportLocked = !reportAccess[selectedVariant];
 
   const { data: regressionCycleSummaries = [] } = useRegressionCycleSummaries(projectId);
   const { data: smokeCycleSummaries = [] } = useSmokeCycleSummaries(projectId);
   const { data: sprints = [] } = useSprints(projectId);
+  const { data: deliveryUnits = [] } = useDeliveryUnits(projectId);
+  const { data: projects = [] } = useProjects();
+  const currentProject = useMemo(
+    () => projects.find(project => project.id === projectId) || null,
+    [projectId, projects],
+  );
 
   const allCycles = useMemo(
     () =>
@@ -1035,6 +1706,11 @@ export default function Reports({ projectId }: { projectId: string }) {
 
     if (selectedVariant === 'QA_STATUS_SUMMARY' && !selectedCycleId) {
       message.warning('Por favor seleccione un ciclo para este tipo de reporte');
+      return;
+    }
+
+    if (selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT' && !selectedDeliveryUnitId) {
+      message.warning('Por favor selecciona una unidad de entrega para este reporte');
       return;
     }
 
@@ -1148,6 +1824,15 @@ export default function Reports({ projectId }: { projectId: string }) {
         {selectedVariant === 'PROJECT_STATUS_REPORT' && (
           <ProjectStatusReport projectId={projectId} sprint={selectedSprint} />
         )}
+          {selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT' && (
+            <DeliveryUnitProgressReport
+              projectId={projectId}
+              deliveryUnitId={selectedDeliveryUnitId}
+              projectName={currentProject?.name}
+              proposalOwner={currentProject?.proposalOwner}
+              canUseExports={canUseExports}
+            />
+          )}
       </div>
     );
   }
@@ -1179,7 +1864,7 @@ export default function Reports({ projectId }: { projectId: string }) {
         onRenewPlan={() => handleUpgradeClick('reports-billing-banner')}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <SelectionCard
           type="QA_STATUS_SUMMARY"
           title="Resumen de Estado QA"
@@ -1209,6 +1894,16 @@ export default function Reports({ projectId }: { projectId: string }) {
           selected={selectedVariant === 'PROJECT_STATUS_REPORT'}
           onSelect={setSelectedVariant}
           locked={!reportAccess.PROJECT_STATUS_REPORT}
+        />
+        <SelectionCard
+          type="DELIVERY_UNIT_PROGRESS_REPORT"
+          title="Progreso por Unidad"
+          description="Avance premium por fase, servicio, mantenimiento o hito configurado."
+          format="PDF / WORD"
+          icon={<FolderOpenOutlined />}
+          selected={selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT'}
+          onSelect={setSelectedVariant}
+          locked={!reportAccess.DELIVERY_UNIT_PROGRESS_REPORT}
         />
       </div>
 
@@ -1248,27 +1943,29 @@ export default function Reports({ projectId }: { projectId: string }) {
         </div>
         <div className="p-8">
           <Row gutter={24}>
-            <Col span={selectedVariant === 'QA_STATUS_SUMMARY' ? 12 : 24}>
-              <div className="space-y-2">
-                <Text strong className="text-xs uppercase tracking-wider text-slate-500">
-                  Seleccionar Sprint
-                </Text>
-                <Select
-                  className="w-full h-12 rounded-xl"
-                  placeholder="Todos los sprints"
-                  value={selectedSprint}
-                  onChange={value => {
-                    setSelectedSprint(value);
-                    setSelectedCycleId(null);
-                  }}
-                  allowClear
-                  options={sprints.map(sprintItem => ({
-                    label: sprintItem.name,
-                    value: sprintItem.name,
-                  }))}
-                />
-              </div>
-            </Col>
+              {selectedVariant !== 'DELIVERY_UNIT_PROGRESS_REPORT' && (
+                <Col span={selectedVariant === 'QA_STATUS_SUMMARY' ? 12 : 24}>
+                  <div className="space-y-2">
+                    <Text strong className="text-xs uppercase tracking-wider text-slate-500">
+                      Seleccionar Sprint
+                    </Text>
+                    <Select
+                      className="w-full h-12 rounded-xl"
+                      placeholder="Todos los sprints"
+                      value={selectedSprint}
+                      onChange={value => {
+                        setSelectedSprint(value);
+                        setSelectedCycleId(null);
+                      }}
+                      allowClear
+                      options={sprints.map(sprintItem => ({
+                        label: sprintItem.name,
+                        value: sprintItem.name,
+                      }))}
+                    />
+                  </div>
+                </Col>
+              )}
             {selectedVariant === 'QA_STATUS_SUMMARY' && (
               <Col span={12}>
                 <div className="space-y-2">
@@ -1283,6 +1980,26 @@ export default function Reports({ projectId }: { projectId: string }) {
                     options={filteredCycles.map(cycle => ({
                       label: `${cycle.cycleId} - ${getCycleTypeLabel(cycle)} (${dayjs(cycle.date).format('DD/MM/YYYY')})`,
                       value: cycle.id,
+                    }))}
+                  />
+                </div>
+              </Col>
+            )}
+            {selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT' && (
+              <Col span={24}>
+                <div className="space-y-2">
+                  <Text strong className="text-xs uppercase tracking-wider text-slate-500">
+                    Seleccionar Unidad de Entrega
+                  </Text>
+                  <Select
+                    className="w-full h-12 rounded-xl"
+                    placeholder="Elige una unidad configurada..."
+                    value={selectedDeliveryUnitId}
+                    onChange={value => setSelectedDeliveryUnitId(value)}
+                    allowClear
+                    options={deliveryUnits.map(item => ({
+                      label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
+                      value: item.documentId || item.id,
                     }))}
                   />
                 </div>

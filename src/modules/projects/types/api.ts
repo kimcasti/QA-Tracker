@@ -1,3 +1,5 @@
+import type { ProjectServiceBillingPhase } from '../../../types';
+
 export interface ProjectDto {
   documentId: string;
   name: string;
@@ -14,6 +16,15 @@ export interface ProjectDto {
   businessRules?: string;
   aiProjectInsights?: string;
   aiWireframeBrief?: string;
+  serviceBillingPhases?: ProjectServiceBillingPhase[] | string | null;
+  proposalType?: string | null;
+  proposalSentAt?: string | null;
+  projectStartAt?: string | null;
+  contractNumber?: string | null;
+  proposalNumber?: string | null;
+  currency?: string | null;
+  paymentTermsDays?: number | null;
+  proposalOwner?: string | null;
   organization?: {
     documentId: string;
     name: string;

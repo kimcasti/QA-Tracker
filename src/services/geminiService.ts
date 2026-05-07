@@ -29,6 +29,43 @@ type ProjectInsightInput = {
   businessRules?: string;
 };
 
+export type DeliveryUnitAiSummaryContext = {
+  deliveryUnit: {
+    name: string;
+    type?: string;
+    status?: string;
+    periodLabel?: string;
+    startDate?: string;
+    estimatedEndDate?: string;
+    baseDescription?: string;
+  };
+  activities: Array<{
+    name: string;
+    description?: string;
+  }>;
+  functionalities: Array<{
+    name: string;
+    status?: string;
+    priority?: string;
+    module?: string;
+  }>;
+  metrics: {
+    totalFunctionalities: number;
+    completed: number;
+    inProgress: number;
+    pending: number;
+    activeBugs: number;
+    testCasesCount: number;
+    progressPercent: number;
+  };
+};
+
+export type DeliveryUnitAiSummary = {
+  introduction: string;
+  objectives: string;
+  conclusion: string;
+};
+
 function toServiceError(error: unknown) {
   const apiError = toApiError(error);
   throw new Error(apiError.message);
@@ -97,6 +134,16 @@ export async function generateProjectWireframeBrief(
   projectId?: string,
 ) {
   return postAi<string>('/api/ai/project/wireframe-brief', {
+    ...input,
+    projectId,
+  });
+}
+
+export async function generateDeliveryUnitSummaryWithAI(
+  input: DeliveryUnitAiSummaryContext,
+  projectId?: string,
+) {
+  return postAi<DeliveryUnitAiSummary>('/api/ai/delivery-units/summary', {
     ...input,
     projectId,
   });

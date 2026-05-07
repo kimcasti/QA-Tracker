@@ -30,6 +30,7 @@ import {
 import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import {
   buildNextFunctionalityCode,
@@ -78,6 +79,7 @@ export default function FunctionalityList({
     roles: React.Key[] | null;
     qaCoverage: React.Key[] | null;
     status: React.Key[] | null;
+    deliveryUnit: React.Key[] | null;
   };
 
   const { t } = useTranslation();
@@ -91,6 +93,7 @@ export default function FunctionalityList({
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
+  const { data: deliveryUnitsData = [] } = useDeliveryUnits(projectId);
   const { isViewer } = useWorkspaceAccess();
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -102,6 +105,7 @@ export default function FunctionalityList({
     roles: null,
     qaCoverage: null,
     status: null,
+    deliveryUnit: null,
   });
   const [functionalitySearch, setFunctionalitySearch] = useState('');
 
@@ -204,6 +208,7 @@ export default function FunctionalityList({
       roles: null,
       qaCoverage: null,
       status: null,
+      deliveryUnit: null,
     });
     setFunctionalitySearch('');
   };
@@ -281,7 +286,9 @@ export default function FunctionalityList({
       key: 'name',
       render: (name: string, record: Functionality) => (
         <div className="flex items-center gap-2 min-w-0">
-          <span className="truncate text-slate-700">{name}</span>
+          <Tooltip title={name}>
+            <span className="block max-w-[260px] truncate text-slate-700">{name}</span>
+          </Tooltip>
           {record.jiraTaskUrl ? (
             <Tooltip title="Abrir tarea en Jira">
               <a
@@ -644,6 +651,9 @@ export default function FunctionalityList({
       if (typeof values.isRegression === 'boolean') updates.isRegression = values.isRegression;
       if (typeof values.isSmoke === 'boolean') updates.isSmoke = values.isSmoke;
       if (values.status) updates.status = values.status;
+      if (values.deliveryUnitId) {
+        updates.deliveryUnitId = values.deliveryUnitId;
+      }
 
       if (Object.keys(updates).length > 0) {
         await bulkUpdate({ ids: selectedRowKeys as string[], updates });
@@ -675,6 +685,7 @@ export default function FunctionalityList({
       roles: (filters.roles as React.Key[] | null) || null,
       qaCoverage: (filters.qaCoverage as React.Key[] | null) || null,
       status: (filters.status as React.Key[] | null) || null,
+      deliveryUnit: (filters.deliveryUnit as React.Key[] | null) || null,
     });
   };
 
@@ -1293,6 +1304,25 @@ export default function FunctionalityList({
             </Col>
             <Col span={12}>
               <Form.Item
+                name="deliveryUnitId"
+                label={<span className="font-semibold text-slate-600">Unidad de Entrega</span>}
+              >
+                <Select
+                  allowClear
+                  placeholder="Selecciona una unidad configurada"
+                  className="h-10 rounded-lg"
+                  options={deliveryUnitsData.map(item => ({
+                    label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
+                    value: item.documentId || item.id,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={20}>
+            <Col span={12}>
+              <Form.Item
                 name="status"
                 label={<span className="font-semibold text-slate-600">Estado Actual</span>}
                 rules={[{ required: true }]}
@@ -1306,15 +1336,16 @@ export default function FunctionalityList({
                 />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item
+                name="deliveryDate"
+                label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>}
+                rules={[{ required: true }]}
+              >
+                <Input type="date" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
           </Row>
-
-          <Form.Item
-            name="deliveryDate"
-            label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>}
-            rules={[{ required: true }]}
-          >
-            <Input type="date" className="h-10 rounded-lg" />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -1396,6 +1427,21 @@ export default function FunctionalityList({
               options={Object.values(TestStatus).map(v => ({
                 label: labelTestStatus(v, t),
                 value: v,
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="deliveryUnitId"
+            label={<span className="font-semibold text-slate-600">Unidad de Entrega</span>}
+          >
+            <Select
+              allowClear
+              placeholder="Aplicar unidad a todas..."
+              className="h-10 rounded-lg"
+              options={deliveryUnitsData.map(item => ({
+                label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
+                value: item.documentId || item.id,
               }))}
             />
           </Form.Item>

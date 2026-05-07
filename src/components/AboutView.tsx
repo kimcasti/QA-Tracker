@@ -8,6 +8,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   List,
   Modal,
   Progress,
@@ -53,7 +54,16 @@ import {
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { BugStatus, ProjectStatus, type MeetingNote, type Project } from '../types';
+import {
+  BugStatus,
+  ProjectStatus,
+  type MeetingNote,
+  type Project,
+  type ProjectServiceBillingItem,
+  type ProjectServiceBillingMode,
+  type ProjectServiceBillingPhase,
+  type ProjectServiceBillingSupportReport,
+} from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { readFileAsDataUrl, validateInlineImageFile } from '../utils/uploadValidation';
 
@@ -68,6 +78,93 @@ const STATUS_META: Record<ProjectStatus, { label: string; color: string }> = {
   [ProjectStatus.PAUSED]: { label: 'Pausado', color: qaPalette.functionalityStatus.inProgress },
   [ProjectStatus.COMPLETED]: { label: 'Completado', color: qaPalette.primary },
 };
+
+const BILLING_MODE_OPTIONS: Array<{ label: string; value: ProjectServiceBillingMode }> = [
+  { label: 'Mensual', value: 'monthly' },
+  { label: 'Total fase', value: 'phase_total' },
+  { label: 'Pago unico', value: 'one_time' },
+];
+
+function createPhaseId() {
+  return `phase-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createServiceId() {
+  return `service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeCurrencyValue(value: unknown) {
+  const nextValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(nextValue) && nextValue > 0 ? nextValue : undefined;
+}
+
+function normalizeServiceBillingItem(
+  value?: Partial<ProjectServiceBillingItem> | null,
+): ProjectServiceBillingItem {
+  const supportReportValue = value?.supportReport as ProjectServiceBillingSupportReport | undefined;
+  const supportReport = {
+    title: String(supportReportValue?.title || '').trim() || undefined,
+    summary: String(supportReportValue?.summary || '').trim() || undefined,
+    referenceUrl: String(supportReportValue?.referenceUrl || '').trim() || undefined,
+  };
+
+  return {
+    id: String(value?.id || createServiceId()),
+    serviceName: String(value?.serviceName || '').trim(),
+    relatedProcesses: Array.isArray(value?.relatedProcesses)
+      ? value!.relatedProcesses
+          .map(item => String(item || '').trim())
+          .filter(Boolean)
+      : [],
+    billingMode:
+      value?.billingMode === 'phase_total' || value?.billingMode === 'one_time'
+        ? value.billingMode
+        : 'monthly',
+    monthlyCost: normalizeCurrencyValue(value?.monthlyCost),
+    totalCost: normalizeCurrencyValue(value?.totalCost),
+    supportReport:
+      supportReport.title || supportReport.summary || supportReport.referenceUrl
+        ? supportReport
+        : undefined,
+  };
+}
+
+function normalizeServiceBillingPhase(
+  value?: Partial<ProjectServiceBillingPhase> | null,
+): ProjectServiceBillingPhase {
+  return {
+    id: String(value?.id || createPhaseId()),
+    phaseName: String(value?.phaseName || '').trim(),
+    description: String(value?.description || '').trim() || undefined,
+    services: Array.isArray(value?.services)
+      ? value!.services
+          .map(item => normalizeServiceBillingItem(item))
+          .filter(item => item.serviceName || item.relatedProcesses.length || item.monthlyCost || item.totalCost)
+      : [],
+  };
+}
+
+function normalizeProjectServiceBillingPhases(value?: Project['serviceBillingPhases']) {
+  return Array.isArray(value)
+    ? value
+        .map(item => normalizeServiceBillingPhase(item))
+        .filter(phase => phase.phaseName || phase.description || phase.services.length > 0)
+    : [];
+}
+
+function formatCurrency(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '$0';
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getBillingModeLabel(value: ProjectServiceBillingMode) {
+  return BILLING_MODE_OPTIONS.find(option => option.value === value)?.label || 'Mensual';
+}
 
 function splitBusinessRules(value?: string) {
   return (value || '')
@@ -346,6 +443,7 @@ function IconActionButton({
 }
 
 export default function AboutView({ project }: AboutViewProps) {
+  const showServiceBillingSection = false;
   const { isViewer, activeMembership, projectQuota, canUseAi } = useWorkspaceAccess();
   const { save: saveProject, isSaving } = useProjects();
   const { data: functionalities = [], isLoading: isLoadingFunctionalities } = useFunctionalities(
@@ -389,6 +487,27 @@ export default function AboutView({ project }: AboutViewProps) {
     () => splitBusinessRules(project.businessRules),
     [project.businessRules],
   );
+  const serviceBillingPhases = useMemo(
+    () => normalizeProjectServiceBillingPhases(project.serviceBillingPhases),
+    [project.serviceBillingPhases],
+  );
+  const serviceBillingSummary = useMemo(() => {
+    const phaseCount = serviceBillingPhases.length;
+    const serviceCount = serviceBillingPhases.reduce((total, phase) => total + phase.services.length, 0);
+    const monthlyCost = serviceBillingPhases.reduce(
+      (total, phase) =>
+        total +
+        phase.services.reduce((phaseTotal, service) => phaseTotal + (service.monthlyCost || 0), 0),
+      0,
+    );
+    const totalCost = serviceBillingPhases.reduce(
+      (total, phase) =>
+        total + phase.services.reduce((phaseTotal, service) => phaseTotal + (service.totalCost || 0), 0),
+      0,
+    );
+
+    return { phaseCount, serviceCount, monthlyCost, totalCost };
+  }, [serviceBillingPhases]);
   const meetingParticipantExtraOptions = useMemo(
     () => (watchedMeetingParticipants || []).map(value => ({ label: value, value })),
     [watchedMeetingParticipants],
@@ -499,8 +618,9 @@ export default function AboutView({ project }: AboutViewProps) {
       teamMembers: project.teamMembers || [],
       coreRequirements: (project.coreRequirements || []).join('\n'),
       businessRules: project.businessRules || '',
+      serviceBillingPhases,
     });
-  }, [project, projectForm]);
+  }, [project, projectForm, serviceBillingPhases]);
 
   const handleOpenEdit = () => {
     setLogoPreview(project.logo);
@@ -797,6 +917,7 @@ export default function AboutView({ project }: AboutViewProps) {
           .filter(Boolean),
         businessRules: String(values.businessRules || '').trim(),
         logo: logoPreview,
+        serviceBillingPhases: normalizeProjectServiceBillingPhases(values.serviceBillingPhases),
       };
 
       await saveProject(updatedProject);
@@ -1039,6 +1160,140 @@ export default function AboutView({ project }: AboutViewProps) {
                     'Define aquí el objetivo estratégico del proyecto y la visión que guía al equipo.'}
                 </Paragraph>
               </SurfaceCard>
+
+              {showServiceBillingSection ? (
+              <SurfaceCard
+                title="Servicios y Facturacion"
+                icon={<ProfileOutlined className="text-2xl" />}
+                accent={qaPalette.primary}
+              >
+                <div className="mb-6 flex flex-wrap gap-3">
+                  <MetricPill
+                    label="Fases"
+                    value={serviceBillingSummary.phaseCount}
+                    accent={qaPalette.primary}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Servicios"
+                    value={serviceBillingSummary.serviceCount}
+                    accent={qaPalette.accent}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Mensual"
+                    value={formatCurrency(serviceBillingSummary.monthlyCost)}
+                    accent={qaPalette.functionalityStatus.completed}
+                    className="w-full sm:w-[180px]"
+                  />
+                  <MetricPill
+                    label="Total"
+                    value={formatCurrency(serviceBillingSummary.totalCost)}
+                    accent={qaPalette.functionalityStatus.inProgress}
+                    className="w-full sm:w-[180px]"
+                  />
+                </div>
+
+                {serviceBillingPhases.length > 0 ? (
+                  <div className="space-y-5">
+                    {serviceBillingPhases.map(phase => {
+                      const phaseMonthlyCost = phase.services.reduce(
+                        (total, service) => total + (service.monthlyCost || 0),
+                        0,
+                      );
+                      const phaseTotalCost = phase.services.reduce(
+                        (total, service) => total + (service.totalCost || 0),
+                        0,
+                      );
+
+                      return (
+                        <Card
+                          key={phase.id}
+                          variant="borderless"
+                          className="rounded-[24px] border border-slate-100 bg-white/90"
+                          styles={{ body: { padding: 22 } }}
+                        >
+                          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                              <Title level={5} className="!mb-1 !text-slate-900">
+                                {phase.phaseName || 'Fase sin nombre'}
+                              </Title>
+                              <Paragraph className="!mb-0 text-sm leading-6 text-slate-500">
+                                {phase.description ||
+                                  'Organiza aquÃ­ los servicios, procesos y cobros de esta fase.'}
+                              </Paragraph>
+                            </div>
+                            <Space size={8} wrap>
+                              <Tag color="blue">{phase.services.length} servicios</Tag>
+                              <Tag color="green">Mensual {formatCurrency(phaseMonthlyCost)}</Tag>
+                              <Tag color="gold">Total {formatCurrency(phaseTotalCost)}</Tag>
+                            </Space>
+                          </div>
+
+                          <div className="space-y-3">
+                            {phase.services.map(service => (
+                              <div
+                                key={service.id}
+                                className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <Text className="block text-base font-semibold text-slate-800">
+                                      {service.serviceName || 'Servicio sin nombre'}
+                                    </Text>
+                                    <Text className="mt-1 block text-sm text-slate-500">
+                                      {service.relatedProcesses.length > 0
+                                        ? service.relatedProcesses.join(' | ')
+                                        : 'Sin procesos relacionados definidos.'}
+                                    </Text>
+                                  </div>
+                                  <Space size={8} wrap>
+                                    <Tag bordered={false} color="cyan">
+                                      {getBillingModeLabel(service.billingMode)}
+                                    </Tag>
+                                    <Tag bordered={false} color="green">
+                                      Mensual {formatCurrency(service.monthlyCost)}
+                                    </Tag>
+                                    <Tag bordered={false} color="gold">
+                                      Total {formatCurrency(service.totalCost)}
+                                    </Tag>
+                                  </Space>
+                                </div>
+                                {service.supportReport ? (
+                                  <div className="mt-4 rounded-2xl border border-sky-100 bg-white px-4 py-3">
+                                    <Text className="block text-xs font-bold uppercase tracking-[0.18em] text-sky-600">
+                                      Informe de respaldo
+                                    </Text>
+                                    <Text className="mt-2 block text-sm font-semibold text-slate-800">
+                                      {service.supportReport.title || 'Informe sin titulo'}
+                                    </Text>
+                                    <Text className="mt-1 block text-sm leading-6 text-slate-500">
+                                      {service.supportReport.summary || 'Sin resumen del informe.'}
+                                    </Text>
+                                    {service.supportReport.referenceUrl ? (
+                                      <a
+                                        href={service.supportReport.referenceUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-2 inline-flex text-sm font-semibold text-sky-600 hover:text-sky-700"
+                                      >
+                                        Abrir referencia del informe
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Empty description="Aun no hay fases de servicios o facturacion configuradas para este proyecto." />
+                )}
+              </SurfaceCard>
+              ) : null}
 
               <SurfaceCard
                 title="Insights con IA y brief de wireframe"
@@ -1519,6 +1774,251 @@ export default function AboutView({ project }: AboutViewProps) {
           <Form.Item name="businessRules" label="Normas empresariales">
             <Input.TextArea rows={5} />
           </Form.Item>
+
+          <div className="mt-6 rounded-[24px] border border-slate-100 bg-slate-50/70 p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <Text className="block text-sm font-semibold text-slate-800">
+                  Servicios y Facturacion
+                </Text>
+                <Text className="block text-slate-400">
+                  Organiza cada fase del proyecto con sus servicios, procesos relacionados, costos e informe de respaldo.
+                </Text>
+              </div>
+            </div>
+
+            <Form.List name="serviceBillingPhases">
+              {(phaseFields, { add: addPhase, remove: removePhase }) => (
+                <div className="space-y-5">
+                  {phaseFields.map((phaseField, phaseIndex) => (
+                    <Card
+                      key={phaseField.key}
+                      variant="borderless"
+                      className="rounded-[24px] border border-slate-100 bg-white/90"
+                      styles={{ body: { padding: 20 } }}
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <Text className="text-sm font-semibold text-slate-700">
+                          Fase {phaseIndex + 1}
+                        </Text>
+                        {!isViewer ? (
+                          <Button danger type="text" onClick={() => removePhase(phaseField.name)}>
+                            Eliminar fase
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <Form.Item name={[phaseField.name, 'id']} hidden>
+                        <Input />
+                      </Form.Item>
+
+                      <Row gutter={16}>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            name={[phaseField.name, 'phaseName']}
+                            label="Nombre de la fase"
+                            rules={[{ required: true, message: 'Ingresa el nombre de la fase.' }]}
+                          >
+                            <Input size="large" placeholder="Ej: Fase 1 - Continuidad operativa" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item name={[phaseField.name, 'description']} label="Descripcion">
+                            <Input
+                              size="large"
+                              placeholder="Resumen ejecutivo de lo que cubre esta fase"
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Form.List name={[phaseField.name, 'services']}>
+                        {(serviceFields, { add: addService, remove: removeService }) => (
+                          <div className="space-y-4">
+                            {serviceFields.map(serviceField => (
+                              <div
+                                key={serviceField.key}
+                                className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
+                              >
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                  <Text className="text-sm font-semibold text-slate-700">
+                                    Servicio
+                                  </Text>
+                                  {!isViewer ? (
+                                    <Button
+                                      type="text"
+                                      danger
+                                      onClick={() => removeService(serviceField.name)}
+                                    >
+                                      Eliminar servicio
+                                    </Button>
+                                  ) : null}
+                                </div>
+
+                                <Form.Item name={[serviceField.name, 'id']} hidden>
+                                  <Input />
+                                </Form.Item>
+
+                                <Row gutter={16}>
+                                  <Col xs={24} md={12}>
+                                    <Form.Item
+                                      name={[serviceField.name, 'serviceName']}
+                                      label="Servicio"
+                                      rules={[{ required: true, message: 'Ingresa el nombre del servicio.' }]}
+                                    >
+                                      <Input
+                                        size="large"
+                                        placeholder="Ej: Mantenimiento, soporte tecnico y evolucion"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col xs={24} md={12}>
+                                    <Form.Item
+                                      name={[serviceField.name, 'billingMode']}
+                                      label="Modelo de facturacion"
+                                      initialValue="monthly"
+                                    >
+                                      <Select size="large" options={BILLING_MODE_OPTIONS} />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+
+                                <Form.Item
+                                  name={[serviceField.name, 'relatedProcesses']}
+                                  label="Procesos relacionados"
+                                  extra="Escribe un proceso por linea para mantener la fase bien organizada."
+                                  getValueFromEvent={(event) =>
+                                    String(event?.target?.value || '')
+                                      .split('\n')
+                                      .map(item => item.trim())
+                                      .filter(Boolean)
+                                  }
+                                  getValueProps={(value) => ({
+                                    value: Array.isArray(value) ? value.join('\n') : '',
+                                  })}
+                                >
+                                  <Input.TextArea
+                                    rows={4}
+                                    placeholder={
+                                      'Ej: Reuniones periodicas con TI\nMonitoreo de infraestructura\nAdministracion de ambientes'
+                                    }
+                                  />
+                                </Form.Item>
+
+                                <Row gutter={16}>
+                                  <Col xs={24} md={12}>
+                                    <Form.Item name={[serviceField.name, 'monthlyCost']} label="Costo mensual">
+                                      <InputNumber
+                                        size="large"
+                                        min={0}
+                                        className="!w-full"
+                                        controls={false}
+                                        addonBefore="$"
+                                        placeholder="19750"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col xs={24} md={12}>
+                                    <Form.Item name={[serviceField.name, 'totalCost']} label="Costo total">
+                                      <InputNumber
+                                        size="large"
+                                        min={0}
+                                        className="!w-full"
+                                        controls={false}
+                                        addonBefore="$"
+                                        placeholder="237000"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+
+                                <div className="rounded-2xl border border-dashed border-sky-200 bg-white px-4 py-4">
+                                  <Text className="mb-3 block text-sm font-semibold text-slate-700">
+                                    Informe de respaldo de factura
+                                  </Text>
+
+                                  <Row gutter={16}>
+                                    <Col xs={24} md={12}>
+                                      <Form.Item
+                                        name={[serviceField.name, 'supportReport', 'title']}
+                                        label="Titulo del informe"
+                                      >
+                                        <Input
+                                          size="large"
+                                          placeholder="Ej: Informe mensual de soporte y continuidad"
+                                        />
+                                      </Form.Item>
+                                    </Col>
+                                    <Col xs={24} md={12}>
+                                      <Form.Item
+                                        name={[serviceField.name, 'supportReport', 'referenceUrl']}
+                                        label="Enlace o referencia"
+                                      >
+                                        <Input
+                                          size="large"
+                                          placeholder="https://... o ruta del documento"
+                                        />
+                                      </Form.Item>
+                                    </Col>
+                                  </Row>
+
+                                  <Form.Item
+                                    name={[serviceField.name, 'supportReport', 'summary']}
+                                    label="Resumen del informe"
+                                  >
+                                    <Input.TextArea
+                                      rows={4}
+                                      placeholder="Describe el alcance ejecutado, entregables, resultados y evidencia que soporta esta factura."
+                                    />
+                                  </Form.Item>
+                                </div>
+                              </div>
+                            ))}
+
+                            {!isViewer ? (
+                              <Button
+                                type="dashed"
+                                block
+                                icon={<PlusOutlined />}
+                                onClick={() =>
+                                  addService({
+                                    id: createServiceId(),
+                                    serviceName: '',
+                                    relatedProcesses: [],
+                                    billingMode: 'monthly',
+                                  })
+                                }
+                              >
+                                Agregar servicio a esta fase
+                              </Button>
+                            ) : null}
+                          </div>
+                        )}
+                      </Form.List>
+                    </Card>
+                  ))}
+
+                  {!isViewer ? (
+                    <Button
+                      type="dashed"
+                      block
+                      icon={<PlusOutlined />}
+                      onClick={() =>
+                        addPhase({
+                          id: createPhaseId(),
+                          phaseName: '',
+                          description: '',
+                          services: [],
+                        })
+                      }
+                    >
+                      Agregar fase
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+            </Form.List>
+          </div>
         </Form>
       </Modal>
 

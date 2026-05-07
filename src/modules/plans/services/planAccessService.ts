@@ -5,7 +5,11 @@ import {
   invalidateWorkspaceCache,
 } from '../../workspace/services/workspaceService';
 
-export type PlanReportAccessKey = 'qaStatusSummary' | 'qaProgress' | 'executiveProjectStatus';
+export type PlanReportAccessKey =
+  | 'qaStatusSummary'
+  | 'qaProgress'
+  | 'executiveProjectStatus'
+  | 'deliveryUnitProgress';
 
 async function postWithFriendlyError<T>(path: string, data: Record<string, unknown>) {
   try {

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
   DatePicker,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
   Popconfirm,
@@ -12,6 +13,7 @@ import {
   Space,
   Switch,
   Table,
+  Tag,
   Typography,
 } from 'antd';
 import {
@@ -21,16 +23,33 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
+  FolderOpenOutlined,
   PlusOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useDeliveryActivityTemplates } from '../modules/delivery-activity-templates/hooks/useDeliveryActivityTemplates';
+import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
+import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { Module, Priority, Role, Sprint, TestCaseTemplate, TestType } from '../types';
+import {
+  DeliveryUnitStatus,
+  DeliveryUnitType,
+  Module,
+  Priority,
+  ProposalType,
+  Role,
+  Sprint,
+  TestCaseTemplate,
+  TestType,
+  type DeliveryActivityTemplate,
+  type DeliveryUnit,
+  type Project,
+} from '../types';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -40,21 +59,86 @@ interface SettingsProps {
   projectId: string;
 }
 
-type SettingsTabKey = 'sprints' | 'roles' | 'modules' | 'templates';
+type SettingsTabKey = 'sprints' | 'roles' | 'modules' | 'templates' | 'proposal';
 type SettingsItem = Sprint | Role | Module | TestCaseTemplate | null;
 
 const templateTypeOptions = Object.values(TestType);
 const templatePriorityOptions = Object.values(Priority);
+const proposalTypeOptions = Object.values(ProposalType);
+const deliveryUnitTypeOptions = Object.values(DeliveryUnitType);
+const deliveryUnitStatusOptions = Object.values(DeliveryUnitStatus);
 
 const tabLabelMap: Record<SettingsTabKey, string> = {
   sprints: 'Sprint',
   roles: 'Rol',
   modules: 'Módulo',
   templates: 'Plantilla',
+  proposal: 'Propuesta',
 };
+
+function formatDeliveryUnitType(type: DeliveryUnitType) {
+  const labels: Record<DeliveryUnitType, string> = {
+    [DeliveryUnitType.PHASE]: 'Fase',
+    [DeliveryUnitType.SERVICE]: 'Servicio',
+    [DeliveryUnitType.MAINTENANCE]: 'Mantenimiento',
+    [DeliveryUnitType.SUPPORT]: 'Soporte',
+    [DeliveryUnitType.MILESTONE]: 'Hito',
+    [DeliveryUnitType.OTHER]: 'Otro',
+  };
+
+  return labels[type] || 'Otro';
+}
+
+function formatDeliveryUnitStatus(status: DeliveryUnitStatus) {
+  const labels: Record<DeliveryUnitStatus, string> = {
+    [DeliveryUnitStatus.PLANNED]: 'Planeada',
+    [DeliveryUnitStatus.IN_PROGRESS]: 'En progreso',
+    [DeliveryUnitStatus.COMPLETED]: 'Completada',
+    [DeliveryUnitStatus.PAUSED]: 'Pausada',
+    [DeliveryUnitStatus.CANCELLED]: 'Cancelada',
+  };
+
+  return labels[status] || 'Planeada';
+}
+
+function formatProposalType(type?: ProposalType) {
+  if (type === ProposalType.SERVICES) return 'Por servicios';
+  if (type === ProposalType.MIXED) return 'Mixta';
+  return 'Por fases';
+}
+
+function renderDeliveryUnitStatusTag(status: DeliveryUnitStatus) {
+  const colorMap: Record<DeliveryUnitStatus, string> = {
+    [DeliveryUnitStatus.PLANNED]: 'default',
+    [DeliveryUnitStatus.IN_PROGRESS]: 'blue',
+    [DeliveryUnitStatus.COMPLETED]: 'green',
+    [DeliveryUnitStatus.PAUSED]: 'orange',
+    [DeliveryUnitStatus.CANCELLED]: 'red',
+  };
+
+  return (
+    <Tag color={colorMap[status]} className="rounded-full border-none px-3 py-0.5 font-medium">
+      {formatDeliveryUnitStatus(status)}
+    </Tag>
+  );
+}
+
+function renderReadOnlyField(label: string, value?: string | number | null) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4">
+      <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </Text>
+      <Text className="mt-2 block text-sm font-medium text-slate-700">
+        {value !== undefined && value !== null && String(value).trim() ? String(value) : 'No definido'}
+      </Text>
+    </div>
+  );
+}
 
 const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   const { isViewer } = useWorkspaceAccess();
+  const { data: projects = [], save: saveProject, isSaving: isSavingProject } = useProjects();
   const { data: sprints = [], save: saveSprint, delete: deleteSprint } = useSprints(projectId);
   const { data: roles = [], save: saveRole, delete: deleteRole } = useRoles(projectId);
   const { data: modules = [], save: saveModule, delete: deleteModule } = useModules(projectId);
@@ -65,11 +149,51 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     isLoading: isLoadingTemplates,
     error: templatesError,
   } = useTestCaseTemplates(projectId);
+  const {
+    data: deliveryUnits = [],
+    save: saveDeliveryUnit,
+    delete: deleteDeliveryUnit,
+    isSaving: isSavingDeliveryUnit,
+  } = useDeliveryUnits(projectId);
+  const {
+    data: deliveryActivityTemplates = [],
+    save: saveDeliveryActivityTemplate,
+    delete: deleteDeliveryActivityTemplate,
+    isSaving: isSavingDeliveryActivityTemplate,
+  } = useDeliveryActivityTemplates(projectId);
+
+  const currentProject = useMemo(
+    () => projects.find((project): project is Project => project.id === projectId) || null,
+    [projectId, projects],
+  );
 
   const [activeTab, setActiveTab] = useState<SettingsTabKey>('sprints');
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isDeliveryUnitModalVisible, setIsDeliveryUnitModalVisible] = useState(false);
+  const [isDeliveryActivityModalVisible, setIsDeliveryActivityModalVisible] = useState(false);
+  const [isProposalEditing, setIsProposalEditing] = useState(false);
   const [editingItem, setEditingItem] = useState<SettingsItem>(null);
+  const [editingDeliveryUnit, setEditingDeliveryUnit] = useState<DeliveryUnit | null>(null);
+  const [editingDeliveryActivity, setEditingDeliveryActivity] =
+    useState<DeliveryActivityTemplate | null>(null);
   const [form] = Form.useForm();
+  const [proposalForm] = Form.useForm();
+  const [deliveryUnitForm] = Form.useForm();
+  const [deliveryActivityForm] = Form.useForm();
+
+  useEffect(() => {
+    proposalForm.setFieldsValue({
+      proposalType: currentProject?.proposalType || ProposalType.PHASES,
+      proposalSentAt: currentProject?.proposalSentAt || '',
+      projectStartAt: currentProject?.projectStartAt || '',
+      contractNumber: currentProject?.contractNumber || '',
+      proposalNumber: currentProject?.proposalNumber || '',
+      currency: currentProject?.currency || 'USD',
+      paymentTermsDays: currentProject?.paymentTermsDays,
+      proposalOwner: currentProject?.proposalOwner || '',
+    });
+    setIsProposalEditing(false);
+  }, [currentProject, proposalForm]);
 
   const closeModal = () => {
     setEditingItem(null);
@@ -77,11 +201,23 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     form.resetFields();
   };
 
+  const closeDeliveryUnitModal = () => {
+    setEditingDeliveryUnit(null);
+    setIsDeliveryUnitModalVisible(false);
+    deliveryUnitForm.resetFields();
+  };
+
+  const closeDeliveryActivityModal = () => {
+    setEditingDeliveryActivity(null);
+    setIsDeliveryActivityModalVisible(false);
+    deliveryActivityForm.resetFields();
+  };
+
   const handleTabChange = (key: string) => {
     setActiveTab(key as SettingsTabKey);
-    if (isModalVisible) {
-      closeModal();
-    }
+    if (isModalVisible) closeModal();
+    if (isDeliveryUnitModalVisible) closeDeliveryUnitModal();
+    if (isDeliveryActivityModalVisible) closeDeliveryActivityModal();
   };
 
   const handleOpenModal = (item: SettingsItem = null) => {
@@ -118,6 +254,40 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     }
 
     setIsModalVisible(true);
+  };
+
+  const handleOpenDeliveryUnitModal = (item: DeliveryUnit | null = null) => {
+    setEditingDeliveryUnit(item);
+
+    if (item) {
+      deliveryUnitForm.setFieldsValue({
+        ...item,
+        activityIds: item.activityIds || [],
+      });
+    } else {
+      deliveryUnitForm.setFieldsValue({
+        type: DeliveryUnitType.PHASE,
+        status: DeliveryUnitStatus.PLANNED,
+        sortOrder: deliveryUnits.length,
+        activityIds: [],
+      });
+    }
+
+    setIsDeliveryUnitModalVisible(true);
+  };
+
+  const handleOpenDeliveryActivityModal = (item: DeliveryActivityTemplate | null = null) => {
+    setEditingDeliveryActivity(item);
+
+    if (item) {
+      deliveryActivityForm.setFieldsValue(item);
+    } else {
+      deliveryActivityForm.setFieldsValue({
+        isActive: true,
+      });
+    }
+
+    setIsDeliveryActivityModalVisible(true);
   };
 
   const handleSave = async (values: any) => {
@@ -162,6 +332,128 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     } catch (error) {
       console.error(`Error deleting ${activeTab}:`, error);
       message.error('No se pudo eliminar el registro');
+    }
+  };
+
+  const handleSaveProposalSettings = async () => {
+    if (!currentProject) {
+      message.error('No encontramos el proyecto activo para guardar la propuesta.');
+      return;
+    }
+
+    try {
+      const values = await proposalForm.validateFields();
+      await saveProject({
+        ...currentProject,
+        proposalType: values.proposalType || undefined,
+        proposalSentAt: values.proposalSentAt || '',
+        projectStartAt: values.projectStartAt || '',
+        contractNumber: String(values.contractNumber || '').trim(),
+        proposalNumber: String(values.proposalNumber || '').trim(),
+        currency: String(values.currency || '').trim(),
+        paymentTermsDays:
+          typeof values.paymentTermsDays === 'number' && Number.isFinite(values.paymentTermsDays)
+            ? values.paymentTermsDays
+            : undefined,
+        proposalOwner: String(values.proposalOwner || '').trim(),
+      });
+      message.success('Configuración de la propuesta actualizada');
+      setIsProposalEditing(false);
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Proposal settings save failed:', error);
+      message.error('No se pudo guardar la configuracion de propuesta.');
+    }
+  };
+
+  const handleCancelProposalEditing = () => {
+    proposalForm.setFieldsValue({
+      proposalType: currentProject?.proposalType || ProposalType.PHASES,
+      proposalSentAt: currentProject?.proposalSentAt || '',
+      projectStartAt: currentProject?.projectStartAt || '',
+      contractNumber: currentProject?.contractNumber || '',
+      proposalNumber: currentProject?.proposalNumber || '',
+      currency: currentProject?.currency || 'USD',
+      paymentTermsDays: currentProject?.paymentTermsDays,
+      proposalOwner: currentProject?.proposalOwner || '',
+    });
+    setIsProposalEditing(false);
+  };
+
+  const handleSaveDeliveryUnit = async () => {
+    try {
+      const values = await deliveryUnitForm.validateFields();
+      await saveDeliveryUnit({
+        documentId: editingDeliveryUnit?.documentId,
+        id: editingDeliveryUnit?.id || `delivery-unit-${Date.now()}`,
+        projectId,
+        name: String(values.name || '').trim(),
+        type: values.type,
+        baseDescription: String(values.baseDescription || '').trim(),
+        startDate: values.startDate || '',
+        estimatedEndDate: values.estimatedEndDate || '',
+        periodLabel: String(values.periodLabel || '').trim(),
+        amount:
+          typeof values.amount === 'number' && Number.isFinite(values.amount)
+            ? values.amount
+            : undefined,
+        status: values.status,
+        sortOrder:
+          typeof values.sortOrder === 'number' && Number.isFinite(values.sortOrder)
+            ? values.sortOrder
+            : editingDeliveryUnit?.sortOrder ?? deliveryUnits.length,
+        activityIds: Array.isArray(values.activityIds) ? values.activityIds : [],
+      });
+      message.success('Unidad de entrega guardada con éxito');
+      closeDeliveryUnitModal();
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Delivery unit save failed:', error);
+      message.error('No se pudo guardar la unidad de entrega.');
+    }
+  };
+
+  const handleSaveDeliveryActivity = async () => {
+    try {
+      const values = await deliveryActivityForm.validateFields();
+      await saveDeliveryActivityTemplate({
+        documentId: editingDeliveryActivity?.documentId,
+        id: editingDeliveryActivity?.id || `delivery-activity-${Date.now()}`,
+        projectId,
+        name: String(values.name || '').trim(),
+        description: String(values.description || '').trim(),
+        isActive: values.isActive !== false,
+      });
+      message.success('Actividad operativa guardada con éxito');
+      closeDeliveryActivityModal();
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      console.error('Delivery activity save failed:', error);
+      message.error('No se pudo guardar la actividad operativa.');
+    }
+  };
+
+  const handleDeleteDeliveryUnit = async (item: DeliveryUnit) => {
+    if (!item.documentId) return;
+
+    try {
+      await deleteDeliveryUnit(item.documentId);
+      message.success('Unidad de entrega eliminada');
+    } catch (error) {
+      console.error('Delivery unit delete failed:', error);
+      message.error('No se pudo eliminar la unidad de entrega.');
+    }
+  };
+
+  const handleDeleteDeliveryActivity = async (item: DeliveryActivityTemplate) => {
+    if (!item.documentId) return;
+
+    try {
+      await deleteDeliveryActivityTemplate(item.documentId);
+      message.success('Actividad operativa eliminada');
+    } catch (error) {
+      console.error('Delivery activity delete failed:', error);
+      message.error('No se pudo eliminar la actividad operativa.');
     }
   };
 
@@ -211,7 +503,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           {!isViewer ? (
             <>
               <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-              <Popconfirm title="¿Eliminar rol?" onConfirm={() => handleDelete(record.id)}>
+              <Popconfirm title="Eliminar rol?" onConfirm={() => handleDelete(record.id)}>
                 <Button type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </>
@@ -237,7 +529,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           {!isViewer ? (
             <>
               <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-              <Popconfirm title="¿Eliminar módulo?" onConfirm={() => handleDelete(record.id)}>
+              <Popconfirm title="Eliminar modulo?" onConfirm={() => handleDelete(record.id)}>
                 <Button type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </>
@@ -258,7 +550,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       title: 'MÓDULO',
       dataIndex: 'moduleName',
       key: 'moduleName',
-      render: (text: string) => <Text>{text || 'Sin módulo'}</Text>,
+      render: (text: string) => <Text>{text || 'Sin modulo'}</Text>,
     },
     {
       title: 'TIPO',
@@ -273,7 +565,143 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           {!isViewer ? (
             <>
               <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-              <Popconfirm title="¿Eliminar plantilla?" onConfirm={() => handleDelete(record.id)}>
+              <Popconfirm title="Eliminar plantilla?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          ) : null}
+        </Space>
+      ),
+    },
+  ];
+
+  const deliveryUnitColumns = [
+    {
+      title: 'NOMBRE',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string) => <Text strong>{text}</Text>,
+    },
+    {
+      title: 'TIPO',
+      dataIndex: 'type',
+      key: 'type',
+      render: (value: DeliveryUnitType) => (
+        <Tag className="rounded-full border-none bg-slate-100 px-3 py-0.5 text-slate-600">
+          {formatDeliveryUnitType(value)}
+        </Tag>
+      ),
+    },
+    {
+      title: 'PERIODO / FECHAS',
+      key: 'period',
+      render: (_: unknown, record: DeliveryUnit) => {
+        if (record.periodLabel?.trim()) {
+          return <Text>{record.periodLabel}</Text>;
+        }
+
+        if (record.startDate || record.estimatedEndDate) {
+          return (
+            <Text>
+              {(record.startDate && dayjs(record.startDate).format('DD/MM/YYYY')) || '-'} -{' '}
+              {(record.estimatedEndDate && dayjs(record.estimatedEndDate).format('DD/MM/YYYY')) || '-'}
+            </Text>
+          );
+        }
+
+        return <Text type="secondary">Sin periodo</Text>;
+      },
+    },
+    {
+      title: 'ACTIVIDADES',
+      key: 'activities',
+      render: (_: unknown, record: DeliveryUnit) => (
+        <Tag className="rounded-full border-none bg-blue-50 px-3 py-0.5 text-blue-600">
+          {Array.isArray(record.activities) && record.activities.length > 0
+            ? `${record.activities.length} seleccionada(s)`
+            : 'Sin actividades'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'MONTO',
+      dataIndex: 'amount',
+      key: 'amount',
+      render: (value?: number) =>
+        typeof value === 'number' ? <Text strong>US$ {value.toLocaleString()}</Text> : <Text type="secondary">-</Text>,
+    },
+    {
+      title: 'ESTADO',
+      dataIndex: 'status',
+      key: 'status',
+      render: (value: DeliveryUnitStatus) => renderDeliveryUnitStatusTag(value),
+    },
+    {
+      title: 'ACCIONES',
+      key: 'actions',
+      render: (_: unknown, record: DeliveryUnit) => (
+        <Space>
+          {!isViewer ? (
+            <>
+              <Button type="text" icon={<EditOutlined />} onClick={() => handleOpenDeliveryUnitModal(record)} />
+              <Popconfirm
+                title="Eliminar unidad de entrega?"
+                onConfirm={() => void handleDeleteDeliveryUnit(record)}
+              >
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          ) : null}
+        </Space>
+      ),
+    },
+  ];
+
+  const deliveryActivityColumns = [
+    {
+      title: 'NOMBRE',
+      dataIndex: 'name',
+      key: 'name',
+      render: (_: string, record: DeliveryActivityTemplate) => (
+        <div className="min-w-0">
+          <Text strong className="block text-slate-800">
+            {record.name}
+          </Text>
+          <Text className="mt-1 block text-sm text-slate-500">
+            {record.description?.trim() || 'Sin descripción adicional.'}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      title: 'ESTADO',
+      dataIndex: 'isActive',
+      key: 'isActive',
+      render: (value: boolean) => (
+        <Tag
+          color={value ? 'green' : 'default'}
+          className="rounded-full border-none px-3 py-0.5 font-medium"
+        >
+          {value ? 'Activa' : 'Inactiva'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'ACCIONES',
+      key: 'actions',
+      render: (_: unknown, record: DeliveryActivityTemplate) => (
+        <Space>
+          {!isViewer ? (
+            <>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                onClick={() => handleOpenDeliveryActivityModal(record)}
+              />
+              <Popconfirm
+                title="Eliminar actividad operativa?"
+                onConfirm={() => void handleDeleteDeliveryActivity(record)}
+              >
                 <Button type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </>
@@ -292,7 +720,187 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     { key: 'roles', label: 'Roles', icon: <TeamOutlined /> },
     { key: 'modules', label: 'Módulos', icon: <AppstoreOutlined /> },
     { key: 'templates', label: 'Plantillas', icon: <FileTextOutlined /> },
+    { key: 'proposal', label: 'Propuesta y unidades de entrega', icon: <FolderOpenOutlined /> },
   ];
+
+  const renderProposalTab = () => (
+    <div className="mt-6 space-y-6">
+      <Card className="rounded-2xl border-gray-100">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <Title level={4}>Propuesta activa del proyecto</Title>
+            <Text type="secondary">
+              Configura los datos comerciales base que luego servirán para unidades de entrega y facturación futura.
+            </Text>
+          </div>
+          {!isViewer ? (
+            <Space>
+              {isProposalEditing ? (
+                <>
+                  <Button onClick={handleCancelProposalEditing}>Cancelar</Button>
+                  <Button
+                    type="primary"
+                    onClick={() => void handleSaveProposalSettings()}
+                    className="bg-blue-600"
+                    loading={isSavingProject}
+                  >
+                    Guardar propuesta
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="default"
+                  onClick={() => setIsProposalEditing(true)}
+                >
+                  Editar propuesta
+                </Button>
+              )}
+            </Space>
+          ) : null}
+        </div>
+
+        <Form
+          form={proposalForm}
+          layout="vertical"
+          disabled={!isProposalEditing}
+          initialValues={{
+            proposalType: currentProject?.proposalType || ProposalType.PHASES,
+            proposalSentAt: currentProject?.proposalSentAt || '',
+            projectStartAt: currentProject?.projectStartAt || '',
+            contractNumber: currentProject?.contractNumber || '',
+            proposalNumber: currentProject?.proposalNumber || '',
+            currency: currentProject?.currency || 'USD',
+            paymentTermsDays: currentProject?.paymentTermsDays,
+            proposalOwner: currentProject?.proposalOwner || '',
+          }}
+          key={`${projectId}-${currentProject?.proposalNumber || 'proposal'}`}
+        >
+          {isProposalEditing ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Form.Item name="proposalType" label="Tipo de propuesta">
+                <Select
+                  options={proposalTypeOptions.map(option => ({
+                    label: formatProposalType(option),
+                    value: option,
+                  }))}
+                />
+              </Form.Item>
+
+              <Form.Item name="currency" label="Moneda">
+                <Input placeholder="Ej: USD, COP, EUR" />
+              </Form.Item>
+
+              <Form.Item name="proposalSentAt" label="Fecha de envío de propuesta">
+                <Input type="date" />
+              </Form.Item>
+
+              <Form.Item name="projectStartAt" label="Fecha de inicio del proyecto">
+                <Input type="date" />
+              </Form.Item>
+
+              <Form.Item name="contractNumber" label="Número de contrato">
+                <Input placeholder="Ej: CT-2026-001" />
+              </Form.Item>
+
+              <Form.Item name="proposalNumber" label="Número de propuesta">
+                <Input placeholder="Ej: PROP-2026-014" />
+              </Form.Item>
+
+              <Form.Item name="paymentTermsDays" label="Días de pago">
+                <InputNumber className="!w-full" min={0} controls={false} />
+              </Form.Item>
+
+              <Form.Item name="proposalOwner" label="Responsable">
+                <Input placeholder="Ej: Kimberly Conde" />
+              </Form.Item>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {renderReadOnlyField(
+                'Tipo de propuesta',
+                formatProposalType(currentProject?.proposalType),
+              )}
+              {renderReadOnlyField('Moneda', currentProject?.currency || 'USD')}
+              {renderReadOnlyField(
+                'Fecha de envío de propuesta',
+                currentProject?.proposalSentAt,
+              )}
+              {renderReadOnlyField(
+                'Fecha de inicio del proyecto',
+                currentProject?.projectStartAt,
+              )}
+              {renderReadOnlyField('Número de contrato', currentProject?.contractNumber)}
+              {renderReadOnlyField('Número de propuesta', currentProject?.proposalNumber)}
+              {renderReadOnlyField('Días de pago', currentProject?.paymentTermsDays)}
+              {renderReadOnlyField('Responsable', currentProject?.proposalOwner)}
+            </div>
+          )}
+        </Form>
+      </Card>
+
+      <Card className="rounded-2xl border-gray-100">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <Title level={4}>Unidades de entrega</Title>
+            <Text type="secondary">
+              Crea fases, servicios, hitos o mantenimientos reutilizables para asignar funcionalidades y generar reportes.
+            </Text>
+          </div>
+          {!isViewer ? (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => handleOpenDeliveryUnitModal()}
+              className="bg-blue-600"
+            >
+              Nueva unidad
+            </Button>
+          ) : null}
+        </div>
+
+        <Table
+          columns={deliveryUnitColumns}
+          dataSource={deliveryUnits}
+          rowKey={record => record.documentId || record.id}
+          pagination={false}
+          locale={{ emptyText: 'No hay unidades de entrega configuradas para este proyecto.' }}
+          className="overflow-hidden rounded-2xl border border-slate-100"
+          rowClassName={() => 'align-top'}
+        />
+      </Card>
+
+      <Card className="rounded-2xl border-gray-100">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <Title level={4}>Plantillas de actividades de entrega</Title>
+            <Text type="secondary">
+              Configura el catálogo operativo reusable por proyecto para luego seleccionarlo en cada unidad de entrega.
+            </Text>
+          </div>
+          {!isViewer ? (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => handleOpenDeliveryActivityModal()}
+              className="bg-blue-600"
+            >
+              Nueva actividad
+            </Button>
+          ) : null}
+        </div>
+
+        <Table
+          columns={deliveryActivityColumns}
+          dataSource={deliveryActivityTemplates}
+          rowKey={record => record.documentId || record.id}
+          pagination={false}
+          locale={{ emptyText: 'No hay actividades operativas configuradas para este proyecto.' }}
+          className="overflow-hidden rounded-2xl border border-slate-100"
+          rowClassName={() => 'align-top'}
+        />
+      </Card>
+    </div>
+  );
 
   const renderTabContent = () => {
     if (activeTab === 'sprints') {
@@ -300,7 +908,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         <div className="mt-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <Title level={4}>Gestión de Sprints</Title>
+              <Title level={4}>Gestión de sprints</Title>
               <Text type="secondary">
                 Administra los periodos de trabajo y ciclos de desarrollo del proyecto.
               </Text>
@@ -321,7 +929,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         <div className="mt-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <Title level={4}>Gestión de Roles</Title>
+              <Title level={4}>Gestión de roles</Title>
               <Text type="secondary">
                 Define los roles de usuario que interactúan con las funcionalidades del sistema.
               </Text>
@@ -342,14 +950,14 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         <div className="mt-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <Title level={4}>Gestión de Módulos</Title>
+              <Title level={4}>Gestión de módulos</Title>
               <Text type="secondary">
                 Organiza las funcionalidades del sistema por módulos lógicos.
               </Text>
             </div>
             {!isViewer ? (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()} className="bg-blue-600">
-                Nuevo Módulo
+                Nuevo módulo
               </Button>
             ) : null}
           </div>
@@ -358,14 +966,18 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       );
     }
 
+    if (activeTab === 'proposal') {
+      return renderProposalTab();
+    }
+
     return (
       <div className="mt-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <Title level={4}>Gestión de Plantillas</Title>
-            <Text type="secondary">
-              Organiza las plantillas de casos de prueba asociadas a los módulos del proyecto.
-            </Text>
+              <Title level={4}>Gestión de plantillas</Title>
+              <Text type="secondary">
+                Organiza las plantillas de casos de prueba asociadas a los módulos del proyecto.
+              </Text>
           </div>
           {!isViewer ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()} className="bg-blue-600">
@@ -403,7 +1015,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         <Select
           value={activeTab}
           onChange={handleTabChange}
-          className="min-w-[220px]"
+          className="min-w-[260px]"
           options={sectionOptions.map(section => ({
             value: section.key,
             label: section.label,
@@ -448,7 +1060,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 </Select>
               </Form.Item>
               <Form.Item name="objective" label="Objetivo del Sprint">
-                <Input.TextArea rows={4} placeholder="¿Qué se espera lograr en este ciclo?" />
+                <Input.TextArea rows={4} placeholder="Que se espera lograr en este ciclo?" />
               </Form.Item>
             </>
           )}
@@ -466,11 +1078,11 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
           {activeTab === 'modules' && (
             <>
-              <Form.Item name="name" label="Nombre del Módulo" rules={[{ required: true, message: 'Campo requerido' }]}>
+              <Form.Item name="name" label="Nombre del módulo" rules={[{ required: true, message: 'Campo requerido' }]}>
                 <Input placeholder="Ej: Autenticación, Pagos, Usuarios" />
               </Form.Item>
               <Form.Item name="description" label="Descripción">
-                <Input.TextArea rows={4} placeholder="Describe el alcance de este módulo..." />
+                <Input.TextArea rows={4} placeholder="Describe el alcance de este modulo..." />
               </Form.Item>
             </>
           )}
@@ -490,7 +1102,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Input.TextArea rows={5} placeholder="Secuencia de pasos sugerida para el caso de prueba..." />
               </Form.Item>
               <Form.Item name="expectedResult" label="Resultado esperado" className="col-span-2">
-                <Input.TextArea rows={4} placeholder="Qué debe ocurrir si la funcionalidad se comporta correctamente..." />
+                <Input.TextArea rows={4} placeholder="Que debe ocurrir si la funcionalidad se comporta correctamente..." />
               </Form.Item>
               <Form.Item name="moduleId" label="Módulo" rules={[{ required: true, message: 'Campo requerido' }]}>
                 <Select placeholder="Selecciona un módulo" options={modules.map(module => ({ label: module.name, value: module.id }))} />
@@ -502,7 +1114,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Select options={templatePriorityOptions.map(priority => ({ label: priority, value: priority }))} />
               </Form.Item>
               <Form.Item name="isAutomated" label="Automatizado" valuePropName="checked">
-                <Switch checkedChildren="Sí" unCheckedChildren="No" />
+                <Switch checkedChildren="Si" unCheckedChildren="No" />
               </Form.Item>
             </div>
           )}
@@ -512,6 +1124,212 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
             {!isViewer ? (
               <Button type="primary" htmlType="submit" className="bg-blue-600">
                 Guardar
+              </Button>
+            ) : null}
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingDeliveryUnit ? 'Editar unidad de entrega' : 'Nueva unidad de entrega'}
+        open={isDeliveryUnitModalVisible}
+        onCancel={closeDeliveryUnitModal}
+        footer={null}
+        width={720}
+        destroyOnHidden
+        >
+        <Form form={deliveryUnitForm} layout="vertical" onFinish={handleSaveDeliveryUnit} className="mt-4">
+          <div className="space-y-6">
+            <div>
+              <Text className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Identidad
+              </Text>
+              <Text type="secondary" className="mb-4 block text-sm">
+                Define el nombre, tipo y estado general de esta unidad de entrega.
+              </Text>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Form.Item
+                  name="name"
+                  label="Nombre"
+                  rules={[{ required: true, message: 'Campo requerido' }]}
+                  className="md:col-span-2"
+                >
+                  <Input placeholder="Ej: Fase 2 - Borrador MVP" className="h-11 rounded-xl" />
+                </Form.Item>
+
+                <Form.Item
+                  name="type"
+                  label="Tipo"
+                  rules={[{ required: true, message: 'Campo requerido' }]}
+                >
+                  <Select
+                    className="h-11"
+                    options={deliveryUnitTypeOptions.map(option => ({
+                      label: formatDeliveryUnitType(option),
+                      value: option,
+                    }))}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  name="status"
+                  label="Estado"
+                  rules={[{ required: true, message: 'Campo requerido' }]}
+                >
+                  <Select
+                    className="h-11"
+                    options={deliveryUnitStatusOptions.map(option => ({
+                      label: formatDeliveryUnitStatus(option),
+                      value: option,
+                    }))}
+                  />
+                </Form.Item>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-6">
+              <Text className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Planificación
+              </Text>
+              <Text type="secondary" className="mb-4 block text-sm">
+                Establece el periodo de trabajo y, si aplica, la referencia temporal o económica.
+              </Text>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Form.Item name="startDate" label="Fecha de inicio">
+                  <Input type="date" className="h-11 rounded-xl" />
+                </Form.Item>
+
+                <Form.Item name="estimatedEndDate" label="Fecha de fin estimada">
+                  <Input type="date" className="h-11 rounded-xl" />
+                </Form.Item>
+
+                <Form.Item
+                  name="periodLabel"
+                  label="Período o mes"
+                  extra="Úsalo cuando la unidad represente un servicio mensual o una referencia temporal específica."
+                >
+                  <Input placeholder="Ej: Abril 2026" className="h-11 rounded-xl" />
+                </Form.Item>
+
+                <Form.Item name="amount" label="Monto">
+                  <InputNumber
+                    className="!w-full rounded-xl"
+                    min={0}
+                    controls={false}
+                    addonBefore="US$"
+                  />
+                </Form.Item>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-6">
+              <Text className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Seguimiento
+              </Text>
+              <Text type="secondary" className="mb-4 block text-sm">
+                Relaciona las actividades operativas y documenta el alcance base de esta unidad.
+              </Text>
+              <div className="grid grid-cols-1 gap-4">
+                <Form.Item
+                  name="activityIds"
+                  label="Actividades realizadas"
+                  extra={
+                    deliveryActivityTemplates.filter(item => item.isActive).length > 0
+                      ? 'Selecciona las actividades operativas que pertenecen a esta unidad.'
+                      : 'Primero crea actividades operativas en la sección inferior.'
+                  }
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    className="min-h-[44px]"
+                    placeholder="Selecciona actividades operativas configuradas..."
+                    options={deliveryActivityTemplates
+                      .filter(item => item.isActive)
+                      .map(item => ({
+                        label: item.name,
+                        value: item.documentId || item.id,
+                      }))}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  name="baseDescription"
+                  label="Descripción base"
+                  extra="Este texto se utiliza como contexto para reportes y resúmenes de la unidad."
+                >
+                  <Input.TextArea
+                    rows={5}
+                    className="rounded-xl"
+                    placeholder="Describe el alcance base de esta fase, servicio o hito."
+                  />
+                </Form.Item>
+              </div>
+            </div>
+
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <Button onClick={closeDeliveryUnitModal}>Cancelar</Button>
+            {!isViewer ? (
+              <Button type="primary" htmlType="submit" className="bg-blue-600" loading={isSavingDeliveryUnit}>
+                Guardar unidad
+              </Button>
+            ) : null}
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          editingDeliveryActivity
+            ? 'Editar actividad operativa'
+            : 'Nueva actividad operativa'
+        }
+        open={isDeliveryActivityModalVisible}
+        onCancel={closeDeliveryActivityModal}
+        footer={null}
+        width={640}
+        destroyOnHidden
+      >
+        <Form
+          form={deliveryActivityForm}
+          layout="vertical"
+          onFinish={handleSaveDeliveryActivity}
+          className="mt-4"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Form.Item
+              name="name"
+              label="Nombre"
+              rules={[{ required: true, message: 'Campo requerido' }]}
+              className="md:col-span-2"
+            >
+              <Input placeholder="Ej: Configuración de ambiente QA" />
+            </Form.Item>
+
+            <Form.Item name="isActive" label="Activa" valuePropName="checked">
+              <Switch checkedChildren="Si" unCheckedChildren="No" />
+            </Form.Item>
+
+            <Form.Item name="description" label="Descripción" className="md:col-span-2">
+              <Input.TextArea
+                rows={4}
+                placeholder="Describe el objetivo o alcance de esta actividad operativa."
+              />
+            </Form.Item>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <Button onClick={closeDeliveryActivityModal}>Cancelar</Button>
+            {!isViewer ? (
+              <Button
+                type="primary"
+                htmlType="submit"
+                className="bg-blue-600"
+                loading={isSavingDeliveryActivityTemplate}
+              >
+                Guardar actividad
               </Button>
             ) : null}
           </div>

@@ -29,4 +29,10 @@ export interface FunctionalityDto {
     documentId: string;
     name: string;
   };
+  deliveryUnit?: {
+    documentId: string;
+    name: string;
+    periodLabel?: string;
+    type?: string;
+  };
 }

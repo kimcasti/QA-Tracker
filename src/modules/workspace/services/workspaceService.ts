@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { Http } from '../../../config/http';
-import type { Project } from '../../../types';
+import { ProposalType, type Project } from '../../../types';
 import { projectStatusFromApi } from '../../shared/services/enumMappers';
 import type { ProjectContextsDto, WorkspaceDto } from '../types/api';
 import type {
@@ -15,6 +15,23 @@ let workspaceCache: Workspace | null = null;
 let workspacePromise: Promise<Workspace> | null = null;
 let projectContextsPromise: Promise<Record<string, ProjectContext>> | null = null;
 let projectContextCache: Record<string, ProjectContext> = {};
+
+function parseServiceBillingPhases(value: WorkspaceDto['projects'][number]['serviceBillingPhases']) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 function mapProject(document: WorkspaceDto['projects'][number]): Project {
   return {
@@ -33,6 +50,21 @@ function mapProject(document: WorkspaceDto['projects'][number]): Project {
     businessRules: document.businessRules || '',
     aiProjectInsights: document.aiProjectInsights || '',
     aiWireframeBrief: document.aiWireframeBrief || '',
+    serviceBillingPhases: parseServiceBillingPhases(document.serviceBillingPhases),
+    proposalType:
+      document.proposalType === ProposalType.PHASES ||
+      document.proposalType === ProposalType.SERVICES ||
+      document.proposalType === ProposalType.MIXED
+        ? document.proposalType
+        : undefined,
+    proposalSentAt: document.proposalSentAt || '',
+    projectStartAt: document.projectStartAt || '',
+    contractNumber: document.contractNumber || '',
+    proposalNumber: document.proposalNumber || '',
+    currency: document.currency || '',
+    paymentTermsDays:
+      typeof document.paymentTermsDays === 'number' ? document.paymentTermsDays : undefined,
+    proposalOwner: document.proposalOwner || '',
   };
 }
 

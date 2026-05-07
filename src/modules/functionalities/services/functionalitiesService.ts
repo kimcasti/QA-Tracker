@@ -94,6 +94,10 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     riskLevel: riskFromApi(document.riskLevel),
     sprint: document.sprint?.name,
     storyId: document.storyLegacyId,
+    deliveryUnitId: document.deliveryUnit?.documentId,
+    deliveryUnitName: document.deliveryUnit?.periodLabel
+      ? `${document.deliveryUnit.name} - ${document.deliveryUnit.periodLabel}`
+      : document.deliveryUnit?.name,
   };
 }
 
@@ -103,6 +107,9 @@ export async function getFunctionalities(projectId?: string) {
     'populate[module][fields][0]': 'name',
     'populate[personaRoles][fields][0]': 'name',
     'populate[sprint][fields][0]': 'name',
+    'populate[deliveryUnit][fields][0]': 'name',
+    'populate[deliveryUnit][fields][1]': 'periodLabel',
+    'populate[deliveryUnit][fields][2]': 'type',
     ...(projectId ? { 'filters[project][key][$eq]': projectId } : {}),
   });
 
@@ -162,6 +169,7 @@ export async function saveFunctionality(functionality: Functionality) {
       project: relation(context.documentId),
       module: relation(module?.id),
       sprint: relation(sprint?.id),
+      deliveryUnit: functionality.deliveryUnitId ? relation(functionality.deliveryUnitId) : null,
       personaRoles: personaRoles.length ? { connect: personaRoles } : { disconnect: [] },
     },
   );

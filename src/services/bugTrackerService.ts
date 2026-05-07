@@ -2,6 +2,15 @@ import dayjs from 'dayjs';
 import { BugStatus, type BugOrigin, type QABug, type Severity } from '../types';
 import { getBugs, saveBug } from '../modules/bugs/services/bugsService';
 
+/**
+ * Bridge service used by legacy execution/cycle screens to sync bugs.
+ *
+ * Important:
+ * - This service is allowed to stay during the migration because it already
+ *   delegates to the modern bugs module service.
+ * - Do not reroute this flow through dataService or storageService.
+ */
+
 export interface BugSyncPayload {
   linkedBugId?: string;
   internalBugId?: string;
