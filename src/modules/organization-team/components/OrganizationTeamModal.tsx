@@ -27,6 +27,7 @@ import dayjs from 'dayjs';
 import { useEffect } from 'react';
 import { toApiError } from '../../../config/http';
 import { qaPalette, softSurface } from '../../../theme/palette';
+import type { Project } from '../../../types';
 import { useOrganizationTeam } from '../hooks/useOrganizationTeam';
 import type {
   InvitationStatus,
@@ -42,7 +43,7 @@ const { Paragraph, Text, Title } = Typography;
 interface OrganizationTeamModalProps {
   open: boolean;
   onCancel: () => void;
-  workspaceProjectDocumentId?: string | null;
+  projects: Project[];
 }
 
 const ROLE_META: Record<OrganizationTeamRoleCode, { label: string; color: string }> = {
@@ -124,9 +125,13 @@ function buildInvitationUrl(invitationDocumentId: string) {
 export function OrganizationTeamModal({
   open,
   onCancel,
-  workspaceProjectDocumentId,
+  projects,
 }: OrganizationTeamModalProps) {
-  const [form] = Form.useForm<{ email: string; roleDocumentId: string }>();
+  const [form] = Form.useForm<{
+    email: string;
+    roleDocumentId: string;
+    workspaceProjectDocumentId?: string;
+  }>();
   const {
     data,
     error,
@@ -150,25 +155,53 @@ export function OrganizationTeamModal({
   const isOwner = data?.currentMembership.roleCode === 'owner';
   const canManageOrganizationAccess = canManage && isOwner;
   const availableRoles = data?.availableRoles ?? [];
+  const selectedRoleDocumentId = Form.useWatch('roleDocumentId', form);
   const primaryInviteRole =
     availableRoles.find(role => role.code === 'qa-engineer')?.documentId ||
     availableRoles[0]?.documentId;
+  const selectedRole =
+    availableRoles.find(role => role.documentId === selectedRoleDocumentId) || null;
+  const requiresProjectAssignment =
+    selectedRole?.code === 'manager' || selectedRole?.code === 'viewer';
+  const projectOptions = projects
+    .filter(project => project.documentId)
+    .map(project => ({
+      label: project.version?.trim() ? `${project.name} - ${project.version}` : project.name,
+      value: String(project.documentId),
+    }));
 
   useEffect(() => {
     if (!open || !primaryInviteRole) return;
-    if (form.getFieldValue('roleDocumentId')) return;
-    form.setFieldValue('roleDocumentId', primaryInviteRole);
+    form.setFieldsValue({
+      roleDocumentId: form.getFieldValue('roleDocumentId') || primaryInviteRole,
+      workspaceProjectDocumentId: form.getFieldValue('workspaceProjectDocumentId'),
+    });
   }, [form, open, primaryInviteRole]);
 
-  const handleInvite = async (values: { email: string; roleDocumentId: string }) => {
+  useEffect(() => {
+    if (requiresProjectAssignment) return;
+    if (!form.getFieldValue('workspaceProjectDocumentId')) return;
+    form.setFieldValue('workspaceProjectDocumentId', undefined);
+  }, [form, requiresProjectAssignment]);
+
+  const handleInvite = async (values: {
+    email: string;
+    roleDocumentId: string;
+    workspaceProjectDocumentId?: string;
+  }) => {
     try {
       await inviteMember({
         email: values.email.trim().toLowerCase(),
         roleDocumentId: values.roleDocumentId,
-        workspaceProjectDocumentId: workspaceProjectDocumentId || undefined,
+        workspaceProjectDocumentId: values.workspaceProjectDocumentId || undefined,
       });
       message.success('Invitacion creada');
-      form.setFieldValue('email', '');
+      form.setFieldsValue({
+        email: '',
+        workspaceProjectDocumentId: requiresProjectAssignment
+          ? values.workspaceProjectDocumentId
+          : undefined,
+      });
     } catch (inviteError) {
       message.error(toApiError(inviteError).message);
     }
@@ -271,7 +304,9 @@ export function OrganizationTeamModal({
         canManageOrganizationAccess && member.status === 'active' ? (
           <Select
             value={member.role?.documentId}
-            options={availableRoles.map(role => ({
+            options={availableRoles
+              .filter(role => role.code !== 'manager' && role.code !== 'viewer')
+              .map(role => ({
               label: role.name,
               value: role.documentId,
             }))}
@@ -491,11 +526,22 @@ export function OrganizationTeamModal({
             <Card size="small" className="mt-5 rounded-[20px]" styles={{ body: { padding: 20 } }}>
               <div className="mb-4 flex items-center gap-3">
                 <MailOutlined style={{ color: qaPalette.primary }} />
-                <div>
-                  <Text strong>Invitar miembro</Text>
-                  <div></div>
+                  <div>
+                    <Text strong>Invitar miembro</Text>
+                    <div></div>
+                  </div>
                 </div>
-              </div>
+
+              <Alert
+                className="mb-4"
+                type={requiresProjectAssignment ? 'warning' : 'info'}
+                showIcon
+                message={
+                  requiresProjectAssignment
+                    ? 'Manager y Viewer requieren proyecto asignado desde la invitacion.'
+                    : 'Owner, QA Lead y QA Engineer mantienen acceso segun su rol organizacional.'
+                }
+              />
 
               <Form
                 form={form}
@@ -503,7 +549,13 @@ export function OrganizationTeamModal({
                 onFinish={handleInvite}
                 initialValues={{ roleDocumentId: primaryInviteRole }}
               >
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_220px_132px] lg:items-start">
+                <div
+                  className={`grid gap-4 lg:items-start ${
+                    requiresProjectAssignment
+                      ? 'lg:grid-cols-[minmax(0,1.1fr)_220px_minmax(0,1fr)_132px]'
+                      : 'lg:grid-cols-[minmax(0,1.4fr)_220px_132px]'
+                  }`}
+                >
                   <Form.Item
                     name="email"
                     label="Correo"
@@ -531,6 +583,27 @@ export function OrganizationTeamModal({
                     />
                   </Form.Item>
 
+                  {requiresProjectAssignment ? (
+                    <Form.Item
+                      name="workspaceProjectDocumentId"
+                      label="Proyecto asignado"
+                      rules={[
+                        {
+                          required: true,
+                          message: 'Selecciona el proyecto que podra observar este perfil.',
+                        },
+                      ]}
+                      className="mb-0"
+                    >
+                      <Select
+                        size="large"
+                        placeholder="Selecciona un proyecto"
+                        options={projectOptions}
+                        disabled={projectOptions.length === 0}
+                      />
+                    </Form.Item>
+                  ) : null}
+
                   <Form.Item
                     label={<span className="opacity-0 select-none">Accion</span>}
                     className="mb-0"
@@ -541,6 +614,7 @@ export function OrganizationTeamModal({
                       htmlType="submit"
                       icon={<UserSwitchOutlined />}
                       loading={isInviting}
+                      disabled={requiresProjectAssignment && projectOptions.length === 0}
                       className="h-10 w-full rounded-2xl"
                     >
                       Invitar
@@ -548,6 +622,16 @@ export function OrganizationTeamModal({
                   </Form.Item>
                 </div>
               </Form>
+
+              {requiresProjectAssignment && projectOptions.length === 0 ? (
+                <Alert
+                  className="mt-4"
+                  type="error"
+                  showIcon
+                  message="No hay proyectos disponibles para asignar."
+                  description="Crea o habilita al menos un proyecto antes de invitar managers o viewers."
+                />
+              ) : null}
             </Card>
           )}
         </Card>

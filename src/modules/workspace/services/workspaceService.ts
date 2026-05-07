@@ -35,6 +35,7 @@ function parseServiceBillingPhases(value: WorkspaceDto['projects'][number]['serv
 
 function mapProject(document: WorkspaceDto['projects'][number]): Project {
   return {
+    documentId: document.documentId,
     id: document.key,
     name: document.name,
     organizationName: document.organization?.name,

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Button,
   Card,
@@ -30,7 +30,8 @@ import {
 import dayjs from 'dayjs';
 import { useDeliveryActivityTemplates } from '../modules/delivery-activity-templates/hooks/useDeliveryActivityTemplates';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
-import { useProjects } from '../modules/projects/hooks/useProjects';
+import { ProjectProposalManager } from '../modules/project-proposals/components/ProjectProposalManager';
+import { useProjectProposals } from '../modules/project-proposals/hooks/useProjectProposals';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
@@ -41,14 +42,12 @@ import {
   DeliveryUnitType,
   Module,
   Priority,
-  ProposalType,
   Role,
   Sprint,
   TestCaseTemplate,
   TestType,
   type DeliveryActivityTemplate,
   type DeliveryUnit,
-  type Project,
 } from '../types';
 
 const { Title, Text } = Typography;
@@ -64,7 +63,6 @@ type SettingsItem = Sprint | Role | Module | TestCaseTemplate | null;
 
 const templateTypeOptions = Object.values(TestType);
 const templatePriorityOptions = Object.values(Priority);
-const proposalTypeOptions = Object.values(ProposalType);
 const deliveryUnitTypeOptions = Object.values(DeliveryUnitType);
 const deliveryUnitStatusOptions = Object.values(DeliveryUnitStatus);
 
@@ -101,12 +99,6 @@ function formatDeliveryUnitStatus(status: DeliveryUnitStatus) {
   return labels[status] || 'Planeada';
 }
 
-function formatProposalType(type?: ProposalType) {
-  if (type === ProposalType.SERVICES) return 'Por servicios';
-  if (type === ProposalType.MIXED) return 'Mixta';
-  return 'Por fases';
-}
-
 function renderDeliveryUnitStatusTag(status: DeliveryUnitStatus) {
   const colorMap: Record<DeliveryUnitStatus, string> = {
     [DeliveryUnitStatus.PLANNED]: 'default',
@@ -123,22 +115,8 @@ function renderDeliveryUnitStatusTag(status: DeliveryUnitStatus) {
   );
 }
 
-function renderReadOnlyField(label: string, value?: string | number | null) {
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4">
-      <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-        {label}
-      </Text>
-      <Text className="mt-2 block text-sm font-medium text-slate-700">
-        {value !== undefined && value !== null && String(value).trim() ? String(value) : 'No definido'}
-      </Text>
-    </div>
-  );
-}
-
 const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   const { isViewer } = useWorkspaceAccess();
-  const { data: projects = [], save: saveProject, isSaving: isSavingProject } = useProjects();
   const { data: sprints = [], save: saveSprint, delete: deleteSprint } = useSprints(projectId);
   const { data: roles = [], save: saveRole, delete: deleteRole } = useRoles(projectId);
   const { data: modules = [], save: saveModule, delete: deleteModule } = useModules(projectId);
@@ -161,39 +139,19 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     delete: deleteDeliveryActivityTemplate,
     isSaving: isSavingDeliveryActivityTemplate,
   } = useDeliveryActivityTemplates(projectId);
-
-  const currentProject = useMemo(
-    () => projects.find((project): project is Project => project.id === projectId) || null,
-    [projectId, projects],
-  );
+  const { data: projectProposals = [] } = useProjectProposals(projectId);
 
   const [activeTab, setActiveTab] = useState<SettingsTabKey>('sprints');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isDeliveryUnitModalVisible, setIsDeliveryUnitModalVisible] = useState(false);
   const [isDeliveryActivityModalVisible, setIsDeliveryActivityModalVisible] = useState(false);
-  const [isProposalEditing, setIsProposalEditing] = useState(false);
   const [editingItem, setEditingItem] = useState<SettingsItem>(null);
   const [editingDeliveryUnit, setEditingDeliveryUnit] = useState<DeliveryUnit | null>(null);
   const [editingDeliveryActivity, setEditingDeliveryActivity] =
     useState<DeliveryActivityTemplate | null>(null);
   const [form] = Form.useForm();
-  const [proposalForm] = Form.useForm();
   const [deliveryUnitForm] = Form.useForm();
   const [deliveryActivityForm] = Form.useForm();
-
-  useEffect(() => {
-    proposalForm.setFieldsValue({
-      proposalType: currentProject?.proposalType || ProposalType.PHASES,
-      proposalSentAt: currentProject?.proposalSentAt || '',
-      projectStartAt: currentProject?.projectStartAt || '',
-      contractNumber: currentProject?.contractNumber || '',
-      proposalNumber: currentProject?.proposalNumber || '',
-      currency: currentProject?.currency || 'USD',
-      paymentTermsDays: currentProject?.paymentTermsDays,
-      proposalOwner: currentProject?.proposalOwner || '',
-    });
-    setIsProposalEditing(false);
-  }, [currentProject, proposalForm]);
 
   const closeModal = () => {
     setEditingItem(null);
@@ -262,6 +220,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     if (item) {
       deliveryUnitForm.setFieldsValue({
         ...item,
+        proposalDocumentId: item.proposalDocumentId,
         activityIds: item.activityIds || [],
       });
     } else {
@@ -269,6 +228,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         type: DeliveryUnitType.PHASE,
         status: DeliveryUnitStatus.PLANNED,
         sortOrder: deliveryUnits.length,
+        proposalDocumentId: undefined,
         activityIds: [],
       });
     }
@@ -335,51 +295,6 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     }
   };
 
-  const handleSaveProposalSettings = async () => {
-    if (!currentProject) {
-      message.error('No encontramos el proyecto activo para guardar la propuesta.');
-      return;
-    }
-
-    try {
-      const values = await proposalForm.validateFields();
-      await saveProject({
-        ...currentProject,
-        proposalType: values.proposalType || undefined,
-        proposalSentAt: values.proposalSentAt || '',
-        projectStartAt: values.projectStartAt || '',
-        contractNumber: String(values.contractNumber || '').trim(),
-        proposalNumber: String(values.proposalNumber || '').trim(),
-        currency: String(values.currency || '').trim(),
-        paymentTermsDays:
-          typeof values.paymentTermsDays === 'number' && Number.isFinite(values.paymentTermsDays)
-            ? values.paymentTermsDays
-            : undefined,
-        proposalOwner: String(values.proposalOwner || '').trim(),
-      });
-      message.success('Configuración de la propuesta actualizada');
-      setIsProposalEditing(false);
-    } catch (error) {
-      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
-      console.error('Proposal settings save failed:', error);
-      message.error('No se pudo guardar la configuracion de propuesta.');
-    }
-  };
-
-  const handleCancelProposalEditing = () => {
-    proposalForm.setFieldsValue({
-      proposalType: currentProject?.proposalType || ProposalType.PHASES,
-      proposalSentAt: currentProject?.proposalSentAt || '',
-      projectStartAt: currentProject?.projectStartAt || '',
-      contractNumber: currentProject?.contractNumber || '',
-      proposalNumber: currentProject?.proposalNumber || '',
-      currency: currentProject?.currency || 'USD',
-      paymentTermsDays: currentProject?.paymentTermsDays,
-      proposalOwner: currentProject?.proposalOwner || '',
-    });
-    setIsProposalEditing(false);
-  };
-
   const handleSaveDeliveryUnit = async () => {
     try {
       const values = await deliveryUnitForm.validateFields();
@@ -388,6 +303,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         id: editingDeliveryUnit?.id || `delivery-unit-${Date.now()}`,
         projectId,
         name: String(values.name || '').trim(),
+        proposalDocumentId: values.proposalDocumentId || undefined,
         type: values.type,
         baseDescription: String(values.baseDescription || '').trim(),
         startDate: values.startDate || '',
@@ -583,6 +499,22 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       render: (text: string) => <Text strong>{text}</Text>,
     },
     {
+      title: 'PROPUESTA',
+      dataIndex: 'proposalName',
+      key: 'proposalName',
+      render: (_: string, record: DeliveryUnit) =>
+        record.proposalName ? (
+          <div>
+            <Text strong>{record.proposalName}</Text>
+            <Text className="mt-1 block text-xs text-slate-500">
+              {record.proposalOwner || 'Sin responsable'}
+            </Text>
+          </div>
+        ) : (
+          <Text type="secondary">Sin propuesta</Text>
+        ),
+    },
+    {
       title: 'TIPO',
       dataIndex: 'type',
       key: 'type',
@@ -725,118 +657,10 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 
   const renderProposalTab = () => (
     <div className="mt-6 space-y-6">
-      <Card className="rounded-2xl border-gray-100">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <div>
-            <Title level={4}>Propuesta activa del proyecto</Title>
-            <Text type="secondary">
-              Configura los datos comerciales base que luego servirán para unidades de entrega y facturación futura.
-            </Text>
-          </div>
-          {!isViewer ? (
-            <Space>
-              {isProposalEditing ? (
-                <>
-                  <Button onClick={handleCancelProposalEditing}>Cancelar</Button>
-                  <Button
-                    type="primary"
-                    onClick={() => void handleSaveProposalSettings()}
-                    className="bg-blue-600"
-                    loading={isSavingProject}
-                  >
-                    Guardar propuesta
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  type="default"
-                  onClick={() => setIsProposalEditing(true)}
-                >
-                  Editar propuesta
-                </Button>
-              )}
-            </Space>
-          ) : null}
-        </div>
-
-        <Form
-          form={proposalForm}
-          layout="vertical"
-          disabled={!isProposalEditing}
-          initialValues={{
-            proposalType: currentProject?.proposalType || ProposalType.PHASES,
-            proposalSentAt: currentProject?.proposalSentAt || '',
-            projectStartAt: currentProject?.projectStartAt || '',
-            contractNumber: currentProject?.contractNumber || '',
-            proposalNumber: currentProject?.proposalNumber || '',
-            currency: currentProject?.currency || 'USD',
-            paymentTermsDays: currentProject?.paymentTermsDays,
-            proposalOwner: currentProject?.proposalOwner || '',
-          }}
-          key={`${projectId}-${currentProject?.proposalNumber || 'proposal'}`}
-        >
-          {isProposalEditing ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Form.Item name="proposalType" label="Tipo de propuesta">
-                <Select
-                  options={proposalTypeOptions.map(option => ({
-                    label: formatProposalType(option),
-                    value: option,
-                  }))}
-                />
-              </Form.Item>
-
-              <Form.Item name="currency" label="Moneda">
-                <Input placeholder="Ej: USD, COP, EUR" />
-              </Form.Item>
-
-              <Form.Item name="proposalSentAt" label="Fecha de envío de propuesta">
-                <Input type="date" />
-              </Form.Item>
-
-              <Form.Item name="projectStartAt" label="Fecha de inicio del proyecto">
-                <Input type="date" />
-              </Form.Item>
-
-              <Form.Item name="contractNumber" label="Número de contrato">
-                <Input placeholder="Ej: CT-2026-001" />
-              </Form.Item>
-
-              <Form.Item name="proposalNumber" label="Número de propuesta">
-                <Input placeholder="Ej: PROP-2026-014" />
-              </Form.Item>
-
-              <Form.Item name="paymentTermsDays" label="Días de pago">
-                <InputNumber className="!w-full" min={0} controls={false} />
-              </Form.Item>
-
-              <Form.Item name="proposalOwner" label="Responsable">
-                <Input placeholder="Ej: Kimberly Conde" />
-              </Form.Item>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {renderReadOnlyField(
-                'Tipo de propuesta',
-                formatProposalType(currentProject?.proposalType),
-              )}
-              {renderReadOnlyField('Moneda', currentProject?.currency || 'USD')}
-              {renderReadOnlyField(
-                'Fecha de envío de propuesta',
-                currentProject?.proposalSentAt,
-              )}
-              {renderReadOnlyField(
-                'Fecha de inicio del proyecto',
-                currentProject?.projectStartAt,
-              )}
-              {renderReadOnlyField('Número de contrato', currentProject?.contractNumber)}
-              {renderReadOnlyField('Número de propuesta', currentProject?.proposalNumber)}
-              {renderReadOnlyField('Días de pago', currentProject?.paymentTermsDays)}
-              {renderReadOnlyField('Responsable', currentProject?.proposalOwner)}
-            </div>
-          )}
-        </Form>
-      </Card>
+      <ProjectProposalManager
+        projectId={projectId}
+        isViewer={isViewer}
+      />
 
       <Card className="rounded-2xl border-gray-100">
         <div className="mb-6 flex items-center justify-between gap-3">
@@ -1184,6 +1008,23 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                     }))}
                   />
                 </Form.Item>
+
+                <Form.Item
+                  name="proposalDocumentId"
+                  label="Propuesta asociada"
+                  className="md:col-span-2"
+                  extra="Opcional. Úsala para conectar esta unidad con una propuesta comercial concreta."
+                >
+                  <Select
+                    allowClear
+                    className="h-11"
+                    placeholder="Selecciona una propuesta del proyecto..."
+                    options={projectProposals.map(proposal => ({
+                      label: proposal.isPrimary ? `${proposal.name} (Principal)` : proposal.name,
+                      value: proposal.documentId || proposal.id,
+                    }))}
+                  />
+                </Form.Item>
               </div>
             </div>
 
@@ -1340,3 +1181,5 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
 };
 
 export default Settings;
+
+

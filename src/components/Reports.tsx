@@ -5,7 +5,6 @@ import {
   Col,
   Divider,
   Empty,
-  Input,
   Progress,
   Row,
   Select,
@@ -54,6 +53,7 @@ import {
 import dayjs from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
+import { useProjectProposals } from '../modules/project-proposals/hooks/useProjectProposals';
 import {
   authorizeAiAccess,
   authorizeReportAccess,
@@ -95,7 +95,6 @@ import {
 } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
-const { TextArea } = Input;
 
 const REPORT_ACCESS_KEYS = {
   QA_STATUS_SUMMARY: 'qaStatusSummary',
@@ -133,6 +132,21 @@ interface TechnicalAnalysisCardProps {
   canUseAi: boolean;
   onRequireUpgrade: () => void;
 }
+
+type AiInsightTone = {
+  accent: string;
+  background: string;
+  border: string;
+  icon: React.ReactNode;
+};
+
+type ParsedAnalysisSections = {
+  general: string;
+  highlights: string;
+  risks: string;
+  recommendations: string;
+  additionalInfo: string;
+};
 
 const normalizeSprintKey = (value?: string | null) =>
   (value || '')
@@ -291,6 +305,270 @@ const getPriorityTag = (priority?: string) => {
   );
 };
 
+const normalizeAiText = (value?: string) =>
+  String(value || '')
+    .replace(/\r/g, '')
+    .trim();
+
+const extractAiBulletItems = (value?: string) =>
+  normalizeAiText(value)
+    .split('\n')
+    .map(item => item.replace(/^[\-\u2022]\s*/, '').trim())
+    .filter(Boolean);
+
+const splitAiParagraphs = (value?: string) =>
+  normalizeAiText(value)
+    .split(/\n{2,}/)
+    .map(paragraph => paragraph.replace(/\n+/g, ' ').trim())
+    .filter(Boolean);
+
+const condenseAiInsight = (value?: string, maxLength = 220) => {
+  const [firstParagraph = ''] = splitAiParagraphs(value);
+  if (!firstParagraph) return '';
+  if (firstParagraph.length <= maxLength) return firstParagraph;
+
+  return `${firstParagraph.slice(0, maxLength).trimEnd()}...`;
+};
+
+const parseTechnicalAnalysisSections = (analysis: string): ParsedAnalysisSections => {
+  const normalized = normalizeAiText(analysis);
+
+  if (!normalized) {
+    return {
+      general: '',
+      highlights: '',
+      risks: '',
+      recommendations: '',
+      additionalInfo: '',
+    };
+  }
+
+  const sectionPatterns: Array<{
+    key: keyof ParsedAnalysisSections;
+    pattern: RegExp;
+  }> = [
+    { key: 'general', pattern: /(?:^|\n)\s*(?:1[\.\)]\s*)?Estado general de la unidad\s*/i },
+    { key: 'highlights', pattern: /(?:^|\n)\s*(?:2[\.\)]\s*)?Aspectos destacados\s*/i },
+    { key: 'risks', pattern: /(?:^|\n)\s*(?:3[\.\)]\s*)?Riesgos actuales\s*/i },
+    {
+      key: 'recommendations',
+      pattern: /(?:^|\n)\s*(?:4[\.\)]\s*)?Recomendaciones sugeridas\s*/i,
+    },
+    {
+      key: 'additionalInfo',
+      pattern: /(?:^|\n)\s*(?:5[\.\)]\s*)?Informacion adicional recomendada\s*/i,
+    },
+  ];
+
+  const matches = sectionPatterns
+    .map(section => {
+      const match = section.pattern.exec(normalized);
+      return match ? { key: section.key, index: match.index, length: match[0].length } : null;
+    })
+    .filter(Boolean) as Array<{ key: keyof ParsedAnalysisSections; index: number; length: number }>;
+
+  if (matches.length === 0) {
+    return {
+      general: normalized,
+      highlights: '',
+      risks: '',
+      recommendations: '',
+      additionalInfo: '',
+    };
+  }
+
+  const sections: ParsedAnalysisSections = {
+    general: '',
+    highlights: '',
+    risks: '',
+    recommendations: '',
+    additionalInfo: '',
+  };
+
+  matches.forEach((match, index) => {
+    const start = match.index + match.length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : normalized.length;
+    sections[match.key] = normalized.slice(start, end).trim();
+  });
+
+  return sections;
+};
+
+const buildInsightTone = (
+  kind: 'stability' | 'coverage' | 'automation' | 'risks' | 'recommendations',
+): AiInsightTone => {
+  const tones: Record<typeof kind, AiInsightTone> = {
+    stability: {
+      accent: '#2563eb',
+      background: '#eff6ff',
+      border: '#bfdbfe',
+      icon: <SafetyCertificateOutlined className="text-sm" />,
+    },
+    coverage: {
+      accent: '#0f766e',
+      background: '#ecfeff',
+      border: '#99f6e4',
+      icon: <FileTextOutlined className="text-sm" />,
+    },
+    automation: {
+      accent: '#7c3aed',
+      background: '#f5f3ff',
+      border: '#ddd6fe',
+      icon: <LineChartOutlined className="text-sm" />,
+    },
+    risks: {
+      accent: '#dc2626',
+      background: '#fef2f2',
+      border: '#fecaca',
+      icon: <BugOutlined className="text-sm" />,
+    },
+    recommendations: {
+      accent: '#ca8a04',
+      background: '#fefce8',
+      border: '#fde68a',
+      icon: <CheckCircleOutlined className="text-sm" />,
+    },
+  };
+
+  return tones[kind];
+};
+
+const ReadonlyAiTextBlock: React.FC<{
+  title: string;
+  icon: React.ReactNode;
+  content?: string;
+  emptyText: string;
+}> = ({ title, icon, content, emptyText }) => {
+  const paragraphs = splitAiParagraphs(content);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm">
+          {icon}
+        </span>
+        <Text strong className="text-sm text-slate-800">
+          {title}
+        </Text>
+      </div>
+      {paragraphs.length > 0 ? (
+        <div className="space-y-2">
+          {paragraphs.map(paragraph => (
+            <Paragraph key={paragraph} className="!mb-0 text-sm leading-7 text-slate-700">
+              {paragraph}
+            </Paragraph>
+          ))}
+        </div>
+      ) : (
+        <Text className="text-sm leading-7 text-slate-400">{emptyText}</Text>
+      )}
+    </div>
+  );
+};
+
+const ReadonlyAiObjectivesBlock: React.FC<{
+  content?: string;
+}> = ({ content }) => {
+  const items = extractAiBulletItems(content);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm">
+          <FlagOutlined className="text-sm" />
+        </span>
+        <Text strong className="text-sm text-slate-800">
+          Objetivos detectados
+        </Text>
+      </div>
+      {items.length > 0 ? (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={item} className="rounded-xl border border-white bg-white/90 px-4 py-3">
+              <Text className="text-sm leading-7 text-slate-700">{item}</Text>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Text className="text-sm leading-7 text-slate-400">
+          Aqui se mostraran los objetivos generados con base exclusiva en esta unidad.
+        </Text>
+      )}
+    </div>
+  );
+};
+
+const AiInsightCard: React.FC<{
+  title: string;
+  kind: 'stability' | 'coverage' | 'automation' | 'risks' | 'recommendations';
+  description?: string;
+  emptyText: string;
+}> = ({ title, kind, description, emptyText }) => {
+  const tone = buildInsightTone(kind);
+
+  return (
+    <div
+      className="rounded-2xl border px-5 py-4"
+      style={{ backgroundColor: tone.background, borderColor: tone.border }}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm"
+          style={{ color: tone.accent }}
+        >
+          {tone.icon}
+        </span>
+        <Text strong className="text-sm text-slate-800">
+          {title}
+        </Text>
+      </div>
+      <Text className="block text-sm leading-7 text-slate-700">
+        {normalizeAiText(description) || emptyText}
+      </Text>
+    </div>
+  );
+};
+
+const AiPremiumTeaserCard: React.FC<{
+  title: string;
+  description: string;
+  ctaLabel: string;
+  canUseAi: boolean;
+  isGenerating: boolean;
+  onGenerate: () => void;
+}> = ({ title, description, ctaLabel, canUseAi, isGenerating, onGenerate }) => (
+  <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_55%,#eff6ff_100%)] px-5 py-5">
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div className="min-w-0">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Tag className="m-0 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">
+            <SafetyCertificateOutlined /> Premium IA
+          </Tag>
+          {!canUseAi ? (
+            <Tag className="m-0 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
+              <LockOutlined /> Growth
+            </Tag>
+          ) : null}
+        </div>
+        <Text strong className="mb-2 block text-base text-slate-900">
+          {title}
+        </Text>
+        <Paragraph className="!mb-0 max-w-3xl text-sm leading-7 text-slate-600">
+          {description}
+        </Paragraph>
+      </div>
+      <Button
+        onClick={() => onGenerate()}
+        loading={isGenerating}
+        icon={canUseAi ? <SafetyCertificateOutlined /> : <LockOutlined />}
+        className="report-ai-action-button shrink-0 rounded-full border-blue-200 bg-white/90 px-4"
+      >
+        {ctaLabel}
+      </Button>
+    </div>
+  </div>
+);
+
 const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
   projectId,
   input,
@@ -300,6 +578,32 @@ const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
 }) => {
   const [analysis, setAnalysis] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const parsedSections = useMemo(() => parseTechnicalAnalysisSections(analysis), [analysis]);
+  const hasAnalysis = Boolean(normalizeAiText(analysis));
+  const insightDescriptions = useMemo(() => {
+    const metrics = (input.metrics || {}) as Record<string, unknown>;
+    const testCasesCount = Number(metrics.testCasesCount || 0);
+    const progressPercent = Number(metrics.progressPercent || 0);
+    const activeBugsCount = Number(metrics.activeBugsCount || 0);
+
+    return {
+      stability: condenseAiInsight(parsedSections.general),
+      coverage:
+        condenseAiInsight(parsedSections.highlights) ||
+        (testCasesCount > 0
+          ? `La unidad registra ${testCasesCount} casos asociados y un avance general de ${progressPercent}%, lo que aporta contexto base para revisar cobertura y alcance real.`
+          : ''),
+      automation:
+        condenseAiInsight(parsedSections.additionalInfo) ||
+        'No se reportan señales especificas de automatizacion en este analisis, por lo que conviene complementar futuras lecturas con ejecuciones, cobertura automatizada o evidencia tecnica adicional.',
+      risks:
+        condenseAiInsight(parsedSections.risks) ||
+        (activeBugsCount > 0
+          ? `Se mantienen ${activeBugsCount} bugs activos vinculados al alcance actual, por lo que esta unidad requiere seguimiento cercano sobre impacto y cierre.`
+          : ''),
+      recommendations: condenseAiInsight(parsedSections.recommendations),
+    };
+  }, [input.metrics, parsedSections]);
 
   useEffect(() => {
     setAnalysis('');
@@ -336,7 +640,11 @@ const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
   };
 
   return (
-    <Card className="rounded-3xl border-slate-100 shadow-sm">
+    <Card
+      className={`rounded-3xl border-slate-100 shadow-sm ${
+        hasAnalysis ? '' : 'report-print-hide-when-empty'
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-slate-800">
           <ReadOutlined />
@@ -344,21 +652,79 @@ const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
             Análisis técnico con IA
           </Title>
         </div>
-        <Button onClick={() => void handleGenerate()} loading={isGenerating}>
-          Generar análisis IA
-        </Button>
+        {hasAnalysis ? (
+          <Button
+            onClick={() => void handleGenerate()}
+            loading={isGenerating}
+            icon={canUseAi ? <SafetyCertificateOutlined /> : <LockOutlined />}
+            className="report-ai-action-button"
+          >
+            Regenerar análisis IA
+          </Button>
+        ) : null}
       </div>
-      <Paragraph className="!mb-4 max-w-4xl text-sm leading-7 text-slate-500">
-        La IA interpreta este reporte con base exclusiva en sus métricas, alcance y señales de
-        riesgo para devolver una lectura técnica alineada al objetivo del informe.
-      </Paragraph>
-      <TextArea
-        rows={14}
-        value={analysis}
-        onChange={event => setAnalysis(event.target.value)}
-        placeholder="Aquí aparecerá un análisis técnico accionable con foco en este reporte."
-        className="rounded-2xl"
-      />
+      {hasAnalysis ? (
+        <div className="space-y-4">
+          <Paragraph className="!mb-0 max-w-4xl text-sm leading-7 text-slate-500">
+            La IA interpreta este reporte con base exclusiva en sus métricas, alcance y señales
+            de riesgo para devolver una lectura técnica alineada al objetivo del informe.
+          </Paragraph>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <AiInsightCard
+              title="Estabilidad"
+              kind="stability"
+              description={insightDescriptions.stability}
+              emptyText="Aqui se resumira la lectura general de estabilidad cuando la IA genere el analisis."
+            />
+            <AiInsightCard
+              title="Cobertura"
+              kind="coverage"
+              description={insightDescriptions.coverage}
+              emptyText="Aqui se mostraran observaciones de cobertura y alcance cuando el analisis este disponible."
+            />
+            <AiInsightCard
+              title="Automatizacion"
+              kind="automation"
+              description={insightDescriptions.automation}
+              emptyText="Aqui se mostraran observaciones sobre automatizacion o datos faltantes relacionados."
+            />
+            <AiInsightCard
+              title="Riesgos"
+              kind="risks"
+              description={insightDescriptions.risks}
+              emptyText="Aqui se mostraran los riesgos principales detectados por la IA."
+            />
+            <AiInsightCard
+              title="Recomendaciones"
+              kind="recommendations"
+              description={insightDescriptions.recommendations}
+              emptyText="Aqui se mostraran recomendaciones accionables generadas para esta unidad."
+            />
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <ReadOutlined />
+              <Text strong>Lectura completa</Text>
+            </div>
+            <div className="space-y-3">
+              {splitAiParagraphs(analysis).map(paragraph => (
+                <Paragraph key={paragraph} className="!mb-0 text-sm leading-7 text-slate-700">
+                  {paragraph}
+                </Paragraph>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <AiPremiumTeaserCard
+          title="Genera una lectura tecnica premium para este reporte"
+          description="Activa un analisis ejecutivo con foco en estabilidad, cobertura, automatizacion, riesgos y recomendaciones listas para revisar o compartir."
+          ctaLabel="Generar analisis IA"
+          canUseAi={canUseAi}
+          isGenerating={isGenerating}
+          onGenerate={() => void handleGenerate()}
+        />
+      )}
     </Card>
   );
 };
@@ -377,6 +743,7 @@ const QAStatusExecutiveAnalysisCard: React.FC<{
 }> = ({ projectId, input, resetKey, canUseAi, onRequireUpgrade, insightCards }) => {
   const [analysis, setAnalysis] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const hasAnalysis = Boolean(normalizeAiText(analysis));
 
   useEffect(() => {
     setAnalysis('');
@@ -413,7 +780,11 @@ const QAStatusExecutiveAnalysisCard: React.FC<{
   };
 
   return (
-    <Card className="rounded-3xl border-slate-100 shadow-sm">
+    <Card
+      className={`rounded-3xl border-slate-100 shadow-sm ${
+        hasAnalysis ? '' : 'report-print-hide-when-empty'
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-slate-800">
           <ReadOutlined />
@@ -421,41 +792,63 @@ const QAStatusExecutiveAnalysisCard: React.FC<{
             Analisis ejecutivo y tecnico con IA
           </Title>
         </div>
-        <Button onClick={() => void handleGenerate()} loading={isGenerating}>
-          Generar analisis IA
-        </Button>
-      </div>
-      <Paragraph className="!mb-4 max-w-4xl text-sm leading-7 text-slate-500">
-        Este bloque sintetiza el estado del ciclo con una lectura profesional, facil de revisar y
-        lista para compartir en PDF con clientes o lideres tecnicos.
-      </Paragraph>
-      <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {insightCards.map(card => (
-          <div
-            key={card.title}
-            className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-4"
+        {hasAnalysis ? (
+          <Button
+            onClick={() => void handleGenerate()}
+            loading={isGenerating}
+            icon={canUseAi ? <SafetyCertificateOutlined /> : <LockOutlined />}
+            className="report-ai-action-button"
           >
-            <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              {card.title}
-            </Text>
-            <Text strong className="mt-2 block text-base text-slate-900">
-              {card.value}
-            </Text>
-            {card.helper ? (
-              <Text className="mt-1 block text-xs leading-6 text-slate-500">{card.helper}</Text>
-            ) : null}
+            Regenerar analisis IA
+          </Button>
+        ) : null}
+      </div>
+      {hasAnalysis ? (
+        <>
+          <Paragraph className="!mb-4 max-w-4xl text-sm leading-7 text-slate-500">
+            Este bloque sintetiza el estado del ciclo con una lectura profesional, facil de revisar
+            y lista para compartir en PDF con clientes o lideres tecnicos.
+          </Paragraph>
+          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {insightCards.map(card => (
+              <div
+                key={card.title}
+                className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-4"
+              >
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  {card.title}
+                </Text>
+                <Text strong className="mt-2 block text-base text-slate-900">
+                  {card.value}
+                </Text>
+                {card.helper ? (
+                  <Text className="mt-1 block text-xs leading-6 text-slate-500">
+                    {card.helper}
+                  </Text>
+                ) : null}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-        <div className="mb-3 flex items-center gap-2 text-slate-700">
-          <FileTextOutlined />
-          <Text strong>Lectura del ciclo</Text>
-        </div>
-        <div className="min-h-[280px] whitespace-pre-line text-sm leading-7 text-slate-700">
-          {analysis || 'Aqui aparecera un analisis ejecutivo y tecnico listo para compartir.'}
-        </div>
-      </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <FileTextOutlined />
+              <Text strong>Lectura del ciclo</Text>
+            </div>
+            <div className="min-h-[280px] whitespace-pre-line text-sm leading-7 text-slate-700">
+              {analysis}
+            </div>
+          </div>
+        </>
+      ) : (
+        <AiPremiumTeaserCard
+          title="Genera una lectura ejecutiva premium para este ciclo"
+          description="Obtén una interpretacion lista para compartir con foco en cobertura real, riesgo actual, automatizacion y estado general del ciclo."
+          ctaLabel="Generar analisis IA"
+          canUseAi={canUseAi}
+          isGenerating={isGenerating}
+          onGenerate={() => void handleGenerate()}
+        />
+      )}
     </Card>
   );
 };
@@ -553,21 +946,19 @@ const QAStatusSummary: React.FC<{
     [cycleBugs],
   );
 
-  if (!cycle) return <Empty description="Seleccione un ciclo para ver el reporte" />;
-
-  const executedTests = getExecutedCount(cycle);
-  const executionCoverage = getPercent(executedTests, cycle.totalTests);
-  const automatedCount = getAutomatedCount(cycle);
-  const manualCount = getManualCount(cycle);
-  const automationRate = getAutomationRate(cycle);
-  const stabilityTone = getPassRateTone(cycle.passRate);
-  const riskTone = getCycleRiskTone(cycle.failed, executedTests, activeCycleBugs.length);
+  const executedTests = cycle ? getExecutedCount(cycle) : 0;
+  const executionCoverage = cycle ? getPercent(executedTests, cycle.totalTests) : 0;
+  const automatedCount = cycle ? getAutomatedCount(cycle) : 0;
+  const manualCount = cycle ? getManualCount(cycle) : 0;
+  const automationRate = cycle ? getAutomationRate(cycle) : 0;
+  const stabilityTone = getPassRateTone(cycle?.passRate ?? 0);
+  const riskTone = getCycleRiskTone(cycle?.failed ?? 0, executedTests, activeCycleBugs.length);
 
   const pieData = [
-    { name: 'Aprobados', value: cycle.passed, color: '#10b981' },
-    { name: 'Fallidos', value: cycle.failed, color: '#ef4444' },
-    { name: 'Bloqueados', value: cycle.blocked, color: '#f59e0b' },
-    { name: 'Pendientes', value: cycle.pending, color: '#94a3b8' },
+    { name: 'Aprobados', value: cycle?.passed ?? 0, color: '#10b981' },
+    { name: 'Fallidos', value: cycle?.failed ?? 0, color: '#ef4444' },
+    { name: 'Bloqueados', value: cycle?.blocked ?? 0, color: '#f59e0b' },
+    { name: 'Pendientes', value: cycle?.pending ?? 0, color: '#94a3b8' },
   ].filter(item => item.value > 0);
 
   const qualityMetrics = [
@@ -591,14 +982,19 @@ const QAStatusSummary: React.FC<{
       label: 'Pruebas ejecutadas',
       value: (
         <Text strong>
-          {executedTests}/{cycle.totalTests}
+          {executedTests}/{cycle?.totalTests ?? 0}
         </Text>
       ),
     },
   ];
 
-  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput>(
-    () => ({
+  const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput | null>(
+    () => {
+      if (!cycle) {
+        return null;
+      }
+
+      return {
       reportType: 'qa-status-summary',
       reportTitle: 'Resumen de Estado QA',
       reportPurpose:
@@ -649,8 +1045,9 @@ const QAStatusSummary: React.FC<{
           result: execution.result,
           bugId: execution.bugId || execution.linkedBugId || null,
         })),
-      },
-    }),
+        },
+      };
+    },
     [
       activeCycleBugs.length,
       automatedCount,
@@ -664,6 +1061,10 @@ const QAStatusSummary: React.FC<{
       stabilityTone.label,
     ],
   );
+
+  if (!cycle || !technicalAnalysisInput) {
+    return <Empty description="Seleccione un ciclo para ver el reporte" />;
+  }
 
   const insightCards = [
     {
@@ -767,7 +1168,7 @@ const QAStatusSummary: React.FC<{
         </Col>
       </Row>
 
-      <Row gutter={[32, 24]} className="mt-2">
+      <Row gutter={[32, 24]} className="report-print-stack-row mt-2">
         <Col xs={24} lg={12} className="!px-1">
           <Card title="Distribución de resultados" className="rounded-2xl border-slate-100 h-full">
             <div className="h-[250px]">
@@ -1596,7 +1997,6 @@ const DeliveryUnitProgressReport: React.FC<{
   projectId: string;
   deliveryUnitId: string | null;
   projectName?: string;
-  proposalOwner?: string;
   canUseExports?: boolean;
   canUseAi: boolean;
   onRequireUpgrade: () => void;
@@ -1604,7 +2004,6 @@ const DeliveryUnitProgressReport: React.FC<{
   projectId,
   deliveryUnitId,
   projectName,
-  proposalOwner,
   canUseExports = false,
   canUseAi,
   onRequireUpgrade,
@@ -1799,7 +2198,8 @@ const DeliveryUnitProgressReport: React.FC<{
       statusLabel,
       generatedAtLabel,
       periodLabel: periodText,
-      proposalOwner: proposalOwner || 'No definido',
+      proposalName: selectedDeliveryUnit?.proposalName || 'No definida',
+      proposalOwner: selectedDeliveryUnit?.proposalOwner || 'No definido',
       scopeDescription:
         selectedDeliveryUnit?.baseDescription || 'Sin descripcion base registrada.',
       executiveSummary,
@@ -1844,7 +2244,6 @@ const DeliveryUnitProgressReport: React.FC<{
       periodText,
       projectName,
       progressPercent,
-      proposalOwner,
       reportRows,
       scopedFunctionalities.length,
       scopedTestCases.length,
@@ -1941,6 +2340,12 @@ const DeliveryUnitProgressReport: React.FC<{
     ],
   );
 
+  const hasAiSummaryContent = Boolean(
+    normalizeAiText(aiIntroduction) ||
+      normalizeAiText(aiObjectives) ||
+      normalizeAiText(aiConclusion),
+  );
+
   const handleExportWord = async () => {
     try {
       await runTrackedExport({
@@ -1997,9 +2402,15 @@ const DeliveryUnitProgressReport: React.FC<{
               </div>
               <div>
                 <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Propuesta
+                </Text>
+                <Text strong>{selectedDeliveryUnit.proposalName || 'No definida'}</Text>
+              </div>
+              <div>
+                <Text className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Responsable
                 </Text>
-                <Text strong>{proposalOwner || 'No definido'}</Text>
+                <Text strong>{selectedDeliveryUnit.proposalOwner || 'No definido'}</Text>
               </div>
             </div>
           </div>
@@ -2095,62 +2506,31 @@ const DeliveryUnitProgressReport: React.FC<{
       </div>
 
       <div className="pt-3">
-        <Card className="rounded-3xl border-slate-100 shadow-sm">
+        <Card
+          className={`rounded-3xl border-slate-100 shadow-sm ${
+            hasAiSummaryContent ? '' : 'report-print-hide-when-empty'
+          }`}
+        >
         <div className="mb-4 flex items-center gap-2 text-slate-800">
           <ReadOutlined />
           <Title level={4} className="!mb-0">
             Resumen asistido por IA
           </Title>
         </div>
-        <div className="grid grid-cols-1 gap-4">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FileTextOutlined className="text-slate-400" />
-              <Text strong className="text-slate-800">
-                Introducción
-              </Text>
-            </div>
-            <TextArea
-              rows={4}
-              value={aiIntroduction}
-              onChange={event => setAiIntroduction(event.target.value)}
-              bordered={false}
-              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
-              placeholder="Aqui se mostrara la introduccion generada con base exclusiva en esta unidad."
-            />
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FlagOutlined className="text-slate-400" />
-              <Text strong className="text-slate-800">
-                Objetivos
-              </Text>
-            </div>
-            <TextArea
-              rows={5}
-              value={aiObjectives}
-              onChange={event => setAiObjectives(event.target.value)}
-              bordered={false}
-              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
-              placeholder="Aqui se mostraran los objetivos generados con base exclusiva en esta unidad."
-            />
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <CheckOutlined className="text-slate-400" />
-              <Text strong className="text-slate-800">
-                Conclusión
-              </Text>
-            </div>
-            <TextArea
-              rows={4}
-              value={aiConclusion}
-              onChange={event => setAiConclusion(event.target.value)}
-              bordered={false}
-              className="rounded-xl bg-white/70 px-0 text-sm leading-7 text-slate-700"
-              placeholder="Aqui se mostrara la conclusion generada con base exclusiva en esta unidad."
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <ReadonlyAiTextBlock
+            title="Introduccion"
+            icon={<FileTextOutlined className="text-sm" />}
+            content={aiIntroduction}
+            emptyText="Aqui se mostrara la introduccion generada con base exclusiva en esta unidad."
+          />
+          <ReadonlyAiObjectivesBlock content={aiObjectives} />
+          <ReadonlyAiTextBlock
+            title="Conclusion"
+            icon={<CheckOutlined className="text-sm" />}
+            content={aiConclusion}
+            emptyText="Aqui se mostrara la conclusion generada con base exclusiva en esta unidad."
+          />
         </div>
         </Card>
       </div>
@@ -2269,6 +2649,7 @@ export default function Reports({ projectId }: { projectId: string }) {
   const [selectedVariant, setSelectedVariant] = useState<ReportVariant>('QA_STATUS_SUMMARY');
   const [selectedSprint, setSelectedSprint] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [selectedDeliveryUnitId, setSelectedDeliveryUnitId] = useState<string | null>(null);
   const [view, setView] = useState<'CONFIG' | 'REPORT'>('CONFIG');
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -2313,6 +2694,7 @@ export default function Reports({ projectId }: { projectId: string }) {
   const { data: smokeCycleSummaries = [] } = useSmokeCycleSummaries(projectId);
   const { data: sprints = [] } = useSprints(projectId);
   const { data: deliveryUnits = [] } = useDeliveryUnits(projectId);
+  const { data: projectProposals = [] } = useProjectProposals(projectId);
   const { data: projects = [] } = useProjects();
   const currentProject = useMemo(
     () => projects.find(project => project.id === projectId) || null,
@@ -2341,6 +2723,25 @@ export default function Reports({ projectId }: { projectId: string }) {
       setSelectedCycleId(null);
     }
   }, [filteredCycles, selectedCycleId]);
+
+  const filteredDeliveryUnits = useMemo(() => {
+    if (!selectedProposalId) return deliveryUnits;
+    return deliveryUnits.filter(
+      item => (item.proposalDocumentId || '') === selectedProposalId,
+    );
+  }, [deliveryUnits, selectedProposalId]);
+
+  useEffect(() => {
+    if (!selectedDeliveryUnitId) return;
+
+    const deliveryUnitStillAvailable = filteredDeliveryUnits.some(
+      item => (item.documentId || item.id) === selectedDeliveryUnitId,
+    );
+
+    if (!deliveryUnitStillAvailable) {
+      setSelectedDeliveryUnitId(null);
+    }
+  }, [filteredDeliveryUnits, selectedDeliveryUnitId]);
 
   const handleGenerate = async () => {
     if (selectedReportLocked) {
@@ -2488,7 +2889,6 @@ export default function Reports({ projectId }: { projectId: string }) {
               projectId={projectId}
               deliveryUnitId={selectedDeliveryUnitId}
               projectName={currentProject?.name}
-              proposalOwner={currentProject?.proposalOwner}
               canUseExports={canUseExports}
               canUseAi={canUseAi}
               onRequireUpgrade={() => setIsUpgradeModalOpen(true)}
@@ -2647,24 +3047,51 @@ export default function Reports({ projectId }: { projectId: string }) {
               </Col>
             )}
             {selectedVariant === 'DELIVERY_UNIT_PROGRESS_REPORT' && (
-              <Col span={24}>
-                <div className="space-y-2">
-                  <Text strong className="text-xs uppercase tracking-wider text-slate-500">
-                    Seleccionar Unidad de Entrega
-                  </Text>
-                  <Select
-                    className="w-full h-12 rounded-xl"
-                    placeholder="Elige una unidad configurada..."
-                    value={selectedDeliveryUnitId}
-                    onChange={value => setSelectedDeliveryUnitId(value)}
-                    allowClear
-                    options={deliveryUnits.map(item => ({
-                      label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
-                      value: item.documentId || item.id,
-                    }))}
-                  />
-                </div>
-              </Col>
+              <>
+                <Col span={12}>
+                  <div className="space-y-2">
+                    <Text strong className="text-xs uppercase tracking-wider text-slate-500">
+                      Filtrar por Propuesta
+                    </Text>
+                    <Select
+                      className="w-full h-12 rounded-xl"
+                      placeholder="Todas las propuestas"
+                      value={selectedProposalId}
+                      onChange={value => {
+                        setSelectedProposalId(value);
+                        setSelectedDeliveryUnitId(null);
+                      }}
+                      allowClear
+                      options={projectProposals.map(proposal => ({
+                        label: proposal.isPrimary ? `${proposal.name} (Principal)` : proposal.name,
+                        value: proposal.documentId || proposal.id,
+                      }))}
+                    />
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <div className="space-y-2">
+                    <Text strong className="text-xs uppercase tracking-wider text-slate-500">
+                      Seleccionar Unidad de Entrega
+                    </Text>
+                    <Select
+                      className="w-full h-12 rounded-xl"
+                      placeholder={
+                        selectedProposalId
+                          ? 'Elige una unidad de la propuesta seleccionada...'
+                          : 'Elige una unidad configurada...'
+                      }
+                      value={selectedDeliveryUnitId}
+                      onChange={value => setSelectedDeliveryUnitId(value)}
+                      allowClear
+                      options={filteredDeliveryUnits.map(item => ({
+                        label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
+                        value: item.documentId || item.id,
+                      }))}
+                    />
+                  </div>
+                </Col>
+              </>
             )}
           </Row>
 
@@ -2685,3 +3112,4 @@ export default function Reports({ projectId }: { projectId: string }) {
     </div>
   );
 }
+

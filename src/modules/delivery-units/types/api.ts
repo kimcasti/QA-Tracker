@@ -19,4 +19,9 @@ export interface DeliveryUnitDto {
     documentId: string;
     key: string;
   };
+  proposal?: {
+    documentId: string;
+    name: string;
+    proposalOwner?: string | null;
+  } | null;
 }

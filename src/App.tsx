@@ -267,7 +267,7 @@ function WorkspaceApp({
 }) {
   const { t } = useTranslation();
   const { message } = AntdApp.useApp();
-  const { isViewer, activeRoleName, isSuperAdmin } = useWorkspaceAccess();
+  const { isViewer, activeRoleName, isSuperAdmin, canAccessSettings } = useWorkspaceAccess();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects();
@@ -346,20 +346,23 @@ function WorkspaceApp({
   }, []);
 
   const workspaceMenuItems = useMemo(
-    () => [
-      { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
-      { key: 'functionalities', icon: <DatabaseOutlined />, label: t('nav.functionalities') },
-      { key: 'storymap', icon: <ApartmentOutlined />, label: t('nav.storymap') },
-      { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
-      { key: 'plans', icon: <CalendarOutlined />, label: t('nav.plans') },
-      { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },
-      { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: t('nav.smoke') },
-      { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
-      { key: 'coverage', icon: <DatabaseOutlined />, label: t('nav.coverage') },
-      { key: 'config', icon: <SettingOutlined />, label: t('nav.config') },
-      { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
-    ],
-    [t],
+    () =>
+      [
+        { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
+        { key: 'functionalities', icon: <DatabaseOutlined />, label: t('nav.functionalities') },
+        { key: 'storymap', icon: <ApartmentOutlined />, label: t('nav.storymap') },
+        { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
+        { key: 'plans', icon: <CalendarOutlined />, label: t('nav.plans') },
+        { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },
+        { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: t('nav.smoke') },
+        { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
+        { key: 'coverage', icon: <DatabaseOutlined />, label: t('nav.coverage') },
+        canAccessSettings
+          ? { key: 'config', icon: <SettingOutlined />, label: t('nav.config') }
+          : null,
+        { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
+      ].filter(Boolean),
+    [canAccessSettings, t],
   );
 
   const handleViewProject = (project: Project) => {
@@ -612,6 +615,9 @@ function WorkspaceApp({
 
     if (!routedProject && isProjectsLoading) return null;
     if (!routedProject) return <Navigate to="/" replace />;
+    if (workspaceView === 'config' && !canAccessSettings) {
+      return <Navigate to={routeForProjectWorkspace(routedProject.id, 'dashboard')} replace />;
+    }
 
     const isStoryMapView = workspaceView === 'storymap';
 

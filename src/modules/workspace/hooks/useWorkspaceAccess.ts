@@ -20,9 +20,11 @@ export function useWorkspaceAccess() {
       }[activeRoleCode] ?? '');
     const isOwner = activeRoleCode === 'owner';
     const isQaLead = activeRoleCode === 'qa-lead';
+    const isManager = activeRoleCode === 'manager';
     const isViewer = activeRoleCode === 'viewer';
     const canManageOrganization = isOwner;
     const canManageCycleConfig = isOwner || isQaLead;
+    const canAccessSettings = canManageCycleConfig;
     const canMutateWorkspace = Boolean(activeRoleCode) && !isViewer;
     const canCreateProjectsByRole = projectQuota?.allowedByRole ?? canManageCycleConfig;
     const hasReachedProjectLimit = projectQuota?.limitReached ?? false;
@@ -41,9 +43,11 @@ export function useWorkspaceAccess() {
       activeRoleName,
       isOwner,
       isQaLead,
+      isManager,
       isViewer,
       canManageOrganization,
       canManageCycleConfig,
+      canAccessSettings,
       canMutateWorkspace,
       canAccessSuperAdmin: isSuperAdmin,
       canCreateProjectsByRole,

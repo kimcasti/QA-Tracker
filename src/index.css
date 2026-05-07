@@ -445,6 +445,33 @@
     display: none !important;
   }
 
+  body.report-print-mode .report-ai-action-button {
+    display: none !important;
+  }
+
+  body.report-print-mode .report-print-hide-when-empty {
+    display: none !important;
+  }
+
+  body.report-print-mode .report-print-stack-row {
+    display: block !important;
+    margin-top: 0 !important;
+  }
+
+  body.report-print-mode .report-print-stack-row > .ant-col {
+    display: block !important;
+    flex: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-bottom: 16px !important;
+  }
+
+  body.report-print-mode .report-print-stack-row > .ant-col:last-child {
+    margin-bottom: 0 !important;
+  }
+
   body.report-print-mode #report-content {
     margin: 0 !important;
     padding: 0 !important;
@@ -460,6 +487,15 @@
 
   body.report-print-mode .recharts-responsive-container {
     min-height: 260px !important;
+  }
+
+  body.report-print-mode .report-ai-analysis-textarea,
+  body.report-print-mode .report-ai-analysis-textarea .ant-input-textarea,
+  body.report-print-mode .report-ai-analysis-textarea textarea {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    resize: none !important;
   }
 
   @page {

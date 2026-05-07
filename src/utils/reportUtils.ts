@@ -13,6 +13,7 @@ export interface DeliveryUnitProgressDocxData {
   statusLabel: string;
   generatedAtLabel: string;
   periodLabel: string;
+  proposalName?: string;
   proposalOwner: string;
   scopeDescription: string;
   executiveSummary: string;
@@ -275,6 +276,12 @@ export const exportDeliveryUnitProgressToDocx = async (
             children: [
               new TextRun({ text: 'Periodo: ', bold: true }),
               new TextRun(report.periodLabel),
+            ],
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Propuesta: ', bold: true }),
+              new TextRun(report.proposalName || 'No definida'),
             ],
           }),
           new Paragraph({

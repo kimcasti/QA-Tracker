@@ -435,15 +435,6 @@ export default function ProjectManagement({
     ],
   );
 
-  const workspaceProjectDocumentId = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-
-    const selectedProjectId = window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
-    if (!selectedProjectId) return null;
-
-    return projects.find(project => project.id === selectedProjectId)?.id || null;
-  }, [projects, isTeamModalOpen]);
-
   const handleSaveOrganizationName = async () => {
     try {
       const values = await organizationForm.validateFields();
@@ -1046,7 +1037,7 @@ export default function ProjectManagement({
       <OrganizationTeamModal
         open={isTeamModalOpen}
         onCancel={() => setIsTeamModalOpen(false)}
-        workspaceProjectDocumentId={workspaceProjectDocumentId}
+        projects={projects}
       />
 
       <Modal

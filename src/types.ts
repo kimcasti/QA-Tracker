@@ -41,6 +41,14 @@ export enum ProposalType {
   MIXED = 'mixed',
 }
 
+export enum ProjectProposalStatus {
+  DRAFT = 'draft',
+  SENT = 'sent',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  ARCHIVED = 'archived',
+}
+
 export enum DeliveryUnitType {
   PHASE = 'phase',
   SERVICE = 'service',
@@ -69,11 +77,24 @@ export interface ProjectProposalSettings {
   proposalOwner?: string;
 }
 
+export interface ProjectProposal extends ProjectProposalSettings {
+  documentId?: string;
+  id: string;
+  projectId: string;
+  name: string;
+  status: ProjectProposalStatus;
+  isPrimary: boolean;
+  serviceBillingPhases?: ProjectServiceBillingPhase[];
+}
+
 export interface DeliveryUnit {
   documentId?: string;
   id: string;
   projectId: string;
   name: string;
+  proposalDocumentId?: string;
+  proposalName?: string;
+  proposalOwner?: string;
   type: DeliveryUnitType;
   baseDescription?: string;
   startDate?: string;
@@ -121,6 +142,7 @@ export interface ProjectServiceBillingPhase {
 }
 
 export interface Project {
+  documentId?: string;
   id: string;
   name: string;
   organizationName?: string;

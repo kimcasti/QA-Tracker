@@ -37,6 +37,9 @@ function mapDeliveryUnit(document: DeliveryUnitDto): DeliveryUnit {
     id: document.documentId,
     projectId: document.project?.key || '',
     name: document.name,
+    proposalDocumentId: document.proposal?.documentId || undefined,
+    proposalName: document.proposal?.name || '',
+    proposalOwner: document.proposal?.proposalOwner || '',
     type: Object.values(DeliveryUnitType).includes(document.type as DeliveryUnitType)
       ? (document.type as DeliveryUnitType)
       : DeliveryUnitType.PHASE,
@@ -63,6 +66,8 @@ export async function getDeliveryUnits(projectId?: string) {
     'populate[activities][fields][0]': 'name',
     'populate[activities][fields][1]': 'description',
     'populate[activities][fields][2]': 'isActive',
+    'populate[proposal][fields][0]': 'name',
+    'populate[proposal][fields][1]': 'proposalOwner',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     sort: 'sortOrder:asc',
   });
@@ -105,6 +110,7 @@ export async function saveDeliveryUnit(deliveryUnit: DeliveryUnit) {
         typeof deliveryUnit.sortOrder === 'number' && Number.isFinite(deliveryUnit.sortOrder)
           ? deliveryUnit.sortOrder
           : 0,
+      proposal: deliveryUnit.proposalDocumentId ? relation(deliveryUnit.proposalDocumentId) : null,
       activities: {
         set: Array.isArray(deliveryUnit.activityIds)
           ? deliveryUnit.activityIds.map(documentId => ({ documentId }))
