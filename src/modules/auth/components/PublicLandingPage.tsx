@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { appBranding } from '../../../assets/branding';
 import qaTrackerExplainer from '../../../assets/qa-tracker-explainer.png';
 import { qaBrand, qaPalette } from '../../../theme/palette';
+import { PublicSiteFooter } from '../../public/components/PublicSiteFooter';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -737,6 +738,8 @@ export default function PublicLandingPage() {
               </div>
             </div>
           </section>
+
+          <PublicSiteFooter />
         </main>
 
         <Modal

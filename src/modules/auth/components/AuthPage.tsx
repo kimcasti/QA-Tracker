@@ -12,6 +12,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { appBranding } from '../../../assets/branding';
 import { PublicHttp, toApiError } from '../../../config/http';
 import { qaBrand, qaPalette } from '../../../theme/palette';
+import { PublicSiteFooter } from '../../public/components/PublicSiteFooter';
 import { useAuthSession } from '../context/AuthSessionProvider';
 import { requestPasswordReset, resetPassword } from '../services/authService';
 
@@ -401,8 +402,9 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[linear-gradient(135deg,#f7fbff_0%,#eef5ff_42%,#fbf8ff_100%)]">
-      <div className="grid min-h-[100dvh] w-full overflow-hidden rounded-[36px] border border-white/80 bg-white/82 shadow-[0_34px_90px_rgba(16,42,67,0.14)] backdrop-blur lg:grid-cols-[minmax(0,1.08fr)_minmax(460px,0.92fr)]">
+    <div className="min-h-[100dvh] bg-[linear-gradient(135deg,#f7fbff_0%,#eef5ff_42%,#fbf8ff_100%)] px-3 py-3 md:px-4 md:py-4">
+      <div className="mx-auto flex min-h-[calc(100dvh-24px)] w-full max-w-[1800px] flex-col gap-4 md:min-h-[calc(100dvh-32px)]">
+        <div className="grid min-h-0 flex-1 overflow-hidden rounded-[36px] border border-white/80 bg-white/82 shadow-[0_34px_90px_rgba(16,42,67,0.14)] backdrop-blur lg:grid-cols-[minmax(0,1.08fr)_minmax(460px,0.92fr)]">
         <section className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#f3f8ff_0%,#edf4ff_42%,#f5f1ff_100%)] p-8 text-slate-900 lg:flex lg:flex-col lg:justify-between xl:p-10">
           <div className="absolute left-[-60px] top-[-40px] h-60 w-60 rounded-full bg-[rgba(109,94,249,0.10)] blur-3xl" />
           <div className="absolute bottom-[-80px] right-[-40px] h-72 w-72 rounded-full bg-[rgba(23,182,211,0.12)] blur-3xl" />
@@ -643,6 +645,18 @@ export default function AuthPage() {
                 >
                   {panelCopy.submitLabel}
                 </Button>
+
+                <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
+                  Al continuar aceptas los{' '}
+                  <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
+                    Términos
+                  </Link>{' '}
+                  y la{' '}
+                  <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
+                    Política de Privacidad
+                  </Link>{' '}
+                  de QA Tracker.
+                </Text>
               </Form>
             ) : mode === 'forgot-password' ? (
               <Form
@@ -856,6 +870,18 @@ export default function AuthPage() {
                 >
                   {panelCopy.submitLabel}
                 </Button>
+
+                <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
+                  Al continuar aceptas los{' '}
+                  <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
+                    Términos
+                  </Link>{' '}
+                  y la{' '}
+                  <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
+                    Política de Privacidad
+                  </Link>{' '}
+                  de QA Tracker.
+                </Text>
               </Form>
             )}
 
@@ -864,6 +890,9 @@ export default function AuthPage() {
             </div>
           </Card>
         </section>
+        </div>
+
+        <PublicSiteFooter />
       </div>
     </div>
   );

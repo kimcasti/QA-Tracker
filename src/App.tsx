@@ -44,6 +44,9 @@ const AboutView = lazy(() => import('./components/AboutView'));
 const CreateProjectModal = lazy(() => import('./components/CreateProjectModal'));
 const AuthPage = lazy(() => import('./modules/auth/components/AuthPage'));
 const PublicLandingPage = lazy(() => import('./modules/auth/components/PublicLandingPage'));
+const TermsPage = lazy(() => import('./modules/legal/components/TermsPage'));
+const PrivacyPage = lazy(() => import('./modules/legal/components/PrivacyPage'));
+const AIPolicyPage = lazy(() => import('./modules/legal/components/AIPolicyPage'));
 const StoryMapPage = lazy(() => import('./modules/storymap/components/StoryMapPage'));
 const PersonalNotesPage = lazy(() => import('./modules/personal-notes/components/PersonalNotesPage'));
 const SuperadminView = lazy(() => import('./components/SuperadminView'));
@@ -205,14 +208,21 @@ function getPersistedProjectId() {
   return window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
 }
 
+function normalizePublicPathname(pathname: string) {
+  return pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+}
+
 export default function App() {
   const location = useLocation();
   const { status, isAuthenticated, user, logout } = useAuthSession();
   const hideWhatsAppSupportButton = location.pathname === '/superadmin';
-  const isPublicLandingRoute = useMemo(() => {
-    if (location.pathname !== '/') {
-      return false;
-    }
+  const publicView = useMemo(() => {
+    const normalizedPath = normalizePublicPathname(location.pathname);
+
+    if (normalizedPath === '/terminos') return 'terms';
+    if (normalizedPath === '/privacidad') return 'privacy';
+    if (normalizedPath === '/uso-ia') return 'ai-policy';
+    if (normalizedPath !== '/') return 'auth';
 
     const searchParams = new URLSearchParams(location.search);
     const hasInvitationFlow = Boolean(searchParams.get('invitation'));
@@ -223,7 +233,7 @@ export default function App() {
       requestedMode === 'forgot-password';
     const hasResetCode = Boolean(searchParams.get('code'));
 
-    return !hasInvitationFlow && !hasAuthMode && !hasResetCode;
+    return !hasInvitationFlow && !hasAuthMode && !hasResetCode ? 'landing' : 'auth';
   }, [location.pathname, location.search]);
 
   if (status === 'loading') {
@@ -245,7 +255,11 @@ export default function App() {
   if (!isAuthenticated || !user) {
     return (
       <Suspense fallback={<PageLoader />}>
-        {isPublicLandingRoute ? <PublicLandingPage /> : <AuthPage />}
+        {publicView === 'landing' ? <PublicLandingPage /> : null}
+        {publicView === 'terms' ? <TermsPage /> : null}
+        {publicView === 'privacy' ? <PrivacyPage /> : null}
+        {publicView === 'ai-policy' ? <AIPolicyPage /> : null}
+        {publicView === 'auth' ? <AuthPage /> : null}
       </Suspense>
     );
   }
