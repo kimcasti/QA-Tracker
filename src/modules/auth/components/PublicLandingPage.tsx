@@ -38,13 +38,12 @@ const featureCards = [
   {
     icon: <BugOutlined style={{ color: '#6D5EF9', fontSize: 22 }} />,
     title: 'Menos caos',
-    description:
-      'Deja atrás hojas sueltas, chats dispersos y decisiones sin contexto del proyecto.',
+    description: 'Deja atrás hojas sueltas, chats dispersos y decisiones sin contexto del proyecto.',
   },
   {
     icon: <BarChartOutlined style={{ color: qaPalette.accent, fontSize: 22 }} />,
     title: 'Decisiones con datos',
-    description: 'Usa cobertura, reportes e insights para saber que liberar y que bloquear.',
+    description: 'Usa cobertura, reportes e insights para saber qué liberar y qué bloquear.',
   },
 ] as const;
 
@@ -109,7 +108,7 @@ const testimonials = [
   },
   {
     quote:
-      'La experiencia ha sido muy positiva: está muy bien automatizada, lo que reduce significativamente el tiempo de revisión. Además, su interfaz es bastante amigable, lo que facilita su uso en el día a día. En general, es una herramienta muy útil para optimizar nuestro trabajo de QA',
+      'La experiencia ha sido muy positiva: está muy bien automatizada, lo que reduce significativamente el tiempo de revisión. Además, su interfaz es bastante amigable, lo que facilita su uso en el día a día. En general, es una herramienta muy útil para optimizar nuestro trabajo de QA.',
     author: 'Jenipher Nassour',
     role: 'QA Engineer',
   },
@@ -637,7 +636,7 @@ export default function PublicLandingPage() {
                   step: '2',
                   title: 'Pides upgrade',
                   description:
-                    'Das clic en actualizar y se abre WhatsApp con el mensaje listo para continuar.',
+                    'Haces clic en actualizar y se abre WhatsApp con el mensaje listo para continuar.',
                 },
                 {
                   step: '3',
@@ -759,7 +758,7 @@ export default function PublicLandingPage() {
                   Vista guiada
                 </Text>
                 <Title level={4} className="!mb-0 !mt-2 !text-slate-900">
-                  Asi funciona QA Tracker
+                  Así funciona QA Tracker
                 </Title>
               </div>
             </div>

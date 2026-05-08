@@ -100,8 +100,9 @@ export function ParticipantSelect({
 
   const renderTag = ({ label, value, closable, onClose }: ParticipantTagProps) => {
     const option = optionsByValue.get(String(value));
-    const sourceLabel = option?.member?.isExternal ? 'Externo' : 'Miembro';
-    const sourceColor = option?.member?.isExternal ? 'gold' : 'blue';
+    const isExternalOption = option?.member?.isExternal || option?.isManual || !option?.member;
+    const sourceLabel = isExternalOption ? 'Externo' : 'Miembro';
+    const sourceColor = isExternalOption ? 'gold' : 'blue';
 
     return (
       <Tag
@@ -112,7 +113,7 @@ export function ParticipantSelect({
       >
         {renderAvatar(option)}
         <span>{label}</span>
-        {option?.member ? (
+        {option?.member || (allowCustomOptions && option?.isManual) || (allowCustomOptions && !option) ? (
           <Tag color={sourceColor} className="!m-0 rounded-full border-0 text-[10px] font-bold">
             {sourceLabel}
           </Tag>
@@ -130,13 +131,20 @@ export function ParticipantSelect({
       allowClear
       showSearch
       tokenSeparators={allowCustomOptions ? [','] : undefined}
+      notFoundContent={
+        allowCustomOptions
+          ? 'Escribe un nombre y presiona Enter para agregar un participante externo.'
+          : undefined
+      }
       filterOption={(input, option) =>
         (option?.searchText || option?.label || '').toLowerCase().includes(input.toLowerCase())
       }
       optionRender={option => {
         const typedOption = option.data as ParticipantDirectoryOption;
-        const sourceLabel = typedOption.member?.isExternal ? 'Externo' : 'Miembro';
-        const sourceColor = typedOption.member?.isExternal ? 'gold' : 'blue';
+        const isExternalOption =
+          typedOption.member?.isExternal || typedOption.isManual || !typedOption.member;
+        const sourceLabel = isExternalOption ? 'Externo' : 'Miembro';
+        const sourceColor = isExternalOption ? 'gold' : 'blue';
 
         return (
           <div className="flex items-center gap-3 py-1">
@@ -144,7 +152,7 @@ export function ParticipantSelect({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <div className="truncate font-medium text-slate-800">{typedOption.label}</div>
-                {!typedOption.isManual ? (
+                {typedOption.member || typedOption.isManual ? (
                   <Tag color={sourceColor} className="!m-0 rounded-full border-0 text-[10px] font-bold">
                     {sourceLabel}
                   </Tag>

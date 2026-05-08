@@ -64,7 +64,7 @@ const heroCopy = {
     eyebrow: 'Crea tu organización',
     title: 'Empieza a operar tu QA con estructura.',
     description:
-      'Registra tu equipo, crea tu primera organización y entra a un flujo más claro desde el primer proyecto.',
+      'Registra a tu equipo, crea tu primera organización y entra a un flujo más claro desde el primer proyecto.',
   },
   'forgot-password': {
     eyebrow: 'Recupera tu acceso',
@@ -237,7 +237,7 @@ export default function AuthPage() {
           description: `Si ya tienes cuenta, entra con ${invitationContext.email} para aceptar el acceso a ${invitationContext.organizationName}.`,
           submitLabel: 'Entrar y unirme',
           helper:
-            'Necesitas una cuenta? Cambia a Registro para completar tu acceso con esta invitación.',
+            '¿Necesitas una cuenta? Cambia a Registro para completar tu acceso con esta invitación.',
         };
       }
 
@@ -246,7 +246,7 @@ export default function AuthPage() {
         title: 'Inicia sesión',
         description: 'Usa tus credenciales para continuar con tu workspace.',
         submitLabel: 'Entrar a QA Tracker',
-        helper: 'Necesitas una cuenta? Cambia a Registro y crea tu organización en un solo paso.',
+        helper: '¿Necesitas una cuenta? Cambia a Registro y crea tu organización en un solo paso.',
       };
     }
 
@@ -256,16 +256,17 @@ export default function AuthPage() {
         title: 'Crea tu cuenta',
         description: `Completa tu usuario y contraseña para unirte a ${invitationContext.organizationName} como ${invitationContext.roleName}.`,
         submitLabel: 'Crear cuenta y unirme',
-        helper: 'Ya tienes una cuenta? Vuelve a Ingresar y usa el mismo correo invitado.',
+        helper: '¿Ya tienes una cuenta? Vuelve a Ingresar y usa el mismo correo invitado.',
       };
     }
 
     return {
-      eyebrow: 'Provisiona tu organización',
+      eyebrow: 'Crea tu organización',
       title: 'Crea tu cuenta',
-      description: 'Crea tu usuario admin y aprovisionaremos una organización inicial para ti.',
+      description:
+        'Crea tu usuario administrador y te ayudaremos a poner en marcha tu primera organización.',
       submitLabel: 'Crear organización',
-      helper: 'Ya te registraste? Vuelve a Ingresar y continúa con tu operación QA.',
+      helper: '¿Ya te registraste? Vuelve a Ingresar y continúa con tu operación QA.',
     };
   }, [hasPendingInvitation, invitationContext, mode]);
 
@@ -405,491 +406,493 @@ export default function AuthPage() {
     <div className="min-h-[100dvh] bg-[linear-gradient(135deg,#f7fbff_0%,#eef5ff_42%,#fbf8ff_100%)] px-3 py-3 md:px-4 md:py-4">
       <div className="mx-auto flex min-h-[calc(100dvh-24px)] w-full max-w-[1800px] flex-col gap-4 md:min-h-[calc(100dvh-32px)]">
         <div className="grid min-h-0 flex-1 overflow-hidden rounded-[36px] border border-white/80 bg-white/82 shadow-[0_34px_90px_rgba(16,42,67,0.14)] backdrop-blur lg:grid-cols-[minmax(0,1.08fr)_minmax(460px,0.92fr)]">
-        <section className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#f3f8ff_0%,#edf4ff_42%,#f5f1ff_100%)] p-8 text-slate-900 lg:flex lg:flex-col lg:justify-between xl:p-10">
-          <div className="absolute left-[-60px] top-[-40px] h-60 w-60 rounded-full bg-[rgba(109,94,249,0.10)] blur-3xl" />
-          <div className="absolute bottom-[-80px] right-[-40px] h-72 w-72 rounded-full bg-[rgba(23,182,211,0.12)] blur-3xl" />
+          <section className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#f3f8ff_0%,#edf4ff_42%,#f5f1ff_100%)] p-8 text-slate-900 lg:flex lg:flex-col lg:justify-between xl:p-10">
+            <div className="absolute left-[-60px] top-[-40px] h-60 w-60 rounded-full bg-[rgba(109,94,249,0.10)] blur-3xl" />
+            <div className="absolute bottom-[-80px] right-[-40px] h-72 w-72 rounded-full bg-[rgba(23,182,211,0.12)] blur-3xl" />
 
-          <div className="relative">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/78 px-4 py-2 text-sm font-semibold text-slate-600 no-underline backdrop-blur transition hover:bg-white"
-            >
-              <ArrowLeftOutlined />
-              Volver a la landing
-            </Link>
+            <div className="relative">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/78 px-4 py-2 text-sm font-semibold text-slate-600 no-underline backdrop-blur transition hover:bg-white"
+              >
+                <ArrowLeftOutlined />
+                Volver a la landing
+              </Link>
 
-            <div className="mt-10 flex items-center gap-4">
-              <img
-                src={appBranding.logoUrl}
-                alt={qaBrand.name}
-                className="h-14 w-14 rounded-2xl border border-white/90 object-cover shadow-md"
-              />
-              <div>
-                <Title level={3} className="!mb-0 !text-slate-900">
-                  {qaBrand.name}
-                </Title>
-                <Text className="text-slate-500">Workspace de calidad para equipos modernos.</Text>
-              </div>
-            </div>
-
-            <Text className="mt-12 inline-flex rounded-full bg-[rgba(109,94,249,0.10)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-[#6D5EF9]">
-              {activeCopy.eyebrow}
-            </Text>
-            <Title
-              level={1}
-              className="!mb-0 !mt-5 !text-[clamp(2.5rem,4vw,4.5rem)] !leading-[0.98] !text-slate-950"
-            >
-              {activeCopy.title}
-            </Title>
-            <Text className="mt-6 block max-w-xl text-base leading-8 text-slate-600 xl:text-lg">
-              {activeCopy.description}
-            </Text>
-
-            <div className="mt-8 grid gap-3">
-              {marketingPoints.map(item => (
-                <div key={item} className="flex items-start gap-3">
-                  <CheckCircleFilled style={{ color: qaPalette.accent, marginTop: 4 }} />
-                  <Text className="text-sm leading-6 text-slate-600">{item}</Text>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative rounded-[28px] border border-slate-200/80 bg-white/74 p-6 backdrop-blur">
-            <Text className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Lo que ganas
-            </Text>
-            <div className="mt-4 grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              {[
-                ['Casos y ejecuciones', 'más conectados'],
-                ['Bugs y cobertura', 'más claros'],
-                ['Decisiones y reportes', 'más rápidos'],
-              ].map(([title, detail]) => (
-                <div
-                  key={title}
-                  className="rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-4"
-                >
-                  <Text className="block text-sm font-semibold text-slate-800">{title}</Text>
-                  <Text className="mt-1 block text-xs uppercase tracking-[0.14em] text-slate-400">
-                    {detail}
-                  </Text>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="flex items-center justify-center p-4 sm:p-6 lg:p-8 xl:p-10 2xl:p-12">
-          <Card
-            variant="borderless"
-            className="w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/90 bg-white/96 shadow-[0_28px_72px_rgba(16,42,67,0.12)]"
-            styles={{ body: { padding: 28 } }}
-          >
-            <div className="mb-6 flex items-center justify-between gap-3 lg:hidden">
-              <div className="flex items-center gap-3">
+              <div className="mt-10 flex items-center gap-4">
                 <img
                   src={appBranding.logoUrl}
                   alt={qaBrand.name}
-                  className="h-11 w-11 rounded-2xl border border-slate-100 object-cover shadow-md"
+                  className="h-14 w-14 rounded-2xl border border-white/90 object-cover shadow-md"
                 />
                 <div>
-                  <Text className="block text-sm font-semibold text-slate-900">{qaBrand.name}</Text>
-                  <Text className="text-xs text-slate-500">Acceso dedicado</Text>
+                  <Title level={3} className="!mb-0 !text-slate-900">
+                    {qaBrand.name}
+                  </Title>
+                  <Text className="text-slate-500">Workspace de calidad para equipos modernos.</Text>
                 </div>
               </div>
-              <Link to="/" className="text-sm font-semibold text-slate-500 no-underline">
-                Volver
-              </Link>
-            </div>
 
-            {isStandardAuthMode ? (
-              <div className="mb-6 rounded-[26px] border border-slate-200/80 bg-slate-100/90 p-1">
-                <Segmented<AuthMode>
-                  block
-                  value={mode}
-                  options={[
-                    { label: 'Ingresar', value: 'login' },
-                    { label: 'Registro', value: 'signup' },
-                  ]}
-                  onChange={value => {
-                    setMode(value);
-                    setErrorMessage(null);
-                    setSuccessMessage(null);
-                  }}
-                  className="rounded-full"
-                />
-              </div>
-            ) : (
-              <Button
-                type="text"
-                className="mb-4 h-auto px-0 text-sm font-semibold text-slate-500"
-                onClick={() => {
-                  setMode('login');
-                  setErrorMessage(null);
-                  if (!successMessage) {
-                    setSuccessMessage(null);
-                  }
-                  navigate('/auth?mode=login', { replace: true });
-                }}
-              >
-                <ArrowLeftOutlined />
-                Volver al inicio de sesión
-              </Button>
-            )}
-
-            <div className="mb-6">
-              <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                {panelCopy.eyebrow}
+              <Text className="mt-12 inline-flex rounded-full bg-[rgba(109,94,249,0.10)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-[#6D5EF9]">
+                {activeCopy.eyebrow}
               </Text>
-              <Title level={2} className="!mb-2 !mt-3 !text-slate-900">
-                {panelCopy.title}
+              <Title
+                level={1}
+                className="!mb-0 !mt-5 !text-[clamp(2.5rem,4vw,4.5rem)] !leading-[0.98] !text-slate-950"
+              >
+                {activeCopy.title}
               </Title>
-              <Text className="text-sm leading-6 text-slate-500">{panelCopy.description}</Text>
+              <Text className="mt-6 block max-w-xl text-base leading-8 text-slate-600 xl:text-lg">
+                {activeCopy.description}
+              </Text>
+
+              <div className="mt-8 grid gap-3">
+                {marketingPoints.map(item => (
+                  <div key={item} className="flex items-start gap-3">
+                    <CheckCircleFilled style={{ color: qaPalette.accent, marginTop: 4 }} />
+                    <Text className="text-sm leading-6 text-slate-600">{item}</Text>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {isInvitationLoading ? (
-              <Alert
-                type="info"
-                showIcon
-                message="Validando invitación"
-                description="Estamos cargando los datos de la organización invitante."
-                className="mb-6 rounded-2xl"
-              />
-            ) : invitationAlert ? (
-              <Alert
-                type={invitationAlert.type}
-                showIcon
-                message={invitationAlert.message}
-                description={invitationAlert.description}
-                className="mb-6 rounded-2xl"
-              />
-            ) : null}
+            <div className="relative rounded-[28px] border border-slate-200/80 bg-white/74 p-6 backdrop-blur">
+              <Text className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                Lo que ganas
+              </Text>
+              <div className="mt-4 grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                {[
+                  ['Casos y ejecuciones', 'más conectados'],
+                  ['Bugs y cobertura', 'más claros'],
+                  ['Decisiones y reportes', 'más rápidos'],
+                ].map(([title, detail]) => (
+                  <div
+                    key={title}
+                    className="rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-4"
+                  >
+                    <Text className="block text-sm font-semibold text-slate-800">{title}</Text>
+                    <Text className="mt-1 block text-xs uppercase tracking-[0.14em] text-slate-400">
+                      {detail}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
 
-            {errorMessage ? (
-              <Alert
-                type="error"
-                showIcon
-                message={accessHelpAlert?.title || errorMessage}
-                description={accessHelpAlert?.description}
-                className="mb-6 rounded-2xl"
-              />
-            ) : null}
-
-            {successMessage ? (
-              <Alert
-                type="success"
-                showIcon
-                message={successMessage}
-                className="mb-6 rounded-2xl"
-              />
-            ) : null}
-
-            {mode === 'login' ? (
-              <Form
-                key={`login-${invitationContext?.documentId || 'default'}`}
-                form={loginForm}
-                layout="vertical"
-                onFinish={handleLogin}
-                size="large"
-                initialValues={{
-                  identifier: invitationContext?.email || '',
-                }}
-              >
-                <Form.Item
-                  name="identifier"
-                  label="Correo o usuario"
-                  rules={[{ required: true, message: 'Ingresa tu correo o tu usuario.' }]}
-                >
-                  <Input
-                    prefix={<UserOutlined className="text-slate-400" />}
-                    placeholder="tu-correo@empresa.com"
-                    className="h-12 rounded-2xl"
-                    disabled={hasPendingInvitation}
-                    style={lockedFieldStyle}
+          <section className="flex items-center justify-center p-4 sm:p-6 lg:p-8 xl:p-10 2xl:p-12">
+            <Card
+              variant="borderless"
+              className="w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/90 bg-white/96 shadow-[0_28px_72px_rgba(16,42,67,0.12)]"
+              styles={{ body: { padding: 28 } }}
+            >
+              <div className="mb-6 flex items-center justify-between gap-3 lg:hidden">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={appBranding.logoUrl}
+                    alt={qaBrand.name}
+                    className="h-11 w-11 rounded-2xl border border-slate-100 object-cover shadow-md"
                   />
-                </Form.Item>
-                <Form.Item
-                  name="password"
-                  label="Contraseña"
-                  rules={[{ required: true, message: 'Ingresa tu contraseña.' }]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined className="text-slate-400" />}
-                    placeholder="Tu contraseña segura"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <div className="mb-4 flex justify-end">
-                  <Button
-                    type="link"
-                    className="h-auto px-0 text-sm font-semibold"
-                    onClick={() => {
-                      setMode('forgot-password');
+                  <div>
+                    <Text className="block text-sm font-semibold text-slate-900">
+                      {qaBrand.name}
+                    </Text>
+                    <Text className="text-xs text-slate-500">Acceso dedicado</Text>
+                  </div>
+                </div>
+                <Link to="/" className="text-sm font-semibold text-slate-500 no-underline">
+                  Volver
+                </Link>
+              </div>
+
+              {isStandardAuthMode ? (
+                <div className="mb-6 rounded-[26px] border border-slate-200/80 bg-slate-100/90 p-1">
+                  <Segmented<AuthMode>
+                    block
+                    value={mode}
+                    options={[
+                      { label: 'Ingresar', value: 'login' },
+                      { label: 'Registro', value: 'signup' },
+                    ]}
+                    onChange={value => {
+                      setMode(value);
                       setErrorMessage(null);
                       setSuccessMessage(null);
-                      forgotPasswordForm.setFieldsValue({
-                        email: String(loginForm.getFieldValue('identifier') || ''),
-                      });
-                      navigate('/auth?mode=forgot-password', { replace: true });
                     }}
-                  >
-                    Olvidé mi contraseña
-                  </Button>
+                    className="rounded-full"
+                  />
                 </div>
-
+              ) : (
                 <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={isSubmitting || isInvitationLoading}
-                  className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
-                >
-                  {panelCopy.submitLabel}
-                </Button>
-
-                <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
-                  Al continuar aceptas los{' '}
-                  <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
-                    Términos
-                  </Link>{' '}
-                  y la{' '}
-                  <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
-                    Política de Privacidad
-                  </Link>{' '}
-                  de QA Tracker.
-                </Text>
-              </Form>
-            ) : mode === 'forgot-password' ? (
-              <Form
-                form={forgotPasswordForm}
-                layout="vertical"
-                onFinish={handleForgotPassword}
-                size="large"
-              >
-                <Form.Item
-                  name="email"
-                  label="Correo electrónico"
-                  rules={[
-                    { required: true, message: 'Ingresa tu correo.' },
-                    { type: 'email', message: 'Usa un correo válido.' },
-                  ]}
-                >
-                  <Input
-                    prefix={<MailOutlined className="text-slate-400" />}
-                    placeholder="tu-correo@empresa.com"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={isSubmitting}
-                  className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
-                >
-                  {panelCopy.submitLabel}
-                </Button>
-              </Form>
-            ) : mode === 'reset-password' ? (
-              <Form
-                form={resetPasswordForm}
-                layout="vertical"
-                onFinish={handleResetPassword}
-                size="large"
-              >
-                <Form.Item
-                  name="password"
-                  label="Nueva contraseña"
-                  rules={[
-                    { required: true, message: 'Ingresa tu nueva contraseña.' },
-                    { min: 6, message: 'Usa al menos 6 caracteres.' },
-                  ]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined className="text-slate-400" />}
-                    placeholder="Mínimo 6 caracteres"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="passwordConfirmation"
-                  label="Confirma tu nueva contraseña"
-                  dependencies={['password']}
-                  rules={[
-                    { required: true, message: 'Confirma tu nueva contraseña.' },
-                    ({ getFieldValue }) => ({
-                      validator(_, value) {
-                        if (!value || getFieldValue('password') === value) {
-                          return Promise.resolve();
-                        }
-
-                        return Promise.reject(new Error('Las contraseñas no coinciden.'));
-                      },
-                    }),
-                  ]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined className="text-slate-400" />}
-                    placeholder="Repite la nueva contraseña"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-
-                {!resetCode ? (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="Enlace incompleto"
-                    description="Este enlace no incluye un código válido de recuperación. Solicita uno nuevo desde el inicio de sesión."
-                    className="mb-4 rounded-2xl"
-                  />
-                ) : null}
-
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={isSubmitting}
-                  disabled={!resetCode}
-                  className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
-                >
-                  {panelCopy.submitLabel}
-                </Button>
-              </Form>
-            ) : (
-              <Form
-                key={`signup-${invitationContext?.documentId || 'default'}`}
-                form={signupForm}
-                layout="vertical"
-                onFinish={handleSignup}
-                size="large"
-                initialValues={signupInitialValues}
-              >
-                <Form.Item
-                  name="username"
-                  label="Nombre de usuario"
-                  rules={[{ required: true, message: 'Elige un nombre de usuario.' }]}
-                >
-                  <Input
-                    prefix={<UserOutlined className="text-slate-400" />}
-                    placeholder="Maria"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="email"
-                  label="Correo electrónico"
-                  rules={[
-                    { required: true, message: 'Ingresa tu correo.' },
-                    { type: 'email', message: 'Usa un correo válido.' },
-                  ]}
-                >
-                  <Input
-                    prefix={<MailOutlined className="text-slate-400" />}
-                    placeholder="maria@empresa.com"
-                    className="h-12 rounded-2xl"
-                    disabled={hasPendingInvitation}
-                    style={lockedFieldStyle}
-                    value={hasPendingInvitation ? invitationContext?.email || '' : undefined}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="password"
-                  label="Contraseña"
-                  rules={[
-                    { required: true, message: 'Crea una contraseña.' },
-                    { min: 6, message: 'Usa al menos 6 caracteres.' },
-                  ]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined className="text-slate-400" />}
-                    placeholder="Mínimo 6 caracteres"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="passwordConfirmation"
-                  label="Confirmar contraseña"
-                  dependencies={['password']}
-                  rules={[
-                    { required: true, message: 'Confirma tu contraseña.' },
-                    ({ getFieldValue }) => ({
-                      validator(_, value) {
-                        if (!value || getFieldValue('password') === value) {
-                          return Promise.resolve();
-                        }
-
-                        return Promise.reject(new Error('Las contraseñas no coinciden.'));
-                      },
-                    }),
-                  ]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined className="text-slate-400" />}
-                    placeholder="Repite tu contraseña"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="contactNumber"
-                  label="Número de contacto"
-                  rules={[
-                    { required: true, message: 'Ingresa tu número de contacto.' },
-                    {
-                      pattern: /^[0-9+\s()-]{7,20}$/,
-                      message: 'Usa un número de contacto válido.',
-                    },
-                  ]}
-                >
-                  <Input
-                    prefix={<UserOutlined className="text-slate-400" />}
-                    placeholder="+57 300 123 4567"
-                    className="h-12 rounded-2xl"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="organizationName"
-                  label="Nombre de la organización"
-                  rules={[{ required: true, message: 'Ingresa el nombre de tu organización.' }]}
-                >
-                  <Input
-                    prefix={<SafetyCertificateOutlined className="text-slate-400" />}
-                    placeholder="Organización QA"
-                    className="h-12 rounded-2xl"
-                    disabled={hasPendingInvitation}
-                    style={lockedFieldStyle}
-                    value={
-                      hasPendingInvitation ? invitationContext?.organizationName || '' : undefined
+                  type="text"
+                  className="mb-4 h-auto px-0 text-sm font-semibold text-slate-500"
+                  onClick={() => {
+                    setMode('login');
+                    setErrorMessage(null);
+                    if (!successMessage) {
+                      setSuccessMessage(null);
                     }
-                  />
-                </Form.Item>
-
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={isSubmitting || isInvitationLoading}
-                  className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
+                    navigate('/auth?mode=login', { replace: true });
+                  }}
                 >
-                  {panelCopy.submitLabel}
+                  <ArrowLeftOutlined />
+                  Volver al inicio de sesión
                 </Button>
+              )}
 
-                <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
-                  Al continuar aceptas los{' '}
-                  <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
-                    Términos
-                  </Link>{' '}
-                  y la{' '}
-                  <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
-                    Política de Privacidad
-                  </Link>{' '}
-                  de QA Tracker.
+              <div className="mb-6">
+                <Text className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
+                  {panelCopy.eyebrow}
                 </Text>
-              </Form>
-            )}
+                <Title level={2} className="!mb-2 !mt-3 !text-slate-900">
+                  {panelCopy.title}
+                </Title>
+                <Text className="text-sm leading-6 text-slate-500">{panelCopy.description}</Text>
+              </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
-              {panelCopy.helper}
-            </div>
-          </Card>
-        </section>
+              {isInvitationLoading ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Validando invitación"
+                  description="Estamos cargando los datos de la organización invitante."
+                  className="mb-6 rounded-2xl"
+                />
+              ) : invitationAlert ? (
+                <Alert
+                  type={invitationAlert.type}
+                  showIcon
+                  message={invitationAlert.message}
+                  description={invitationAlert.description}
+                  className="mb-6 rounded-2xl"
+                />
+              ) : null}
+
+              {errorMessage ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={accessHelpAlert?.title || errorMessage}
+                  description={accessHelpAlert?.description}
+                  className="mb-6 rounded-2xl"
+                />
+              ) : null}
+
+              {successMessage ? (
+                <Alert
+                  type="success"
+                  showIcon
+                  message={successMessage}
+                  className="mb-6 rounded-2xl"
+                />
+              ) : null}
+
+              {mode === 'login' ? (
+                <Form
+                  key={`login-${invitationContext?.documentId || 'default'}`}
+                  form={loginForm}
+                  layout="vertical"
+                  onFinish={handleLogin}
+                  size="large"
+                  initialValues={{
+                    identifier: invitationContext?.email || '',
+                  }}
+                >
+                  <Form.Item
+                    name="identifier"
+                    label="Correo o usuario"
+                    rules={[{ required: true, message: 'Ingresa tu correo o tu usuario.' }]}
+                  >
+                    <Input
+                      prefix={<UserOutlined className="text-slate-400" />}
+                      placeholder="tu-correo@empresa.com"
+                      className="h-12 rounded-2xl"
+                      disabled={hasPendingInvitation}
+                      style={lockedFieldStyle}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="password"
+                    label="Contraseña"
+                    rules={[{ required: true, message: 'Ingresa tu contraseña.' }]}
+                  >
+                    <Input.Password
+                      prefix={<LockOutlined className="text-slate-400" />}
+                      placeholder="Tu contraseña segura"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <div className="mb-4 flex justify-end">
+                    <Button
+                      type="link"
+                      className="h-auto px-0 text-sm font-semibold"
+                      onClick={() => {
+                        setMode('forgot-password');
+                        setErrorMessage(null);
+                        setSuccessMessage(null);
+                        forgotPasswordForm.setFieldsValue({
+                          email: String(loginForm.getFieldValue('identifier') || ''),
+                        });
+                        navigate('/auth?mode=forgot-password', { replace: true });
+                      }}
+                    >
+                      Olvidé mi contraseña
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={isSubmitting || isInvitationLoading}
+                    className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
+                  >
+                    {panelCopy.submitLabel}
+                  </Button>
+
+                  <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
+                    Al continuar aceptas los{' '}
+                    <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
+                      Términos
+                    </Link>{' '}
+                    y la{' '}
+                    <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
+                      Política de Privacidad
+                    </Link>{' '}
+                    de QA Tracker.
+                  </Text>
+                </Form>
+              ) : mode === 'forgot-password' ? (
+                <Form
+                  form={forgotPasswordForm}
+                  layout="vertical"
+                  onFinish={handleForgotPassword}
+                  size="large"
+                >
+                  <Form.Item
+                    name="email"
+                    label="Correo electrónico"
+                    rules={[
+                      { required: true, message: 'Ingresa tu correo.' },
+                      { type: 'email', message: 'Usa un correo válido.' },
+                    ]}
+                  >
+                    <Input
+                      prefix={<MailOutlined className="text-slate-400" />}
+                      placeholder="tu-correo@empresa.com"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={isSubmitting}
+                    className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
+                  >
+                    {panelCopy.submitLabel}
+                  </Button>
+                </Form>
+              ) : mode === 'reset-password' ? (
+                <Form
+                  form={resetPasswordForm}
+                  layout="vertical"
+                  onFinish={handleResetPassword}
+                  size="large"
+                >
+                  <Form.Item
+                    name="password"
+                    label="Nueva contraseña"
+                    rules={[
+                      { required: true, message: 'Ingresa tu nueva contraseña.' },
+                      { min: 6, message: 'Usa al menos 6 caracteres.' },
+                    ]}
+                  >
+                    <Input.Password
+                      prefix={<LockOutlined className="text-slate-400" />}
+                      placeholder="Mínimo 6 caracteres"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="passwordConfirmation"
+                    label="Confirma tu nueva contraseña"
+                    dependencies={['password']}
+                    rules={[
+                      { required: true, message: 'Confirma tu nueva contraseña.' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value || getFieldValue('password') === value) {
+                            return Promise.resolve();
+                          }
+
+                          return Promise.reject(new Error('Las contraseñas no coinciden.'));
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input.Password
+                      prefix={<LockOutlined className="text-slate-400" />}
+                      placeholder="Repite la nueva contraseña"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+
+                  {!resetCode ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="Enlace incompleto"
+                      description="Este enlace no incluye un código válido de recuperación. Solicita uno nuevo desde el inicio de sesión."
+                      className="mb-4 rounded-2xl"
+                    />
+                  ) : null}
+
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={isSubmitting}
+                    disabled={!resetCode}
+                    className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
+                  >
+                    {panelCopy.submitLabel}
+                  </Button>
+                </Form>
+              ) : (
+                <Form
+                  key={`signup-${invitationContext?.documentId || 'default'}`}
+                  form={signupForm}
+                  layout="vertical"
+                  onFinish={handleSignup}
+                  size="large"
+                  initialValues={signupInitialValues}
+                >
+                  <Form.Item
+                    name="username"
+                    label="Nombre de usuario"
+                    rules={[{ required: true, message: 'Elige un nombre de usuario.' }]}
+                  >
+                    <Input
+                      prefix={<UserOutlined className="text-slate-400" />}
+                      placeholder="María"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="email"
+                    label="Correo electrónico"
+                    rules={[
+                      { required: true, message: 'Ingresa tu correo.' },
+                      { type: 'email', message: 'Usa un correo válido.' },
+                    ]}
+                  >
+                    <Input
+                      prefix={<MailOutlined className="text-slate-400" />}
+                      placeholder="maria@empresa.com"
+                      className="h-12 rounded-2xl"
+                      disabled={hasPendingInvitation}
+                      style={lockedFieldStyle}
+                      value={hasPendingInvitation ? invitationContext?.email || '' : undefined}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="password"
+                    label="Contraseña"
+                    rules={[
+                      { required: true, message: 'Crea una contraseña.' },
+                      { min: 6, message: 'Usa al menos 6 caracteres.' },
+                    ]}
+                  >
+                    <Input.Password
+                      prefix={<LockOutlined className="text-slate-400" />}
+                      placeholder="Mínimo 6 caracteres"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="passwordConfirmation"
+                    label="Confirmar contraseña"
+                    dependencies={['password']}
+                    rules={[
+                      { required: true, message: 'Confirma tu contraseña.' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value || getFieldValue('password') === value) {
+                            return Promise.resolve();
+                          }
+
+                          return Promise.reject(new Error('Las contraseñas no coinciden.'));
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input.Password
+                      prefix={<LockOutlined className="text-slate-400" />}
+                      placeholder="Repite tu contraseña"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="contactNumber"
+                    label="Número de contacto"
+                    rules={[
+                      { required: true, message: 'Ingresa tu número de contacto.' },
+                      {
+                        pattern: /^[0-9+\s()-]{7,20}$/,
+                        message: 'Usa un número de contacto válido.',
+                      },
+                    ]}
+                  >
+                    <Input
+                      prefix={<UserOutlined className="text-slate-400" />}
+                      placeholder="+57 300 123 4567"
+                      className="h-12 rounded-2xl"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="organizationName"
+                    label="Nombre de la organización"
+                    rules={[{ required: true, message: 'Ingresa el nombre de tu organización.' }]}
+                  >
+                    <Input
+                      prefix={<SafetyCertificateOutlined className="text-slate-400" />}
+                      placeholder="Organización QA"
+                      className="h-12 rounded-2xl"
+                      disabled={hasPendingInvitation}
+                      style={lockedFieldStyle}
+                      value={
+                        hasPendingInvitation ? invitationContext?.organizationName || '' : undefined
+                      }
+                    />
+                  </Form.Item>
+
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={isSubmitting || isInvitationLoading}
+                    className="mt-2 h-12 w-full rounded-2xl text-base font-semibold"
+                  >
+                    {panelCopy.submitLabel}
+                  </Button>
+
+                  <Text className="mt-4 block text-center text-xs leading-6 text-slate-500">
+                    Al continuar aceptas los{' '}
+                    <Link to="/terminos" className="font-semibold text-slate-700 no-underline">
+                      Términos
+                    </Link>{' '}
+                    y la{' '}
+                    <Link to="/privacidad" className="font-semibold text-slate-700 no-underline">
+                      Política de Privacidad
+                    </Link>{' '}
+                    de QA Tracker.
+                  </Text>
+                </Form>
+              )}
+
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+                {panelCopy.helper}
+              </div>
+            </Card>
+          </section>
         </div>
 
         <PublicSiteFooter />

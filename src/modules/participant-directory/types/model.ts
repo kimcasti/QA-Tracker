@@ -9,3 +9,19 @@ export interface ParticipantDirectoryMember {
   avatarUrl?: string;
   isExternal?: boolean;
 }
+
+export interface ExternalParticipantRecord {
+  documentId: string;
+  name: string;
+  role?: string;
+  email?: string;
+  organization?: {
+    documentId?: string;
+    name?: string;
+  };
+  sourceProject?: {
+    documentId?: string;
+    name?: string;
+    key?: string;
+  };
+}

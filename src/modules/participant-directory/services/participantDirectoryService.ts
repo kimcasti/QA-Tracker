@@ -1,7 +1,7 @@
 import { Http } from '../../../config/http';
-import { createDocument, relation } from '../../shared/services/strapi';
+import { createDocument, deleteDocument, listDocuments, relation } from '../../shared/services/strapi';
 import type { ParticipantDirectoryMembersResponse } from '../types/api';
-import type { ParticipantDirectoryMember } from '../types/model';
+import type { ExternalParticipantRecord, ParticipantDirectoryMember } from '../types/model';
 
 export async function getParticipantDirectoryMembers(): Promise<ParticipantDirectoryMember[]> {
   const response = await Http.get<ParticipantDirectoryMembersResponse>(
@@ -24,4 +24,18 @@ export async function createExternalParticipant(input: {
     organization: relation(input.organizationDocumentId),
     sourceProject: relation(input.sourceProjectDocumentId),
   });
+}
+
+export async function getExternalParticipants(sourceProjectDocumentId?: string) {
+  const documents = await listDocuments<ExternalParticipantRecord>('/api/external-participants');
+
+  return sourceProjectDocumentId
+    ? documents.filter(
+        participant => participant.sourceProject?.documentId === sourceProjectDocumentId,
+      )
+    : documents;
+}
+
+export async function removeExternalParticipant(documentId: string) {
+  await deleteDocument('/api/external-participants', documentId);
 }
