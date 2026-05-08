@@ -19,6 +19,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -1752,12 +1753,23 @@ export default function AboutView({ project }: AboutViewProps) {
                               </span>
                             </div>
 
-                            <Paragraph
-                              className="!mb-0 rounded-[18px] border border-dashed border-slate-200 bg-white/75 px-3.5 py-3 text-sm leading-6 text-slate-600"
-                              ellipsis={{ rows: 3, expandable: false }}
+                            <Tooltip
+                              placement="bottomLeft"
+                              mouseEnterDelay={0.2}
+                              overlayClassName="max-w-[360px]"
+                              title={
+                                <div className="max-w-[360px] whitespace-pre-wrap text-sm leading-6">
+                                  {note.notes?.trim() || 'Sin notas registradas.'}
+                                </div>
+                              }
                             >
-                              {getMeetingPreview(note.notes)}
-                            </Paragraph>
+                              <Paragraph
+                                className="!mb-0 cursor-help rounded-[18px] border border-dashed border-slate-200 bg-white/75 px-3.5 py-3 text-sm leading-6 text-slate-600"
+                                ellipsis={{ rows: 3, expandable: false }}
+                              >
+                                {getMeetingPreview(note.notes)}
+                              </Paragraph>
+                            </Tooltip>
                           </div>
                         </div>
                       </Card>
