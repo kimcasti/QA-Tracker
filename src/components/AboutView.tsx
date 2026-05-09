@@ -117,9 +117,7 @@ function normalizeServiceBillingItem(
     id: String(value?.id || createServiceId()),
     serviceName: String(value?.serviceName || '').trim(),
     relatedProcesses: Array.isArray(value?.relatedProcesses)
-      ? value!.relatedProcesses
-          .map(item => String(item || '').trim())
-          .filter(Boolean)
+      ? value!.relatedProcesses.map(item => String(item || '').trim()).filter(Boolean)
       : [],
     billingMode:
       value?.billingMode === 'phase_total' || value?.billingMode === 'one_time'
@@ -144,7 +142,13 @@ function normalizeServiceBillingPhase(
     services: Array.isArray(value?.services)
       ? value!.services
           .map(item => normalizeServiceBillingItem(item))
-          .filter(item => item.serviceName || item.relatedProcesses.length || item.monthlyCost || item.totalCost)
+          .filter(
+            item =>
+              item.serviceName ||
+              item.relatedProcesses.length ||
+              item.monthlyCost ||
+              item.totalCost,
+          )
       : [],
   };
 }
@@ -183,6 +187,184 @@ function splitAiBullets(value?: string) {
     .split('\n')
     .map(item => item.replace(/^[\-\u2022]\s*/, '').trim())
     .filter(Boolean);
+}
+
+type AiDetailBlock =
+  | { type: 'heading'; level: number; content: string }
+  | { type: 'paragraph'; content: string }
+  | { type: 'list'; items: string[] };
+
+type AiPreviewData = {
+  heading?: string;
+  summary?: string;
+  highlights: string[];
+};
+
+function normalizeAiDetailText(value?: string) {
+  return String(value || '')
+    .replace(/\r/g, '')
+    .trim();
+}
+
+function parseAiDetailBlocks(value?: string): AiDetailBlock[] {
+  const normalized = normalizeAiDetailText(value);
+  if (!normalized) return [];
+
+  const lines = normalized.split('\n');
+  const blocks: AiDetailBlock[] = [];
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    blocks.push({
+      type: 'paragraph',
+      content: paragraphLines.join(' ').replace(/\s+/g, ' ').trim(),
+    });
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    blocks.push({ type: 'list', items: [...listItems] });
+    listItems = [];
+  };
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push({
+        type: 'heading',
+        level: headingMatch[1].length,
+        content: headingMatch[2].trim(),
+      });
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^(?:[-*\u2022]|\d+\.)\s+(.+)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      listItems.push(bulletMatch[1].trim());
+      return;
+    }
+
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return blocks;
+}
+
+function renderAiInlineContent(value: string, keyPrefix: string) {
+  const segments = value.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+
+  return segments.map((segment, index) => {
+    const boldMatch = segment.match(/^\*\*([^*]+)\*\*$/);
+    if (boldMatch) {
+      return (
+        <strong key={`${keyPrefix}-bold-${index}`} className="font-semibold text-slate-800">
+          {boldMatch[1]}
+        </strong>
+      );
+    }
+
+    return <React.Fragment key={`${keyPrefix}-text-${index}`}>{segment}</React.Fragment>;
+  });
+}
+
+function stripAiInlineMarkdown(value: string) {
+  return value
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+function getAiPreviewData(value?: string, maxHighlights = 3): AiPreviewData {
+  const blocks = parseAiDetailBlocks(value);
+  const heading = blocks.find(block => block.type === 'heading');
+  const summaryBlock = blocks.find(block => block.type === 'paragraph');
+  const listBlock = blocks.find(block => block.type === 'list');
+
+  const highlights =
+    listBlock?.items.slice(0, maxHighlights).map(item => stripAiInlineMarkdown(item)) || [];
+
+  return {
+    heading: heading?.content,
+    summary: summaryBlock ? stripAiInlineMarkdown(summaryBlock.content) : '',
+    highlights,
+  };
+}
+
+function renderAiDetailContent(value?: string) {
+  const blocks = parseAiDetailBlocks(value);
+
+  if (!blocks.length) {
+    return (
+      <Paragraph className="!mb-0 text-base leading-8 text-slate-500">
+        No hay contenido disponible todavÃ­a.
+      </Paragraph>
+    );
+  }
+
+  return (
+    <div>
+      {blocks.map((block, index) => {
+        if (block.type === 'heading') {
+          return (
+            <div
+              key={`heading-${index}`}
+              className={`${index === 0 ? '' : 'mt-8'} border-b border-slate-200 pb-3`}
+            >
+              <h3 className="m-0 text-[22px] font-semibold leading-7 tracking-[-0.01em] text-slate-900">
+                {block.content}
+              </h3>
+            </div>
+          );
+        }
+
+        if (block.type === 'list') {
+          return (
+            <ul
+              key={`list-${index}`}
+              className={`m-0 pl-5 text-[15px] leading-8 text-slate-700 ${
+                blocks[index - 1]?.type === 'heading' ? 'mt-5 space-y-4' : 'mt-4 space-y-4'
+              }`}
+            >
+              {block.items.map((item, itemIndex) => (
+                <li key={`list-${index}-item-${itemIndex}`}>
+                  {renderAiInlineContent(item, `list-${index}-item-${itemIndex}`)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p
+            key={`paragraph-${index}`}
+            className={`m-0 text-[15px] leading-8 text-slate-700 ${
+              blocks[index - 1]?.type === 'heading' ? 'mt-5' : 'mt-4'
+            }`}
+          >
+            {renderAiInlineContent(block.content, `paragraph-${index}`)}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 function buildMeetingAiPreviewText(input: {
@@ -240,7 +422,9 @@ function getMeetingParticipantCountLabel(value?: string) {
 }
 
 function getMeetingPreview(value?: string) {
-  const compact = String(value || '').replace(/\s+/g, ' ').trim();
+  const compact = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return compact || 'Sin notas registradas.';
 }
 
@@ -261,10 +445,7 @@ function highlightSearchMatch(value: string, query: string) {
 
   return segments.map((segment, index) =>
     segment.toLocaleLowerCase() === normalizedQuery.toLocaleLowerCase() ? (
-      <mark
-        key={`${segment}-${index}`}
-        className="rounded bg-amber-100 px-1 py-0.5 text-inherit"
-      >
+      <mark key={`${segment}-${index}`} className="rounded bg-amber-100 px-1 py-0.5 text-inherit">
         {segment}
       </mark>
     ) : (
@@ -576,7 +757,10 @@ export default function AboutView({ project }: AboutViewProps) {
   );
   const serviceBillingSummary = useMemo(() => {
     const phaseCount = serviceBillingPhases.length;
-    const serviceCount = serviceBillingPhases.reduce((total, phase) => total + phase.services.length, 0);
+    const serviceCount = serviceBillingPhases.reduce(
+      (total, phase) => total + phase.services.length,
+      0,
+    );
     const monthlyCost = serviceBillingPhases.reduce(
       (total, phase) =>
         total +
@@ -585,7 +769,8 @@ export default function AboutView({ project }: AboutViewProps) {
     );
     const totalCost = serviceBillingPhases.reduce(
       (total, phase) =>
-        total + phase.services.reduce((phaseTotal, service) => phaseTotal + (service.totalCost || 0), 0),
+        total +
+        phase.services.reduce((phaseTotal, service) => phaseTotal + (service.totalCost || 0), 0),
       0,
     );
 
@@ -895,6 +1080,14 @@ export default function AboutView({ project }: AboutViewProps) {
     openAiDetail === 'analysis' ? 'Análisis del proyecto con IA' : 'Brief de wireframe con IA';
   const activeAiDetailContent =
     openAiDetail === 'analysis' ? project.aiProjectInsights : project.aiWireframeBrief;
+  const analysisPreview = useMemo(
+    () => getAiPreviewData(project.aiProjectInsights),
+    [project.aiProjectInsights],
+  );
+  const briefPreview = useMemo(
+    () => getAiPreviewData(project.aiWireframeBrief),
+    [project.aiWireframeBrief],
+  );
 
   const handleCopyAiDetail = async () => {
     if (!activeAiDetailContent?.trim()) return;
@@ -948,9 +1141,7 @@ export default function AboutView({ project }: AboutViewProps) {
       const values = await meetingNoteForm.validateFields();
       setIsSavingMeetingNote(true);
       const normalizedParticipants = Array.isArray(values.participants)
-        ? (values.participants as unknown[])
-            .map(item => String(item || '').trim())
-            .filter(Boolean)
+        ? (values.participants as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
         : String(values.participants || '')
             .split(',')
             .map(item => item.trim())
@@ -1284,7 +1475,7 @@ export default function AboutView({ project }: AboutViewProps) {
               ) : null}
 
               <SurfaceCard
-                title="Purpose and Vision"
+                title="Objetivo y visión"
                 icon={<BulbOutlined className="text-2xl" />}
                 accent={qaPalette.accent}
               >
@@ -1295,137 +1486,138 @@ export default function AboutView({ project }: AboutViewProps) {
               </SurfaceCard>
 
               {showServiceBillingSection ? (
-              <SurfaceCard
-                title="Servicios y Facturacion"
-                icon={<ProfileOutlined className="text-2xl" />}
-                accent={qaPalette.primary}
-              >
-                <div className="mb-6 flex flex-wrap gap-3">
-                  <MetricPill
-                    label="Fases"
-                    value={serviceBillingSummary.phaseCount}
-                    accent={qaPalette.primary}
-                    className="w-full sm:w-[180px]"
-                  />
-                  <MetricPill
-                    label="Servicios"
-                    value={serviceBillingSummary.serviceCount}
-                    accent={qaPalette.accent}
-                    className="w-full sm:w-[180px]"
-                  />
-                  <MetricPill
-                    label="Mensual"
-                    value={formatCurrency(serviceBillingSummary.monthlyCost)}
-                    accent={qaPalette.functionalityStatus.completed}
-                    className="w-full sm:w-[180px]"
-                  />
-                  <MetricPill
-                    label="Total"
-                    value={formatCurrency(serviceBillingSummary.totalCost)}
-                    accent={qaPalette.functionalityStatus.inProgress}
-                    className="w-full sm:w-[180px]"
-                  />
-                </div>
-
-                {serviceBillingPhases.length > 0 ? (
-                  <div className="space-y-5">
-                    {serviceBillingPhases.map(phase => {
-                      const phaseMonthlyCost = phase.services.reduce(
-                        (total, service) => total + (service.monthlyCost || 0),
-                        0,
-                      );
-                      const phaseTotalCost = phase.services.reduce(
-                        (total, service) => total + (service.totalCost || 0),
-                        0,
-                      );
-
-                      return (
-                        <Card
-                          key={phase.id}
-                          variant="borderless"
-                          className="rounded-[24px] border border-slate-100 bg-white/90"
-                          styles={{ body: { padding: 22 } }}
-                        >
-                          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-                            <div>
-                              <Title level={5} className="!mb-1 !text-slate-900">
-                                {phase.phaseName || 'Fase sin nombre'}
-                              </Title>
-                              <Paragraph className="!mb-0 text-sm leading-6 text-slate-500">
-                                {phase.description ||
-                                  'Organiza aquÃ­ los servicios, procesos y cobros de esta fase.'}
-                              </Paragraph>
-                            </div>
-                            <Space size={8} wrap>
-                              <Tag color="blue">{phase.services.length} servicios</Tag>
-                              <Tag color="green">Mensual {formatCurrency(phaseMonthlyCost)}</Tag>
-                              <Tag color="gold">Total {formatCurrency(phaseTotalCost)}</Tag>
-                            </Space>
-                          </div>
-
-                          <div className="space-y-3">
-                            {phase.services.map(service => (
-                              <div
-                                key={service.id}
-                                className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <Text className="block text-base font-semibold text-slate-800">
-                                      {service.serviceName || 'Servicio sin nombre'}
-                                    </Text>
-                                    <Text className="mt-1 block text-sm text-slate-500">
-                                      {service.relatedProcesses.length > 0
-                                        ? service.relatedProcesses.join(' | ')
-                                        : 'Sin procesos relacionados definidos.'}
-                                    </Text>
-                                  </div>
-                                  <Space size={8} wrap>
-                                    <Tag bordered={false} color="cyan">
-                                      {getBillingModeLabel(service.billingMode)}
-                                    </Tag>
-                                    <Tag bordered={false} color="green">
-                                      Mensual {formatCurrency(service.monthlyCost)}
-                                    </Tag>
-                                    <Tag bordered={false} color="gold">
-                                      Total {formatCurrency(service.totalCost)}
-                                    </Tag>
-                                  </Space>
-                                </div>
-                                {service.supportReport ? (
-                                  <div className="mt-4 rounded-2xl border border-sky-100 bg-white px-4 py-3">
-                                    <Text className="block text-xs font-bold uppercase tracking-[0.18em] text-sky-600">
-                                      Informe de respaldo
-                                    </Text>
-                                    <Text className="mt-2 block text-sm font-semibold text-slate-800">
-                                      {service.supportReport.title || 'Informe sin titulo'}
-                                    </Text>
-                                    <Text className="mt-1 block text-sm leading-6 text-slate-500">
-                                      {service.supportReport.summary || 'Sin resumen del informe.'}
-                                    </Text>
-                                    {service.supportReport.referenceUrl ? (
-                                      <a
-                                        href={service.supportReport.referenceUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="mt-2 inline-flex text-sm font-semibold text-sky-600 hover:text-sky-700"
-                                      >
-                                        Abrir referencia del informe
-                                      </a>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        </Card>
-                      );
-                    })}
+                <SurfaceCard
+                  title="Servicios y Facturacion"
+                  icon={<ProfileOutlined className="text-2xl" />}
+                  accent={qaPalette.primary}
+                >
+                  <div className="mb-6 flex flex-wrap gap-3">
+                    <MetricPill
+                      label="Fases"
+                      value={serviceBillingSummary.phaseCount}
+                      accent={qaPalette.primary}
+                      className="w-full sm:w-[180px]"
+                    />
+                    <MetricPill
+                      label="Servicios"
+                      value={serviceBillingSummary.serviceCount}
+                      accent={qaPalette.accent}
+                      className="w-full sm:w-[180px]"
+                    />
+                    <MetricPill
+                      label="Mensual"
+                      value={formatCurrency(serviceBillingSummary.monthlyCost)}
+                      accent={qaPalette.functionalityStatus.completed}
+                      className="w-full sm:w-[180px]"
+                    />
+                    <MetricPill
+                      label="Total"
+                      value={formatCurrency(serviceBillingSummary.totalCost)}
+                      accent={qaPalette.functionalityStatus.inProgress}
+                      className="w-full sm:w-[180px]"
+                    />
                   </div>
-                ) : (
-                  <Empty description="Aun no hay fases de servicios o facturacion configuradas para este proyecto." />
-                )}
-              </SurfaceCard>
+
+                  {serviceBillingPhases.length > 0 ? (
+                    <div className="space-y-5">
+                      {serviceBillingPhases.map(phase => {
+                        const phaseMonthlyCost = phase.services.reduce(
+                          (total, service) => total + (service.monthlyCost || 0),
+                          0,
+                        );
+                        const phaseTotalCost = phase.services.reduce(
+                          (total, service) => total + (service.totalCost || 0),
+                          0,
+                        );
+
+                        return (
+                          <Card
+                            key={phase.id}
+                            variant="borderless"
+                            className="rounded-[24px] border border-slate-100 bg-white/90"
+                            styles={{ body: { padding: 22 } }}
+                          >
+                            <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+                              <div>
+                                <Title level={5} className="!mb-1 !text-slate-900">
+                                  {phase.phaseName || 'Fase sin nombre'}
+                                </Title>
+                                <Paragraph className="!mb-0 text-sm leading-6 text-slate-500">
+                                  {phase.description ||
+                                    'Organiza aquÃ­ los servicios, procesos y cobros de esta fase.'}
+                                </Paragraph>
+                              </div>
+                              <Space size={8} wrap>
+                                <Tag color="blue">{phase.services.length} servicios</Tag>
+                                <Tag color="green">Mensual {formatCurrency(phaseMonthlyCost)}</Tag>
+                                <Tag color="gold">Total {formatCurrency(phaseTotalCost)}</Tag>
+                              </Space>
+                            </div>
+
+                            <div className="space-y-3">
+                              {phase.services.map(service => (
+                                <div
+                                  key={service.id}
+                                  className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <Text className="block text-base font-semibold text-slate-800">
+                                        {service.serviceName || 'Servicio sin nombre'}
+                                      </Text>
+                                      <Text className="mt-1 block text-sm text-slate-500">
+                                        {service.relatedProcesses.length > 0
+                                          ? service.relatedProcesses.join(' | ')
+                                          : 'Sin procesos relacionados definidos.'}
+                                      </Text>
+                                    </div>
+                                    <Space size={8} wrap>
+                                      <Tag bordered={false} color="cyan">
+                                        {getBillingModeLabel(service.billingMode)}
+                                      </Tag>
+                                      <Tag bordered={false} color="green">
+                                        Mensual {formatCurrency(service.monthlyCost)}
+                                      </Tag>
+                                      <Tag bordered={false} color="gold">
+                                        Total {formatCurrency(service.totalCost)}
+                                      </Tag>
+                                    </Space>
+                                  </div>
+                                  {service.supportReport ? (
+                                    <div className="mt-4 rounded-2xl border border-sky-100 bg-white px-4 py-3">
+                                      <Text className="block text-xs font-bold uppercase tracking-[0.18em] text-sky-600">
+                                        Informe de respaldo
+                                      </Text>
+                                      <Text className="mt-2 block text-sm font-semibold text-slate-800">
+                                        {service.supportReport.title || 'Informe sin titulo'}
+                                      </Text>
+                                      <Text className="mt-1 block text-sm leading-6 text-slate-500">
+                                        {service.supportReport.summary ||
+                                          'Sin resumen del informe.'}
+                                      </Text>
+                                      {service.supportReport.referenceUrl ? (
+                                        <a
+                                          href={service.supportReport.referenceUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="mt-2 inline-flex text-sm font-semibold text-sky-600 hover:text-sky-700"
+                                        >
+                                          Abrir referencia del informe
+                                        </a>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Empty description="Aun no hay fases de servicios o facturacion configuradas para este proyecto." />
+                  )}
+                </SurfaceCard>
               ) : null}
 
               <SurfaceCard
@@ -1489,11 +1681,22 @@ export default function AboutView({ project }: AboutViewProps) {
                         </div>
                       </div>
                       {project.aiProjectInsights ? (
-                        <div className="space-y-4">
-                          <div className="max-h-[420px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                            <Paragraph className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                              {project.aiProjectInsights}
-                            </Paragraph>
+                        <div className="flex h-full flex-col gap-4">
+                          <div className="rounded-[22px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-purple-100 text-purple-600">
+                                <BulbOutlined />
+                              </div>
+                              <div className="min-w-0">
+                                <Text className="block text-base font-semibold text-slate-900">
+                                  {analysisPreview.heading || 'Resumen del análisis'}
+                                </Text>
+                                <p className="mt-2 line-clamp-5 text-[15px] leading-7 text-slate-600">
+                                  {analysisPreview.summary ||
+                                    'Ya generaste el análisis del proyecto. Abre el detalle para revisar todas las secciones.'}
+                                </p>
+                              </div>
+                            </div>
                           </div>
                           <Button onClick={() => setOpenAiDetail('analysis')}>Ver detalle</Button>
                         </div>
@@ -1521,12 +1724,43 @@ export default function AboutView({ project }: AboutViewProps) {
                         </div>
                       </div>
                       {project.aiWireframeBrief ? (
-                        <div className="space-y-4">
-                          <div className="max-h-[420px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                            <Paragraph className="!mb-0 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                              {project.aiWireframeBrief}
-                            </Paragraph>
+                        <div className="flex h-full flex-col gap-4">
+                          <div className="rounded-[22px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-600">
+                                <FileTextOutlined />
+                              </div>
+                              <div className="min-w-0">
+                                <Text className="block text-base font-semibold text-slate-900">
+                                  {briefPreview.heading || 'Brief listo para wireframing'}
+                                </Text>
+                                <p className="mt-2 line-clamp-5 text-[15px] leading-7 text-slate-600">
+                                  {briefPreview.summary ||
+                                    'Ya generaste el brief. Abre el detalle para copiar escenas, estructura y prompt final.'}
+                                </p>
+                              </div>
+                            </div>
                           </div>
+                          {briefPreview.highlights.length > 0 ? (
+                            <div className="rounded-[22px] border border-slate-100 bg-white p-4">
+                              <Text className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                Highlights
+                              </Text>
+                              <div className="mt-3 space-y-3">
+                                {briefPreview.highlights.map((item, index) => (
+                                  <div
+                                    key={`brief-highlight-${index}`}
+                                    className="flex items-start gap-3"
+                                  >
+                                    <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-sky-500" />
+                                    <p className="m-0 text-[14px] leading-6 text-slate-600">
+                                      {item}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <Button onClick={() => setOpenAiDetail('brief')}>
                             Ver detalle completo
                           </Button>
@@ -1955,7 +2189,6 @@ export default function AboutView({ project }: AboutViewProps) {
           <Form.Item name="businessRules" label="Normas empresariales">
             <Input.TextArea rows={5} />
           </Form.Item>
-
         </Form>
       </Modal>
 
@@ -1996,9 +2229,7 @@ export default function AboutView({ project }: AboutViewProps) {
           />
 
           <div className="max-h-[65vh] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-6">
-            <Paragraph className="!mb-0 whitespace-pre-wrap text-base leading-8 text-slate-700">
-              {activeAiDetailContent || 'No hay contenido disponible todavía.'}
-            </Paragraph>
+            {renderAiDetailContent(activeAiDetailContent)}
           </div>
         </div>
       </Modal>
@@ -2077,7 +2308,9 @@ export default function AboutView({ project }: AboutViewProps) {
               expandIcon: ({ expanded, onExpand, record }) => (
                 <button
                   type="button"
-                  aria-label={expanded ? 'Ocultar detalle de la minuta' : 'Ver detalle de la minuta'}
+                  aria-label={
+                    expanded ? 'Ocultar detalle de la minuta' : 'Ver detalle de la minuta'
+                  }
                   className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600"
                   onClick={event => onExpand(record, event)}
                 >
