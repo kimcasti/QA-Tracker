@@ -200,10 +200,40 @@ type AiPreviewData = {
   highlights: string[];
 };
 
+const AI_HEADING_NORMALIZATION: Record<string, string> = {
+  'resumen ejecutivo': 'Resumen ejecutivo',
+  'desafios probables': 'Desafíos probables',
+  'riesgos y dependencias': 'Riesgos y dependencias',
+  'vacios de definicion': 'Vacíos de definición',
+  'recomendaciones de gestion': 'Recomendaciones de gestión',
+  'sugerencias qa': 'Sugerencias QA',
+  'preguntas para validar con el cliente': 'Preguntas para validar con el cliente',
+};
+
+const AI_HEADING_NORMALIZATION_SAFE: Record<string, string> = {
+  'resumen ejecutivo': 'Resumen ejecutivo',
+  'desafios probables': 'Desaf\u00edos probables',
+  'riesgos y dependencias': 'Riesgos y dependencias',
+  'vacios de definicion': 'Vac\u00edos de definici\u00f3n',
+  'recomendaciones de gestion': 'Recomendaciones de gesti\u00f3n',
+  'sugerencias qa': 'Sugerencias QA',
+  'preguntas para validar con el cliente': 'Preguntas para validar con el cliente',
+};
+
 function normalizeAiDetailText(value?: string) {
   return String(value || '')
     .replace(/\r/g, '')
     .trim();
+}
+
+function normalizeAiHeading(value: string) {
+  const normalizedKey = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  return AI_HEADING_NORMALIZATION_SAFE[normalizedKey] || value.trim();
 }
 
 function parseAiDetailBlocks(value?: string): AiDetailBlock[] {
@@ -246,7 +276,7 @@ function parseAiDetailBlocks(value?: string): AiDetailBlock[] {
       blocks.push({
         type: 'heading',
         level: headingMatch[1].length,
-        content: headingMatch[2].trim(),
+        content: normalizeAiHeading(headingMatch[2]),
       });
       return;
     }
@@ -314,7 +344,7 @@ function renderAiDetailContent(value?: string) {
   if (!blocks.length) {
     return (
       <Paragraph className="!mb-0 text-base leading-8 text-slate-500">
-        No hay contenido disponible todavÃ­a.
+        No hay contenido disponible todav\u00eda.
       </Paragraph>
     );
   }
@@ -1544,7 +1574,7 @@ export default function AboutView({ project }: AboutViewProps) {
                                 </Title>
                                 <Paragraph className="!mb-0 text-sm leading-6 text-slate-500">
                                   {phase.description ||
-                                    'Organiza aquÃ­ los servicios, procesos y cobros de esta fase.'}
+                                    'Organiza aqu\u00ed los servicios, procesos y cobros de esta fase.'}
                                 </Paragraph>
                               </div>
                               <Space size={8} wrap>
