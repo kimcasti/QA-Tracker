@@ -16,7 +16,7 @@ function mapDeliveryActivityTemplate(
     id: document.documentId,
     projectId: document.project?.key || '',
     name: document.name,
-    description: document.description || '',
+    category: document.category || '',
     isActive: document.isActive !== false,
   };
 }
@@ -50,7 +50,7 @@ export async function saveDeliveryActivityTemplate(
     template.documentId || null,
     {
       name: template.name,
-      description: template.description || null,
+      category: template.category || null,
       isActive: template.isActive,
       organization: relation(context.organizationDocumentId),
       project: relation(context.documentId),

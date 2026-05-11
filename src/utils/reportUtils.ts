@@ -32,7 +32,7 @@ export interface DeliveryUnitProgressDocxData {
   };
   activities: Array<{
     name: string;
-    description?: string;
+    category?: string;
   }>;
   functionalities: Array<{
     functionality: string;
@@ -183,7 +183,7 @@ export const exportDeliveryUnitProgressToDocx = async (
             children: [new TextRun({ text: activity.name, bold: true })],
             spacing: { before: 140 },
           }),
-          new Paragraph(activity.description || 'Sin descripcion adicional.'),
+          new Paragraph(activity.category || 'Sin categoria asignada.'),
         ])
       : [new Paragraph('No hay actividades operativas registradas en esta unidad.')];
 

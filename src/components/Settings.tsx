@@ -25,9 +25,11 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   PlusOutlined,
+  SearchOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { deliveryActivityCategoryOptions } from '../modules/delivery-activity-templates/constants/categories';
 import { useDeliveryActivityTemplates } from '../modules/delivery-activity-templates/hooks/useDeliveryActivityTemplates';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import { ProjectProposalManager } from '../modules/project-proposals/components/ProjectProposalManager';
@@ -149,6 +151,8 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   const [editingDeliveryUnit, setEditingDeliveryUnit] = useState<DeliveryUnit | null>(null);
   const [editingDeliveryActivity, setEditingDeliveryActivity] =
     useState<DeliveryActivityTemplate | null>(null);
+  const [deliveryActivitySearch, setDeliveryActivitySearch] = useState('');
+  const [deliveryActivityCategoryFilter, setDeliveryActivityCategoryFilter] = useState<string>();
   const [form] = Form.useForm();
   const [deliveryUnitForm] = Form.useForm();
   const [deliveryActivityForm] = Form.useForm();
@@ -244,6 +248,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     } else {
       deliveryActivityForm.setFieldsValue({
         isActive: true,
+        category: undefined,
       });
     }
 
@@ -337,7 +342,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         id: editingDeliveryActivity?.id || `delivery-activity-${Date.now()}`,
         projectId,
         name: String(values.name || '').trim(),
-        description: String(values.description || '').trim(),
+        category: String(values.category || '').trim(),
         isActive: values.isActive !== false,
       });
       message.success('Actividad operativa guardada con éxito');
@@ -372,6 +377,22 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       message.error('No se pudo eliminar la actividad operativa.');
     }
   };
+
+  const normalizedDeliveryActivitySearch = deliveryActivitySearch.trim().toLowerCase();
+
+  const filteredDeliveryActivityTemplates = deliveryActivityTemplates.filter(template => {
+    const matchesSearch =
+      !normalizedDeliveryActivitySearch ||
+      template.name.toLowerCase().includes(normalizedDeliveryActivitySearch) ||
+      String(template.category || '')
+        .toLowerCase()
+        .includes(normalizedDeliveryActivitySearch);
+
+    const matchesCategory =
+      !deliveryActivityCategoryFilter || template.category === deliveryActivityCategoryFilter;
+
+    return matchesSearch && matchesCategory;
+  });
 
   const sprintColumns = [
     {
@@ -599,9 +620,11 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
           <Text strong className="block text-slate-800">
             {record.name}
           </Text>
-          <Text className="mt-1 block text-sm text-slate-500">
-            {record.description?.trim() || 'Sin descripción adicional.'}
-          </Text>
+          <div className="mt-2">
+            <Tag className="rounded-full border-none bg-slate-100 px-3 py-1 text-xs text-slate-600">
+              {record.category?.trim() || 'Sin categoría'}
+            </Tag>
+          </div>
         </div>
       ),
     },
@@ -701,26 +724,48 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
               Configura el catálogo operativo reusable por proyecto para luego seleccionarlo en cada unidad de entrega.
             </Text>
           </div>
-          {!isViewer ? (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => handleOpenDeliveryActivityModal()}
-              className="bg-blue-600"
-            >
-              Nueva actividad
-            </Button>
-          ) : null}
+          <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+            <Input
+              allowClear
+              value={deliveryActivitySearch}
+              onChange={event => setDeliveryActivitySearch(event.target.value)}
+              prefix={<SearchOutlined className="text-slate-400" />}
+              placeholder="Buscar por nombre o categoría"
+              className="w-full md:w-[280px]"
+            />
+            <Select
+              allowClear
+              value={deliveryActivityCategoryFilter}
+              onChange={value => setDeliveryActivityCategoryFilter(value)}
+              placeholder="Filtrar por categoría"
+              className="w-full md:w-[280px]"
+              options={deliveryActivityCategoryOptions.map(category => ({
+                label: category,
+                value: category,
+              }))}
+            />
+            {!isViewer ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenDeliveryActivityModal()}
+                className="bg-blue-600"
+              >
+                Nueva actividad
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <Table
           columns={deliveryActivityColumns}
-          dataSource={deliveryActivityTemplates}
+          dataSource={filteredDeliveryActivityTemplates}
           rowKey={record => record.documentId || record.id}
           pagination={false}
           locale={{ emptyText: 'No hay actividades operativas configuradas para este proyecto.' }}
           className="overflow-hidden rounded-2xl border border-slate-100"
           rowClassName={() => 'align-top'}
+          scroll={{ y: 480 }}
         />
       </Card>
     </div>
@@ -1088,7 +1133,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                     options={deliveryActivityTemplates
                       .filter(item => item.isActive)
                       .map(item => ({
-                        label: item.name,
+                        label: item.category
+                          ? `${item.name} · ${item.category}`
+                          : item.name,
                         value: item.documentId || item.id,
                       }))}
                   />
@@ -1153,10 +1200,21 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
               <Switch checkedChildren="Si" unCheckedChildren="No" />
             </Form.Item>
 
-            <Form.Item name="description" label="Descripción" className="md:col-span-2">
-              <Input.TextArea
-                rows={4}
-                placeholder="Describe el objetivo o alcance de esta actividad operativa."
+            <Form.Item
+              name="category"
+              label="Categoría"
+              className="md:col-span-2"
+              rules={[{ required: true, message: 'Selecciona una categoría' }]}
+              extra="Usaremos estas categorías para filtrar, buscar y mantener un catálogo consistente."
+            >
+              <Select
+                showSearch
+                placeholder="Selecciona la categoría de la actividad"
+                optionFilterProp="label"
+                options={deliveryActivityCategoryOptions.map(category => ({
+                  label: category,
+                  value: category,
+                }))}
               />
             </Form.Item>
           </div>

@@ -27,7 +27,7 @@ function mapDeliveryUnit(document: DeliveryUnitDto): DeliveryUnit {
         id: activity.documentId,
         projectId: document.project?.key || '',
         name: activity.name,
-        description: activity.description || '',
+        category: activity.category || '',
         isActive: activity.isActive !== false,
       }))
     : [];
@@ -64,7 +64,7 @@ export async function getDeliveryUnits(projectId?: string) {
   const documents = await listDocuments<DeliveryUnitDto>('/api/delivery-units', {
     'populate[project][fields][0]': 'key',
     'populate[activities][fields][0]': 'name',
-    'populate[activities][fields][1]': 'description',
+    'populate[activities][fields][1]': 'category',
     'populate[activities][fields][2]': 'isActive',
     'populate[proposal][fields][0]': 'name',
     'populate[proposal][fields][1]': 'proposalOwner',

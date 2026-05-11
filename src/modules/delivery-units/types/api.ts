@@ -12,7 +12,7 @@ export interface DeliveryUnitDto {
   activities?: Array<{
     documentId: string;
     name: string;
-    description?: string | null;
+    category?: string | null;
     isActive?: boolean | null;
   }>;
   project?: {

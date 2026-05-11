@@ -112,7 +112,7 @@ export interface DeliveryActivityTemplate {
   id: string;
   projectId: string;
   name: string;
-  description?: string;
+  category?: string;
   isActive: boolean;
 }
 

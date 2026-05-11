@@ -2076,7 +2076,7 @@ const DeliveryUnitProgressReport: React.FC<{
       },
       activities: selectedActivities.map(activity => ({
         name: activity.name,
-        description: activity.description,
+        category: activity.category,
       })),
       functionalities: scopedFunctionalities.map(item => ({
         name: item.name,
@@ -2218,7 +2218,7 @@ const DeliveryUnitProgressReport: React.FC<{
       },
       activities: selectedActivities.map(activity => ({
         name: activity.name,
-        description: activity.description,
+        category: activity.category,
       })),
       functionalities: reportRows.map(row => ({
         functionality: row.functionality,
@@ -2315,7 +2315,7 @@ const DeliveryUnitProgressReport: React.FC<{
         })),
         activities: selectedActivities.map(activity => ({
           name: activity.name,
-          description: activity.description,
+          category: activity.category,
         })),
       },
     }),
@@ -2577,7 +2577,7 @@ const DeliveryUnitProgressReport: React.FC<{
                     ) : null}
                   </div>
                   <Text type="secondary" className="mt-2 block text-sm leading-7">
-                    {activity.description || 'Sin descripcion adicional.'}
+                    {activity.category || 'Sin categoria asignada.'}
                   </Text>
                 </div>
               </div>
