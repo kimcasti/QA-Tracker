@@ -5,6 +5,12 @@ import {
   getStoredToken,
   setStoredToken,
 } from '../../../config/http';
+import {
+  clearLegacyLocalValue,
+  migrateLegacyLocalValue,
+  readSessionValue,
+  writeSessionValue,
+} from '../utils/sessionStorage';
 import type { WorkspaceDto } from '../../workspace/types/api';
 import type {
   AuthResult,
@@ -37,12 +43,15 @@ function mapAuthUser(payload: { id: number; username: string; email: string; isS
 export function getStoredAuthUser() {
   if (typeof window === 'undefined') return null;
 
-  const raw = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  const raw =
+    readSessionValue(AUTH_USER_STORAGE_KEY) ?? migrateLegacyLocalValue(AUTH_USER_STORAGE_KEY);
   if (!raw) return null;
 
   try {
     return JSON.parse(raw) as AuthUser;
   } catch {
+    writeSessionValue(AUTH_USER_STORAGE_KEY, null);
+    clearLegacyLocalValue(AUTH_USER_STORAGE_KEY);
     return null;
   }
 }
@@ -51,11 +60,13 @@ export function setStoredAuthUser(user: AuthUser | null) {
   if (typeof window === 'undefined') return;
 
   if (!user) {
-    window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    writeSessionValue(AUTH_USER_STORAGE_KEY, null);
+    clearLegacyLocalValue(AUTH_USER_STORAGE_KEY);
     return;
   }
 
-  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+  writeSessionValue(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+  clearLegacyLocalValue(AUTH_USER_STORAGE_KEY);
 }
 
 export function clearStoredAuthSession() {

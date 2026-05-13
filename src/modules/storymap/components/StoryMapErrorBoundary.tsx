@@ -1,5 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { Alert, Button, Result, Space, Typography } from 'antd';
+import { reportAppError } from '../../../utils/errorMonitoring';
 
 type StoryMapErrorBoundaryProps = {
   children: ReactNode;
@@ -28,7 +29,13 @@ export class StoryMapErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Story Map boundary caught an error:', error, errorInfo);
+    reportAppError(error, {
+      area: 'storymap.error-boundary',
+      message: 'Story Map render failed inside the local boundary.',
+      details: {
+        componentStack: errorInfo.componentStack,
+      },
+    });
   }
 
   private handleRetry = () => {

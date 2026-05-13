@@ -8,17 +8,23 @@ import './i18n/i18n';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { queryClient } from './config/query';
 import { AuthSessionProvider } from './modules/auth/context/AuthSessionProvider';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { attachGlobalErrorHandlers } from './utils/errorMonitoring';
+
+attachGlobalErrorHandlers();
 
 createRoot(document.getElementById('root')!).render(
   <LanguageProvider>
     <AntdApp>
-      <QueryClientProvider client={queryClient}>
-        <AuthSessionProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </AuthSessionProvider>
-      </QueryClientProvider>
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <AuthSessionProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AuthSessionProvider>
+        </QueryClientProvider>
+      </AppErrorBoundary>
     </AntdApp>
   </LanguageProvider>,
 );

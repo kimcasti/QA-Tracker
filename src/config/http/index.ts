@@ -8,6 +8,13 @@ import axios, {
   isAxiosError,
 } from 'axios';
 import { apiIdentifier, apiPassword, apiUrl, useServiceAuth } from '..';
+import { reportAppError } from '../../utils/errorMonitoring';
+import {
+  clearLegacyLocalValue,
+  migrateLegacyLocalValue,
+  readSessionValue,
+  writeSessionValue,
+} from '../../modules/auth/utils/sessionStorage';
 
 const JWT_STORAGE_KEY = 'qa_tracker_api_jwt';
 const AUTH_CLEARED_EVENT = 'qa-tracker-auth-cleared';
@@ -49,19 +56,21 @@ export function isApiConfigured() {
 
 export function getStoredToken() {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(JWT_STORAGE_KEY);
+  return readSessionValue(JWT_STORAGE_KEY) ?? migrateLegacyLocalValue(JWT_STORAGE_KEY);
 }
 
 export function setStoredToken(token: string | null) {
   if (typeof window === 'undefined') return;
 
   if (!token) {
-    window.localStorage.removeItem(JWT_STORAGE_KEY);
+    writeSessionValue(JWT_STORAGE_KEY, null);
+    clearLegacyLocalValue(JWT_STORAGE_KEY);
     window.dispatchEvent(new Event(AUTH_CLEARED_EVENT));
     return;
   }
 
-  window.localStorage.setItem(JWT_STORAGE_KEY, token);
+  writeSessionValue(JWT_STORAGE_KEY, token);
+  clearLegacyLocalValue(JWT_STORAGE_KEY);
 }
 
 export function clearStoredToken() {
@@ -203,7 +212,15 @@ Http.interceptors.response.use(
 
     if (isAxiosError(error)) {
       const requestUrl = error.config?.url ?? 'unknown URL';
-      console.error(`API request failed for ${requestUrl}:`, error);
+      reportAppError(error, {
+        area: 'http.private',
+        message: `API request failed for ${requestUrl}.`,
+        details: {
+          requestUrl,
+          status: error.response?.status,
+          method: error.config?.method,
+        },
+      });
     }
 
     return Promise.reject(error);
@@ -222,7 +239,15 @@ PublicHttp.interceptors.response.use(
 
     if (isAxiosError(error)) {
       const requestUrl = error.config?.url ?? 'unknown URL';
-      console.error(`Public API request failed for ${requestUrl}:`, error);
+      reportAppError(error, {
+        area: 'http.public',
+        message: `Public API request failed for ${requestUrl}.`,
+        details: {
+          requestUrl,
+          status: error.response?.status,
+          method: error.config?.method,
+        },
+      });
     }
 
     return Promise.reject(error);
