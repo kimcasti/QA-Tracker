@@ -237,13 +237,13 @@
 }
 
 .executive-table .ant-table-thead > tr > th {
-  @apply bg-transparent uppercase text-[10px] tracking-widest font-bold py-4;
+  @apply bg-transparent uppercase text-[10px] tracking-widest font-bold py-4 px-4;
   border-bottom-color: var(--qa-color-border, #D9E5EF) !important;
   color: var(--qa-color-secondary, #5D748B) !important;
 }
 
 .executive-table .ant-table-tbody > tr > td {
-  @apply py-4 text-sm;
+  @apply py-4 px-4 text-sm align-top;
   border-bottom-color: color-mix(in srgb, var(--qa-color-border, #D9E5EF) 55%, white) !important;
   color: var(--qa-color-secondary, #5D748B) !important;
 }

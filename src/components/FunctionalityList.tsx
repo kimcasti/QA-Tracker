@@ -44,7 +44,7 @@ import { toApiError } from '../config/http';
 import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import type { InputRef } from 'antd';
-import type { FilterValue } from 'antd/es/table/interface';
+import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
 
 const TestCaseManagement = lazy(() => import('./TestCaseManagement'));
 
@@ -236,6 +236,19 @@ export default function FunctionalityList({
   const [name, setName] = useState('');
   const inputRef = useRef<InputRef>(null);
 
+  const renderTruncatedText = (
+    value: string | undefined,
+    className = 'block truncate text-slate-700',
+  ) => {
+    const content = String(value || 'N/A');
+
+    return (
+      <Tooltip title={content}>
+        <span className={className}>{content}</span>
+      </Tooltip>
+    );
+  };
+
   const onNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setName(event.target.value);
   };
@@ -254,13 +267,18 @@ export default function FunctionalityList({
     }
   };
 
-  const columns = [
+  const columns: ColumnsType<Functionality> = [
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>
       ),
       dataIndex: 'id',
       key: 'id',
+      width: 110,
+      ellipsis: true,
+      render: (value: string) => (
+        <span className="font-medium tracking-wide text-slate-600 whitespace-nowrap">{value}</span>
+      ),
     },
     {
       title: (
@@ -270,11 +288,14 @@ export default function FunctionalityList({
       ),
       dataIndex: 'module',
       key: 'module',
+      width: 180,
+      ellipsis: true,
       filters: nativeModuleFilters,
       filterSearch: true,
       filteredValue: tableFilters.module,
       onFilter: (value: boolean | React.Key, record: Functionality) =>
         record.module === String(value),
+      render: (module: string) => renderTruncatedText(module, 'block truncate text-slate-600'),
     },
     {
       title: (
@@ -284,10 +305,12 @@ export default function FunctionalityList({
       ),
       dataIndex: 'name',
       key: 'name',
+      width: 280,
+      ellipsis: true,
       render: (name: string, record: Functionality) => (
         <div className="flex items-center gap-2 min-w-0">
           <Tooltip title={name}>
-            <span className="block max-w-[260px] truncate text-slate-700">{name}</span>
+            <span className="block truncate font-medium text-slate-700">{name}</span>
           </Tooltip>
           {record.jiraTaskUrl ? (
             <Tooltip title="Abrir tarea en Jira">
@@ -313,6 +336,7 @@ export default function FunctionalityList({
       ),
       dataIndex: 'priority',
       key: 'priority',
+      width: 118,
       filters: nativePriorityFilters,
       filteredValue: tableFilters.priority,
       onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
@@ -340,6 +364,7 @@ export default function FunctionalityList({
       ),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
+      width: 150,
       filters: nativeRiskFilters,
       filteredValue: tableFilters.riskLevel,
       onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
@@ -365,15 +390,17 @@ export default function FunctionalityList({
       ),
       dataIndex: 'roles',
       key: 'roles',
+      width: 210,
+      ellipsis: true,
       filters: nativeRoleFilters,
       filterSearch: true,
       filteredValue: tableFilters.roles,
       onFilter: (value: boolean | React.Key, record: Functionality) =>
         Array.isArray(record.roles) && record.roles.includes(String(value)),
       render: (roles: string[]) => (
-        <div className="flex items-center gap-2 text-slate-600">
+        <div className="flex items-start gap-2 text-slate-600 min-w-0">
           <Users size={16} className="text-slate-400" />
-          <span className="text-sm font-medium">{roles?.join(', ') || 'N/A'}</span>
+          {renderTruncatedText(roles?.join(', '), 'block truncate text-sm font-medium text-slate-700')}
         </div>
       ),
     },
@@ -384,6 +411,7 @@ export default function FunctionalityList({
         </span>
       ),
       key: 'qaCoverage',
+      width: 170,
       filters: nativeQaCoverageFilters,
       filteredValue: tableFilters.qaCoverage,
       onFilter: (value: boolean | React.Key, record: Functionality) =>
@@ -420,11 +448,11 @@ export default function FunctionalityList({
         }
 
         return (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {tags.map(tag => (
               <span
                 key={tag.key}
-                className={`px-2 py-0.5 rounded-md text-[12px] font-medium border border-transparent ${tag.className}`}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border border-transparent whitespace-nowrap ${tag.className}`}
               >
                 {tag.label}
               </span>
@@ -435,12 +463,13 @@ export default function FunctionalityList({
     },
     {
       title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase whitespace-nowrap">
           ESTADO DESARR.
         </span>
       ),
       dataIndex: 'status',
       key: 'status',
+      width: 180,
       filters: nativeStatusFilters,
       filteredValue: tableFilters.status,
       onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
@@ -478,8 +507,9 @@ export default function FunctionalityList({
         </span>
       ),
       key: 'actions',
+      width: isViewer ? 92 : 188,
       render: (_: any, record: Functionality) => (
-        <Space>
+        <Space size={8} wrap>
           <Tooltip title="Gestionar Casos de Prueba">
             <Button
               icon={<FileTextOutlined />}
@@ -487,7 +517,8 @@ export default function FunctionalityList({
                 setSelectedFunctionality(record);
                 setIsTestCaseModalOpen(true);
               }}
-              className="rounded-lg text-blue-600 border-blue-100 hover:bg-blue-50"
+              size="middle"
+              className="rounded-full text-blue-600 border-blue-100 hover:bg-blue-50"
             />
           </Tooltip>
           {!isViewer ? (
@@ -502,19 +533,22 @@ export default function FunctionalityList({
                 <Button
                   icon={<HistoryOutlined />}
                   onClick={() => handleMarkRecentChange(record)}
-                  className="rounded-lg text-sky-700 border-sky-100 hover:bg-sky-50"
+                  size="middle"
+                  className="rounded-full text-sky-700 border-sky-100 hover:bg-sky-50"
                 />
               </Tooltip>
               <Button
                 icon={<EditOutlined />}
                 onClick={() => handleEdit(record)}
-                className="rounded-lg"
+                size="middle"
+                className="rounded-full"
               />
               <Button
                 icon={<DeleteOutlined />}
                 danger
                 onClick={() => handleDelete(record.id)}
-                className="rounded-lg"
+                size="middle"
+                className="rounded-full"
               />
             </>
           ) : null}
@@ -1144,12 +1178,22 @@ export default function FunctionalityList({
         }
       >
         <Table
-          rowSelection={isViewer ? undefined : rowSelection}
+          rowSelection={
+            isViewer
+              ? undefined
+              : {
+                  ...rowSelection,
+                  columnWidth: 52,
+                }
+          }
           columns={columns}
           dataSource={filteredFunctionalities}
           rowKey="id"
           className="executive-table"
+          size="middle"
+          tableLayout="fixed"
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 1460 }}
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>
