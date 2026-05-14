@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -70,9 +70,15 @@ import {
   type ProjectServiceBillingSupportReport,
 } from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
+import {
+  hasMeaningfulEvidenceContent,
+  normalizeEvidenceHtml,
+  stripHtmlToText,
+} from '../utils/evidenceRichText';
 import { readFileAsDataUrl, validateInlineImageFile } from '../utils/uploadValidation';
 
 const { Title, Text, Paragraph } = Typography;
+const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
 
 type AboutViewProps = {
   project: Project;
@@ -83,6 +89,14 @@ const STATUS_META: Record<ProjectStatus, { label: string; color: string }> = {
   [ProjectStatus.PAUSED]: { label: 'Pausado', color: qaPalette.functionalityStatus.inProgress },
   [ProjectStatus.COMPLETED]: { label: 'Completado', color: qaPalette.primary },
 };
+
+function BasicRichTextEditorField(props: React.ComponentProps<typeof BasicRichTextEditor>) {
+  return (
+    <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
+      <BasicRichTextEditor {...props} />
+    </Suspense>
+  );
+}
 
 const BILLING_MODE_OPTIONS: Array<{ label: string; value: ProjectServiceBillingMode }> = [
   { label: 'Mensual', value: 'monthly' },
@@ -452,7 +466,7 @@ function getMeetingParticipantCountLabel(value?: string) {
 }
 
 function getMeetingPreview(value?: string) {
-  const compact = String(value || '')
+  const compact = stripHtmlToText(value)
     .replace(/\s+/g, ' ')
     .trim();
   return compact || 'Sin notas registradas.';
@@ -2204,7 +2218,6 @@ export default function AboutView({ project }: AboutViewProps) {
               members={participantDirectoryMembers}
               valueField="fullName"
               placeholder="Selecciona participantes base del proyecto"
-              className="rounded-2xl"
               loading={isParticipantDirectoryLoading}
             />
           </Form.Item>
@@ -2286,7 +2299,6 @@ export default function AboutView({ project }: AboutViewProps) {
               onChange={event => setMeetingSearchTerm(event.target.value)}
               prefix={<SearchOutlined className="text-slate-400" />}
               placeholder="Buscar por título o palabras dentro de la nota"
-              className="rounded-2xl"
             />
             <DatePicker
               allowClear
@@ -2368,9 +2380,18 @@ export default function AboutView({ project }: AboutViewProps) {
                     </div>
                     <div className="md:col-span-2">
                       <Text strong>Notas:</Text>
-                      <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                        {record.notes || 'Sin notas registradas.'}
-                      </Paragraph>
+                      {hasMeaningfulEvidenceContent(record.notes) ? (
+                        <div
+                          className="qa-rich-text-content mt-2 text-sm leading-7 text-slate-700"
+                          dangerouslySetInnerHTML={{
+                            __html: normalizeEvidenceHtml(record.notes),
+                          }}
+                        />
+                      ) : (
+                        <Paragraph className="!mb-0 !mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                          Sin notas registradas.
+                        </Paragraph>
+                      )}
                     </div>
                     {record.aiSummary ? (
                       <div className="md:col-span-2">
@@ -2471,7 +2492,6 @@ export default function AboutView({ project }: AboutViewProps) {
             extra="Puedes seleccionar miembros existentes o escribir un nombre externo y presionar Enter."
           >
             <ParticipantSelect
-              className="rounded-2xl"
               size="large"
               members={participantDirectoryMembers}
               valueField="fullName"
@@ -2516,10 +2536,17 @@ export default function AboutView({ project }: AboutViewProps) {
                 ) : null}
               </div>
             }
-            rules={[{ required: true, message: 'Agrega el contenido principal de la minuta.' }]}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (hasMeaningfulEvidenceContent(String(value || ''))) return;
+                  throw new Error('Agrega el contenido principal de la minuta.');
+                },
+              },
+            ]}
           >
-            <Input.TextArea
-              rows={6}
+            <BasicRichTextEditorField
+              minHeightClassName="min-h-[180px]"
               className="rounded-2xl"
               placeholder="Acuerdos, decisiones, bloqueos y próximos pasos"
             />

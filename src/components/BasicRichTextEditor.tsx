@@ -17,6 +17,7 @@ type BasicRichTextEditorProps = {
   disabled?: boolean;
   placeholder?: string;
   minHeightClassName?: string;
+  className?: string;
 };
 
 type ToolbarButtonProps = {
@@ -48,6 +49,7 @@ export default function BasicRichTextEditor({
   disabled = false,
   placeholder = 'Escribe aquí...',
   minHeightClassName = 'min-h-[120px]',
+  className,
 }: BasicRichTextEditorProps) {
   const normalizedValue = useMemo(() => normalizeEvidenceHtml(value), [value]);
 
@@ -84,7 +86,7 @@ export default function BasicRichTextEditor({
   }, [editor, normalizedValue]);
 
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${className || ''}`.trim()}>
       <div className="flex flex-wrap gap-2">
         <ToolbarButton
           icon={<BoldOutlined />}
