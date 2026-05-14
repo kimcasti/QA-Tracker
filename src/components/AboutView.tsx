@@ -1168,7 +1168,9 @@ export default function AboutView({ project }: AboutViewProps) {
         aiNextSteps: aiResult.nextSteps || '',
       });
 
-      message.success('La IA mejoró y estructuró la minuta.');
+      message.success(
+        'La IA generó el resumen, decisiones, acciones y próximos pasos de la minuta.',
+      );
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
       console.error('Failed to improve meeting notes with AI:', error);
@@ -2531,11 +2533,12 @@ export default function AboutView({ project }: AboutViewProps) {
                     loading={isImprovingMeetingNotes}
                     className="rounded-2xl border-slate-200 px-4 font-semibold text-violet-700"
                   >
-                    Mejorar nota con IA
+                    Estructurar nota con IA
                   </Button>
                 ) : null}
               </div>
             }
+            extra="La IA no reemplaza las notas originales. Genera un resumen estructurado con decisiones, acciones y próximos pasos."
             rules={[
               {
                 validator: async (_, value) => {
