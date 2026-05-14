@@ -869,7 +869,7 @@ export default function AboutView({ project }: AboutViewProps) {
 
       if (!normalizedSearch) return true;
 
-      const searchableText = [note.title, note.notes]
+      const searchableText = [note.title, stripHtmlToText(note.notes)]
         .map(value => String(value || '').toLocaleLowerCase())
         .join(' ');
 
@@ -2037,7 +2037,7 @@ export default function AboutView({ project }: AboutViewProps) {
                               overlayClassName="max-w-[360px]"
                               title={
                                 <div className="max-w-[360px] whitespace-pre-wrap text-sm leading-6">
-                                  {note.notes?.trim() || 'Sin notas registradas.'}
+                                  {stripHtmlToText(note.notes) || 'Sin notas registradas.'}
                                 </div>
                               }
                             >
