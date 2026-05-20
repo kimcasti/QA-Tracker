@@ -43,10 +43,879 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import { toApiError } from '../config/http';
 import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
-import type { InputRef } from 'antd';
+import type { FormInstance, InputRef } from 'antd';
 import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
 
 const TestCaseManagement = lazy(() => import('./TestCaseManagement'));
+const { Title, Text } = Typography;
+
+type NativeTableFilterState = {
+  module: React.Key[] | null;
+  priority: React.Key[] | null;
+  riskLevel: React.Key[] | null;
+  roles: React.Key[] | null;
+  qaCoverage: React.Key[] | null;
+  status: React.Key[] | null;
+  deliveryUnit: React.Key[] | null;
+};
+
+type SummaryMetricCardProps = {
+  label: string;
+  value: number;
+  valueClassName: string;
+  lgSpan?: number;
+};
+
+type FunctionalityTableTitleProps = {
+  selectedCount: number;
+};
+
+type FunctionalityTableToolbarProps = {
+  functionalitySearch: string;
+  hasActiveFilters: boolean;
+  isViewer: boolean;
+  selectedCount: number;
+  onSearchChange: (value: string) => void;
+  onClearFilters: () => void;
+  onOpenBulkEdit: () => void;
+};
+
+type FunctionalityColumnFilters = NonNullable<ColumnsType<Functionality>[number]['filters']>;
+
+type FunctionalityColumnsConfig = {
+  isViewer: boolean;
+  tableFilters: NativeTableFilterState;
+  nativeModuleFilters: FunctionalityColumnFilters;
+  nativePriorityFilters: FunctionalityColumnFilters;
+  nativeRiskFilters: FunctionalityColumnFilters;
+  nativeRoleFilters: FunctionalityColumnFilters;
+  nativeQaCoverageFilters: FunctionalityColumnFilters;
+  nativeStatusFilters: FunctionalityColumnFilters;
+  onManageTestCases: (record: Functionality) => void;
+  onMarkRecentChange: (record: Functionality) => void;
+  onEdit: (record: Functionality) => void;
+  onDelete: (id: string) => void;
+};
+
+type ImportedFunctionalityRow = Record<string, unknown>;
+
+type SelectOption = {
+  label: string;
+  value: string;
+};
+
+type FunctionalityDeliveryUnitOption = {
+  label: string;
+  value: string;
+};
+
+type FunctionalityEditorFormProps = {
+  form: FormInstance;
+  moduleOptions: SelectOption[];
+  roleOptions: SelectOption[];
+  sprintOptions: SelectOption[];
+  deliveryUnitOptions: FunctionalityDeliveryUnitOption[];
+  priorityOptions: SelectOption[];
+  riskOptions: SelectOption[];
+  statusOptions: SelectOption[];
+  onValuesChange: (changedValues: Record<string, unknown>) => void;
+};
+
+const INITIAL_NATIVE_TABLE_FILTERS: NativeTableFilterState = {
+  module: null,
+  priority: null,
+  riskLevel: null,
+  roles: null,
+  qaCoverage: null,
+  status: null,
+  deliveryUnit: null,
+};
+
+const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
+  [Priority.CRITICAL]: 'text-magenta-600 bg-magenta-50',
+  [Priority.HIGH]: 'text-red-600 bg-red-50',
+  [Priority.MEDIUM]: 'text-orange-600 bg-orange-50',
+  [Priority.LOW]: 'text-green-600 bg-green-50',
+};
+
+const RISK_TEXT_CLASSNAMES: Record<RiskLevel, string> = {
+  [RiskLevel.HIGH]: 'text-red-700',
+  [RiskLevel.MEDIUM]: 'text-amber-700',
+  [RiskLevel.LOW]: 'text-emerald-700',
+};
+
+const STATUS_BADGE_CONFIG: Partial<
+  Record<TestStatus, { bg: string; text: string; dot: string }>
+> = {
+  [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
+  [TestStatus.IN_PROGRESS]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
+  [TestStatus.COMPLETED]: {
+    bg: 'bg-emerald-100',
+    text: 'text-emerald-700',
+    dot: 'bg-emerald-500',
+  },
+  [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
+  [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+};
+
+const FALLBACK_STATUS_BADGE_CONFIG = {
+  bg: 'bg-gray-100',
+  text: 'text-gray-600',
+  dot: 'bg-gray-400',
+};
+
+const FUNCTIONALITY_FORM_INITIAL_VALUES = {
+  status: TestStatus.BACKLOG,
+  priority: Priority.MEDIUM,
+  riskLevel: RiskLevel.MEDIUM,
+  isCore: false,
+  isRegression: false,
+  isSmoke: false,
+};
+
+function validateOptionalUrl(_: unknown, value?: string) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return Promise.resolve();
+
+  try {
+    const parsed = new URL(normalizedValue);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+  } catch {
+    return Promise.reject(new Error('Ingresa una URL válida de Jira.'));
+  }
+
+  return Promise.resolve();
+}
+
+function valuesLooksLikeFunctionalityDuplicate(value?: string) {
+  return String(value || '').toLowerCase().includes('already exists in this project');
+}
+
+function SummaryMetricCard({
+  label,
+  value,
+  valueClassName,
+  lgSpan = 5,
+}: SummaryMetricCardProps) {
+  return (
+    <Col xs={24} sm={12} lg={lgSpan}>
+      <Card className="rounded-2xl shadow-sm border-slate-100">
+        <Text
+          type="secondary"
+          className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+        >
+          {label}
+        </Text>
+        <div className={`text-3xl font-bold mt-1 ${valueClassName}`}>{value}</div>
+      </Card>
+    </Col>
+  );
+}
+
+function FunctionalityEditorForm({
+  form,
+  moduleOptions,
+  roleOptions,
+  sprintOptions,
+  deliveryUnitOptions,
+  priorityOptions,
+  riskOptions,
+  statusOptions,
+  onValuesChange,
+}: FunctionalityEditorFormProps) {
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      className="mt-4"
+      onValuesChange={onValuesChange}
+      initialValues={FUNCTIONALITY_FORM_INITIAL_VALUES}
+    >
+      <Row gutter={20}>
+        <Col span={10}>
+          <Form.Item
+            name="id"
+            label={<span className="font-semibold text-slate-600">ID de Funcionalidad</span>}
+            rules={[{ required: true }]}
+          >
+            <Input placeholder="Ej: AUTH-01" disabled className="h-10 rounded-lg" />
+          </Form.Item>
+        </Col>
+        <Col span={14}>
+          <Form.Item
+            name="module"
+            label={<span className="font-semibold text-slate-600">Módulo</span>}
+            rules={[{ required: true }]}
+          >
+            <Select
+              placeholder="Selecciona un módulo"
+              className="h-10 rounded-lg"
+              options={moduleOptions}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Form.Item
+        name="name"
+        label={<span className="font-semibold text-slate-600">Nombre de la Funcionalidad</span>}
+        rules={[{ required: true }]}
+      >
+        <Input placeholder="Ej: Inicio de sesión con Google" className="h-10 rounded-lg" />
+      </Form.Item>
+
+      <Form.Item
+        name="jiraTaskUrl"
+        label={<span className="font-semibold text-slate-600">Link de tarea Jira</span>}
+        rules={[{ validator: validateOptionalUrl }]}
+      >
+        <Input
+          placeholder="Opcional: https://tuempresa.atlassian.net/browse/PROJ-123"
+          className="h-10 rounded-lg"
+        />
+      </Form.Item>
+
+      <Form.Item
+        name="roles"
+        label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}
+        rules={[{ required: true }]}
+      >
+        <Select
+          mode="multiple"
+          placeholder="Selecciona roles"
+          className="executive-select"
+          options={roleOptions}
+        />
+      </Form.Item>
+
+      <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
+        <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
+          <Form.Item name="isCore" valuePropName="checked" noStyle>
+            <Checkbox>Es Core</Checkbox>
+          </Form.Item>
+          <Form.Item name="isRegression" valuePropName="checked" noStyle>
+            <Checkbox>Aplica a Regresión</Checkbox>
+          </Form.Item>
+          <Form.Item name="isSmoke" valuePropName="checked" noStyle>
+            <Checkbox>Aplica a Smoke</Checkbox>
+          </Form.Item>
+        </div>
+      </Form.Item>
+
+      <Row gutter={20}>
+        <Col span={12}>
+          <Form.Item
+            name="priority"
+            label={<span className="font-semibold text-slate-600">Prioridad</span>}
+            rules={[{ required: true }]}
+          >
+            <Select className="h-10 rounded-lg" options={priorityOptions} />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            name="riskLevel"
+            label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>}
+            rules={[{ required: true }]}
+          >
+            <Select className="h-10 rounded-lg" options={riskOptions} />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={20}>
+        <Col span={12}>
+          <Form.Item
+            name="sprint"
+            label={<span className="font-semibold text-slate-600">Sprint</span>}
+            rules={[{ required: true }]}
+          >
+            <Select
+              placeholder="Selecciona un sprint"
+              className="h-10 rounded-lg"
+              options={sprintOptions}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            name="deliveryUnitId"
+            label={<span className="font-semibold text-slate-600">Unidad de Entrega</span>}
+          >
+            <Select
+              allowClear
+              placeholder="Selecciona una unidad configurada"
+              className="h-10 rounded-lg"
+              options={deliveryUnitOptions}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={20}>
+        <Col span={12}>
+          <Form.Item
+            name="status"
+            label={<span className="font-semibold text-slate-600">Estado Actual</span>}
+            rules={[{ required: true }]}
+          >
+            <Select className="h-10 rounded-lg" options={statusOptions} />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            name="deliveryDate"
+            label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>}
+            rules={[{ required: true }]}
+          >
+            <Input type="date" className="h-10 rounded-lg" />
+          </Form.Item>
+        </Col>
+      </Row>
+    </Form>
+  );
+}
+
+function FunctionalityTableTitle({ selectedCount }: FunctionalityTableTitleProps) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-3">
+          <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
+          {selectedCount > 0 && (
+            <Tag
+              color="blue"
+              className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold"
+            >
+              {selectedCount} seleccionadas
+            </Tag>
+          )}
+        </div>
+        <span className="text-xs text-slate-400">
+          Usa los filtros nativos en los encabezados de la tabla.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function FunctionalityTableToolbar({
+  functionalitySearch,
+  hasActiveFilters,
+  isViewer,
+  selectedCount,
+  onSearchChange,
+  onClearFilters,
+  onOpenBulkEdit,
+}: FunctionalityTableToolbarProps) {
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <Input.Search
+        allowClear
+        placeholder="Buscar por funcionalidad"
+        value={functionalitySearch}
+        onChange={event => onSearchChange(event.target.value)}
+        className="w-[260px]"
+      />
+      <Button
+        onClick={onClearFilters}
+        disabled={!hasActiveFilters && !functionalitySearch.trim()}
+        className="rounded-lg h-9 px-4 text-slate-500"
+      >
+        Limpiar filtros
+      </Button>
+      {!isViewer && selectedCount > 0 && (
+        <Button
+          onClick={onOpenBulkEdit}
+          className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+        >
+          <EditOutlined /> Edición Masiva
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function renderTruncatedText(
+  value: string | undefined,
+  className = 'block truncate text-slate-700',
+) {
+  const content = String(value || 'N/A');
+
+  return (
+    <Tooltip title={content}>
+      <span className={className}>{content}</span>
+    </Tooltip>
+  );
+}
+
+function getFunctionalityMetrics(functionalities: Functionality[]) {
+  return {
+    total: functionalities.length,
+    completed: functionalities.filter(f => f.status === TestStatus.COMPLETED).length,
+    inProgress: functionalities.filter(f => f.status === TestStatus.IN_PROGRESS).length,
+    backlog: functionalities.filter(f => f.status === TestStatus.BACKLOG).length,
+    mvp: functionalities.filter(f => f.status === TestStatus.MVP).length,
+  };
+}
+
+function getCoverageTags(record: Functionality) {
+  return [
+    record.isCore
+      ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' }
+      : null,
+    record.isRegression
+      ? {
+          key: 'regression',
+          className: 'bg-purple-50 text-purple-700',
+          label: 'Regresión',
+        }
+      : null,
+    record.isSmoke
+      ? { key: 'smoke', className: 'bg-orange-50 text-orange-700', label: 'Smoke' }
+      : null,
+    record.lastFunctionalChangeAt
+      ? {
+          key: 'recent-change',
+          className: 'bg-sky-50 text-sky-700',
+          label: 'Cambio reciente',
+        }
+      : null,
+  ].filter(Boolean) as Array<{ key: string; className: string; label: string }>;
+}
+
+function getImportedFieldValue(item: ImportedFunctionalityRow, keys: string[]) {
+  for (const key of keys) {
+    const value = item[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeImportedStatus(value: unknown): TestStatus {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'completado' || normalized === 'completed') return TestStatus.COMPLETED;
+  if (normalized === 'fallido' || normalized === 'failed') return TestStatus.FAILED;
+  if (
+    normalized === 'en progreso' ||
+    normalized === 'in progress' ||
+    normalized === 'in_progress'
+  ) {
+    return TestStatus.IN_PROGRESS;
+  }
+  if (normalized === 'mvp') return TestStatus.MVP;
+  if (
+    normalized === 'post mvp' ||
+    normalized === 'post-mvp' ||
+    normalized === 'post_mvp'
+  ) {
+    return TestStatus.POST_MVP;
+  }
+
+  return TestStatus.BACKLOG;
+}
+
+function normalizeImportedPriority(value: unknown): Priority {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'critical' || normalized === 'critico' || normalized === 'crítico') {
+    return Priority.CRITICAL;
+  }
+  if (normalized === 'high' || normalized === 'alto') return Priority.HIGH;
+  if (normalized === 'low' || normalized === 'bajo') return Priority.LOW;
+
+  return Priority.MEDIUM;
+}
+
+function normalizeImportedRiskLevel(value: unknown): RiskLevel {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    normalized === 'high' ||
+    normalized === 'alto riesgo' ||
+    normalized === 'riesgo alto'
+  ) {
+    return RiskLevel.HIGH;
+  }
+  if (
+    normalized === 'low' ||
+    normalized === 'bajo riesgo' ||
+    normalized === 'riesgo bajo'
+  ) {
+    return RiskLevel.LOW;
+  }
+
+  return RiskLevel.MEDIUM;
+}
+
+function parseBooleanLike(value: unknown) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  return normalized === 'true' || normalized === 'sí' || normalized === 'si' || normalized === 'yes';
+}
+
+function mapImportedRowsToFunctionalities(
+  importedData: ImportedFunctionalityRow[],
+  projectId: string | undefined,
+) {
+  return importedData.map((item, index) => {
+    const rawRoles = getImportedFieldValue(item, ['roles', 'Roles', 'Roles Autorizados']);
+    const roles = Array.isArray(rawRoles)
+      ? rawRoles
+      : String(rawRoles ?? '')
+          .split(',')
+          .map((role: string) => role.trim())
+          .filter(Boolean);
+
+    return {
+      id:
+        String(getImportedFieldValue(item, ['id', 'ID', 'Code', 'Código']) ?? '').trim() ||
+        `IMP-${Date.now()}-${index}`,
+      projectId: projectId || '',
+      module:
+        String(getImportedFieldValue(item, ['module', 'Module', 'Módulo', 'Modulo']) ?? '').trim() ||
+        'Importado',
+      name:
+        String(
+          getImportedFieldValue(item, [
+            'name',
+            'Name',
+            'Funcionalidad',
+            'Nombre de la Funcionalidad',
+          ]) ?? '',
+        ).trim() || 'Sin nombre',
+      jiraTaskUrl: String(
+        getImportedFieldValue(item, ['jiraTaskUrl', 'Jira', 'Jira URL', 'Link de tarea Jira']) ??
+          '',
+      ).trim(),
+      roles: roles.length > 0 ? roles : ['Todos'],
+      testTypes: [TestType.FUNCTIONAL],
+      isCore: parseBooleanLike(item.isCore ?? item['Core'] ?? item['Es Core']),
+      isRegression: parseBooleanLike(item.isRegression ?? item['Regresión'] ?? item['Regresion']),
+      isSmoke: parseBooleanLike(item.isSmoke ?? item['Smoke']),
+      lastFunctionalChangeAt: String(
+        item.lastFunctionalChangeAt ?? item['Último Cambio Funcional'] ?? '',
+      ),
+      deliveryDate:
+        String(
+          getImportedFieldValue(item, ['deliveryDate', 'Fecha Entrega', 'Fecha de Entrega']) ?? '',
+        ).trim() || new Date().toISOString().split('T')[0],
+      status: normalizeImportedStatus(getImportedFieldValue(item, ['status', 'Estado'])),
+      priority: normalizeImportedPriority(getImportedFieldValue(item, ['priority', 'Prioridad'])),
+      riskLevel: normalizeImportedRiskLevel(
+        getImportedFieldValue(item, ['riskLevel', 'Nivel de Riesgo', 'Riesgo']),
+      ),
+      sprint: String(getImportedFieldValue(item, ['sprint', 'Sprint']) ?? '').trim() || undefined,
+    } satisfies Functionality;
+  });
+}
+
+function resolveImportedFunctionalityIds(
+  functionalities: Functionality[],
+  reservedFunctionalities: Array<Pick<Functionality, 'id' | 'module'>>,
+) {
+  const usedIds = new Set(reservedFunctionalities.map(item => item.id));
+
+  return functionalities.map(item => {
+    const hasGeneratedImportId = /^IMP-\d+-\d+$/.test(item.id);
+    const requestedId = item.id.trim();
+    const needsGeneratedId = hasGeneratedImportId || !requestedId || usedIds.has(requestedId);
+    const resolvedId = needsGeneratedId
+      ? buildNextFunctionalityCode(item.module, reservedFunctionalities)
+      : requestedId;
+
+    usedIds.add(resolvedId);
+    reservedFunctionalities.push({ id: resolvedId, module: item.module });
+
+    return {
+      ...item,
+      id: resolvedId,
+    };
+  });
+}
+
+function buildFunctionalityExportData(functionalities: Functionality[]) {
+  return functionalities.map(item => ({
+    ID: item.id || '',
+    Módulo: item.module || '',
+    Funcionalidad: item.name || '',
+    Jira: item.jiraTaskUrl || '',
+    Roles: Array.isArray(item.roles) ? item.roles.join(', ') : '',
+    Core: item.isCore ? 'Sí' : 'No',
+    Regresión: item.isRegression ? 'Sí' : 'No',
+    Smoke: item.isSmoke ? 'Sí' : 'No',
+    'Último Cambio Funcional': item.lastFunctionalChangeAt || '',
+    'Fecha Entrega': item.deliveryDate || '',
+    Sprint: item.sprint || '',
+    Prioridad: item.priority || '',
+    'Nivel de Riesgo': item.riskLevel || '',
+    Estado: item.status || '',
+  }));
+}
+
+function createFunctionalityColumns({
+  isViewer,
+  tableFilters,
+  nativeModuleFilters,
+  nativePriorityFilters,
+  nativeRiskFilters,
+  nativeRoleFilters,
+  nativeQaCoverageFilters,
+  nativeStatusFilters,
+  onManageTestCases,
+  onMarkRecentChange,
+  onEdit,
+  onDelete,
+}: FunctionalityColumnsConfig): ColumnsType<Functionality> {
+  return [
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>
+      ),
+      dataIndex: 'id',
+      key: 'id',
+      width: 110,
+      ellipsis: true,
+      render: (value: string) => (
+        <span className="font-medium tracking-wide text-slate-600 whitespace-nowrap">{value}</span>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          Módulo
+        </span>
+      ),
+      dataIndex: 'module',
+      key: 'module',
+      width: 180,
+      ellipsis: true,
+      filters: nativeModuleFilters,
+      filterSearch: true,
+      filteredValue: tableFilters.module,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.module === String(value),
+      render: (module: string) => renderTruncatedText(module, 'block truncate text-slate-600'),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          Funcionalidad
+        </span>
+      ),
+      dataIndex: 'name',
+      key: 'name',
+      width: 280,
+      ellipsis: true,
+      render: (name: string, record: Functionality) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <Tooltip title={name}>
+            <span className="block truncate font-medium text-slate-700">{name}</span>
+          </Tooltip>
+          {record.jiraTaskUrl ? (
+            <Tooltip title="Abrir tarea en Jira">
+              <a
+                href={record.jiraTaskUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                onClick={event => event.stopPropagation()}
+              >
+                <LinkOutlined className="text-xs" />
+              </a>
+            </Tooltip>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          PRIORIDAD
+        </span>
+      ),
+      dataIndex: 'priority',
+      key: 'priority',
+      width: 118,
+      filters: nativePriorityFilters,
+      filteredValue: tableFilters.priority,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
+      render: (priority: Priority) => (
+        <span
+          className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${PRIORITY_BADGE_CLASSNAMES[priority] || 'text-slate-600 bg-slate-50'}`}
+        >
+          {priority}
+        </span>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          RIESGO
+        </span>
+      ),
+      dataIndex: 'riskLevel',
+      key: 'riskLevel',
+      width: 150,
+      filters: nativeRiskFilters,
+      filteredValue: tableFilters.riskLevel,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
+      render: (risk: RiskLevel) => (
+        <div className="flex items-center gap-1">
+          <ShieldAlert size={14} className={RISK_TEXT_CLASSNAMES[risk] || 'text-slate-400'} />
+          <span className={`text-[12px] font-medium ${RISK_TEXT_CLASSNAMES[risk] || 'text-slate-600'}`}>
+            {risk}
+          </span>
+        </div>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>
+      ),
+      dataIndex: 'roles',
+      key: 'roles',
+      width: 210,
+      ellipsis: true,
+      filters: nativeRoleFilters,
+      filterSearch: true,
+      filteredValue: tableFilters.roles,
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        Array.isArray(record.roles) && record.roles.includes(String(value)),
+      render: (roles: string[]) => (
+        <div className="flex items-start gap-2 text-slate-600 min-w-0">
+          <Users size={16} className="text-slate-400" />
+          {renderTruncatedText(roles?.join(', '), 'block truncate text-sm font-medium text-slate-700')}
+        </div>
+      ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          COBERTURA QA
+        </span>
+      ),
+      key: 'qaCoverage',
+      width: 170,
+      filters: nativeQaCoverageFilters,
+      filteredValue: tableFilters.qaCoverage,
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        (value === 'core' && Boolean(record.isCore)) ||
+        (value === 'regression' && Boolean(record.isRegression)) ||
+        (value === 'smoke' && Boolean(record.isSmoke)) ||
+        (value === 'recent-change' && Boolean(record.lastFunctionalChangeAt)),
+      render: (_: unknown, record: Functionality) => {
+        const tags = getCoverageTags(record);
+        if (tags.length === 0) {
+          return <span className="text-xs text-slate-400">Sin marcar</span>;
+        }
+
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {tags.map(tag => (
+              <span
+                key={tag.key}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border border-transparent whitespace-nowrap ${tag.className}`}
+              >
+                {tag.label}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase whitespace-nowrap">
+          ESTADO DESARR.
+        </span>
+      ),
+      dataIndex: 'status',
+      key: 'status',
+      width: 180,
+      filters: nativeStatusFilters,
+      filteredValue: tableFilters.status,
+      onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
+      render: (status: TestStatus) => {
+        const config = STATUS_BADGE_CONFIG[status] || FALLBACK_STATUS_BADGE_CONFIG;
+
+        return (
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} text-xs font-bold`}
+          >
+            <span className={`w-2 h-2 rounded-full ${config.dot}`} />
+            {status}
+          </div>
+        );
+      },
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          ACCIONES
+        </span>
+      ),
+      key: 'actions',
+      width: isViewer ? 92 : 188,
+      render: (_: unknown, record: Functionality) => (
+        <Space size={8} wrap>
+          <Tooltip title="Gestionar Casos de Prueba">
+            <Button
+              icon={<FileTextOutlined />}
+              onClick={() => onManageTestCases(record)}
+              size="middle"
+              className="rounded-full text-blue-600 border-blue-100 hover:bg-blue-50"
+            />
+          </Tooltip>
+          {!isViewer ? (
+            <>
+              <Tooltip
+                title={
+                  record.lastFunctionalChangeAt
+                    ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
+                    : 'Marcar cambio reciente'
+                }
+              >
+                <Button
+                  icon={<HistoryOutlined />}
+                  onClick={() => onMarkRecentChange(record)}
+                  size="middle"
+                  className="rounded-full text-sky-700 border-sky-100 hover:bg-sky-50"
+                />
+              </Tooltip>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => onEdit(record)}
+                size="middle"
+                className="rounded-full"
+              />
+              <Button
+                icon={<DeleteOutlined />}
+                danger
+                onClick={() => onDelete(record.id)}
+                size="middle"
+                className="rounded-full"
+              />
+            </>
+          ) : null}
+        </Space>
+      ),
+    },
+  ];
+}
 
 export default function FunctionalityList({
   filter,
@@ -55,33 +924,6 @@ export default function FunctionalityList({
   filter?: 'regression' | 'smoke';
   projectId?: string;
 }) {
-  const validateOptionalUrl = async (_: unknown, value?: string) => {
-    const normalizedValue = String(value || '').trim();
-    if (!normalizedValue) return;
-
-    try {
-      const parsed = new URL(normalizedValue);
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new Error('Invalid protocol');
-      }
-    } catch {
-      throw new Error('Ingresa una URL v\u00e1lida de Jira.');
-    }
-  };
-
-  const valuesLooksLikeFunctionalityDuplicate = (value?: string) =>
-    String(value || '').toLowerCase().includes('already exists in this project');
-
-  type NativeTableFilterState = {
-    module: React.Key[] | null;
-    priority: React.Key[] | null;
-    riskLevel: React.Key[] | null;
-    roles: React.Key[] | null;
-    qaCoverage: React.Key[] | null;
-    status: React.Key[] | null;
-    deliveryUnit: React.Key[] | null;
-  };
-
   const { t } = useTranslation();
   const {
     data: functionalitiesData,
@@ -98,15 +940,9 @@ export default function FunctionalityList({
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
 
-  const [tableFilters, setTableFilters] = useState<NativeTableFilterState>({
-    module: null,
-    priority: null,
-    riskLevel: null,
-    roles: null,
-    qaCoverage: null,
-    status: null,
-    deliveryUnit: null,
-  });
+  const [tableFilters, setTableFilters] = useState<NativeTableFilterState>(
+    INITIAL_NATIVE_TABLE_FILTERS,
+  );
   const [functionalitySearch, setFunctionalitySearch] = useState('');
 
   const functionalities = allFunctionalities.filter(f => {
@@ -201,15 +1037,7 @@ export default function FunctionalityList({
   }, [functionalities, functionalitySearch]);
 
   const clearNativeTableFilters = () => {
-    setTableFilters({
-      module: null,
-      priority: null,
-      riskLevel: null,
-      roles: null,
-      qaCoverage: null,
-      status: null,
-      deliveryUnit: null,
-    });
+    setTableFilters(INITIAL_NATIVE_TABLE_FILTERS);
     setFunctionalitySearch('');
   };
 
@@ -225,6 +1053,51 @@ export default function FunctionalityList({
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
+  const moduleOptions = React.useMemo(
+    () => modulesData.map(item => ({ label: item.name, value: item.name })),
+    [modulesData],
+  );
+  const roleOptions = React.useMemo(
+    () => rolesData.map(item => ({ label: item.name, value: item.name })),
+    [rolesData],
+  );
+  const sprintOptions = React.useMemo(
+    () => sprintsData.map(item => ({ label: item.name, value: item.name })),
+    [sprintsData],
+  );
+  const deliveryUnitOptions = React.useMemo(
+    () =>
+      deliveryUnitsData.map(item => ({
+        label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
+        value: item.documentId || item.id,
+      })),
+    [deliveryUnitsData],
+  );
+  const priorityOptions = React.useMemo(
+    () =>
+      Object.values(Priority).map(priority => ({
+        label: labelPriority(priority, t),
+        value: priority,
+      })),
+    [t],
+  );
+  const riskOptions = React.useMemo(
+    () =>
+      Object.values(RiskLevel).map(risk => ({
+        label: labelRisk(risk, t),
+        value: risk,
+      })),
+    [t],
+  );
+  const statusOptions = React.useMemo(
+    () =>
+      Object.values(TestStatus).map(status => ({
+        label: labelTestStatus(status, t),
+        value: status,
+      })),
+    [t],
+  );
+
   // Dynamic Roles State
   const [items, setItems] = useState([
     'Administrador',
@@ -235,19 +1108,6 @@ export default function FunctionalityList({
   ]);
   const [name, setName] = useState('');
   const inputRef = useRef<InputRef>(null);
-
-  const renderTruncatedText = (
-    value: string | undefined,
-    className = 'block truncate text-slate-700',
-  ) => {
-    const content = String(value || 'N/A');
-
-    return (
-      <Tooltip title={content}>
-        <span className={className}>{content}</span>
-      </Tooltip>
-    );
-  };
 
   const onNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setName(event.target.value);
@@ -266,296 +1126,6 @@ export default function FunctionalityList({
       }, 0);
     }
   };
-
-  const columns: ColumnsType<Functionality> = [
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>
-      ),
-      dataIndex: 'id',
-      key: 'id',
-      width: 110,
-      ellipsis: true,
-      render: (value: string) => (
-        <span className="font-medium tracking-wide text-slate-600 whitespace-nowrap">{value}</span>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          Módulo
-        </span>
-      ),
-      dataIndex: 'module',
-      key: 'module',
-      width: 180,
-      ellipsis: true,
-      filters: nativeModuleFilters,
-      filterSearch: true,
-      filteredValue: tableFilters.module,
-      onFilter: (value: boolean | React.Key, record: Functionality) =>
-        record.module === String(value),
-      render: (module: string) => renderTruncatedText(module, 'block truncate text-slate-600'),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          Funcionalidad
-        </span>
-      ),
-      dataIndex: 'name',
-      key: 'name',
-      width: 280,
-      ellipsis: true,
-      render: (name: string, record: Functionality) => (
-        <div className="flex items-center gap-2 min-w-0">
-          <Tooltip title={name}>
-            <span className="block truncate font-medium text-slate-700">{name}</span>
-          </Tooltip>
-          {record.jiraTaskUrl ? (
-            <Tooltip title="Abrir tarea en Jira">
-              <a
-                href={record.jiraTaskUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                onClick={event => event.stopPropagation()}
-              >
-                <LinkOutlined className="text-xs" />
-              </a>
-            </Tooltip>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          PRIORIDAD
-        </span>
-      ),
-      dataIndex: 'priority',
-      key: 'priority',
-      width: 118,
-      filters: nativePriorityFilters,
-      filteredValue: tableFilters.priority,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
-      render: (priority: Priority) => {
-        const colors = {
-          [Priority.CRITICAL]: 'text-magenta-600 bg-magenta-50',
-          [Priority.HIGH]: 'text-red-600 bg-red-50',
-          [Priority.MEDIUM]: 'text-orange-600 bg-orange-50',
-          [Priority.LOW]: 'text-green-600 bg-green-50',
-        };
-        return (
-          <span
-            className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${colors[priority] || 'text-slate-600 bg-slate-50'}`}
-          >
-            {priority}
-          </span>
-        );
-      },
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          RIESGO
-        </span>
-      ),
-      dataIndex: 'riskLevel',
-      key: 'riskLevel',
-      width: 150,
-      filters: nativeRiskFilters,
-      filteredValue: tableFilters.riskLevel,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
-      render: (risk: RiskLevel) => {
-        const colors = {
-          [RiskLevel.HIGH]: 'text-red-700',
-          [RiskLevel.MEDIUM]: 'text-amber-700',
-          [RiskLevel.LOW]: 'text-emerald-700',
-        };
-        return (
-          <div className="flex items-center gap-1">
-            <ShieldAlert size={14} className={colors[risk] || 'text-slate-400'} />
-            <span className={`text-[12px] font-medium ${colors[risk] || 'text-slate-600'}`}>
-              {risk}
-            </span>
-          </div>
-        );
-      },
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>
-      ),
-      dataIndex: 'roles',
-      key: 'roles',
-      width: 210,
-      ellipsis: true,
-      filters: nativeRoleFilters,
-      filterSearch: true,
-      filteredValue: tableFilters.roles,
-      onFilter: (value: boolean | React.Key, record: Functionality) =>
-        Array.isArray(record.roles) && record.roles.includes(String(value)),
-      render: (roles: string[]) => (
-        <div className="flex items-start gap-2 text-slate-600 min-w-0">
-          <Users size={16} className="text-slate-400" />
-          {renderTruncatedText(roles?.join(', '), 'block truncate text-sm font-medium text-slate-700')}
-        </div>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          COBERTURA QA
-        </span>
-      ),
-      key: 'qaCoverage',
-      width: 170,
-      filters: nativeQaCoverageFilters,
-      filteredValue: tableFilters.qaCoverage,
-      onFilter: (value: boolean | React.Key, record: Functionality) =>
-        (value === 'core' && Boolean(record.isCore)) ||
-        (value === 'regression' && Boolean(record.isRegression)) ||
-        (value === 'smoke' && Boolean(record.isSmoke)) ||
-        (value === 'recent-change' && Boolean(record.lastFunctionalChangeAt)),
-      render: (_: unknown, record: Functionality) => {
-        const tags = [
-          record.isCore
-            ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' }
-            : null,
-          record.isRegression
-            ? {
-                key: 'regression',
-                className: 'bg-purple-50 text-purple-700',
-                label: 'Regresión',
-              }
-            : null,
-          record.isSmoke
-            ? { key: 'smoke', className: 'bg-orange-50 text-orange-700', label: 'Smoke' }
-            : null,
-          record.lastFunctionalChangeAt
-            ? {
-                key: 'recent-change',
-                className: 'bg-sky-50 text-sky-700',
-                label: 'Cambio reciente',
-              }
-            : null,
-        ].filter(Boolean) as Array<{ key: string; className: string; label: string }>;
-
-        if (tags.length === 0) {
-          return <span className="text-xs text-slate-400">Sin marcar</span>;
-        }
-
-        return (
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map(tag => (
-              <span
-                key={tag.key}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border border-transparent whitespace-nowrap ${tag.className}`}
-              >
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        );
-      },
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase whitespace-nowrap">
-          ESTADO DESARR.
-        </span>
-      ),
-      dataIndex: 'status',
-      key: 'status',
-      width: 180,
-      filters: nativeStatusFilters,
-      filteredValue: tableFilters.status,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
-      render: (status: TestStatus) => {
-        const config = {
-          [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
-          [TestStatus.IN_PROGRESS]: {
-            bg: 'bg-blue-100',
-            text: 'text-blue-700',
-            dot: 'bg-blue-500',
-          },
-          [TestStatus.COMPLETED]: {
-            bg: 'bg-emerald-100',
-            text: 'text-emerald-700',
-            dot: 'bg-emerald-500',
-          },
-          [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-          [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
-        }[status] || { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
-
-        return (
-          <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} text-xs font-bold`}
-          >
-            <span className={`w-2 h-2 rounded-full ${config.dot}`} />
-            {status}
-          </div>
-        );
-      },
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          ACCIONES
-        </span>
-      ),
-      key: 'actions',
-      width: isViewer ? 92 : 188,
-      render: (_: any, record: Functionality) => (
-        <Space size={8} wrap>
-          <Tooltip title="Gestionar Casos de Prueba">
-            <Button
-              icon={<FileTextOutlined />}
-              onClick={() => {
-                setSelectedFunctionality(record);
-                setIsTestCaseModalOpen(true);
-              }}
-              size="middle"
-              className="rounded-full text-blue-600 border-blue-100 hover:bg-blue-50"
-            />
-          </Tooltip>
-          {!isViewer ? (
-            <>
-              <Tooltip
-                title={
-                  record.lastFunctionalChangeAt
-                    ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
-                    : 'Marcar cambio reciente'
-                }
-              >
-                <Button
-                  icon={<HistoryOutlined />}
-                  onClick={() => handleMarkRecentChange(record)}
-                  size="middle"
-                  className="rounded-full text-sky-700 border-sky-100 hover:bg-sky-50"
-                />
-              </Tooltip>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => handleEdit(record)}
-                size="middle"
-                className="rounded-full"
-              />
-              <Button
-                icon={<DeleteOutlined />}
-                danger
-                onClick={() => handleDelete(record.id)}
-                size="middle"
-                className="rounded-full"
-              />
-            </>
-          ) : null}
-        </Space>
-      ),
-    },
-  ];
 
   React.useEffect(() => {
     if (!isModalOpen || editingFunc || !projectId || !selectedModule) {
@@ -605,7 +1175,7 @@ export default function FunctionalityList({
 
   const handleDelete = (id: string) => {
     Modal.confirm({
-      title: '¿Estás seguro de eliminar esta funcionalidad?',
+      title: '¿Está seguro de eliminar esta funcionalidad?',
       onOk: () => deleteFunc(id),
       okButtonProps: { danger: true },
       centered: true,
@@ -723,6 +1293,40 @@ export default function FunctionalityList({
     });
   };
 
+  const columns = React.useMemo(
+    () =>
+      createFunctionalityColumns({
+        isViewer,
+        tableFilters,
+        nativeModuleFilters,
+        nativePriorityFilters,
+        nativeRiskFilters,
+        nativeRoleFilters,
+        nativeQaCoverageFilters,
+        nativeStatusFilters,
+        onManageTestCases: record => {
+          setSelectedFunctionality(record);
+          setIsTestCaseModalOpen(true);
+        },
+        onMarkRecentChange: handleMarkRecentChange,
+        onEdit: handleEdit,
+        onDelete: handleDelete,
+      }),
+    [
+      isViewer,
+      tableFilters,
+      nativeModuleFilters,
+      nativePriorityFilters,
+      nativeRiskFilters,
+      nativeRoleFilters,
+      nativeQaCoverageFilters,
+      nativeStatusFilters,
+      handleMarkRecentChange,
+      handleEdit,
+      handleDelete,
+    ],
+  );
+
   const handleImport = (file: File) => {
     const reader = new FileReader();
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
@@ -765,169 +1369,20 @@ export default function FunctionalityList({
           return;
         }
 
-        const getFirstValue = (item: Record<string, unknown>, keys: string[]) => {
-          for (const key of keys) {
-            const value = item[key];
-            if (value !== undefined && value !== null && value !== '') {
-              return value;
-            }
-          }
-
-          return undefined;
-        };
-
-        const normalizeStatus = (value: unknown): TestStatus => {
-          const normalized = String(value ?? '')
-            .trim()
-            .toLowerCase();
-
-          if (normalized === 'completado' || normalized === 'completed') return TestStatus.COMPLETED;
-          if (normalized === 'fallido' || normalized === 'failed') return TestStatus.FAILED;
-          if (
-            normalized === 'en progreso' ||
-            normalized === 'in progress' ||
-            normalized === 'in_progress'
-          ) {
-            return TestStatus.IN_PROGRESS;
-          }
-          if (normalized === 'mvp') return TestStatus.MVP;
-          if (
-            normalized === 'post mvp' ||
-            normalized === 'post-mvp' ||
-            normalized === 'post_mvp'
-          ) {
-            return TestStatus.POST_MVP;
-          }
-
-          return TestStatus.BACKLOG;
-        };
-
-        const normalizePriority = (value: unknown): Priority => {
-          const normalized = String(value ?? '')
-            .trim()
-            .toLowerCase();
-
-          if (normalized === 'critical' || normalized === 'critico' || normalized === 'crÃ­tico') {
-            return Priority.CRITICAL;
-          }
-          if (normalized === 'high' || normalized === 'alto') return Priority.HIGH;
-          if (normalized === 'low' || normalized === 'bajo') return Priority.LOW;
-
-          return Priority.MEDIUM;
-        };
-
-        const normalizeRiskLevel = (value: unknown): RiskLevel => {
-          const normalized = String(value ?? '')
-            .trim()
-            .toLowerCase();
-
-          if (
-            normalized === 'high' ||
-            normalized === 'alto riesgo' ||
-            normalized === 'riesgo alto'
-          ) {
-            return RiskLevel.HIGH;
-          }
-          if (
-            normalized === 'low' ||
-            normalized === 'bajo riesgo' ||
-            normalized === 'riesgo bajo'
-          ) {
-            return RiskLevel.LOW;
-          }
-
-          return RiskLevel.MEDIUM;
-        };
-
-        const formattedFuncs: Functionality[] = importedData.map((item, index) => {
-          const rawRoles = getFirstValue(item, ['roles', 'Roles', 'Roles Autorizados']);
-          const roles = Array.isArray(rawRoles)
-            ? rawRoles
-            : String(rawRoles ?? '')
-                .split(',')
-                .map((r: string) => r.trim())
-                .filter(Boolean);
-
-          const parseBooleanLike = (value: unknown) => {
-            const normalized = String(value ?? '')
-              .trim()
-              .toLowerCase();
-
-            return (
-              normalized === 'true' ||
-              normalized === 'sí' ||
-              normalized === 'si' ||
-              normalized === 'yes'
-            );
-          };
-
-          return {
-            id:
-              String(getFirstValue(item, ['id', 'ID', 'Code', 'CÃ³digo']) ?? '').trim() ||
-              `IMP-${Date.now()}-${index}`,
-            projectId: projectId || '',
-            module:
-              String(getFirstValue(item, ['module', 'Module', 'MÃ³dulo', 'Modulo']) ?? '').trim() ||
-              'Importado',
-            name:
-              String(
-                getFirstValue(item, [
-                  'name',
-                  'Name',
-                  'Funcionalidad',
-                  'Nombre de la Funcionalidad',
-                ]) ?? '',
-              ).trim() || 'Sin nombre',
-            jiraTaskUrl: String(
-              getFirstValue(item, ['jiraTaskUrl', 'Jira', 'Jira URL', 'Link de tarea Jira']) ??
-                '',
-            ).trim(),
-            roles: roles.length > 0 ? roles : ['Todos'],
-            testTypes: [TestType.FUNCTIONAL],
-            isCore: parseBooleanLike(item.isCore ?? item['Core'] ?? item['Es Core']),
-            isRegression: parseBooleanLike(
-              item.isRegression ?? item['Regresión'] ?? item['Regresion'],
-            ),
-            isSmoke: parseBooleanLike(item.isSmoke ?? item['Smoke']),
-            lastFunctionalChangeAt:
-              item.lastFunctionalChangeAt || item['Último Cambio Funcional'] || '',
-            deliveryDate:
-              String(
-                getFirstValue(item, ['deliveryDate', 'Fecha Entrega', 'Fecha de Entrega']) ?? '',
-              ).trim() || new Date().toISOString().split('T')[0],
-            status: normalizeStatus(getFirstValue(item, ['status', 'Estado'])),
-            priority: normalizePriority(getFirstValue(item, ['priority', 'Prioridad'])),
-            riskLevel: normalizeRiskLevel(
-              getFirstValue(item, ['riskLevel', 'Nivel de Riesgo', 'Riesgo']),
-            ),
-            sprint: String(getFirstValue(item, ['sprint', 'Sprint']) ?? '').trim() || undefined,
-          };
-        });
+        const formattedFuncs = mapImportedRowsToFunctionalities(
+          importedData as ImportedFunctionalityRow[],
+          projectId,
+        );
 
         const reservedFunctionalities: Array<Pick<Functionality, 'id' | 'module'>> =
           allFunctionalities.map(item => ({
             id: item.id,
             module: item.module,
           }));
-        const usedIds = new Set(reservedFunctionalities.map(item => item.id));
-
-        const normalizedFuncs = formattedFuncs.map(item => {
-          const hasGeneratedImportId = /^IMP-\d+-\d+$/.test(item.id);
-          const requestedId = item.id.trim();
-          const needsGeneratedId =
-            hasGeneratedImportId || !requestedId || usedIds.has(requestedId);
-          const resolvedId = needsGeneratedId
-            ? buildNextFunctionalityCode(item.module, reservedFunctionalities)
-            : requestedId;
-
-          usedIds.add(resolvedId);
-          reservedFunctionalities.push({ id: resolvedId, module: item.module });
-
-          return {
-            ...item,
-            id: resolvedId,
-          };
-        });
+        const normalizedFuncs = resolveImportedFunctionalityIds(
+          formattedFuncs,
+          reservedFunctionalities,
+        );
 
         const count = await bulkAdd(normalizedFuncs);
         message.success(`Se importaron ${count} funcionalidades correctamente.`);
@@ -958,22 +1413,7 @@ export default function FunctionalityList({
         return;
       }
 
-      const exportData = functionalities.map(f => ({
-        ID: f.id || '',
-        Módulo: f.module || '',
-        Funcionalidad: f.name || '',
-        Jira: f.jiraTaskUrl || '',
-        Roles: Array.isArray(f.roles) ? f.roles.join(', ') : '',
-        Core: f.isCore ? 'Sí' : 'No',
-        Regresión: f.isRegression ? 'Sí' : 'No',
-        Smoke: f.isSmoke ? 'Sí' : 'No',
-        'Último Cambio Funcional': f.lastFunctionalChangeAt || '',
-        'Fecha Entrega': f.deliveryDate || '',
-        Sprint: f.sprint || '',
-        Prioridad: f.priority || '',
-        'Nivel de Riesgo': f.riskLevel || '',
-        Estado: f.status || '',
-      }));
+      const exportData = buildFunctionalityExportData(functionalities);
 
       const XLSX = await import('xlsx');
       const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -1005,22 +1445,19 @@ export default function FunctionalityList({
     }
   };
 
-  const handleValuesChange = (changedValues: any) => {
+  const handleValuesChange = (changedValues: Record<string, unknown>) => {
     if (!editingFunc && changedValues.module) {
-      void syncNextFunctionalityId(changedValues.module);
+      void syncNextFunctionalityId(String(changedValues.module));
     }
   };
 
-  const { Title, Text } = Typography;
-
-  // Metrics Calculation
-  const totalFuncs = allFunctionalities.length;
-  const completedFuncs = allFunctionalities.filter(f => f.status === TestStatus.COMPLETED).length;
-  const inProgressFuncs = allFunctionalities.filter(
-    f => f.status === TestStatus.IN_PROGRESS,
-  ).length;
-  const backlogFuncs = allFunctionalities.filter(f => f.status === TestStatus.BACKLOG).length;
-  const mvpFuncs = allFunctionalities.filter(f => f.status === TestStatus.MVP).length;
+  const {
+    total: totalFuncs,
+    completed: completedFuncs,
+    inProgress: inProgressFuncs,
+    backlog: backlogFuncs,
+    mvp: mvpFuncs,
+  } = React.useMemo(() => getFunctionalityMetrics(allFunctionalities), [allFunctionalities]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -1052,11 +1489,7 @@ export default function FunctionalityList({
                   setEditingFunc(null);
                   setNextFunctionalityIdPreview('');
                   form.resetFields();
-                  form.setFieldsValue({
-                    status: TestStatus.BACKLOG,
-                    priority: Priority.MEDIUM,
-                    riskLevel: RiskLevel.MEDIUM,
-                  });
+                  form.setFieldsValue(FUNCTIONALITY_FORM_INITIAL_VALUES);
                   setIsModalOpen(true);
                 }}
                 className="rounded-lg h-10 px-6"
@@ -1070,111 +1503,35 @@ export default function FunctionalityList({
 
       {/* Metrics Cards */}
       <Row gutter={[20, 20]}>
-        <Col xs={24} sm={12} lg={4}>
-          <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text
-              type="secondary"
-              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
-            >
-              Total
-            </Text>
-            <div className="text-3xl font-bold mt-1 text-slate-800">{totalFuncs}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text
-              type="secondary"
-              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
-            >
-              Completadas
-            </Text>
-            <div className="text-3xl font-bold mt-1 text-emerald-600">{completedFuncs}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text
-              type="secondary"
-              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
-            >
-              En Desarrollo
-            </Text>
-            <div className="text-3xl font-bold mt-1 text-blue-600">{inProgressFuncs}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text
-              type="secondary"
-              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
-            >
-              Backlog
-            </Text>
-            <div className="text-3xl font-bold mt-1 text-slate-500">{backlogFuncs}</div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card className="rounded-2xl shadow-sm border-slate-100">
-            <Text
-              type="secondary"
-              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
-            >
-              MVP
-            </Text>
-            <div className="text-3xl font-bold mt-1 text-amber-600">{mvpFuncs}</div>
-          </Card>
-        </Col>
+        <SummaryMetricCard label="Total" value={totalFuncs} valueClassName="text-slate-800" lgSpan={4} />
+        <SummaryMetricCard
+          label="Completadas"
+          value={completedFuncs}
+          valueClassName="text-emerald-600"
+        />
+        <SummaryMetricCard
+          label="En Desarrollo"
+          value={inProgressFuncs}
+          valueClassName="text-blue-600"
+        />
+        <SummaryMetricCard label="Backlog" value={backlogFuncs} valueClassName="text-slate-500" />
+        <SummaryMetricCard label="MVP" value={mvpFuncs} valueClassName="text-amber-600" />
       </Row>
 
       {/* Table Card */}
       <Card
         className="rounded-2xl shadow-sm border-slate-100"
-        title={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-3">
-                <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
-                {selectedRowKeys.length > 0 && (
-                  <Tag
-                    color="blue"
-                    className="rounded-full px-3 m-0 border-none bg-blue-50 text-blue-600 font-bold"
-                  >
-                    {selectedRowKeys.length} seleccionadas
-                  </Tag>
-                )}
-              </div>
-              <span className="text-xs text-slate-400">
-                Usa los filtros nativos en los encabezados de la tabla.
-              </span>
-            </div>
-          </div>
-        }
+        title={<FunctionalityTableTitle selectedCount={selectedRowKeys.length} />}
         extra={
-          <div className="flex items-center justify-end gap-2">
-            <Input.Search
-              allowClear
-              placeholder="Buscar por funcionalidad"
-              value={functionalitySearch}
-              onChange={event => setFunctionalitySearch(event.target.value)}
-              className="w-[260px]"
-            />
-            <Button
-              onClick={clearNativeTableFilters}
-              disabled={!hasActiveNativeTableFilters && !functionalitySearch.trim()}
-              className="rounded-lg h-9 px-4 text-slate-500"
-            >
-              Limpiar filtros
-            </Button>
-            {!isViewer && selectedRowKeys.length > 0 && (
-              <Button
-                onClick={() => setIsBulkModalOpen(true)}
-                className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
-              >
-                <EditOutlined /> Edición Masiva
-              </Button>
-            )}
-          </div>
+          <FunctionalityTableToolbar
+            functionalitySearch={functionalitySearch}
+            onSearchChange={value => setFunctionalitySearch(value)}
+            onClearFilters={clearNativeTableFilters}
+            hasActiveFilters={hasActiveNativeTableFilters}
+            isViewer={isViewer}
+            selectedCount={selectedRowKeys.length}
+            onOpenBulkEdit={() => setIsBulkModalOpen(true)}
+          />
         }
       >
         <Table
@@ -1214,183 +1571,17 @@ export default function FunctionalityList({
         className="executive-modal"
         okButtonProps={{ disabled: isViewer }}
       >
-        <Form
+        <FunctionalityEditorForm
           form={form}
-          layout="vertical"
-          className="mt-4"
+          moduleOptions={moduleOptions}
+          roleOptions={roleOptions}
+          sprintOptions={sprintOptions}
+          deliveryUnitOptions={deliveryUnitOptions}
+          priorityOptions={priorityOptions}
+          riskOptions={riskOptions}
+          statusOptions={statusOptions}
           onValuesChange={handleValuesChange}
-          initialValues={{
-            status: TestStatus.BACKLOG,
-            priority: Priority.MEDIUM,
-            riskLevel: RiskLevel.MEDIUM,
-            isCore: false,
-            isRegression: false,
-            isSmoke: false,
-          }}
-        >
-          <Row gutter={20}>
-            <Col span={10}>
-              <Form.Item
-                name="id"
-                label={<span className="font-semibold text-slate-600">ID de Funcionalidad</span>}
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="Ej: AUTH-01" disabled className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={14}>
-              <Form.Item
-                name="module"
-                label={<span className="font-semibold text-slate-600">Módulo</span>}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder="Selecciona un módulo"
-                  className="h-10 rounded-lg"
-                  options={modulesData.map(m => ({ label: m.name, value: m.name }))}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="name"
-            label={<span className="font-semibold text-slate-600">Nombre de la Funcionalidad</span>}
-            rules={[{ required: true }]}
-          >
-            <Input placeholder="Ej: Inicio de sesión con Google" className="h-10 rounded-lg" />
-          </Form.Item>
-
-          <Form.Item
-            name="jiraTaskUrl"
-            label={<span className="font-semibold text-slate-600">Link de tarea Jira</span>}
-            rules={[{ validator: validateOptionalUrl }]}
-          >
-            <Input
-              placeholder="Opcional: https://tuempresa.atlassian.net/browse/PROJ-123"
-              className="h-10 rounded-lg"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="roles"
-            label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}
-            rules={[{ required: true }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder="Selecciona roles"
-              className="executive-select"
-              options={rolesData.map(item => ({ label: item.name, value: item.name }))}
-            />
-          </Form.Item>
-
-          <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
-            <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
-              <Form.Item name="isCore" valuePropName="checked" noStyle>
-                <Checkbox>Es Core</Checkbox>
-              </Form.Item>
-              <Form.Item name="isRegression" valuePropName="checked" noStyle>
-                <Checkbox>Aplica a Regresión</Checkbox>
-              </Form.Item>
-              <Form.Item name="isSmoke" valuePropName="checked" noStyle>
-                <Checkbox>Aplica a Smoke</Checkbox>
-              </Form.Item>
-            </div>
-          </Form.Item>
-
-          <Row gutter={20}>
-            <Col span={12}>
-              <Form.Item
-                name="priority"
-                label={<span className="font-semibold text-slate-600">Prioridad</span>}
-                rules={[{ required: true }]}
-              >
-                <Select className="h-10 rounded-lg">
-                  {Object.values(Priority).map(p => (
-                    <Select.Option key={p} value={p}>
-                      {labelPriority(p, t)}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="riskLevel"
-                label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>}
-                rules={[{ required: true }]}
-              >
-                <Select className="h-10 rounded-lg">
-                  {Object.values(RiskLevel).map(r => (
-                    <Select.Option key={r} value={r}>
-                      {labelRisk(r, t)}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={20}>
-            <Col span={12}>
-              <Form.Item
-                name="sprint"
-                label={<span className="font-semibold text-slate-600">Sprint</span>}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder="Selecciona un sprint"
-                  className="h-10 rounded-lg"
-                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="deliveryUnitId"
-                label={<span className="font-semibold text-slate-600">Unidad de Entrega</span>}
-              >
-                <Select
-                  allowClear
-                  placeholder="Selecciona una unidad configurada"
-                  className="h-10 rounded-lg"
-                  options={deliveryUnitsData.map(item => ({
-                    label: item.periodLabel ? `${item.name} - ${item.periodLabel}` : item.name,
-                    value: item.documentId || item.id,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={20}>
-            <Col span={12}>
-              <Form.Item
-                name="status"
-                label={<span className="font-semibold text-slate-600">Estado Actual</span>}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  className="h-10 rounded-lg"
-                  options={Object.values(TestStatus).map(v => ({
-                    label: labelTestStatus(v, t),
-                    value: v,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="deliveryDate"
-                label={<span className="font-semibold text-slate-600">Fecha de Entrega</span>}
-                rules={[{ required: true }]}
-              >
-                <Input type="date" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
+        />
       </Modal>
 
       <Modal
@@ -1494,3 +1685,4 @@ export default function FunctionalityList({
     </div>
   );
 }
+

@@ -12,6 +12,7 @@ export type SeededQaFlow = {
   password: string;
   projectKey: string;
   projectName: string;
+  testRunTitle: string;
   regressionCode: string;
   smokeCode: string;
   generalBugTitle: string;
@@ -107,6 +108,8 @@ export async function createSeededQaFlow(): Promise<SeededQaFlow> {
         username: `pw_${suffix}`,
         email: `pw_${suffix}@mailinator.com`,
         password,
+        passwordConfirmation: password,
+        contactNumber: `300${suffix}`,
         organizationName: `Playwright Org ${suffix}`,
       },
     });
@@ -237,11 +240,12 @@ export async function createSeededQaFlow(): Promise<SeededQaFlow> {
   const selectedCases = [cases[1], cases[2]];
   const selectedFunctionalities = [...new Set(selectedCases.map((item) => item.functionality.code))];
 
+  const testRunTitle = 'Playwright Happy Path';
   const testRun = await createDocument<{ documentId: string }>(
     '/api/test-runs',
     token,
     {
-      title: 'Playwright Happy Path',
+      title: testRunTitle,
       description: 'Seleccion parcial para UI',
       executionDate: TODAY,
       status: 'final',
@@ -503,6 +507,7 @@ export async function createSeededQaFlow(): Promise<SeededQaFlow> {
     password,
     projectKey,
     projectName,
+    testRunTitle,
     regressionCode,
     smokeCode,
     generalBugTitle,

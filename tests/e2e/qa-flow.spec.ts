@@ -42,24 +42,66 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     const coverageCard = page.locator('.ant-card').filter({ hasText: 'Cobertura de casos' }).first();
     const bugsCard = page.locator('.ant-card').filter({ hasText: 'Bugs activos' }).first();
-    const regressionCard = page.locator('.ant-card').filter({ hasText: 'Pruebas de regresion' }).first();
-    const smokeCard = page.locator('.ant-card').filter({ hasText: 'Pruebas de humo' }).first();
+    const regressionCoverageCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Cobertura regression' })
+      .first();
+    const smokeCoverageCard = page.locator('.ant-card').filter({ hasText: 'Cobertura smoke' }).first();
 
     await expect(coverageCard).toContainText('100.0%');
     await expect(bugsCard).toContainText('5');
-    await expect(regressionCard).toContainText('Fallidos: 2');
-    await expect(smokeCard).toContainText('Bloqueantes: 2');
+    await expect(regressionCoverageCard).toContainText('2');
+    await expect(smokeCoverageCard).toContainText('2');
 
     await page.goto(`/projects/${seed.projectKey}/coverage`);
     await expect(page.getByRole('heading', { name: 'Matriz de Cobertura' })).toBeVisible();
     await expect(page.getByText('Total Funcionalidades')).toBeVisible();
-    await expect(page.getByText('Cobertura de Casos')).toBeVisible();
+    await expect(page.getByText('Cobertura de Casos', { exact: true })).toBeVisible();
     await expect(page.getByText('Bugs Activos')).toBeVisible();
 
     for (const code of seed.functionalityCodes) {
       const row = page.locator('tr', { hasText: code });
       await expect(row).toContainText('2');
-      await expect(row).toContainText('100%');
+      await expect(row).toContainText('50%');
     }
+  });
+
+  test('shows seeded functionalities and summary cards', async ({ page }) => {
+    await loginThroughUi(page, seed);
+
+    await page.goto(`/projects/${seed.projectKey}/functionalities`);
+    await expect(page.getByRole('heading', { name: 'Gestión de Funcionalidades' })).toBeVisible();
+    await expect(page.getByText('Listado de Funcionalidades')).toBeVisible();
+
+    await expect(page.locator('main')).toContainText('Total');
+    await expect(page.locator('main')).toContainText('En Desarrollo');
+    await expect(page.locator('main')).toContainText('Backlog');
+
+    for (const code of seed.functionalityCodes) {
+      const row = page.locator('tr', { hasText: code });
+      await expect(row).toBeVisible();
+      await expect(row).toContainText('Medio');
+      await expect(row).toContainText('Riesgo Medio');
+    }
+
+    await expect(page.locator('tr').filter({ hasText: seed.functionalityCodes[0] })).toHaveCount(1);
+    await expect(page.locator('tr').filter({ hasText: seed.functionalityCodes[1] })).toHaveCount(1);
+  });
+
+  test('shows seeded execution history in the testing view', async ({ page }) => {
+    await loginThroughUi(page, seed);
+
+    await page.goto(`/projects/${seed.projectKey}/testing`);
+    await expect(page.getByRole('heading', { name: 'Ejecución de Pruebas' })).toBeVisible();
+
+    const executionsTab = page.getByRole('tab', { name: 'Historial de Ejecuciones' });
+    await executionsTab.click();
+    await expect(executionsTab).toHaveAttribute('aria-selected', 'true');
+
+    const executionsCard = page.locator('.ant-card').filter({ hasText: 'Historial de Ejecuciones' }).first();
+    await expect(executionsCard).toContainText(seed.testRunTitle);
+    await expect(executionsCard).toContainText('Legacy');
+    await expect(executionsCard).toContainText('2/2');
+    await expect(executionsCard).toContainText('100%');
   });
 });

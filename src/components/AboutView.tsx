@@ -1337,7 +1337,7 @@ export default function AboutView({ project }: AboutViewProps) {
       key: 'notes',
       render: (value: string) => (
         <Paragraph className="!mb-0 text-sm text-slate-500" ellipsis={{ rows: 2 }}>
-          {highlightSearchMatch(value?.trim() || 'Sin notas registradas.', meetingSearchTerm)}
+          {highlightSearchMatch(getMeetingPreview(value), meetingSearchTerm)}
         </Paragraph>
       ),
     },
