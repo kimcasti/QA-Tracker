@@ -1,4 +1,5 @@
 import type { TestRun, TestRunResult } from '../../../types';
+import type { PublicUatSessionSummary } from '../../../types';
 import {
   browserFromApi,
   browserToApi,
@@ -29,6 +30,28 @@ import {
 } from '../../shared/services/strapi';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestRunDto, TestRunResultDto } from '../types/api';
+
+function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicUatSessionSummary | null {
+  if (!document?.documentId) {
+    return null;
+  }
+
+  return {
+    documentId: document.documentId,
+    status: document.status,
+    expiresAt: document.expiresAt || null,
+    activatedAt: document.activatedAt || null,
+    completedAt: document.completedAt || null,
+    revokedAt: document.revokedAt || null,
+    lastAccessedAt: document.lastAccessedAt || null,
+    allowResultEditing: document.allowResultEditing ?? true,
+    allowEvidenceUpload: document.allowEvidenceUpload ?? true,
+    allowCommentEditing: document.allowCommentEditing ?? true,
+    completionLocked: document.completionLocked ?? false,
+    publicUrl: document.publicUrl || null,
+    participant: document.participant || null,
+  };
+}
 
 function mapTestRunResult(document: TestRunResultDto): TestRunResult {
   return {
@@ -69,6 +92,7 @@ function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): Te
     selectedModules: document.selectedModules || [],
     selectedFunctionalities: document.selectedFunctionalities || [],
     results: resultsOverride || (document.results || []).map(mapTestRunResult),
+    publicUatSession: mapPublicUatSession(document.publicUatSession),
   };
 }
 

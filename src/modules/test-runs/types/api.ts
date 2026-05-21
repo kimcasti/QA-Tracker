@@ -53,4 +53,24 @@ export interface TestRunDto {
     name: string;
   };
   results?: TestRunResultDto[];
+  publicUatSession?: {
+    documentId: string;
+    status: 'draft' | 'active' | 'completed' | 'expired' | 'revoked';
+    expiresAt?: string | null;
+    activatedAt?: string | null;
+    completedAt?: string | null;
+    revokedAt?: string | null;
+    lastAccessedAt?: string | null;
+    allowResultEditing?: boolean;
+    allowEvidenceUpload?: boolean;
+    allowCommentEditing?: boolean;
+    completionLocked?: boolean;
+    publicUrl?: string | null;
+    participant?: {
+      documentId?: string | null;
+      name: string;
+      email?: string | null;
+      role?: string;
+    } | null;
+  } | null;
 }

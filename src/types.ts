@@ -349,6 +349,13 @@ export interface TestRunResult {
   id: string;
   functionalityId: string;
   testCaseId: string;
+  functionalityName?: string;
+  moduleName?: string;
+  testCaseTitle?: string;
+  testCaseDescription?: string;
+  preconditions?: string;
+  testSteps?: string;
+  expectedResult?: string;
   result: TestResult;
   notes?: string;
   evidenceImage?: string;
@@ -357,6 +364,36 @@ export interface TestRunResult {
   bugLink?: string;
   severity?: Severity;
   linkedBugId?: string;
+}
+
+export type PublicUatSessionStatus =
+  | 'draft'
+  | 'active'
+  | 'completed'
+  | 'expired'
+  | 'revoked';
+
+export interface PublicUatParticipantSnapshot {
+  documentId?: string | null;
+  name: string;
+  email?: string | null;
+  role?: string;
+}
+
+export interface PublicUatSessionSummary {
+  documentId: string;
+  status: PublicUatSessionStatus;
+  expiresAt?: string | null;
+  activatedAt?: string | null;
+  completedAt?: string | null;
+  revokedAt?: string | null;
+  lastAccessedAt?: string | null;
+  allowResultEditing?: boolean;
+  allowEvidenceUpload?: boolean;
+  allowCommentEditing?: boolean;
+  completionLocked?: boolean;
+  publicUrl?: string | null;
+  participant?: PublicUatParticipantSnapshot | null;
 }
 
 export interface TestRun {
@@ -381,6 +418,7 @@ export interface TestRun {
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];
+  publicUatSession?: PublicUatSessionSummary | null;
 }
 
 export interface DashboardMetrics {

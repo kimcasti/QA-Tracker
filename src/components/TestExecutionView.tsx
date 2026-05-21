@@ -12,6 +12,7 @@ import {
   DatePicker,
   Row,
   Col,
+  Spin,
   message,
   Tooltip,
   Divider,
@@ -37,6 +38,9 @@ import {
   ArrowDownOutlined,
   ThunderboltOutlined,
   MinusOutlined,
+  LinkOutlined,
+  StopOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
@@ -54,6 +58,8 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRunSummaries } from '../modules/test-runs/hooks/useTestRunSummaries';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { getTestRunById } from '../modules/test-runs/services/testRunsService';
+import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
+import { getPublicUatSessionStatus } from '../modules/test-runs/services/publicUatSessionsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   Browser,
@@ -72,6 +78,7 @@ import {
   BugOrigin,
   Functionality,
   OperatingSystem,
+  PublicUatSessionSummary,
 } from '../types';
 import {
   labelEnvironment,
@@ -91,6 +98,7 @@ import {
   normalizeEvidenceHtml,
   stripHtmlToText,
 } from '../utils/evidenceRichText';
+import { exportTestRunToPdf } from '../utils/reportUtils';
 import type { ExecutionRecommendationCandidate } from '../services/geminiService';
 import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
 import {
@@ -113,6 +121,20 @@ function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRich
       <EvidenceRichEditor {...props} />
     </Suspense>
   );
+}
+
+function formatPublicSessionDate(value?: string | null, fallback = 'No disponible') {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
 }
 
 function renderRichTextContent(value?: string | null) {
@@ -155,6 +177,40 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
   return `${normalizedValue.slice(0, startLength)}...${normalizedValue.slice(-endLength)}`;
 }
 
+function labelPublicUatSessionStatus(status?: PublicUatSessionSummary['status'] | null) {
+  switch (status) {
+    case 'active':
+      return 'Sesión activa';
+    case 'completed':
+      return 'Sesión completada';
+    case 'expired':
+      return 'Sesión expirada';
+    case 'revoked':
+      return 'Sesión cerrada';
+    case 'draft':
+      return 'Borrador público';
+    default:
+      return 'Sin sesión pública';
+  }
+}
+
+function publicUatStatusColor(status?: PublicUatSessionSummary['status'] | null) {
+  switch (status) {
+    case 'active':
+      return 'processing';
+    case 'completed':
+      return 'success';
+    case 'expired':
+      return 'warning';
+    case 'revoked':
+      return 'default';
+    case 'draft':
+      return 'orange';
+    default:
+      return 'default';
+  }
+}
+
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -170,6 +226,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const { save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId, {
     enabled: false,
   });
+  const {
+    activate: activatePublicUatSession,
+    revoke: revokePublicUatSession,
+    isActivating: isActivatingPublicUatSession,
+    isRevoking: isRevokingPublicUatSession,
+  } = usePublicUatSessionActions(projectId);
   const { data: allTestCases } = useTestCases(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -249,6 +311,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm();
   const [evidenceForm] = Form.useForm();
+  const [publicUatForm] = Form.useForm();
+  const [isPublicUatModalOpen, setIsPublicUatModalOpen] = useState(false);
+  const [selectedPublicUatRun, setSelectedPublicUatRun] = useState<TestRun | null>(null);
+  const [publicUatStatusModalRun, setPublicUatStatusModalRun] = useState<TestRun | null>(null);
+  const [publicUatStatusInfo, setPublicUatStatusInfo] = useState<PublicUatSessionSummary | null>(
+    null,
+  );
+  const [isLoadingPublicUatStatus, setIsLoadingPublicUatStatus] = useState(false);
 
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -716,6 +786,135 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setSelectedFuncIds([]);
   };
 
+  const openTestRunDetail = (record: TestRun) => {
+    setOpeningRunId(record.id);
+    void getTestRunById(record.id)
+      .then(fullRun => {
+        setActiveTestRun(fullRun);
+        setExecutionResults(fullRun.results);
+      })
+      .catch(error => {
+        console.error('Error loading test run detail:', error);
+        message.error('No se pudo abrir la ejecución seleccionada.');
+      })
+      .finally(() => {
+        setOpeningRunId(current => (current === record.id ? null : current));
+      });
+  };
+
+  const openPublicUatActivationModal = (record: TestRun) => {
+    setSelectedPublicUatRun(record);
+    publicUatForm.setFieldsValue({
+      participantNameSnapshot: record.publicUatSession?.participant?.name || '',
+      participantEmailSnapshot: record.publicUatSession?.participant?.email || '',
+      deliveryNotes: '',
+      expiresAt: record.publicUatSession?.expiresAt
+        ? dayjs(record.publicUatSession.expiresAt)
+        : dayjs().add(7, 'day'),
+    });
+    setIsPublicUatModalOpen(true);
+  };
+
+  const closePublicUatActivationModal = () => {
+    setIsPublicUatModalOpen(false);
+    setSelectedPublicUatRun(null);
+    publicUatForm.resetFields();
+  };
+
+  const copyPublicUatLink = async (record: TestRun) => {
+    try {
+      const session = await getPublicUatSessionStatus(record.id);
+      if (!session?.publicUrl) {
+        message.warning('Esta ejecución UAT aún no tiene un enlace público disponible.');
+        return;
+      }
+
+      await navigator.clipboard.writeText(session.publicUrl);
+      message.success('Enlace público copiado al portapapeles.');
+    } catch (error) {
+      console.error('Error copying public UAT link:', error);
+      message.error('No pudimos obtener el enlace público de esta ejecución UAT.');
+    }
+  };
+
+  const handlePrimaryPublicUatAction = async (record: TestRun) => {
+    const sessionStatus = record.publicUatSession?.status;
+
+    if (sessionStatus === 'active' || sessionStatus === 'completed') {
+      await copyPublicUatLink(record);
+      return;
+    }
+
+    openPublicUatActivationModal(record);
+  };
+
+  const handleSubmitPublicUatActivation = async () => {
+    if (!selectedPublicUatRun) return;
+
+    try {
+      const values = await publicUatForm.validateFields();
+      const session = await activatePublicUatSession({
+        testRunDocumentId: selectedPublicUatRun.id,
+        input: {
+          participantNameSnapshot: values.participantNameSnapshot || '',
+          participantEmailSnapshot: values.participantEmailSnapshot || '',
+          deliveryNotes: values.deliveryNotes || '',
+          expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
+        },
+      });
+
+      closePublicUatActivationModal();
+
+      if (session?.publicUrl) {
+        await navigator.clipboard.writeText(session.publicUrl);
+        message.success('Sesión UAT pública activada y enlace copiado.');
+      } else {
+        message.success('Sesión UAT pública activada correctamente.');
+      }
+    } catch (error) {
+      console.error('Error activating public UAT session:', error);
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible activar la sesión pública para esta ejecución UAT.',
+      );
+    }
+  };
+
+  const openPublicUatStatusModal = async (record: TestRun) => {
+    setPublicUatStatusModalRun(record);
+    setIsLoadingPublicUatStatus(true);
+    try {
+      const session = await getPublicUatSessionStatus(record.id);
+      setPublicUatStatusInfo(session);
+    } catch (error) {
+      console.error('Error loading public UAT status:', error);
+      setPublicUatStatusInfo(null);
+      message.error('No pudimos consultar el estado de la sesión pública.');
+    } finally {
+      setIsLoadingPublicUatStatus(false);
+    }
+  };
+
+  const closePublicUatStatusModal = () => {
+    setPublicUatStatusModalRun(null);
+    setPublicUatStatusInfo(null);
+  };
+
+  const handleClosePublicUatSession = async (record: TestRun) => {
+    try {
+      await revokePublicUatSession(record.id);
+      message.success('La sesión pública UAT fue cerrada correctamente.');
+    } catch (error) {
+      console.error('Error revoking public UAT session:', error);
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible cerrar la sesión pública UAT.',
+      );
+    }
+  };
+
   const openCreateTestRunModal = () => {
     setIsEditingRunInfo(false);
     form.resetFields();
@@ -927,21 +1126,50 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       await runTrackedExport({
         projectId,
-        action: async () => {
-          const XLSX = await import('xlsx');
-          const ws = XLSX.utils.json_to_sheet(dataToExport);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
-          XLSX.writeFile(wb, `Reporte_${activeTestRun.id}_${dayjs().format('YYYYMMDD')}.xlsx`);
-        },
+        action: () =>
+          exportTestRunToPdf({
+            testRun: activeTestRun,
+            results: executionResults,
+            functionalities,
+            testCases,
+            publicUatSession: activeTestRun.publicUatSession,
+          }),
       });
-      message.success('Reporte exportado correctamente');
+      message.success('PDF exportado correctamente');
     } catch (error) {
       const exportErrorMessage =
         error instanceof Error && error.message
           ? error.message
-          : 'Error al exportar el reporte';
+          : 'Error al exportar el PDF';
       message.error(exportErrorMessage);
+    }
+  };
+
+  const handleExportPdfForRun = async (record: TestRun) => {
+    try {
+      const fullRun = await getTestRunById(record.id);
+      const projectIdForExport = fullRun.projectId || projectId;
+
+      if (!projectIdForExport) {
+        message.warning('No se encontro el proyecto activo para exportar.');
+        return;
+      }
+
+      await runTrackedExport({
+        projectId: projectIdForExport,
+        action: () =>
+          exportTestRunToPdf({
+            testRun: fullRun,
+            results: fullRun.results,
+            functionalities,
+            testCases,
+            publicUatSession: fullRun.publicUatSession,
+          }),
+      });
+      message.success('PDF exportado correctamente');
+    } catch (error) {
+      console.error('Error exporting run pdf:', error);
+      message.error('No fue posible exportar el PDF de esta ejecución.');
     }
   };
 
@@ -1043,9 +1271,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       key: 'title',
       render: (_: any, record: TestRun) => (
-        <Text strong className="block text-slate-700">
-          {record.title}
-        </Text>
+        <div className="flex flex-col gap-1">
+          <Text strong className="block text-slate-700">
+            {record.title}
+          </Text>
+          {record.testType === TestType.UAT ? (
+            <Tag
+              color={publicUatStatusColor(record.publicUatSession?.status)}
+              className="m-0 w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            >
+              {labelPublicUatSessionStatus(record.publicUatSession?.status)}
+            </Tag>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -1175,25 +1413,71 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
             size="small"
             loading={openingRunId === record.id}
-            onClick={() => {
-              setOpeningRunId(record.id);
-              void getTestRunById(record.id)
-                .then(fullRun => {
-                  setActiveTestRun(fullRun);
-                  setExecutionResults(fullRun.results);
-                })
-                .catch(error => {
-                  console.error('Error loading test run detail:', error);
-                  message.error('No se pudo abrir la ejecución seleccionada.');
-                })
-                .finally(() => {
-                  setOpeningRunId(current => (current === record.id ? null : current));
-                });
-            }}
+            onClick={() => openTestRunDetail(record)}
             className={record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'}
           >
             {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
           </Button>
+          {record.testType === TestType.UAT ? (
+            <Tooltip
+              title={
+                record.publicUatSession?.status === 'active' ||
+                record.publicUatSession?.status === 'completed'
+                  ? 'Copiar enlace público'
+                  : 'Generar enlace público'
+              }
+            >
+              <Button
+                icon={
+                  record.publicUatSession?.status === 'active' ||
+                  record.publicUatSession?.status === 'completed' ? (
+                    <CopyOutlined />
+                  ) : (
+                    <LinkOutlined />
+                  )
+                }
+                size="small"
+                onClick={() => void handlePrimaryPublicUatAction(record)}
+              />
+            </Tooltip>
+          ) : null}
+          {record.testType === TestType.UAT ? (
+            <Tooltip title="Ver estado de sesión">
+              <Button
+                icon={<EyeOutlined />}
+                size="small"
+                disabled={
+                  record.publicUatSession?.status !== 'active' &&
+                  record.publicUatSession?.status !== 'completed'
+                }
+                onClick={() => void openPublicUatStatusModal(record)}
+              />
+            </Tooltip>
+          ) : null}
+          {record.testType === TestType.UAT && record.publicUatSession?.status === 'active' ? (
+            <Tooltip title="Cerrar sesión pública">
+              <Button
+                icon={<StopOutlined />}
+                size="small"
+                danger
+                loading={isRevokingPublicUatSession}
+                onClick={() => void handleClosePublicUatSession(record)}
+              />
+            </Tooltip>
+          ) : null}
+          {record.testType === TestType.UAT ? (
+            <Tooltip title="Descargar PDF">
+              <Button
+                icon={<ExportOutlined />}
+                size="small"
+                disabled={
+                  record.publicUatSession?.status !== 'active' &&
+                  record.publicUatSession?.status !== 'completed'
+                }
+                onClick={() => void handleExportPdfForRun(record)}
+              />
+            </Tooltip>
+          ) : null}
           {canDeleteTestRuns && (
             <Button
               icon={<DeleteOutlined />}
@@ -1217,7 +1501,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   if (activeTestRun) {
-    const isReadOnly = activeTestRun.status === ExecutionStatus.FINAL || isViewer;
+    const hasActivePublicUatSession = activeTestRun.publicUatSession?.status === 'active';
+    const isReadOnly =
+      activeTestRun.status === ExecutionStatus.FINAL || isViewer || hasActivePublicUatSession;
 
     const filteredExecutionResults = executionResults.filter(r => {
       const tc = testCases.find(t => t.id === r.testCaseId);
@@ -1251,10 +1537,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <div className="flex items-center gap-2">
                 {isReadOnly && (
                   <Tag
-                    color="success"
+                    color={hasActivePublicUatSession ? 'processing' : 'success'}
                     className="m-0 font-bold uppercase text-[10px] px-2 py-0.5 rounded-sm"
                   >
-                    FINALIZADA
+                    {hasActivePublicUatSession ? 'UAT PÚBLICA ACTIVA' : 'FINALIZADA'}
                   </Tag>
                 )}
                 <Title level={3} className="m-0 text-slate-800">
@@ -1300,7 +1586,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </Button>
             )}
             <Button icon={<ExportOutlined />} onClick={handleExportReport} className="rounded-lg">
-              Export Report
+              Descargar PDF
             </Button>
             {!isReadOnly && !isViewer && (
               <Button
@@ -2067,6 +2353,127 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           },
         ]}
       />
+
+      <Modal
+        title={<span className="text-lg font-bold text-slate-800">Generar enlace público UAT</span>}
+        open={isPublicUatModalOpen}
+        onCancel={closePublicUatActivationModal}
+        confirmLoading={isActivatingPublicUatSession}
+        onOk={() => void handleSubmitPublicUatActivation()}
+        okText="Activar y copiar enlace"
+        cancelText="Cancelar"
+      >
+        <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
+          <p className="m-0 font-semibold text-slate-800">
+            {selectedPublicUatRun?.title || 'Ejecución UAT'}
+          </p>
+          <p className="m-0 mt-1">
+            Al activar esta sesión, la ejecución se compartirá mediante un enlace público y la edición interna de resultados quedará bloqueada mientras la sesión esté activa.
+          </p>
+        </div>
+
+        <Form form={publicUatForm} layout="vertical">
+          <Form.Item
+            name="participantNameSnapshot"
+            label="Nombre del participante"
+            rules={[{ required: true, message: 'Ingresa el nombre del participante.' }]}
+          >
+            <Input placeholder="Ej: María Gómez" className="rounded-lg" />
+          </Form.Item>
+          <Form.Item
+            name="participantEmailSnapshot"
+            label="Correo del participante"
+            rules={[
+              { required: true, message: 'Ingresa el correo del participante.' },
+              { type: 'email', message: 'Ingresa un correo válido.' },
+            ]}
+          >
+            <Input placeholder="cliente@empresa.com" className="rounded-lg" />
+          </Form.Item>
+          <Form.Item name="expiresAt" label="Fecha de expiración">
+            <DatePicker className="w-full rounded-lg" />
+          </Form.Item>
+          <Form.Item name="deliveryNotes" label="Indicaciones para el cliente">
+            <Input.TextArea
+              rows={4}
+              placeholder="Comparte aquí el contexto o las instrucciones de esta validación UAT."
+              className="rounded-lg"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<span className="text-lg font-bold text-slate-800">Estado de sesión pública UAT</span>}
+        open={Boolean(publicUatStatusModalRun)}
+        onCancel={closePublicUatStatusModal}
+        footer={[
+          <Button key="close" onClick={closePublicUatStatusModal}>
+            Cerrar
+          </Button>,
+          publicUatStatusInfo?.publicUrl ? (
+            <Button
+              key="copy"
+              type="primary"
+              icon={<CopyOutlined />}
+              onClick={() => {
+                void navigator.clipboard.writeText(publicUatStatusInfo.publicUrl || '').then(() => {
+                  message.success('Enlace público copiado.');
+                });
+              }}
+            >
+              Copiar enlace
+            </Button>
+          ) : null,
+        ]}
+      >
+        {isLoadingPublicUatStatus ? (
+          <div className="flex items-center justify-center py-10">
+            <Spin />
+          </div>
+        ) : publicUatStatusInfo ? (
+          <div className="space-y-4 text-sm text-slate-600">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <Tag
+                color={publicUatStatusColor(publicUatStatusInfo.status)}
+                className="rounded-full px-3 py-1"
+              >
+                {labelPublicUatSessionStatus(publicUatStatusInfo.status)}
+              </Tag>
+              <div className="mt-3 space-y-1">
+                <div>
+                  <span className="font-semibold text-slate-800">Ejecución:</span>{' '}
+                  {publicUatStatusModalRun?.title}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800">Participante:</span>{' '}
+                  {publicUatStatusInfo.participant?.name || 'No definido'}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800">Correo:</span>{' '}
+                  {publicUatStatusInfo.participant?.email || 'No definido'}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800">Activada:</span>{' '}
+                  {formatPublicSessionDate(publicUatStatusInfo.activatedAt)}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800">Expira:</span>{' '}
+                  {formatPublicSessionDate(publicUatStatusInfo.expiresAt)}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800">Último acceso:</span>{' '}
+                  {formatPublicSessionDate(publicUatStatusInfo.lastAccessedAt, 'Sin accesos aún')}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="py-6 text-sm text-slate-500">
+            Esta ejecución aún no tiene una sesión pública asociada.
+          </div>
+        )}
+      </Modal>
 
       <Modal
         title={<span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>}

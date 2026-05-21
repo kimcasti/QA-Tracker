@@ -466,7 +466,7 @@ function getMeetingParticipantCountLabel(value?: string) {
 }
 
 function getMeetingPreview(value?: string) {
-  const compact = stripHtmlToText(value)
+  const compact = stripHtmlToText(normalizeEvidenceHtml(value))
     .replace(/\s+/g, ' ')
     .trim();
   return compact || 'Sin notas registradas.';
@@ -869,7 +869,7 @@ export default function AboutView({ project }: AboutViewProps) {
 
       if (!normalizedSearch) return true;
 
-      const searchableText = [note.title, stripHtmlToText(note.notes)]
+      const searchableText = [note.title, stripHtmlToText(normalizeEvidenceHtml(note.notes))]
         .map(value => String(value || '').toLocaleLowerCase())
         .join(' ');
 
@@ -1305,6 +1305,7 @@ export default function AboutView({ project }: AboutViewProps) {
       title: 'Título',
       dataIndex: 'title',
       key: 'title',
+      width: 240,
       render: (_: string, record: MeetingNote) => (
         <div>
           <Text strong className="text-slate-800">
@@ -1327,8 +1328,11 @@ export default function AboutView({ project }: AboutViewProps) {
       title: 'Participantes',
       dataIndex: 'participants',
       key: 'participants',
+      width: 220,
       render: (value: string) => (
-        <Text className="text-sm text-slate-600">{value?.trim() || 'Sin participantes'}</Text>
+        <Paragraph className="!mb-0 text-sm text-slate-600" ellipsis={{ rows: 3, tooltip: true }}>
+          {value?.trim() || 'Sin participantes'}
+        </Paragraph>
       ),
     },
     {
@@ -1336,7 +1340,7 @@ export default function AboutView({ project }: AboutViewProps) {
       dataIndex: 'notes',
       key: 'notes',
       render: (value: string) => (
-        <Paragraph className="!mb-0 text-sm text-slate-500" ellipsis={{ rows: 2 }}>
+        <Paragraph className="!mb-0 text-sm text-slate-500" ellipsis={{ rows: 2, tooltip: true }}>
           {highlightSearchMatch(getMeetingPreview(value), meetingSearchTerm)}
         </Paragraph>
       ),
@@ -2337,6 +2341,8 @@ export default function AboutView({ project }: AboutViewProps) {
             rowKey="id"
             columns={meetingHistoryColumns}
             dataSource={filteredMeetingNotes}
+            tableLayout="fixed"
+            scroll={{ x: 860 }}
             pagination={{
               pageSize: 6,
               showTotal: total => `${total} minuta${total === 1 ? '' : 's'}`,

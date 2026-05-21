@@ -44,6 +44,7 @@ const AboutView = lazy(() => import('./components/AboutView'));
 const CreateProjectModal = lazy(() => import('./components/CreateProjectModal'));
 const AuthPage = lazy(() => import('./modules/auth/components/AuthPage'));
 const PublicLandingPage = lazy(() => import('./modules/auth/components/PublicLandingPage'));
+const PublicUatSessionPage = lazy(() => import('./modules/test-runs/components/PublicUatSessionPage'));
 const TermsPage = lazy(() => import('./modules/legal/components/TermsPage'));
 const PrivacyPage = lazy(() => import('./modules/legal/components/PrivacyPage'));
 const AIPolicyPage = lazy(() => import('./modules/legal/components/AIPolicyPage'));
@@ -222,6 +223,7 @@ export default function App() {
     if (normalizedPath === '/terminos') return 'terms';
     if (normalizedPath === '/privacidad') return 'privacy';
     if (normalizedPath === '/uso-ia') return 'ai-policy';
+    if (/^\/uat\/[^/]+$/.test(normalizedPath)) return 'public-uat';
     if (normalizedPath !== '/') return 'auth';
 
     const searchParams = new URLSearchParams(location.search);
@@ -252,10 +254,19 @@ export default function App() {
     );
   }
 
+  if (publicView === 'public-uat') {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <PublicUatSessionPage />
+      </Suspense>
+    );
+  }
+
   if (!isAuthenticated || !user) {
     return (
       <Suspense fallback={<PageLoader />}>
         {publicView === 'landing' ? <PublicLandingPage /> : null}
+        {publicView === 'public-uat' ? <PublicUatSessionPage /> : null}
         {publicView === 'terms' ? <TermsPage /> : null}
         {publicView === 'privacy' ? <PrivacyPage /> : null}
         {publicView === 'ai-policy' ? <AIPolicyPage /> : null}
