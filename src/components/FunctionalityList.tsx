@@ -19,8 +19,12 @@ import {
 } from 'antd';
 import {
   PlusOutlined,
+  EyeOutlined,
   EditOutlined,
   DeleteOutlined,
+  AppstoreOutlined,
+  DeploymentUnitOutlined,
+  SafetyCertificateOutlined,
   UploadOutlined,
   DownloadOutlined,
   FileTextOutlined,
@@ -85,6 +89,7 @@ type FunctionalityColumnsConfig = {
   nativeModuleFilters: FunctionalityColumnFilters;
   nativeRiskFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
+  onView: (record: Functionality) => void;
   onManageTestCases: (record: Functionality) => void;
   onMarkRecentChange: (record: Functionality) => void;
   onEdit: (record: Functionality) => void;
@@ -101,6 +106,20 @@ type SelectOption = {
 type FunctionalityDeliveryUnitOption = {
   label: string;
   value: string;
+};
+
+type ImportedFunctionalityDraft = Functionality & {
+  importReviewReasons: string[];
+};
+
+type PreparedFunctionalityImport = {
+  functionalities: Functionality[];
+  reviewRows: Array<{
+    id: string;
+    name: string;
+    reasons: string[];
+  }>;
+  jiraRowsDetected: number;
 };
 
 type FunctionalityEditorFormProps = {
@@ -422,6 +441,21 @@ function FunctionalityTableToolbar({
   );
 }
 
+function FunctionalityDetailValue({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+      <div className="mt-1 text-sm text-slate-700">{value || 'N/A'}</div>
+    </div>
+  );
+}
+
 function renderTruncatedText(
   value: string | undefined,
   className = 'block truncate text-slate-700',
@@ -552,11 +586,74 @@ function parseBooleanLike(value: unknown) {
   return normalized === 'true' || normalized === 'sí' || normalized === 'si' || normalized === 'yes';
 }
 
+function normalizeComparableText(value: string | undefined) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function resolveImportedSprint(
+  value: unknown,
+  availableSprints: string[],
+): {
+  sprint?: string;
+  reviewReason?: string;
+} {
+  const candidate = String(value ?? '').trim();
+  if (!candidate) {
+    return {};
+  }
+
+  const normalizedCandidate = normalizeComparableText(candidate);
+  const matchedSprint = availableSprints.find(
+    sprintName => normalizeComparableText(sprintName) === normalizedCandidate,
+  );
+
+  if (matchedSprint) {
+    return { sprint: matchedSprint };
+  }
+
+  return {
+    reviewReason: `Sprint "${candidate}" no existe en la configuración del proyecto.`,
+  };
+}
+
+function isJiraImportedRow(item: ImportedFunctionalityRow) {
+  return Boolean(
+    getImportedFieldValue(item, [
+      'Clave de incidencia',
+      'Issue key',
+      'Issue Key',
+      'Resumen',
+      'Summary',
+      'Tipo de Incidencia',
+      'Issue Type',
+    ]),
+  );
+}
+
+function resolveImportedJiraTaskUrl(item: ImportedFunctionalityRow) {
+  return String(
+    getImportedFieldValue(item, [
+      'jiraTaskUrl',
+      'Jira',
+      'Jira URL',
+      'Link de tarea Jira',
+      'Issue URL',
+      'Issue Url',
+      'URL',
+      'Url',
+    ]) ?? '',
+  ).trim();
+}
+
 function mapImportedRowsToFunctionalities(
   importedData: ImportedFunctionalityRow[],
   projectId: string | undefined,
-) {
-  return importedData.map((item, index) => {
+  availableSprints: string[],
+): PreparedFunctionalityImport {
+  const drafts = importedData.map((item, index) => {
     const rawRoles = getImportedFieldValue(item, ['roles', 'Roles', 'Roles Autorizados']);
     const roles = Array.isArray(rawRoles)
       ? rawRoles
@@ -564,15 +661,35 @@ function mapImportedRowsToFunctionalities(
           .split(',')
           .map((role: string) => role.trim())
           .filter(Boolean);
+    const isJiraRow = isJiraImportedRow(item);
+    const importedSprint = resolveImportedSprint(
+      getImportedFieldValue(item, ['sprint', 'Sprint']),
+      availableSprints,
+    );
+    const reviewReasons = importedSprint.reviewReason ? [importedSprint.reviewReason] : [];
+    const jiraIssueKey = String(
+      getImportedFieldValue(item, ['Clave de incidencia', 'Issue key', 'Issue Key']) ?? '',
+    ).trim();
 
     return {
       id:
-        String(getImportedFieldValue(item, ['id', 'ID', 'Code', 'Código']) ?? '').trim() ||
+        String(
+          getImportedFieldValue(item, [
+            'id',
+            'ID',
+            'Code',
+            'Código',
+            'Clave de incidencia',
+            'Issue key',
+            'Issue Key',
+          ]) ?? '',
+        ).trim() ||
         `IMP-${Date.now()}-${index}`,
       projectId: projectId || '',
       module:
-        String(getImportedFieldValue(item, ['module', 'Module', 'Módulo', 'Modulo']) ?? '').trim() ||
-        'Importado',
+        String(
+          getImportedFieldValue(item, ['module', 'Module', 'Módulo', 'Modulo']) ?? '',
+        ).trim() || (isJiraRow ? 'Importado desde Jira' : 'Importado'),
       name:
         String(
           getImportedFieldValue(item, [
@@ -580,11 +697,14 @@ function mapImportedRowsToFunctionalities(
             'Name',
             'Funcionalidad',
             'Nombre de la Funcionalidad',
+            'Resumen',
+            'Summary',
           ]) ?? '',
         ).trim() || 'Sin nombre',
-      jiraTaskUrl: String(
-        getImportedFieldValue(item, ['jiraTaskUrl', 'Jira', 'Jira URL', 'Link de tarea Jira']) ??
-          '',
+      jiraIssueKey,
+      jiraTaskUrl: resolveImportedJiraTaskUrl(item),
+      jiraIssueType: String(
+        getImportedFieldValue(item, ['Tipo de Incidencia', 'Issue Type']) ?? '',
       ).trim(),
       roles: roles.length > 0 ? roles : ['Todos'],
       testTypes: [TestType.FUNCTIONAL],
@@ -603,9 +723,22 @@ function mapImportedRowsToFunctionalities(
       riskLevel: normalizeImportedRiskLevel(
         getImportedFieldValue(item, ['riskLevel', 'Nivel de Riesgo', 'Riesgo']),
       ),
-      sprint: String(getImportedFieldValue(item, ['sprint', 'Sprint']) ?? '').trim() || undefined,
-    } satisfies Functionality;
+      sprint: importedSprint.sprint,
+      importReviewReasons: reviewReasons,
+    } satisfies ImportedFunctionalityDraft;
   });
+
+  return {
+    functionalities: drafts.map(({ importReviewReasons, ...functionality }) => functionality),
+    reviewRows: drafts
+      .filter(item => item.importReviewReasons.length > 0)
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        reasons: item.importReviewReasons,
+      })),
+    jiraRowsDetected: drafts.filter(item => Boolean(item.jiraIssueKey)).length,
+  };
 }
 
 function resolveImportedFunctionalityIds(
@@ -637,7 +770,9 @@ function buildFunctionalityExportData(functionalities: Functionality[]) {
     ID: item.id || '',
     Módulo: item.module || '',
     Funcionalidad: item.name || '',
+    'Jira Key': item.jiraIssueKey || '',
     Jira: item.jiraTaskUrl || '',
+    'Jira Tipo': item.jiraIssueType || '',
     Roles: Array.isArray(item.roles) ? item.roles.join(', ') : '',
     Core: item.isCore ? 'Sí' : 'No',
     Regresión: item.isRegression ? 'Sí' : 'No',
@@ -657,6 +792,7 @@ function createFunctionalityColumns({
   nativeModuleFilters,
   nativeRiskFilters,
   nativeStatusFilters,
+  onView,
   onManageTestCases,
   onMarkRecentChange,
   onEdit,
@@ -775,9 +911,17 @@ function createFunctionalityColumns({
         </span>
       ),
       key: 'actions',
-      width: isViewer ? 92 : 188,
+      width: isViewer ? 140 : 188,
       render: (_: unknown, record: Functionality) => (
         <Space size={8} wrap>
+          <Tooltip title="Ver detalle">
+            <Button
+              icon={<EyeOutlined />}
+              onClick={() => onView(record)}
+              size="middle"
+              className="rounded-full text-slate-700 border-slate-200 hover:bg-slate-50"
+            />
+          </Tooltip>
           <Tooltip title="Gestionar Casos de Prueba">
             <Button
               icon={<FileTextOutlined />}
@@ -802,12 +946,6 @@ function createFunctionalityColumns({
                   className="rounded-full text-sky-700 border-sky-100 hover:bg-sky-50"
                 />
               </Tooltip>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => onEdit(record)}
-                size="middle"
-                className="rounded-full"
-              />
               <Button
                 icon={<DeleteOutlined />}
                 danger
@@ -924,7 +1062,10 @@ export default function FunctionalityList({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isTestCaseModalOpen, setIsTestCaseModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = useState<Functionality | null>(null);
+  const [detailFunctionality, setDetailFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
   const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
   const [form] = Form.useForm();
@@ -976,6 +1117,10 @@ export default function FunctionalityList({
         value: status,
       })),
     [t],
+  );
+  const configuredSprintNames = React.useMemo(
+    () => sprintsData.map(item => item.name).filter(Boolean),
+    [sprintsData],
   );
 
   // Dynamic Roles State
@@ -1051,6 +1196,18 @@ export default function FunctionalityList({
     setNextFunctionalityIdPreview(func.id);
     form.setFieldsValue(func);
     setIsModalOpen(true);
+  };
+
+  const handleView = (func: Functionality) => {
+    setDetailFunctionality(func);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleEditFromDetail = () => {
+    if (!detailFunctionality) return;
+
+    setIsDetailModalOpen(false);
+    handleEdit(detailFunctionality);
   };
 
   const handleDelete = (id: string) => {
@@ -1131,6 +1288,8 @@ export default function FunctionalityList({
       const updates: Partial<Functionality> = {};
 
       if (values.roles) updates.roles = values.roles;
+      if (values.module) updates.module = values.module;
+      if (values.sprint) updates.sprint = values.sprint;
       if (typeof values.isCore === 'boolean') updates.isCore = values.isCore;
       if (typeof values.isRegression === 'boolean') updates.isRegression = values.isRegression;
       if (typeof values.isSmoke === 'boolean') updates.isSmoke = values.isSmoke;
@@ -1178,6 +1337,7 @@ export default function FunctionalityList({
         nativeModuleFilters,
         nativeRiskFilters,
         nativeStatusFilters,
+        onView: handleView,
         onManageTestCases: record => {
           setSelectedFunctionality(record);
           setIsTestCaseModalOpen(true);
@@ -1200,20 +1360,32 @@ export default function FunctionalityList({
 
   const handleImport = (file: File) => {
     const reader = new FileReader();
-    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-    const isTxt = file.name.endsWith('.txt');
+    const lowerFileName = file.name.toLowerCase();
+    const isSpreadsheet =
+      lowerFileName.endsWith('.xlsx') ||
+      lowerFileName.endsWith('.xls') ||
+      lowerFileName.endsWith('.csv');
+    const isTxt = lowerFileName.endsWith('.txt');
 
     reader.onload = async e => {
+      setIsImporting(true);
+      message.open({
+        key: 'functionality-import',
+        type: 'loading',
+        content: `Importando ${file.name}...`,
+        duration: 0,
+      });
+
       try {
         let importedData: any[] = [];
 
-        if (isExcel) {
+        if (isSpreadsheet) {
           const XLSX = await import('xlsx');
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          importedData = XLSX.utils.sheet_to_json(worksheet);
+          importedData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
         } else if (isTxt) {
           const text = e.target?.result as string;
           // Assume CSV-like format for TXT or one JSON per line
@@ -1236,13 +1408,15 @@ export default function FunctionalityList({
         }
 
         if (importedData.length === 0) {
+          message.destroy('functionality-import');
           message.warning('No se encontraron datos válidos en el archivo.');
           return;
         }
 
-        const formattedFuncs = mapImportedRowsToFunctionalities(
+        const preparedImport = mapImportedRowsToFunctionalities(
           importedData as ImportedFunctionalityRow[],
           projectId,
+          configuredSprintNames,
         );
 
         const reservedFunctionalities: Array<Pick<Functionality, 'id' | 'module'>> =
@@ -1251,19 +1425,70 @@ export default function FunctionalityList({
             module: item.module,
           }));
         const normalizedFuncs = resolveImportedFunctionalityIds(
-          formattedFuncs,
+          preparedImport.functionalities,
           reservedFunctionalities,
         );
 
         const count = await bulkAdd(normalizedFuncs);
-        message.success(`Se importaron ${count} funcionalidades correctamente.`);
+        const skippedCount = Math.max(normalizedFuncs.length - count, 0);
+        message.open({
+          key: 'functionality-import',
+          type: 'success',
+          content:
+            skippedCount > 0
+              ? `Se importaron ${count} funcionalidades. ${skippedCount} se omitieron por ID existente.`
+              : `Se importaron ${count} funcionalidades correctamente.`,
+          duration: 4,
+        });
+
+        if (
+          preparedImport.reviewRows.length > 0 ||
+          preparedImport.jiraRowsDetected > 0 ||
+          skippedCount > 0
+        ) {
+          Modal.info({
+            title:
+              preparedImport.jiraRowsDetected > 0
+                ? 'Resumen de importación Jira'
+                : 'Resumen de importación',
+            width: 720,
+            content: (
+              <div className="space-y-3 pt-2">
+                <p className="m-0 text-slate-600">
+                  {count} funcionalidades importadas.{' '}
+                  {skippedCount > 0
+                    ? `${skippedCount} omitidas por ID existente. `
+                    : ''}
+                  {preparedImport.reviewRows.length > 0
+                    ? `${preparedImport.reviewRows.length} requieren revisión manual.`
+                    : 'No se detectaron observaciones de revisión.'}
+                </p>
+                {preparedImport.reviewRows.length > 0 ? (
+                  <div className="max-h-72 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <ul className="m-0 list-disc space-y-2 pl-5 text-sm text-amber-900">
+                      {preparedImport.reviewRows.map(row => (
+                        <li key={`${row.id}-${row.name}`}>
+                          <span className="font-semibold">{row.id}</span> - {row.name}
+                          <div className="text-xs text-amber-800">{row.reasons.join(' ')}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ),
+          });
+        }
       } catch (err) {
         console.error('Import error:', err);
+        message.destroy('functionality-import');
         message.error('Error al procesar el archivo. Verifica el formato.');
+      } finally {
+        setIsImporting(false);
       }
     };
 
-    if (isExcel) {
+    if (isSpreadsheet) {
       reader.readAsArrayBuffer(file);
     } else {
       reader.readAsText(file);
@@ -1348,9 +1573,19 @@ export default function FunctionalityList({
           </Button>
           {!isViewer ? (
             <>
-              <Upload beforeUpload={handleImport} showUploadList={false} accept=".xlsx,.xls,.txt">
-                <Button icon={<DownloadOutlined />} className="rounded-lg h-10">
-                  Importar
+              <Upload
+                beforeUpload={handleImport}
+                showUploadList={false}
+                accept=".xlsx,.xls,.csv,.txt"
+                disabled={isImporting}
+              >
+                <Button
+                  icon={<DownloadOutlined />}
+                  className="rounded-lg h-10"
+                  loading={isImporting}
+                  disabled={isImporting}
+                >
+                  {isImporting ? 'Importando...' : 'Importar'}
                 </Button>
               </Upload>
               <Button
@@ -1456,6 +1691,168 @@ export default function FunctionalityList({
       </Modal>
 
       <Modal
+        title={<span className="text-lg font-bold text-slate-800">Detalle de Funcionalidad</span>}
+        open={isDetailModalOpen}
+        onCancel={() => setIsDetailModalOpen(false)}
+        centered
+        width={760}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button onClick={() => setIsDetailModalOpen(false)}>Cerrar</Button>
+            {!isViewer && detailFunctionality ? (
+              <Button type="primary" icon={<EditOutlined />} onClick={handleEditFromDetail}>
+                Editar funcionalidad
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        {detailFunctionality ? (
+          <div className="space-y-4 bg-slate-50/80 px-1 py-2">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                    <AppstoreOutlined className="text-lg" />
+                  </div>
+                  <div className="text-sm text-slate-500">Datos base y contexto general de la funcionalidad.</div>
+                </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Identificación
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FunctionalityDetailValue label="ID" value={detailFunctionality.id} />
+                  <FunctionalityDetailValue label="Módulo" value={detailFunctionality.module} />
+                  <FunctionalityDetailValue
+                    label="Funcionalidad"
+                    value={detailFunctionality.name}
+                  />
+                  <FunctionalityDetailValue
+                    label="Roles autorizados"
+                    value={
+                      detailFunctionality.roles.length > 0
+                        ? detailFunctionality.roles.join(', ')
+                        : 'N/A'
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                    <LinkOutlined className="text-lg" />
+                  </div>
+                  <div className="text-sm text-slate-500">Vinculaci&oacute;n externa con la tarea o incidencia de origen.</div>
+                </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Jira
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FunctionalityDetailValue
+                    label="Jira key"
+                    value={detailFunctionality.jiraIssueKey}
+                  />
+                  <FunctionalityDetailValue
+                    label="Tipo de incidencia Jira"
+                    value={detailFunctionality.jiraIssueType}
+                  />
+                </div>
+                <div className="mt-3">
+                  <FunctionalityDetailValue
+                    label="Link de tarea Jira"
+                    value={
+                      detailFunctionality.jiraTaskUrl ? (
+                        <a
+                          href={detailFunctionality.jiraTaskUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          {detailFunctionality.jiraTaskUrl}
+                        </a>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                    <SafetyCertificateOutlined className="text-lg" />
+                  </div>
+                  <div className="text-sm text-slate-500">Estado funcional, cobertura y se&ntilde;ales de riesgo para seguimiento.</div>
+                </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  QA
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FunctionalityDetailValue
+                    label="Estado"
+                    value={labelTestStatus(detailFunctionality.status, t)}
+                  />
+                  <FunctionalityDetailValue
+                    label="Prioridad"
+                    value={labelPriority(detailFunctionality.priority, t)}
+                  />
+                  <FunctionalityDetailValue
+                    label="Riesgo"
+                    value={labelRisk(detailFunctionality.riskLevel, t)}
+                  />
+                  <FunctionalityDetailValue label="Sprint" value={detailFunctionality.sprint} />
+                </div>
+                <div className="mt-3">
+                  <FunctionalityDetailValue
+                    label="Cobertura QA"
+                    value={
+                      <div className="flex flex-wrap gap-2">
+                        {getCoverageTags(detailFunctionality).length > 0 ? (
+                          getCoverageTags(detailFunctionality).map(tag => (
+                            <Tag key={tag.key} className={`m-0 rounded-full border-0 ${tag.className}`}>
+                              {tag.label}
+                            </Tag>
+                          ))
+                        ) : (
+                          <span>N/A</span>
+                        )}
+                      </div>
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                    <DeploymentUnitOutlined className="text-lg" />
+                  </div>
+                  <div className="text-sm text-slate-500">Datos operativos para planificaci&oacute;n y seguimiento de releases.</div>
+                </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Entrega
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FunctionalityDetailValue
+                    label="Fecha de entrega"
+                    value={detailFunctionality.deliveryDate}
+                  />
+                  <FunctionalityDetailValue
+                    label="Último cambio funcional"
+                    value={detailFunctionality.lastFunctionalChangeAt}
+                  />
+                  <FunctionalityDetailValue
+                    label="Unidad de entrega"
+                    value={detailFunctionality.deliveryUnitName}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
         title={null}
         open={isTestCaseModalOpen}
         onCancel={() => setIsTestCaseModalOpen(false)}
@@ -1506,6 +1903,29 @@ export default function FunctionalityList({
               placeholder="Cambiar roles para todos..."
               className="executive-select"
               options={rolesData.map(item => ({ label: item.name, value: item.name }))}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="module"
+            label={<span className="font-semibold text-slate-600">Módulo</span>}
+          >
+            <Select
+              placeholder="Cambiar módulo para todos..."
+              className="h-10 rounded-lg"
+              options={moduleOptions}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="sprint"
+            label={<span className="font-semibold text-slate-600">Sprint</span>}
+          >
+            <Select
+              allowClear
+              placeholder="Cambiar sprint para todos..."
+              className="h-10 rounded-lg"
+              options={sprintOptions}
             />
           </Form.Item>
 

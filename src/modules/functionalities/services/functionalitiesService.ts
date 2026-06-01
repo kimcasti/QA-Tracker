@@ -81,7 +81,9 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     projectId: document.project?.key || '',
     module: document.module?.name || '',
     name: document.name,
+    jiraIssueKey: document.jiraIssueKey || '',
     jiraTaskUrl: document.jiraTaskUrl || '',
+    jiraIssueType: document.jiraIssueType || '',
     roles: (document.personaRoles || []).map(role => role.name),
     testTypes: (document.testTypes || []).map(type => testTypeFromApi(type)),
     isCore: Boolean(document.isCore),
@@ -151,7 +153,9 @@ export async function saveFunctionality(functionality: Functionality) {
     {
       code: functionality.id,
       name: functionality.name,
+      jiraIssueKey: functionality.jiraIssueKey?.trim() || null,
       jiraTaskUrl: functionality.jiraTaskUrl?.trim() || null,
+      jiraIssueType: functionality.jiraIssueType?.trim() || null,
       testTypes: (functionality.testTypes?.length
         ? functionality.testTypes
         : [TestType.FUNCTIONAL]

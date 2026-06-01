@@ -176,7 +176,9 @@ export interface Functionality {
   projectId: string;
   module: string;
   name: string;
+  jiraIssueKey?: string;
   jiraTaskUrl?: string;
+  jiraIssueType?: string;
   roles: string[];
   testTypes: TestType[];
   isCore?: boolean;
