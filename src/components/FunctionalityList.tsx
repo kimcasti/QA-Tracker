@@ -27,7 +27,7 @@ import {
   HistoryOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import { Users, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
@@ -51,10 +51,7 @@ const { Title, Text } = Typography;
 
 type NativeTableFilterState = {
   module: React.Key[] | null;
-  priority: React.Key[] | null;
   riskLevel: React.Key[] | null;
-  roles: React.Key[] | null;
-  qaCoverage: React.Key[] | null;
   status: React.Key[] | null;
   deliveryUnit: React.Key[] | null;
 };
@@ -86,10 +83,7 @@ type FunctionalityColumnsConfig = {
   isViewer: boolean;
   tableFilters: NativeTableFilterState;
   nativeModuleFilters: FunctionalityColumnFilters;
-  nativePriorityFilters: FunctionalityColumnFilters;
   nativeRiskFilters: FunctionalityColumnFilters;
-  nativeRoleFilters: FunctionalityColumnFilters;
-  nativeQaCoverageFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
   onManageTestCases: (record: Functionality) => void;
   onMarkRecentChange: (record: Functionality) => void;
@@ -123,19 +117,9 @@ type FunctionalityEditorFormProps = {
 
 const INITIAL_NATIVE_TABLE_FILTERS: NativeTableFilterState = {
   module: null,
-  priority: null,
   riskLevel: null,
-  roles: null,
-  qaCoverage: null,
   status: null,
   deliveryUnit: null,
-};
-
-const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
-  [Priority.CRITICAL]: 'text-magenta-600 bg-magenta-50',
-  [Priority.HIGH]: 'text-red-600 bg-red-50',
-  [Priority.MEDIUM]: 'text-orange-600 bg-orange-50',
-  [Priority.LOW]: 'text-green-600 bg-green-50',
 };
 
 const RISK_TEXT_CLASSNAMES: Record<RiskLevel, string> = {
@@ -671,10 +655,7 @@ function createFunctionalityColumns({
   isViewer,
   tableFilters,
   nativeModuleFilters,
-  nativePriorityFilters,
   nativeRiskFilters,
-  nativeRoleFilters,
-  nativeQaCoverageFilters,
   nativeStatusFilters,
   onManageTestCases,
   onMarkRecentChange,
@@ -744,26 +725,6 @@ function createFunctionalityColumns({
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          PRIORIDAD
-        </span>
-      ),
-      dataIndex: 'priority',
-      key: 'priority',
-      width: 118,
-      filters: nativePriorityFilters,
-      filteredValue: tableFilters.priority,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
-      render: (priority: Priority) => (
-        <span
-          className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${PRIORITY_BADGE_CLASSNAMES[priority] || 'text-slate-600 bg-slate-50'}`}
-        >
-          {priority}
-        </span>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
           RIESGO
         </span>
       ),
@@ -781,61 +742,6 @@ function createFunctionalityColumns({
           </span>
         </div>
       ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ROLES</span>
-      ),
-      dataIndex: 'roles',
-      key: 'roles',
-      width: 210,
-      ellipsis: true,
-      filters: nativeRoleFilters,
-      filterSearch: true,
-      filteredValue: tableFilters.roles,
-      onFilter: (value: boolean | React.Key, record: Functionality) =>
-        Array.isArray(record.roles) && record.roles.includes(String(value)),
-      render: (roles: string[]) => (
-        <div className="flex items-start gap-2 text-slate-600 min-w-0">
-          <Users size={16} className="text-slate-400" />
-          {renderTruncatedText(roles?.join(', '), 'block truncate text-sm font-medium text-slate-700')}
-        </div>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          COBERTURA QA
-        </span>
-      ),
-      key: 'qaCoverage',
-      width: 170,
-      filters: nativeQaCoverageFilters,
-      filteredValue: tableFilters.qaCoverage,
-      onFilter: (value: boolean | React.Key, record: Functionality) =>
-        (value === 'core' && Boolean(record.isCore)) ||
-        (value === 'regression' && Boolean(record.isRegression)) ||
-        (value === 'smoke' && Boolean(record.isSmoke)) ||
-        (value === 'recent-change' && Boolean(record.lastFunctionalChangeAt)),
-      render: (_: unknown, record: Functionality) => {
-        const tags = getCoverageTags(record);
-        if (tags.length === 0) {
-          return <span className="text-xs text-slate-400">Sin marcar</span>;
-        }
-
-        return (
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map(tag => (
-              <span
-                key={tag.key}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border border-transparent whitespace-nowrap ${tag.className}`}
-              >
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        );
-      },
     },
     {
       title: (
@@ -960,32 +866,6 @@ export default function FunctionalityList({
           value: String(module),
         })),
     [allFunctionalities],
-  );
-
-  const nativeRoleFilters = React.useMemo(
-    () =>
-      Array.from(
-        new Set(
-          allFunctionalities.flatMap(item =>
-            Array.isArray(item?.roles) ? item.roles.filter(Boolean) : [],
-          ),
-        ),
-      )
-        .sort((left, right) => left.localeCompare(right))
-        .map(role => ({
-          text: role,
-          value: role,
-        })),
-    [allFunctionalities],
-  );
-
-  const nativePriorityFilters = React.useMemo(
-    () =>
-      Object.values(Priority).map(priority => ({
-        text: labelPriority(priority, t),
-        value: priority,
-      })),
-    [t],
   );
 
   const nativeRiskFilters = React.useMemo(
@@ -1284,10 +1164,7 @@ export default function FunctionalityList({
   ) => {
     setTableFilters({
       module: (filters.module as React.Key[] | null) || null,
-      priority: (filters.priority as React.Key[] | null) || null,
       riskLevel: (filters.riskLevel as React.Key[] | null) || null,
-      roles: (filters.roles as React.Key[] | null) || null,
-      qaCoverage: (filters.qaCoverage as React.Key[] | null) || null,
       status: (filters.status as React.Key[] | null) || null,
       deliveryUnit: (filters.deliveryUnit as React.Key[] | null) || null,
     });
@@ -1299,10 +1176,7 @@ export default function FunctionalityList({
         isViewer,
         tableFilters,
         nativeModuleFilters,
-        nativePriorityFilters,
         nativeRiskFilters,
-        nativeRoleFilters,
-        nativeQaCoverageFilters,
         nativeStatusFilters,
         onManageTestCases: record => {
           setSelectedFunctionality(record);
@@ -1316,10 +1190,7 @@ export default function FunctionalityList({
       isViewer,
       tableFilters,
       nativeModuleFilters,
-      nativePriorityFilters,
       nativeRiskFilters,
-      nativeRoleFilters,
-      nativeQaCoverageFilters,
       nativeStatusFilters,
       handleMarkRecentChange,
       handleEdit,
@@ -1550,7 +1421,7 @@ export default function FunctionalityList({
           size="middle"
           tableLayout="fixed"
           pagination={{ pageSize: 10 }}
-          scroll={{ x: 1460 }}
+          scroll={{ x: 'max-content' }}
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>

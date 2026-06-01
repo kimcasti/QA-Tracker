@@ -12,8 +12,6 @@ import {
   BarChartOutlined,
   ArrowLeftOutlined,
   InfoCircleOutlined,
-  CalendarOutlined,
-  ApartmentOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
@@ -44,12 +42,16 @@ const AboutView = lazy(() => import('./components/AboutView'));
 const CreateProjectModal = lazy(() => import('./components/CreateProjectModal'));
 const AuthPage = lazy(() => import('./modules/auth/components/AuthPage'));
 const PublicLandingPage = lazy(() => import('./modules/auth/components/PublicLandingPage'));
-const PublicUatSessionPage = lazy(() => import('./modules/test-runs/components/PublicUatSessionPage'));
+const PublicUatSessionPage = lazy(
+  () => import('./modules/test-runs/components/PublicUatSessionPage'),
+);
 const TermsPage = lazy(() => import('./modules/legal/components/TermsPage'));
 const PrivacyPage = lazy(() => import('./modules/legal/components/PrivacyPage'));
 const AIPolicyPage = lazy(() => import('./modules/legal/components/AIPolicyPage'));
 const StoryMapPage = lazy(() => import('./modules/storymap/components/StoryMapPage'));
-const PersonalNotesPage = lazy(() => import('./modules/personal-notes/components/PersonalNotesPage'));
+const PersonalNotesPage = lazy(
+  () => import('./modules/personal-notes/components/PersonalNotesPage'),
+);
 const SuperadminView = lazy(() => import('./components/SuperadminView'));
 
 const { Header, Content, Sider } = Layout;
@@ -375,17 +377,21 @@ function WorkspaceApp({
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
         { key: 'functionalities', icon: <DatabaseOutlined />, label: t('nav.functionalities') },
-        { key: 'storymap', icon: <ApartmentOutlined />, label: t('nav.storymap') },
         { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
-        { key: 'plans', icon: <CalendarOutlined />, label: t('nav.plans') },
         { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },
         { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: t('nav.smoke') },
-        { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
         { key: 'coverage', icon: <DatabaseOutlined />, label: t('nav.coverage') },
-        canAccessSettings
-          ? { key: 'config', icon: <SettingOutlined />, label: t('nav.config') }
-          : null,
-        { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
+        { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
+        {
+          key: 'more',
+          label: 'Más',
+          children: [
+            canAccessSettings
+              ? { key: 'config', icon: <SettingOutlined />, label: t('nav.config') }
+              : null,
+            { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
+          ].filter(Boolean),
+        },
       ].filter(Boolean),
     [canAccessSettings, t],
   );
@@ -756,12 +762,12 @@ function WorkspaceApp({
                 )}
               </div>
             </Sider>
-            <Content className={`qa-workspace-content ${isStoryMapView ? 'p-4' : 'p-8'} overflow-auto`}>
+            <Content
+              className={`qa-workspace-content ${isStoryMapView ? 'p-4' : 'p-8'} overflow-auto`}
+            >
               <div
                 className={
-                  isStoryMapView
-                    ? 'qa-workspace-canvas w-full'
-                    : 'qa-workspace-canvas w-full'
+                  isStoryMapView ? 'qa-workspace-canvas w-full' : 'qa-workspace-canvas w-full'
                 }
               >
                 <Suspense fallback={<PageLoader />}>
@@ -783,5 +789,3 @@ function WorkspaceApp({
 
   return <Navigate to="/" replace />;
 }
-
-
