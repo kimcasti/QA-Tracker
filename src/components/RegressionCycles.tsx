@@ -34,8 +34,9 @@ import {
   BugOutlined,
   RollbackOutlined,
   SaveOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
-import { Suspense, lazy, useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import type { ColumnsType, FilterDropdownProps, FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
@@ -78,10 +79,7 @@ import { labelTestResult } from '../i18n/labels';
 import { exportCycleToCSV } from '../utils/exportUtils';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import dayjs from 'dayjs';
-import {
-  isPayloadTooLargeError,
-  showPayloadTooLargeMessage,
-} from '../utils/uploadValidation';
+import { isPayloadTooLargeError, showPayloadTooLargeMessage } from '../utils/uploadValidation';
 import {
   extractFirstImageSrc,
   hasMeaningfulEvidenceContent,
@@ -99,12 +97,63 @@ const operatingSystemOptions = Object.values(OperatingSystem).map(value => ({
   label: value,
   value,
 }));
+const CYCLE_RISK_OPTIONS = [
+  { label: 'Cambios en base de datos', value: 'database-changes' },
+  { label: 'Cambios de autenticacion', value: 'auth-changes' },
+  { label: 'Integraciones externas', value: 'external-integrations' },
+  { label: 'Cambios UI/UX', value: 'ui-ux-changes' },
+  { label: 'APIs modificadas', value: 'api-changes' },
+  { label: 'Riesgo alto de regresion', value: 'high-regression-risk' },
+  { label: 'Otro', value: 'other' },
+];
+const CYCLE_EXIT_CRITERIA_OPTIONS = [
+  { label: '100% de casos ejecutados', value: 'all-executed' },
+  { label: 'Sin bugs criticos', value: 'no-critical-bugs' },
+  { label: 'Sin bloqueos activos', value: 'no-active-blockers' },
+  { label: 'Pass Rate >= 90%', value: 'pass-rate-90' },
+  { label: 'Todos los bugs corregidos', value: 'all-bugs-fixed' },
+  { label: 'Aprobacion del Product Owner', value: 'po-approval' },
+];
+const REGRESSION_CYCLE_DEFAULTS = {
+  environment: Environment.TEST,
+  identifiedRisks: ['high-regression-risk', 'api-changes', 'database-changes'],
+  exitCriteria: ['all-executed', 'no-critical-bugs', 'pass-rate-90'],
+  helperText:
+    'Enfocada en estabilidad transversal y riesgo acumulado antes de un despliegue o cierre de sprint.',
+};
 
 function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
     <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
       <EvidenceRichEditor {...props} />
     </Suspense>
+  );
+}
+
+function PlanningSectionCard({
+  step,
+  title,
+  subtitle,
+  children,
+}: {
+  step: string;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-sm font-bold text-blue-700">
+          {step}
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-800">{title}</div>
+          <div className="text-xs text-slate-500">{subtitle}</div>
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -129,7 +178,10 @@ function parseTesterValue(value?: string) {
 
 function serializeTesterValue(value?: string | string[]) {
   if (Array.isArray(value)) {
-    return value.map(item => item.trim()).filter(Boolean).join(', ');
+    return value
+      .map(item => item.trim())
+      .filter(Boolean)
+      .join(', ');
   }
 
   return value?.trim() || '';
@@ -146,6 +198,11 @@ function summarizeTesterValue(value?: string) {
     label: `${testers.length} testers`,
     tooltip: testers.join(', '),
   };
+}
+
+function getOptionLabel(options: Array<{ label: string; value: string }>, value?: string | null) {
+  if (!value) return '';
+  return options.find(option => option.value === value)?.label || value;
 }
 
 function getApiErrorMessage(error: unknown) {
@@ -172,7 +229,9 @@ function isExecutionConflictError(error: unknown) {
     message.includes(
       'This execution already contains progress. Refresh the cycle before making destructive changes.',
     ) ||
-    message.includes('This execution was updated by another tester. Refresh the cycle before saving again.')
+    message.includes(
+      'This execution was updated by another tester. Refresh the cycle before saving again.',
+    )
   );
 }
 
@@ -222,15 +281,30 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const [editingCycle, setEditingCycle] = useState<RegressionCycle | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [selectedFunctionalityIds, setSelectedFunctionalityIds] = useState<string[]>([]);
-  const [assignmentSelections, setAssignmentSelections] = useState<Record<string, string | undefined>>({});
+  const [assignmentSelections, setAssignmentSelections] = useState<
+    Record<string, string | undefined>
+  >({});
   const [moduleAssignmentSelections, setModuleAssignmentSelections] = useState<
     Record<string, string | undefined>
   >({});
-  const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(undefined);
-  const [executionDrafts, setExecutionDrafts] = useState<Record<string, Partial<RegressionExecution>>>({});
+  const [suggestionModuleFilter, setSuggestionModuleFilter] = useState<string | undefined>(
+    undefined,
+  );
+  const [executionDrafts, setExecutionDrafts] = useState<
+    Record<string, Partial<RegressionExecution>>
+  >({});
   const [savingExecutionIds, setSavingExecutionIds] = useState<string[]>([]);
   const [form] = Form.useForm();
-  const selectedCycle = selectedCycleId ? cycles.find(cycle => cycle.id === selectedCycleId) || null : null;
+  const selectedCycle = selectedCycleId
+    ? cycles.find(cycle => cycle.id === selectedCycleId) || null
+    : null;
+  const watchedCycleId = Form.useWatch('cycleId', form) as string | undefined;
+  const watchedSprint = Form.useWatch('sprint', form) as string | undefined;
+  const watchedDate = Form.useWatch('date', form) as dayjs.Dayjs | undefined;
+  const watchedEnvironment = Form.useWatch('environment', form) as Environment | undefined;
+  const watchedIdentifiedRisks =
+    (Form.useWatch('identifiedRisks', form) as string[] | undefined) || [];
+  const watchedExitCriteria = (Form.useWatch('exitCriteria', form) as string[] | undefined) || [];
   const [tableFilters, setTableFilters] = useState<NativeCycleTableFilterState>({
     cycleId: null,
     date: null,
@@ -286,16 +360,13 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
   const canEditExecutionRecord = (execution: RegressionExecution) =>
     !isReadOnly &&
-    canEditAssignedExecution(
-      execution,
-      currentUserEmail,
-      canManageCycleConfig,
-      currentUserName,
-    );
+    canEditAssignedExecution(execution, currentUserEmail, canManageCycleConfig, currentUserName);
 
   const getExecutionAssignmentLabel = (execution: RegressionExecution) =>
     execution.assignedTesterName || execution.assignedTesterEmail || null;
-  const isCurrentExecutionReadOnly = currentExecution ? !canEditExecutionRecord(currentExecution) : isReadOnly;
+  const isCurrentExecutionReadOnly = currentExecution
+    ? !canEditExecutionRecord(currentExecution)
+    : isReadOnly;
 
   const handleCloseEvidenceModal = () => {
     setEvidenceModalOpen(false);
@@ -351,9 +422,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const regressionMandatoryFuncs = regressionFuncs.filter(
     functionality =>
       functionality.isCore ||
-      (functionality.priority === Priority.CRITICAL ||
-        functionality.priority === Priority.HIGH ||
-        functionality.riskLevel === RiskLevel.HIGH),
+      functionality.priority === Priority.CRITICAL ||
+      functionality.priority === Priority.HIGH ||
+      functionality.riskLevel === RiskLevel.HIGH,
   );
 
   const regressionRecommendedFuncs = regressionFuncs.filter(
@@ -385,6 +456,57 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   )
     .sort((a, b) => a.localeCompare(b))
     .map(module => ({ label: module, value: module }));
+
+  const planningScopeItems = editingCycle
+    ? (selectedCycle?.executions || []).map(execution => ({
+        id: execution.functionalityId,
+        module: execution.module,
+      }))
+    : regressionFuncs
+        .filter(item => selectedFunctionalityIds.includes(item.id))
+        .map(item => ({ id: item.id, module: item.module }));
+  const selectedTestCaseCount = useMemo(
+    () =>
+      testCases.filter(item =>
+        planningScopeItems.some(scopeItem => scopeItem.id === item.functionalityId),
+      ).length,
+    [planningScopeItems, testCases],
+  );
+  const selectedModuleCount = useMemo(
+    () => new Set(planningScopeItems.map(item => item.module).filter(Boolean)).size,
+    [planningScopeItems],
+  );
+  const regressionPlanningSteps = useMemo(() => {
+    const sections = [
+      {
+        key: 'general',
+        label: 'General',
+        complete: Boolean(
+          watchedCycleId && watchedSprint && watchedDate && selectedTesterValues.length,
+        ),
+      },
+      { key: 'scope', label: 'Alcance', complete: planningScopeItems.length > 0 },
+      { key: 'environment', label: 'Ambiente', complete: Boolean(watchedEnvironment) },
+      { key: 'risks', label: 'Riesgos', complete: watchedIdentifiedRisks.length > 0 },
+      { key: 'criteria', label: 'Criterios', complete: watchedExitCriteria.length > 0 },
+      { key: 'create', label: editingCycle ? 'Guardar' : 'Crear', complete: false },
+    ];
+    const currentIndex = sections.findIndex(section => !section.complete);
+    return {
+      sections,
+      currentIndex: currentIndex === -1 ? sections.length - 1 : currentIndex,
+    };
+  }, [
+    editingCycle,
+    planningScopeItems.length,
+    selectedTesterValues.length,
+    watchedCycleId,
+    watchedDate,
+    watchedEnvironment,
+    watchedExitCriteria.length,
+    watchedIdentifiedRisks.length,
+    watchedSprint,
+  ]);
 
   const filterByModule = (items: Functionality[]) =>
     suggestionModuleFilter ? items.filter(item => item.module === suggestionModuleFilter) : items;
@@ -421,7 +543,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       date: dayjs(),
       note: '',
       tester: [],
-      environment: undefined,
+      environment: REGRESSION_CYCLE_DEFAULTS.environment,
       buildVersion: '',
       browser: undefined,
       deviceType: undefined,
@@ -429,6 +551,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       browserVersion: '',
       osVersion: '',
       resolution: '',
+      identifiedRisks: REGRESSION_CYCLE_DEFAULTS.identifiedRisks,
+      exitCriteria: REGRESSION_CYCLE_DEFAULTS.exitCriteria,
     });
     setIsModalOpen(true);
   };
@@ -456,6 +580,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
       browserVersion: cycle.browserVersion || '',
       osVersion: cycle.osVersion || '',
       resolution: cycle.resolution || '',
+      identifiedRisks: cycle.identifiedRisks || [],
+      exitCriteria: cycle.exitCriteria || [],
     });
     setIsModalOpen(true);
   };
@@ -533,7 +659,8 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                           {group.module}
                         </Tag>
                         <span className="text-xs text-slate-500">
-                          {selectedItemsInModule.length}/{group.items.length} funcionalidades seleccionadas
+                          {selectedItemsInModule.length}/{group.items.length} funcionalidades
+                          seleccionadas
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mb-0 mt-2">
@@ -556,7 +683,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
                     {group.items.map(item => {
                       const isSelected = selectedFunctionalityIds.includes(item.id);
-                      const effectiveSelection = getEffectiveAssignmentSelection(item.id, group.module);
+                      const effectiveSelection = getEffectiveAssignmentSelection(
+                        item.id,
+                        group.module,
+                      );
                       const hasIndividualOverride = Boolean(assignmentSelections[item.id]);
 
                       return (
@@ -582,7 +712,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                                   <span className="text-sm font-semibold text-slate-800">
                                     {item.name}
                                   </span>
-                                  {!hasFunctionalTestCases(item.id, functionalityIdsWithTestCases) && (
+                                  {!hasFunctionalTestCases(
+                                    item.id,
+                                    functionalityIdsWithTestCases,
+                                  ) && (
                                     <Tag color="orange" className="m-0">
                                       Sin casos de prueba
                                     </Tag>
@@ -972,31 +1105,33 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           return;
         }
 
-        const initialExecutions: RegressionExecution[] = selectedFunctionalities.map(functionality => {
-          const selectedAssignment = resolveSelectedTesterAssignment(
-            testerAssignments,
-            getEffectiveAssignmentSelection(functionality.id, functionality.module),
-          );
-
-          if (!selectedAssignment) {
-            throw new Error(
-              `Asigna manualmente un tester para "${functionality.name}" antes de crear el ciclo.`,
+        const initialExecutions: RegressionExecution[] = selectedFunctionalities.map(
+          functionality => {
+            const selectedAssignment = resolveSelectedTesterAssignment(
+              testerAssignments,
+              getEffectiveAssignmentSelection(functionality.id, functionality.module),
             );
-          }
 
-          return {
-            id: Math.random().toString(36).substr(2, 9),
-            functionalityId: functionality.id,
-            module: functionality.module,
-            functionalityName: functionality.name,
-            executionMode: ExecutionMode.MANUAL,
-            executed: false,
-            result: TestResult.NOT_EXECUTED,
-            date: undefined,
-            assignedTesterName: selectedAssignment.name,
-            assignedTesterEmail: selectedAssignment.email,
-          };
-        });
+            if (!selectedAssignment) {
+              throw new Error(
+                `Asigna manualmente un tester para "${functionality.name}" antes de crear el ciclo.`,
+              );
+            }
+
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              functionalityId: functionality.id,
+              module: functionality.module,
+              functionalityName: functionality.name,
+              executionMode: ExecutionMode.MANUAL,
+              executed: false,
+              result: TestResult.NOT_EXECUTED,
+              date: undefined,
+              assignedTesterName: selectedAssignment.name,
+              assignedTesterEmail: selectedAssignment.email,
+            };
+          },
+        );
 
         const newCycle: RegressionCycle = {
           id: Date.now().toString(),
@@ -1103,12 +1238,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     const previousCycles = queryClient.getQueryData<RegressionCycle[] | undefined>(
       testCyclesQueryKey,
     );
-    queryClient.setQueryData<RegressionCycle[] | undefined>(
-      testCyclesQueryKey,
-      previous =>
-        previous
-          ? previous.map(item => (item.id === cycleId ? optimisticCycle : item))
-          : [optimisticCycle],
+    queryClient.setQueryData<RegressionCycle[] | undefined>(testCyclesQueryKey, previous =>
+      previous
+        ? previous.map(item => (item.id === cycleId ? optimisticCycle : item))
+        : [optimisticCycle],
     );
 
     try {
@@ -1119,12 +1252,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
         nextUpdates,
         targetExecution.updatedAt,
       );
-      queryClient.setQueryData<RegressionCycle[] | undefined>(
-        testCyclesQueryKey,
-        previous =>
-          previous
-            ? previous.map(item => (item.id === savedCycle.id ? savedCycle : item))
-            : [savedCycle],
+      queryClient.setQueryData<RegressionCycle[] | undefined>(testCyclesQueryKey, previous =>
+        previous
+          ? previous.map(item => (item.id === savedCycle.id ? savedCycle : item))
+          : [savedCycle],
       );
       if (selectedCycleId === cycleId) {
         setSelectedCycleId(savedCycle.id);
@@ -1260,10 +1391,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
 
   const functionalityLookup = new Map(functionalities.map(item => [item.id, item] as const));
 
-  const stageExecutionDraft = (
-    executionId: string,
-    updates: Partial<RegressionExecution>,
-  ) => {
+  const stageExecutionDraft = (executionId: string, updates: Partial<RegressionExecution>) => {
     setExecutionDrafts(previous => ({
       ...previous,
       [executionId]: {
@@ -1483,7 +1611,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                           ? 'border-slate-200 bg-slate-100 text-slate-500 shadow-none'
                           : 'bg-emerald-600 hover:bg-emerald-700 border-none text-white shadow-lg shadow-emerald-200'
                       }`}
-              onClick={() => void handleFinalizeCycle(selectedCycle)}
+                      onClick={() => void handleFinalizeCycle(selectedCycle)}
                     >
                       Finalizar Ciclo
                     </Button>
@@ -1599,6 +1727,83 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               </Card>
             </Col>
           </Row>
+
+          {(selectedCycle.identifiedRisks?.length || selectedCycle.exitCriteria?.length) && (
+            <Row gutter={20}>
+              <Col xs={24} xl={12}>
+                <Card className="rounded-2xl border-amber-100 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50">
+                      <BugOutlined className="text-xl text-amber-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Text
+                        type="secondary"
+                        className="text-[11px] font-bold uppercase tracking-wider"
+                      >
+                        Riesgos del ciclo
+                      </Text>
+                      <div className="mt-1 text-sm text-slate-500">
+                        Contexto que justifica esta regresion antes de ejecutar.
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(selectedCycle.identifiedRisks || []).length > 0 ? (
+                          (selectedCycle.identifiedRisks || []).map(risk => (
+                            <Tag
+                              key={risk}
+                              className="m-0 rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
+                            >
+                              {getOptionLabel(CYCLE_RISK_OPTIONS, risk)}
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text type="secondary" className="text-xs">
+                            Sin riesgos documentados.
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </Col>
+              <Col xs={24} xl={12}>
+                <Card className="rounded-2xl border-emerald-100 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50">
+                      <CheckCircleOutlined className="text-xl text-emerald-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Text
+                        type="secondary"
+                        className="text-[11px] font-bold uppercase tracking-wider"
+                      >
+                        Criterios de salida
+                      </Text>
+                      <div className="mt-1 text-sm text-slate-500">
+                        La vara minima para cerrar este ciclo con confianza.
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(selectedCycle.exitCriteria || []).length > 0 ? (
+                          (selectedCycle.exitCriteria || []).map(criteria => (
+                            <Tag
+                              key={criteria}
+                              className="m-0 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
+                            >
+                              {getOptionLabel(CYCLE_EXIT_CRITERIA_OPTIONS, criteria)}
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text type="secondary" className="text-xs">
+                            Sin criterios definidos.
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+          )}
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="flex justify-between items-center mb-6">
@@ -1734,9 +1939,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                                   result: !draftRecord.executed
                                     ? TestResult.PASSED
                                     : TestResult.NOT_EXECUTED,
-                                  date: !draftRecord.executed
-                                    ? dayjs().format('YYYY-MM-DD')
-                                    : '',
+                                  date: !draftRecord.executed ? dayjs().format('YYYY-MM-DD') : '',
                                 })
                             : undefined
                         }
@@ -1982,20 +2185,39 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               )}
             </div>
             {!isViewer && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              size="large"
-              className="rounded-xl h-12 px-6 shadow-lg shadow-blue-200"
-              onClick={handleOpenModal}
-            >
-              Nuevo Ciclo de Regresión
-            </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                size="large"
+                className="rounded-xl h-12 px-6 shadow-lg shadow-blue-200"
+                onClick={handleOpenModal}
+              >
+                Nuevo Ciclo de Regresión
+              </Button>
             )}
           </div>
 
+          <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm">
+                <InfoCircleOutlined className="text-lg" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-800">
+                  Los ciclos de regresión se construyen a partir de las funcionalidades registradas
+                  en el proyecto.
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  QA Tracker toma esas funcionalidades para definir el alcance del ciclo y ordenar
+                  la validación sobre los cambios con mayor impacto. Los resultados se registran
+                  dentro del ciclo como evidencia consolidada de la regresión.
+                </div>
+              </div>
+            </div>
+          </Card>
+
           {latestCycle && (
-            <div className="space-y-4">
+            <div className="space-y-4 mt-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                   <BarChartOutlined className="text-white" />
@@ -2205,357 +2427,479 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
           className="mt-4"
           initialValues={{ date: dayjs(), status: 'EN_PROGRESO' }}
         >
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="cycleId"
-                label={<span className="font-semibold text-slate-600">ID del Ciclo</span>}
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="Ej: C-49" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="status"
-                label={<span className="font-semibold text-slate-600">Estado</span>}
-                rules={[{ required: true }]}
-              >
-                <Select className="h-10 rounded-lg">
-                  <Select.Option value="EN_PROGRESO">EN PROGRESO</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="date"
-                label={<span className="font-semibold text-slate-600">Fecha de Inicio</span>}
-                rules={[{ required: true }]}
-              >
-                <DatePicker className="w-full h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <div className="mb-6 grid gap-3 md:grid-cols-6">
+            {regressionPlanningSteps.sections.map((section, index) => {
+              const isCurrent = regressionPlanningSteps.currentIndex === index;
+              const isComplete = section.complete;
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="sprint"
-                label={<span className="font-semibold text-slate-600">Sprint</span>}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder="Selecciona Sprint"
-                  className="h-10 rounded-lg"
-                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label={
-                  <span className="font-semibold text-slate-600">Funcionalidades a Incluir</span>
-                }
-              >
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  <span className="text-blue-600 font-bold">
-                    {editingCycle ? selectedCycle?.executions?.length || 0 : selectedFunctionalityIds.length}
-                  </span>{' '}
-                  funcionalidades sugeridas/seleccionadas para
-                  <Tag color="blue" className="m-0 ml-1">
-                    Regresión
-                  </Tag>
-                  .
+              return (
+                <div
+                  key={section.key}
+                  className={`rounded-2xl border px-3 py-3 transition-all ${
+                    isCurrent
+                      ? 'border-blue-200 bg-blue-50 shadow-sm'
+                      : isComplete
+                        ? 'border-emerald-100 bg-emerald-50'
+                        : 'border-slate-200 bg-slate-50'
+                  }`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                        isCurrent
+                          ? 'bg-blue-100 text-blue-700'
+                          : isComplete
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white text-slate-500'
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                      {isComplete ? 'Listo' : isCurrent ? 'Actual' : 'Pendiente'}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-700">{section.label}</div>
                 </div>
-              </Form.Item>
-            </Col>
-          </Row>
+              );
+            })}
+          </div>
 
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="tester"
-                label={<span className="font-semibold text-slate-600">Tester</span>}
-                rules={[{ required: true }]}
-              >
-                <ParticipantSelect
-                  members={participantDirectoryMembers}
-                  valueField="fullName"
-                  multiple
-                  placeholder="Selecciona uno o más testers del workspace"
-                  className="h-10 rounded-lg"
-                  loading={isParticipantDirectoryLoading}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="environment"
-                label={<span className="font-semibold text-slate-600">Environment</span>}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder="Selecciona Environment"
-                  className="h-10 rounded-lg"
-                  options={[
-                    { label: Environment.TEST, value: Environment.TEST },
-                    { label: Environment.LOCAL, value: Environment.LOCAL },
-                    { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="buildVersion"
-                label={<span className="font-semibold text-slate-600">Build version</span>}
-              >
-                <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <div className="space-y-5">
+            <PlanningSectionCard
+              step="01"
+              title="Informacion general y ambiente"
+              subtitle="Completa el contexto del ciclo y la base tecnica de la regresion."
+            >
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="cycleId"
+                    label={<span className="font-semibold text-slate-600">ID del Ciclo</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <Input placeholder="Ej: C-49" className="h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="status"
+                    label={<span className="font-semibold text-slate-600">Estado</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <Select className="h-10 rounded-lg">
+                      <Select.Option value="EN_PROGRESO">EN PROGRESO</Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="date"
+                    label={<span className="font-semibold text-slate-600">Fecha de Inicio</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <DatePicker className="w-full h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="browser"
-                label={<span className="font-semibold text-slate-600">Navegador</span>}
-              >
-                <Select
-                  allowClear
-                  placeholder="Selecciona navegador"
-                  className="h-10 rounded-lg"
-                  options={browserOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="deviceType"
-                label={<span className="font-semibold text-slate-600">Tipo de dispositivo</span>}
-              >
-                <Select
-                  allowClear
-                  placeholder="Selecciona dispositivo"
-                  className="h-10 rounded-lg"
-                  options={deviceTypeOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="operatingSystem"
-                label={<span className="font-semibold text-slate-600">Sistema operativo</span>}
-              >
-                <Select
-                  allowClear
-                  placeholder="Selecciona sistema operativo"
-                  className="h-10 rounded-lg"
-                  options={operatingSystemOptions}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="browserVersion"
-                label={
-                  <span className="font-semibold text-slate-600">Versión del navegador</span>
-                }
-              >
-                <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="osVersion"
-                label={
-                  <span className="font-semibold text-slate-600">
-                    Versión del sistema operativo
-                  </span>
-                }
-              >
-                <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="resolution"
-                label={
-                  <span className="font-semibold text-slate-600">Resolución de pantalla</span>
-                }
-              >
-                <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="note"
-            label={<span className="font-semibold text-slate-600">Objetivo de la Regresión</span>}
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder="Ej: Asegurar estabilidad de módulos core antes de despliegue..."
-              className="rounded-lg"
-            />
-          </Form.Item>
-
-          {!editingCycle ? (
-            <div className="mt-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <span className="text-[11px] font-bold text-slate-400 uppercase block">
-                  Sugerencia Automatica de Funcionalidades
-                </span>
-                <Space size={8} wrap>
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      setSelectedFunctionalityIds(
-                        Array.from(
-                          new Set([
-                            ...regressionMandatoryFuncs.map(item => item.id),
-                            ...regressionRecommendedFuncs.map(item => item.id),
-                          ]),
-                        ),
-                      )
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="sprint"
+                    label={<span className="font-semibold text-slate-600">Sprint</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <Select
+                      placeholder="Selecciona Sprint"
+                      className="h-10 rounded-lg"
+                      options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span className="font-semibold text-slate-600">
+                        Funcionalidades a Incluir
+                      </span>
                     }
                   >
-                    Aplicar sugeridas
-                  </Button>
-                  <Button size="small" onClick={() => setSelectedFunctionalityIds([])}>
-                    Limpiar
-                  </Button>
-                  <Select
-                    allowClear
-                    size="small"
-                    placeholder="Filtrar por módulo"
-                    className="min-w-[180px]"
-                    value={suggestionModuleFilter}
-                    onChange={value => setSuggestionModuleFilter(value)}
-                    options={regressionModuleOptions}
-                  />
-                </Space>
-              </div>
-
-              <Space direction="vertical" size={12} className="w-full">
-                {renderSuggestionSection(
-                  'Obligatorias',
-                  'Core de regresión con prioridad o riesgo elevado.',
-                  'bg-blue-50',
-                  filterByModule(regressionMandatoryFuncs),
-                )}
-                {renderSuggestionSection(
-                  'Recomendadas',
-                  'Funcionalidades con cambio reciente para revisar en el ciclo.',
-                  'bg-amber-50',
-                  filterByModule(regressionRecommendedFuncs),
-                )}
-                {renderSuggestionSection(
-                  'Opcionales',
-                  'Cobertura adicional para ampliar el alcance del ciclo.',
-                  'bg-slate-50',
-                  filterByModule(regressionOptionalFuncs),
-                )}
-              </Space>
-            </div>
-          ) : (
-            <div className="mt-4">
-              <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
-                Vista Previa de Funcionalidades
-              </span>
-              <Space direction="vertical" size={12} className="w-full mb-3">
-                {editingExecutionGroups.map(group => (
-                  <div
-                    key={`edit-module-${group.module}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Tag color="geekblue" className="m-0">
-                          {group.module}
-                        </Tag>
-                        <span className="text-xs text-slate-500">
-                          {group.items.length} funcionalidades
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[11px] text-slate-400">
-                        La asignación del módulo se puede sobrescribir por funcionalidad en la tabla.
-                      </div>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <span className="text-blue-600 font-bold">
+                        {editingCycle
+                          ? selectedCycle?.executions?.length || 0
+                          : selectedFunctionalityIds.length}
+                      </span>{' '}
+                      funcionalidades sugeridas/seleccionadas para
+                      <Tag color="blue" className="m-0 ml-1">
+                        Regresión
+                      </Tag>
+                      .
                     </div>
-                    <Select
-                      placeholder="Asignar tester al módulo"
-                      className="min-w-[240px]"
-                      value={moduleAssignmentSelections[group.module]}
-                      options={availableTesterOptions}
-                      allowClear
-                      onChange={value => handleModuleAssignmentChange(group.module, value)}
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="tester"
+                    label={<span className="font-semibold text-slate-600">Tester</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <ParticipantSelect
+                      members={participantDirectoryMembers}
+                      valueField="fullName"
+                      multiple
+                      placeholder="Selecciona uno o más testers del workspace"
+                      className="h-10 rounded-lg"
+                      loading={isParticipantDirectoryLoading}
                     />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="environment"
+                    label={<span className="font-semibold text-slate-600">Environment</span>}
+                    rules={[{ required: true }]}
+                  >
+                    <Select
+                      placeholder="Selecciona Environment"
+                      className="h-10 rounded-lg"
+                      options={[
+                        { label: Environment.TEST, value: Environment.TEST },
+                        { label: Environment.LOCAL, value: Environment.LOCAL },
+                        { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="buildVersion"
+                    label={<span className="font-semibold text-slate-600">Build version</span>}
+                  >
+                    <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="browser"
+                    label={<span className="font-semibold text-slate-600">Navegador</span>}
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Selecciona navegador"
+                      className="h-10 rounded-lg"
+                      options={browserOptions}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="deviceType"
+                    label={
+                      <span className="font-semibold text-slate-600">Tipo de dispositivo</span>
+                    }
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Selecciona dispositivo"
+                      className="h-10 rounded-lg"
+                      options={deviceTypeOptions}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="operatingSystem"
+                    label={<span className="font-semibold text-slate-600">Sistema operativo</span>}
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Selecciona sistema operativo"
+                      className="h-10 rounded-lg"
+                      options={operatingSystemOptions}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="browserVersion"
+                    label={
+                      <span className="font-semibold text-slate-600">Versión del navegador</span>
+                    }
+                  >
+                    <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="osVersion"
+                    label={
+                      <span className="font-semibold text-slate-600">
+                        Versión del sistema operativo
+                      </span>
+                    }
+                  >
+                    <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="resolution"
+                    label={
+                      <span className="font-semibold text-slate-600">Resolución de pantalla</span>
+                    }
+                  >
+                    <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item
+                name="note"
+                label={
+                  <span className="font-semibold text-slate-600">Objetivo de la Regresión</span>
+                }
+              >
+                <Input.TextArea
+                  rows={3}
+                  placeholder="Ej: Asegurar estabilidad de módulos core antes de despliegue..."
+                  className="rounded-lg"
+                />
+              </Form.Item>
+            </PlanningSectionCard>
+
+            <PlanningSectionCard
+              step="02"
+              title="Alcance de la prueba"
+              subtitle="Revisa cobertura, modulos implicados y selecciona las funcionalidades que entran en la regresion."
+            >
+              <Row gutter={16} className="mb-4">
+                <Col span={8}>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                      Modulos relacionados
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-slate-800">
+                      {selectedModuleCount}
+                    </div>
                   </div>
-                ))}
-              </Space>
-              <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
-                <Table
-                  dataSource={(selectedCycle?.executions || []).map(execution => ({
-                    id: execution.id,
-                    module: execution.module,
-                    name: execution.functionalityName,
-                    assignedTesterName: execution.assignedTesterName,
-                    assignedTesterEmail: execution.assignedTesterEmail,
-                  }))}
-                  rowKey="id"
-                  pagination={false}
-                  size="small"
-                  columns={[
-                    {
-                      title: 'Módulo',
-                      dataIndex: 'module',
-                      key: 'module',
-                      render: m => <span className="text-xs font-medium">{m}</span>,
-                    },
-                    {
-                      title: 'Funcionalidad',
-                      dataIndex: 'name',
-                      key: 'name',
-                      render: n => <span className="text-xs text-slate-500">{n}</span>,
-                    },
-                    {
-                      title: 'Tester asignado',
-                      key: 'assignedTester',
-                      render: (
-                        _,
-                        row: {
-                          id: string;
-                          module: string;
-                          assignedTesterName?: string;
-                          assignedTesterEmail?: string;
-                        },
-                      ) => (
+                </Col>
+                <Col span={8}>
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-400">
+                      Funcionalidades
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-blue-700">
+                      {planningScopeItems.length}
+                    </div>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                      Casos incluidos
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-slate-800">
+                      {selectedTestCaseCount}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+
+              {!editingCycle ? (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase block">
+                      Sugerencia Automatica de Funcionalidades
+                    </span>
+                    <Space size={8} wrap>
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          setSelectedFunctionalityIds(
+                            Array.from(
+                              new Set([
+                                ...regressionMandatoryFuncs.map(item => item.id),
+                                ...regressionRecommendedFuncs.map(item => item.id),
+                              ]),
+                            ),
+                          )
+                        }
+                      >
+                        Aplicar sugeridas
+                      </Button>
+                      <Button size="small" onClick={() => setSelectedFunctionalityIds([])}>
+                        Limpiar
+                      </Button>
+                      <Select
+                        allowClear
+                        size="small"
+                        placeholder="Filtrar por módulo"
+                        className="min-w-[180px]"
+                        value={suggestionModuleFilter}
+                        onChange={value => setSuggestionModuleFilter(value)}
+                        options={regressionModuleOptions}
+                      />
+                    </Space>
+                  </div>
+
+                  <Space direction="vertical" size={12} className="w-full">
+                    {renderSuggestionSection(
+                      'Obligatorias',
+                      'Core de regresión con prioridad o riesgo elevado.',
+                      'bg-blue-50',
+                      filterByModule(regressionMandatoryFuncs),
+                    )}
+                    {renderSuggestionSection(
+                      'Recomendadas',
+                      'Funcionalidades con cambio reciente para revisar en el ciclo.',
+                      'bg-amber-50',
+                      filterByModule(regressionRecommendedFuncs),
+                    )}
+                    {renderSuggestionSection(
+                      'Opcionales',
+                      'Cobertura adicional para ampliar el alcance del ciclo.',
+                      'bg-slate-50',
+                      filterByModule(regressionOptionalFuncs),
+                    )}
+                  </Space>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase block mb-3">
+                    Vista Previa de Funcionalidades
+                  </span>
+                  <Space direction="vertical" size={12} className="w-full mb-3">
+                    {editingExecutionGroups.map(group => (
+                      <div
+                        key={`edit-module-${group.module}`}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Tag color="geekblue" className="m-0">
+                              {group.module}
+                            </Tag>
+                            <span className="text-xs text-slate-500">
+                              {group.items.length} funcionalidades
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-400">
+                            La asignación del módulo se puede sobrescribir por funcionalidad en la
+                            tabla.
+                          </div>
+                        </div>
                         <Select
-                          placeholder={
-                            moduleAssignmentSelections[row.module]
-                              ? 'Hereda del módulo'
-                              : 'Asignar tester'
-                          }
-                          className="min-w-[220px]"
-                          value={getEffectiveAssignmentSelection(
-                            row.id,
-                            row.module,
-                            row.assignedTesterEmail || row.assignedTesterName,
-                          )}
+                          placeholder="Asignar tester al módulo"
+                          className="min-w-[240px]"
+                          value={moduleAssignmentSelections[group.module]}
                           options={availableTesterOptions}
                           allowClear
-                          onChange={value => handleItemAssignmentChange(row.id, row.module, value)}
+                          onChange={value => handleModuleAssignmentChange(group.module, value)}
                         />
-                      ),
-                    },
-                  ]}
+                      </div>
+                    ))}
+                  </Space>
+                  <div className="max-h-[200px] overflow-y-auto rounded-lg border border-slate-100">
+                    <Table
+                      dataSource={(selectedCycle?.executions || []).map(execution => ({
+                        id: execution.id,
+                        module: execution.module,
+                        name: execution.functionalityName,
+                        assignedTesterName: execution.assignedTesterName,
+                        assignedTesterEmail: execution.assignedTesterEmail,
+                      }))}
+                      rowKey="id"
+                      pagination={false}
+                      size="small"
+                      columns={[
+                        {
+                          title: 'Módulo',
+                          dataIndex: 'module',
+                          key: 'module',
+                          render: m => <span className="text-xs font-medium">{m}</span>,
+                        },
+                        {
+                          title: 'Funcionalidad',
+                          dataIndex: 'name',
+                          key: 'name',
+                          render: n => <span className="text-xs text-slate-500">{n}</span>,
+                        },
+                        {
+                          title: 'Tester asignado',
+                          key: 'assignedTester',
+                          render: (
+                            _,
+                            row: {
+                              id: string;
+                              module: string;
+                              assignedTesterName?: string;
+                              assignedTesterEmail?: string;
+                            },
+                          ) => (
+                            <Select
+                              placeholder={
+                                moduleAssignmentSelections[row.module]
+                                  ? 'Hereda del módulo'
+                                  : 'Asignar tester'
+                              }
+                              className="min-w-[220px]"
+                              value={getEffectiveAssignmentSelection(
+                                row.id,
+                                row.module,
+                                row.assignedTesterEmail || row.assignedTesterName,
+                              )}
+                              options={availableTesterOptions}
+                              allowClear
+                              onChange={value =>
+                                handleItemAssignmentChange(row.id, row.module, value)
+                              }
+                            />
+                          ),
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+            </PlanningSectionCard>
+
+            <PlanningSectionCard
+              step="03"
+              title="Riesgos identificados"
+              subtitle="Aterriza el riesgo que justifica la regresion antes de ejecutarla."
+            >
+              <Form.Item name="identifiedRisks" label="Riesgos de este ciclo">
+                <Checkbox.Group
+                  className="grid gap-3 md:grid-cols-2"
+                  options={CYCLE_RISK_OPTIONS}
                 />
-              </div>
-            </div>
-          )}
+              </Form.Item>
+            </PlanningSectionCard>
+
+            <PlanningSectionCard
+              step="04"
+              title="Criterios de salida"
+              subtitle="Define la vara minima para cerrar la regresion con confianza."
+            >
+              <Form.Item name="exitCriteria" label="Checklist de cierre">
+                <Checkbox.Group
+                  className="grid gap-3 md:grid-cols-2"
+                  options={CYCLE_EXIT_CRITERIA_OPTIONS}
+                />
+              </Form.Item>
+            </PlanningSectionCard>
+          </div>
         </Form>
       </Modal>
 
@@ -2589,7 +2933,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               severity: values.severity,
             };
 
-            if (mergedExecution.result === TestResult.FAILED && !hasMeaningfulEvidenceContent(evidenceHtml)) {
+            if (
+              mergedExecution.result === TestResult.FAILED &&
+              !hasMeaningfulEvidenceContent(evidenceHtml)
+            ) {
               message.error('Las notas de ejecución son obligatorias para pruebas fallidas.');
               return;
             }
@@ -2632,7 +2979,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             const didSave = await updateExecution(selectedCycle.id, mergedExecution.id, {
               executionMode: mergedExecution.executionMode,
               executed: mergedExecution.executed,
-              date: mergedExecution.executed ? mergedExecution.date || dayjs().format('YYYY-MM-DD') : '',
+              date: mergedExecution.executed
+                ? mergedExecution.date || dayjs().format('YYYY-MM-DD')
+                : '',
               result: mergedExecution.result,
               ...evidencePayload,
               linkedBugId,
@@ -2683,10 +3032,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   : undefined
               }
             >
-                <EvidenceRichEditorField
+              <EvidenceRichEditorField
                 placeholder="Describe los hallazgos, errores encontrados o pasos realizados. Puedes usar emojis, pegar una captura o subir una imagen."
-                  disabled={isCurrentExecutionReadOnly}
-                />
+                disabled={isCurrentExecutionReadOnly}
+              />
             </Form.Item>
 
             <Form.Item name="bugId" hidden>

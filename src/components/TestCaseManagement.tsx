@@ -438,6 +438,14 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         />
       ) : null}
 
+      <Alert
+        className="mb-4 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+        type="info"
+        showIcon
+        message="Si deseas estandarizar la estructura, puedes registrar una plantilla de casos desde Configuración."
+        description="QA Tracker puede reutilizar esa plantilla para acelerar la creación de casos y mantener consistencia entre funcionalidades."
+      />
+
       <UpgradeModal
         open={isUpgradeModalOpen}
         onClose={() => setIsUpgradeModalOpen(false)}
@@ -447,6 +455,14 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         description="Si quieres combinar trabajo manual con IA y más capacidad operativa, aquí puedes ver con claridad el siguiente paso."
         onUpgradeGrowth={() => handleUpgradeClick('test-case-upgrade-modal-growth')}
         onContactEnterprise={() => handleEnterpriseClick()}
+      />
+
+      <Alert
+        type="info"
+        showIcon
+        className="mb-4"
+        message="Si quieres estandarizar la creación de casos, puedes registrar plantillas desde Configuración."
+        description="Luego podrás seleccionarlas aquí al crear o editar un caso de prueba para autocompletar su estructura base."
       />
 
       {isError ? (

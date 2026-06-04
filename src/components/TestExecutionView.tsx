@@ -41,6 +41,7 @@ import {
   LinkOutlined,
   StopOutlined,
   CopyOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
@@ -114,6 +115,66 @@ const operatingSystemOptions = Object.values(OperatingSystem).map(value => ({
   label: value,
   value,
 }));
+const EXECUTION_RISK_OPTIONS = [
+  { label: 'Cambios en base de datos', value: 'database-changes' },
+  { label: 'Cambios de autenticación', value: 'auth-changes' },
+  { label: 'Integraciones externas', value: 'external-integrations' },
+  { label: 'Cambios UI/UX', value: 'ui-ux-changes' },
+  { label: 'APIs modificadas', value: 'api-changes' },
+  { label: 'Riesgo alto de regresión', value: 'high-regression-risk' },
+  { label: 'Otro', value: 'other' },
+];
+const EXECUTION_EXIT_CRITERIA_OPTIONS = [
+  { label: '100% de casos ejecutados', value: 'all-executed' },
+  { label: 'Sin bugs críticos', value: 'no-critical-bugs' },
+  { label: 'Sin bloqueos activos', value: 'no-active-blockers' },
+  { label: 'Pass Rate >= 90%', value: 'pass-rate-90' },
+  { label: 'Todos los bugs corregidos', value: 'all-bugs-fixed' },
+  { label: 'Aprobación del Product Owner', value: 'po-approval' },
+];
+
+const TEST_TYPE_DEFAULTS: Partial<
+  Record<
+    TestType,
+    {
+      environment?: Environment;
+      identifiedRisks: string[];
+      exitCriteria: string[];
+      helperText: string;
+    }
+  >
+> = {
+  [TestType.FUNCTIONAL]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['ui-ux-changes'],
+    exitCriteria: ['all-executed', 'no-critical-bugs'],
+    helperText: 'Pensada para validar flujos funcionales y comportamiento esperado por mÃ³dulo.',
+  },
+  [TestType.INTEGRATION]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['api-changes', 'external-integrations', 'database-changes'],
+    exitCriteria: ['all-executed', 'no-critical-bugs', 'no-active-blockers'],
+    helperText: 'Prioriza dependencias entre componentes, servicios y flujos de integraciÃ³n.',
+  },
+  [TestType.SANITY]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['high-regression-risk'],
+    exitCriteria: ['all-executed', 'no-critical-bugs'],
+    helperText: 'Ideal para una validaciÃ³n rÃ¡pida despuÃ©s de cambios sensibles o despliegues.',
+  },
+  [TestType.EXPLORATORY]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['ui-ux-changes', 'other'],
+    exitCriteria: ['no-critical-bugs'],
+    helperText: 'Ãštil para descubrir comportamientos no previstos y explorar riesgo residual.',
+  },
+  [TestType.UAT]: {
+    environment: Environment.PRODUCTION,
+    identifiedRisks: ['external-integrations', 'ui-ux-changes'],
+    exitCriteria: ['no-critical-bugs', 'po-approval'],
+    helperText: 'Enfocada en validaciÃ³n de negocio y aprobaciÃ³n final con participantes externos.',
+  },
+};
 
 function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
@@ -150,6 +211,33 @@ function renderRichTextContent(value?: string | null) {
       className="qa-rich-text-content mt-1 text-sm text-slate-700"
       dangerouslySetInnerHTML={{ __html: normalizedHtml }}
     />
+  );
+}
+
+function PlanningSectionCard({
+  step,
+  title,
+  subtitle,
+  children,
+}: {
+  step: string;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sm font-bold text-sky-700">
+          {step}
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-800">{title}</div>
+          <div className="text-xs text-slate-500">{subtitle}</div>
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -518,6 +606,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   }, [selectedModules, functionalitiesWithTestCases]);
 
   const selectedTestType = Form.useWatch('testType', form) as TestType | undefined;
+  const watchedTitle = Form.useWatch('title', form) as string | undefined;
+  const watchedSprint = Form.useWatch('sprint', form) as string | undefined;
+  const watchedPriority = Form.useWatch('priority', form) as Priority | undefined;
+  const watchedTester = Form.useWatch('tester', form) as string | undefined;
+  const watchedEnvironment = Form.useWatch('environment', form) as Environment | undefined;
+  const watchedIdentifiedRisks = (Form.useWatch('identifiedRisks', form) as string[] | undefined) || [];
+  const watchedExitCriteria = (Form.useWatch('exitCriteria', form) as string[] | undefined) || [];
 
   const testCaseCountByFunctionality = useMemo(() => {
     const counts = new Map<string, number>();
@@ -657,6 +752,64 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return groups;
   }, [availableFunctionalities]);
 
+  const selectedTestCaseCount = useMemo(
+    () =>
+      selectedFuncIds.reduce(
+        (total, functionalityId) => total + (testCaseCountByFunctionality.get(functionalityId) || 0),
+        0,
+      ),
+    [selectedFuncIds, testCaseCountByFunctionality],
+  );
+
+  const executionPlanningSteps = useMemo(() => {
+    const generalComplete = Boolean(
+      watchedTitle?.trim() &&
+        selectedTestType &&
+        watchedSprint &&
+        watchedPriority &&
+        watchedTester &&
+        watchedEnvironment,
+    );
+    const scopeComplete = Boolean(
+      selectedModules.length > 0 && (isEditingRunInfo || selectedFuncIds.length > 0),
+    );
+    const environmentComplete = Boolean(watchedEnvironment);
+    const risksComplete = watchedIdentifiedRisks.length > 0;
+    const criteriaComplete = watchedExitCriteria.length > 0;
+
+    const sections = [
+      { key: 'general', label: 'General', complete: generalComplete },
+      { key: 'scope', label: 'Alcance', complete: scopeComplete },
+      { key: 'environment', label: 'Ambiente', complete: environmentComplete },
+      { key: 'risks', label: 'Riesgos', complete: risksComplete },
+      { key: 'criteria', label: 'Criterios', complete: criteriaComplete },
+      {
+        key: 'create',
+        label: 'Crear',
+        complete: generalComplete && scopeComplete && environmentComplete,
+      },
+    ];
+
+    const currentIndex = sections.findIndex(section => !section.complete);
+
+    return {
+      sections,
+      currentIndex: currentIndex === -1 ? sections.length - 1 : currentIndex,
+    };
+  }, [
+    isEditingRunInfo,
+    selectedFuncIds.length,
+    selectedModules.length,
+    selectedTestType,
+    watchedEnvironment,
+    watchedExitCriteria.length,
+    watchedIdentifiedRisks.length,
+    watchedPriority,
+    watchedSprint,
+    watchedTester,
+    watchedTitle,
+  ]);
+
   const executionTestTypeOptions = useMemo(
     () =>
       Object.values(TestType)
@@ -664,6 +817,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         .map(type => ({ label: type, value: type })),
     [],
   );
+
+  const currentTestTypeDefaults = selectedTestType
+    ? TEST_TYPE_DEFAULTS[selectedTestType]
+    : undefined;
 
   useEffect(() => {
     // Auto-select all functionalities when modules change
@@ -675,6 +832,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setAiSuggestions([]);
     setAiSuggestionMode(null);
   }, [selectedModules, selectedTestType]);
+
+  useEffect(() => {
+    if (!isModalOpen || isEditingRunInfo || !selectedTestType) return;
+
+    const defaults = TEST_TYPE_DEFAULTS[selectedTestType];
+    if (!defaults) return;
+
+    form.setFieldsValue({
+      environment: defaults.environment || form.getFieldValue('environment'),
+      identifiedRisks: defaults.identifiedRisks,
+      exitCriteria: defaults.exitCriteria,
+    });
+  }, [form, isEditingRunInfo, isModalOpen, selectedTestType]);
 
   const buildRuleBasedSuggestions = () => {
     return ruleBasedSuggestionPool.slice(0, 5).map(item => ({
@@ -922,6 +1092,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       executionDate: dayjs(),
       testType: TestType.FUNCTIONAL,
       priority: Priority.MEDIUM,
+      description: '',
+      identifiedRisks: [],
+      exitCriteria: [],
     });
     setSelectedModules([]);
     setSelectedFuncIds([]);
@@ -948,6 +1121,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       browserVersion: activeTestRun.browserVersion || '',
       osVersion: activeTestRun.osVersion || '',
       resolution: activeTestRun.resolution || '',
+      identifiedRisks: [],
+      exitCriteria: [],
     });
     setSelectedModules(activeTestRun.selectedModules || []);
     setSelectedFuncIds(activeTestRun.selectedFunctionalities || []);
@@ -1261,6 +1436,551 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       environment: null,
     });
   };
+
+  const testRunModalTitle = isEditingRunInfo
+    ? 'Editar planificación de la ejecución'
+    : 'Nueva Ejecución de Pruebas';
+  const testRunModalPrimaryLabel = isEditingRunInfo
+    ? 'Guardar información'
+    : 'Crear Ejecución de Pruebas';
+
+  const testRunPlanningFormContent = (
+    <Form
+      form={form}
+      layout="vertical"
+      initialValues={{
+        executionDate: dayjs(),
+        testType: TestType.FUNCTIONAL,
+        priority: Priority.MEDIUM,
+      }}
+    >
+      <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+        <div className="mb-3">
+          <span className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
+            Flujo sugerido
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+          {executionPlanningSteps.sections.map((section, index) => {
+            const isCurrent = executionPlanningSteps.currentIndex === index;
+            const isComplete = section.complete;
+
+            return (
+              <div
+                key={section.key}
+                className={`rounded-xl border px-3 py-3 text-center transition-colors ${
+                  isComplete
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : isCurrent
+                      ? 'border-sky-200 bg-sky-50'
+                      : 'border-slate-200 bg-white'
+                }`}
+              >
+                <div
+                  className={`mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                    isComplete
+                      ? 'bg-emerald-500 text-white'
+                      : isCurrent
+                        ? 'bg-sky-600 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {index + 1}
+                </div>
+                <div
+                  className={`text-xs font-semibold ${
+                    isComplete || isCurrent ? 'text-slate-800' : 'text-slate-500'
+                  }`}
+                >
+                  {section.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-2">
+        <PlanningSectionCard
+          step="1"
+          title="Información general"
+          subtitle="Define el contexto principal de la ejecución antes de entrar al alcance."
+        >
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+              Perfil recomendado
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedTestType ? (
+                <Tag className="m-0 rounded-full border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                  {selectedTestType}
+                </Tag>
+              ) : null}
+              {watchedPriority ? (
+                <Tag className="m-0 rounded-full border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold text-violet-700">
+                  Prioridad: {labelPriority(watchedPriority, t)}
+                </Tag>
+              ) : null}
+              {watchedEnvironment ? (
+                <Tag className="m-0 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                  Ambiente: {labelEnvironment(watchedEnvironment, t)}
+                </Tag>
+              ) : null}
+            </div>
+            <div className="mt-3 text-sm text-slate-500">
+              {currentTestTypeDefaults?.helperText ||
+                'Selecciona el tipo de prueba para cargar una guía inicial de riesgos y criterios.'}
+            </div>
+          </div>
+
+          <Row gutter={20}>
+            <Col span={24}>
+              <Form.Item name="title" label="Título de la ejecución" rules={[{ required: true }]}>
+                <Input
+                  placeholder="Ej: Regresión módulo de pagos - Sprint 25"
+                  className="h-10 rounded-lg"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="testType" label="Tipo de prueba" rules={[{ required: true }]}>
+                <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="executionDate"
+                label="Fecha de ejecución"
+                rules={[{ required: true }]}
+              >
+                <DatePicker className="h-10 w-full rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="sprint" label="Sprint" rules={[{ required: true }]}>
+                <Select
+                  placeholder="Selecciona el sprint"
+                  className="h-10 rounded-lg"
+                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
+                <Select
+                  options={Object.values(Priority).map(v => ({
+                    label: labelPriority(v, t),
+                    value: v,
+                  }))}
+                  className="h-10 rounded-lg"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
+                <ParticipantSelect
+                  members={participantDirectoryMembers}
+                  valueField="fullName"
+                  multiple={false}
+                  placeholder="Selecciona el tester del workspace"
+                  className="h-10 rounded-lg"
+                  loading={isParticipantDirectoryLoading}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
+                <Select
+                  placeholder="Selecciona el environment"
+                  className="h-10 rounded-lg"
+                  options={[
+                    { label: Environment.TEST, value: Environment.TEST },
+                    { label: Environment.LOCAL, value: Environment.LOCAL },
+                    { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="description" label="Descripción / objetivo">
+                <Input.TextArea
+                  rows={3}
+                  placeholder="Describe qué quieres validar, por qué se ejecuta esta prueba y qué esperas confirmar."
+                  className="rounded-lg"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </PlanningSectionCard>
+
+        <PlanningSectionCard
+          step="2"
+          title="Alcance de la prueba"
+          subtitle="Selecciona el alcance funcional antes de entrar en detalles del ambiente."
+        >
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                Módulos
+              </div>
+              <div className="mt-1 text-2xl font-bold text-slate-800">{selectedModules.length}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                Funcionalidades
+              </div>
+              <div className="mt-1 text-2xl font-bold text-slate-800">{selectedFuncIds.length}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                Casos incluidos
+              </div>
+              <div className="mt-1 text-2xl font-bold text-slate-800">{selectedTestCaseCount}</div>
+            </div>
+          </div>
+
+          <Form.Item label="Módulos relacionados" required>
+            <Select
+              mode="multiple"
+              placeholder="Selecciona uno o más módulos"
+              className="w-full rounded-lg"
+              onChange={setSelectedModules}
+              value={selectedModules}
+              options={moduleOptions}
+              disabled={isEditingRunInfo}
+            />
+          </Form.Item>
+
+          {isEditingRunInfo ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              En modo edición solo se actualiza la información general. Los módulos,
+              funcionalidades y resultados actuales se conservan.
+            </div>
+          ) : selectedModules.length > 0 ? (
+            <div className="mt-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  Funcionalidades seleccionables
+                </span>
+                <Space>
+                  <Tooltip title="Analiza el tipo de prueba, los módulos seleccionados y cambios recientes para sugerir funcionalidades relacionadas.">
+                    <Button
+                      size="small"
+                      icon={<ThunderboltOutlined />}
+                      loading={isSuggestingAi}
+                      disabled={!canUseAi}
+                      onClick={() => void handleSuggestWithAI()}
+                      className="rounded-full"
+                    >
+                      Sugerir con IA
+                    </Button>
+                  </Tooltip>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => setSelectedFuncIds(availableFunctionalities.map(f => f.id))}
+                    className="text-[11px] p-0"
+                  >
+                    Seleccionar todas
+                  </Button>
+                  <Divider type="vertical" />
+                  <Button
+                    size="small"
+                    type="link"
+                    danger
+                    onClick={() => setSelectedFuncIds([])}
+                    className="text-[11px] p-0"
+                  >
+                    Limpiar selección
+                  </Button>
+                </Space>
+              </div>
+
+              {!canUseAi ? (
+                <PlanUpgradeCard
+                  className="mb-4"
+                  variant="inline-banner"
+                  eyebrow="IA disponible en Growth"
+                  title="Activa sugerencias automáticas para este flujo"
+                  description="Desbloquea recomendaciones inteligentes para esta ejecución sin salir del proyecto."
+                  ctaHref={aiUpgradeUrl}
+                  ctaText="Probar IA"
+                  onCtaClick={() => handleUpgradeClick('test-execution-ai-lock')}
+                />
+              ) : null}
+
+              <UpgradeModal
+                open={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                organizationName={activeMembership?.organization?.name}
+                currentPlan={effectiveOrganizationPlan}
+                title="Compara planes para priorizar mejor tus ejecuciones"
+                description="Si quieres sumar sugerencias inteligentes, más capacidad y una operación más robusta, aquí puedes revisar el siguiente paso."
+                onUpgradeGrowth={() => handleUpgradeClick('test-execution-upgrade-modal-growth')}
+                onContactEnterprise={() => handleEnterpriseClick()}
+              />
+
+              <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2 custom-scrollbar">
+                {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
+                  const moduleFuncIds = funcs.map(f => f.id);
+                  const selectedInModule = selectedFuncIds.filter(id => moduleFuncIds.includes(id));
+                  const isAllSelected = selectedInModule.length === moduleFuncIds.length;
+
+                  return (
+                    <div
+                      key={moduleName}
+                      className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-2">
+                        <Space>
+                          <Checkbox
+                            indeterminate={
+                              selectedInModule.length > 0 &&
+                              selectedInModule.length < moduleFuncIds.length
+                            }
+                            checked={isAllSelected}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setSelectedFuncIds(prev =>
+                                  Array.from(new Set([...prev, ...moduleFuncIds])),
+                                );
+                              } else {
+                                setSelectedFuncIds(prev =>
+                                  prev.filter(id => !moduleFuncIds.includes(id)),
+                                );
+                              }
+                            }}
+                          />
+                          <span className="text-sm font-bold text-slate-700">{moduleName}</span>
+                          <Tag className="m-0 rounded-full border-none bg-slate-100 text-[10px] text-slate-500">
+                            {selectedInModule.length} / {moduleFuncIds.length}
+                          </Tag>
+                        </Space>
+                      </div>
+                      <div className="p-4">
+                        <Checkbox.Group
+                          className="w-full"
+                          value={selectedInModule}
+                          onChange={vals => {
+                            const nextModuleValues = vals as string[];
+                            setSelectedFuncIds(prev => {
+                              const withoutCurrentModule = prev.filter(
+                                id => !moduleFuncIds.includes(id),
+                              );
+                              return [...withoutCurrentModule, ...nextModuleValues];
+                            });
+                          }}
+                        >
+                          <Row gutter={[12, 12]}>
+                            {funcs.map(item => (
+                              <Col span={12} key={item.id}>
+                                <div
+                                  className={`rounded-lg border p-2 transition-all ${
+                                    selectedFuncIds.includes(item.id)
+                                      ? 'border-blue-200 bg-blue-50'
+                                      : 'border-slate-200 bg-white'
+                                  }`}
+                                >
+                                  <Checkbox value={item.id} className="w-full">
+                                    <div className="ml-1 flex flex-col">
+                                      <span className="text-xs font-bold leading-tight text-slate-800">
+                                        {item.id}
+                                      </span>
+                                      <span
+                                        className="max-w-[200px] truncate text-[11px] text-slate-500"
+                                        title={item.name}
+                                      >
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                  </Checkbox>
+                                </div>
+                              </Col>
+                            ))}
+                          </Row>
+                        </Checkbox.Group>
+                      </div>
+                    </div>
+                  );
+                })}
+                {Object.keys(groupedFunctionalities).length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    No hay funcionalidades con casos de prueba registrados en los módulos seleccionados.
+                  </div>
+                )}
+              </div>
+
+              {(visibleAiSuggestions.length > 0 || aiSuggestionMode) && (
+                <Card
+                  className="mt-4 rounded-2xl border border-slate-200 shadow-none"
+                  styles={{ body: { padding: 16 } }}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ThunderboltOutlined className="text-cyan-600" />
+                        <span className="font-semibold text-slate-800">Funcionalidades sugeridas</span>
+                        <Tag
+                          className="m-0 rounded-full border-none"
+                          color={aiSuggestionMode === 'ai' ? 'blue' : 'gold'}
+                        >
+                          {aiSuggestionMode === 'ai' ? 'IA' : 'Reglas'}
+                        </Tag>
+                      </div>
+                      <Text type="secondary" className="text-xs">
+                        Recomendaciones complementarias para ampliar el alcance de esta ejecución.
+                      </Text>
+                    </div>
+                    {visibleAiSuggestions.length > 0 && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() =>
+                          setSelectedFuncIds(prev =>
+                            Array.from(
+                              new Set([
+                                ...prev,
+                                ...visibleAiSuggestions.map(item => item.functionalityId),
+                              ]),
+                            ),
+                          )
+                        }
+                      >
+                        Agregar sugeridas
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    {visibleAiSuggestions.map(suggestion => {
+                      const functionality = functionalityById.get(suggestion.functionalityId);
+                      if (!functionality) return null;
+
+                      return (
+                        <div
+                          key={suggestion.functionalityId}
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-800">
+                                {functionality.id} - {functionality.name}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">{suggestion.reason}</div>
+                            </div>
+                            <Button
+                              size="small"
+                              onClick={() =>
+                                setSelectedFuncIds(prev =>
+                                  prev.includes(suggestion.functionalityId)
+                                    ? prev
+                                    : [...prev, suggestion.functionalityId],
+                                )
+                              }
+                            >
+                              Agregar
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+              Selecciona al menos un módulo para definir el alcance funcional de esta ejecución.
+            </div>
+          )}
+        </PlanningSectionCard>
+
+        <PlanningSectionCard
+          step="3"
+          title="Ambiente de ejecución"
+          subtitle="Documenta el contexto técnico para reproducibilidad y trazabilidad."
+        >
+          <Row gutter={20}>
+            <Col span={24}>
+              <Form.Item name="buildVersion" label="Build version">
+                <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="browser" label="Navegador">
+                <Select
+                  allowClear
+                  placeholder="Selecciona navegador"
+                  className="h-10 rounded-lg"
+                  options={browserOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="deviceType" label="Tipo de dispositivo">
+                <Select
+                  allowClear
+                  placeholder="Selecciona dispositivo"
+                  className="h-10 rounded-lg"
+                  options={deviceTypeOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="operatingSystem" label="Sistema operativo">
+                <Select
+                  allowClear
+                  placeholder="Selecciona sistema operativo"
+                  className="h-10 rounded-lg"
+                  options={operatingSystemOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="browserVersion" label="Versión del navegador">
+                <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="osVersion" label="Versión del sistema operativo">
+                <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="resolution" label="Resolución de pantalla">
+                <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </PlanningSectionCard>
+
+        <PlanningSectionCard
+          step="4"
+          title="Riesgos identificados"
+          subtitle="Opcional por ahora. Ayuda a dejar explícito qué puede afectar esta ejecución."
+        >
+          <Form.Item name="identifiedRisks" label="Riesgos de esta ejecución">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Selecciona uno o más riesgos"
+              className="w-full rounded-lg"
+              options={EXECUTION_RISK_OPTIONS}
+            />
+          </Form.Item>
+        </PlanningSectionCard>
+
+        <PlanningSectionCard
+          step="5"
+          title="Criterios de salida"
+          subtitle="Opcional por ahora. Define cuándo esta ejecución puede considerarse cerrada."
+        >
+          <Form.Item name="exitCriteria" label="Checklist de cierre">
+            <Checkbox.Group className="grid grid-cols-1 gap-3 md:grid-cols-2" options={EXECUTION_EXIT_CRITERIA_OPTIONS} />
+          </Form.Item>
+        </PlanningSectionCard>
+      </div>
+    </Form>
+  );
 
   const columns = [
     {
@@ -1981,12 +2701,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         )}
 
         <Modal
-          title={
-            <span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>
-          }
+          title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
           open={isModalOpen}
           onCancel={resetTestRunModal}
-          width={800}
+          width={920}
           centered
           footer={[
             <Button key="cancel" onClick={resetTestRunModal}>
@@ -1999,164 +2717,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     type="primary"
                     onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
                   >
-                    Crear Ejecución de Pruebas
+                    {testRunModalPrimaryLabel}
                   </Button>,
                 ]
               : []),
           ]}
         >
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={{
-              executionDate: dayjs(),
-              testType: TestType.FUNCTIONAL,
-              priority: Priority.MEDIUM,
-            }}
-          >
-            <Row gutter={24}>
-              <Col span={24}>
-                <Form.Item
-                  name="title"
-                  label="Tí­tulo de la Ejecución"
-                  rules={[{ required: true }]}
-                >
-                  <Input
-                    placeholder="Ej: Regresión Módulo de Pagos - Sprint 25"
-                    className="h-10 rounded-lg"
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="testType" label="Tipo de Test" rules={[{ required: true }]}>
-                  <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="executionDate"
-                  label="Fecha de Ejecución"
-                  rules={[{ required: true }]}
-                >
-                  <DatePicker className="w-full h-10 rounded-lg" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sprint" label="Sprint" rules={[{ required: true }]}>
-                  <Select
-                    placeholder="Selecciona el Sprint"
-                    className="h-10 rounded-lg"
-                    options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
-                  <Select
-                    options={Object.values(Priority).map(v => ({
-                      label: labelPriority(v, t),
-                      value: v,
-                    }))}
-                    className="h-10 rounded-lg"
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
-                  <ParticipantSelect
-                    members={participantDirectoryMembers}
-                    valueField="fullName"
-                    multiple={false}
-                    placeholder="Selecciona el tester del workspace"
-                    className="h-10 rounded-lg"
-                    loading={isParticipantDirectoryLoading}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
-                  <Select
-                    placeholder="Selecciona el Environment"
-                    className="h-10 rounded-lg"
-                    options={[
-                      { label: Environment.TEST, value: Environment.TEST },
-                      { label: Environment.LOCAL, value: Environment.LOCAL },
-                      { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={24}>
-                <Form.Item name="buildVersion" label="Build version">
-                  <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="browser" label="Navegador">
-                  <Select
-                    allowClear
-                    placeholder="Selecciona navegador"
-                    className="h-10 rounded-lg"
-                    options={browserOptions}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="deviceType" label="Tipo de dispositivo">
-                  <Select
-                    allowClear
-                    placeholder="Selecciona dispositivo"
-                    className="h-10 rounded-lg"
-                    options={deviceTypeOptions}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="operatingSystem" label="Sistema operativo">
-                  <Select
-                    allowClear
-                    placeholder="Selecciona sistema operativo"
-                    className="h-10 rounded-lg"
-                    options={operatingSystemOptions}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="browserVersion" label="Versión del navegador">
-                  <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="osVersion" label="Versión del sistema operativo">
-                  <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="resolution" label="Resolución de pantalla">
-                  <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Form.Item label="Seleccionar Módulos Relacionados" required>
-              <Select
-                mode="multiple"
-                placeholder="Selecciona uno o más módulos"
-                className="w-full rounded-lg"
-                onChange={setSelectedModules}
-                value={selectedModules}
-                options={moduleOptions}
-                disabled={isEditingRunInfo}
-              />
-            </Form.Item>
-
-            {isEditingRunInfo && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                En modo edición solo se actualiza la información general. Los módulos,
-                funcionalidades y resultados actuales se conservan.
-              </div>
-            )}
-          </Form>
+          {testRunPlanningFormContent}
         </Modal>
 
         {/* Evidence Modal */}
@@ -2304,6 +2871,24 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Button>
         ) : null}
       </div>
+
+      <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm">
+            <InfoCircleOutlined className="text-lg" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-800">
+              Las ejecuciones se construyen a partir de los casos de prueba registrados en las
+              funcionalidades.
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              Antes de crear una ejecución, asegúrate de que la funcionalidad tenga casos
+              asociados. QA Tracker usa esos casos para definir el alcance inicial de la sesión.
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Tabs
         defaultActiveKey="executions"
@@ -2476,10 +3061,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       </Modal>
 
       <Modal
-        title={<span className="text-xl font-bold text-slate-800">Nueva Ejecución de Pruebas</span>}
+        title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
         open={isModalOpen}
         onCancel={resetTestRunModal}
-        width={800}
+        width={920}
         centered
         footer={[
           <Button key="cancel" onClick={resetTestRunModal}>
@@ -2492,411 +3077,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   type="primary"
                   onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
                 >
-                  Crear Ejecución de Pruebas
+                  {testRunModalPrimaryLabel}
                 </Button>,
               ]
             : []),
         ]}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            executionDate: dayjs(),
-            testType: TestType.FUNCTIONAL,
-            priority: Priority.MEDIUM,
-          }}
-        >
-          <Row gutter={24}>
-            <Col span={24}>
-              <Form.Item name="title" label="Título de la Ejecución" rules={[{ required: true }]}>
-                <Input
-                  placeholder="Ej: Regresión Módulo de Pagos - Sprint 25"
-                  className="h-10 rounded-lg"
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="testType" label="Tipo de Test" rules={[{ required: true }]}>
-                <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="executionDate"
-                label="Fecha de Ejecución"
-                rules={[{ required: true }]}
-              >
-                <DatePicker className="w-full h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="sprint" label="Sprint" rules={[{ required: true }]}>
-                <Select
-                  placeholder="Selecciona el Sprint"
-                  className="h-10 rounded-lg"
-                  options={sprintsData.map(s => ({ label: s.name, value: s.name }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
-                <Select
-                  options={Object.values(Priority).map(v => ({
-                    label: labelPriority(v, t),
-                    value: v,
-                  }))}
-                  className="h-10 rounded-lg"
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
-                <ParticipantSelect
-                  members={participantDirectoryMembers}
-                  valueField="fullName"
-                  multiple={false}
-                  placeholder="Selecciona el tester del workspace"
-                  className="h-10 rounded-lg"
-                  loading={isParticipantDirectoryLoading}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
-                <Select
-                  placeholder="Selecciona el Environment"
-                  className="h-10 rounded-lg"
-                  options={[
-                    { label: Environment.TEST, value: Environment.TEST },
-                    { label: Environment.LOCAL, value: Environment.LOCAL },
-                    { label: Environment.PRODUCTION, value: Environment.PRODUCTION },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="buildVersion" label="Build version">
-                <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="browser" label="Navegador">
-                <Select
-                  allowClear
-                  placeholder="Selecciona navegador"
-                  className="h-10 rounded-lg"
-                  options={browserOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="deviceType" label="Tipo de dispositivo">
-                <Select
-                  allowClear
-                  placeholder="Selecciona dispositivo"
-                  className="h-10 rounded-lg"
-                  options={deviceTypeOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="operatingSystem" label="Sistema operativo">
-                <Select
-                  allowClear
-                  placeholder="Selecciona sistema operativo"
-                  className="h-10 rounded-lg"
-                  options={operatingSystemOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="browserVersion" label="Versión del navegador">
-                <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="osVersion" label="Versión del sistema operativo">
-                <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="resolution" label="Resolución de pantalla">
-                <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item label="Seleccionar Módulos Relacionados" required>
-            <Select
-              mode="multiple"
-              placeholder="Selecciona uno o más módulos"
-              className="w-full rounded-lg"
-              onChange={setSelectedModules}
-              value={selectedModules}
-              options={moduleOptions}
-              disabled={isEditingRunInfo}
-            />
-          </Form.Item>
-
-          {isEditingRunInfo && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              En modo edición solo se actualiza la información general. Los módulos, funcionalidades
-              y resultados actuales se conservan.
-            </div>
-          )}
-
-          {!isEditingRunInfo && selectedModules.length > 0 && (
-            <div className="mt-6">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                  Funcionalidades por Módulo
-                </span>
-                <Space>
-                  <Tooltip title="Analiza el tipo de prueba, los módulos seleccionados y cambios recientes para sugerir funcionalidades relacionadas.">
-                    <Button
-                      size="small"
-                      icon={<ThunderboltOutlined />}
-                      loading={isSuggestingAi}
-                      disabled={!canUseAi}
-                      onClick={() => void handleSuggestWithAI()}
-                      className="rounded-full"
-                    >
-                      Sugerir con IA
-                    </Button>
-                  </Tooltip>
-                  <Button
-                    size="small"
-                    type="link"
-                    onClick={() => setSelectedFuncIds(availableFunctionalities.map(f => f.id))}
-                    className="text-[11px] p-0"
-                  >
-                    Seleccionar Todas
-                  </Button>
-                  <Divider type="vertical" />
-                  <Button
-                    size="small"
-                    type="link"
-                    danger
-                    onClick={() => setSelectedFuncIds([])}
-                    className="text-[11px] p-0"
-                  >
-                    Limpiar Selección
-                  </Button>
-                </Space>
-              </div>
-
-              {!canUseAi ? (
-                <PlanUpgradeCard
-                  className="mb-4"
-                  variant="inline-banner"
-                  eyebrow="IA disponible en Growth"
-                  title="Activa sugerencias automáticas para este flujo"
-                  description="Desbloquea recomendaciones inteligentes para esta ejecución sin salir del proyecto."
-                  ctaHref={aiUpgradeUrl}
-                  ctaText="Probar IA"
-                  onCtaClick={() => handleUpgradeClick('test-execution-ai-lock')}
-                />
-              ) : null}
-
-              <UpgradeModal
-                open={isUpgradeModalOpen}
-                onClose={() => setIsUpgradeModalOpen(false)}
-                organizationName={activeMembership?.organization?.name}
-                currentPlan={effectiveOrganizationPlan}
-                title="Compara planes para priorizar mejor tus ejecuciones"
-                description="Si quieres sumar sugerencias inteligentes, más capacidad y una operación más robusta, aquí puedes revisar el siguiente paso."
-                onUpgradeGrowth={() => handleUpgradeClick('test-execution-upgrade-modal-growth')}
-                onContactEnterprise={() => handleEnterpriseClick()}
-              />
-
-              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
-                  const moduleFuncIds = funcs.map(f => f.id);
-                  const selectedInModule = selectedFuncIds.filter(id => moduleFuncIds.includes(id));
-                  const isAllSelected = selectedInModule.length === moduleFuncIds.length;
-
-                  return (
-                    <div
-                      key={moduleName}
-                      className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden"
-                    >
-                      <div className="bg-white px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-                        <Space>
-                          <Checkbox
-                            indeterminate={
-                              selectedInModule.length > 0 &&
-                              selectedInModule.length < moduleFuncIds.length
-                            }
-                            checked={isAllSelected}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setSelectedFuncIds(prev =>
-                                  Array.from(new Set([...prev, ...moduleFuncIds])),
-                                );
-                              } else {
-                                setSelectedFuncIds(prev =>
-                                  prev.filter(id => !moduleFuncIds.includes(id)),
-                                );
-                              }
-                            }}
-                          />
-                          <span className="font-bold text-slate-700 text-sm">{moduleName}</span>
-                          <Tag className="m-0 text-[10px] rounded-full bg-slate-100 border-none text-slate-500">
-                            {selectedInModule.length} / {moduleFuncIds.length}
-                          </Tag>
-                        </Space>
-                      </div>
-                      <div className="p-4">
-                        <Checkbox.Group
-                          className="w-full"
-                          value={selectedInModule}
-                          onChange={vals => {
-                            const nextModuleValues = vals as string[];
-                            setSelectedFuncIds(prev => {
-                              const withoutCurrentModule = prev.filter(
-                                id => !moduleFuncIds.includes(id),
-                              );
-                              return [...withoutCurrentModule, ...nextModuleValues];
-                            });
-                          }}
-                        >
-                          <Row gutter={[12, 12]}>
-                            {funcs.map(item => (
-                              <Col span={12} key={item.id}>
-                                <div
-                                  className={`p-2 rounded-lg border transition-all ${selectedFuncIds.includes(item.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}
-                                >
-                                  <Checkbox value={item.id} className="w-full">
-                                    <div className="flex flex-col ml-1">
-                                      <span className="font-bold text-slate-800 text-xs leading-tight">
-                                        {item.id}
-                                      </span>
-                                      <span
-                                        className="text-[11px] text-slate-500 truncate max-w-[200px]"
-                                        title={item.name}
-                                      >
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                  </Checkbox>
-                                </div>
-                              </Col>
-                            ))}
-                          </Row>
-                        </Checkbox.Group>
-                      </div>
-                    </div>
-                  );
-                })}
-                {Object.keys(groupedFunctionalities).length === 0 && (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    No hay funcionalidades con casos de prueba registrados en los módulos
-                    seleccionados.
-                  </div>
-                )}
-              </div>
-
-              {(visibleAiSuggestions.length > 0 || aiSuggestionMode) && (
-                <Card
-                  className="mt-4 rounded-2xl border border-slate-200 shadow-none"
-                  styles={{ body: { padding: 16 } }}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <ThunderboltOutlined className="text-cyan-600" />
-                        <span className="font-semibold text-slate-800">
-                          Funcionalidades sugeridas
-                        </span>
-                        <Tag
-                          className="m-0 rounded-full border-none"
-                          color={aiSuggestionMode === 'ai' ? 'blue' : 'gold'}
-                        >
-                          {aiSuggestionMode === 'ai' ? 'IA' : 'Reglas'}
-                        </Tag>
-                      </div>
-                      <Text type="secondary" className="text-xs">
-                        Recomendaciones complementarias para ampliar el alcance de esta ejecución.
-                      </Text>
-                    </div>
-                    {visibleAiSuggestions.length > 0 && (
-                      <Button
-                        size="small"
-                        type="link"
-                        onClick={() =>
-                          setSelectedFuncIds(prev =>
-                            Array.from(
-                              new Set([
-                                ...prev,
-                                ...visibleAiSuggestions.map(item => item.functionalityId),
-                              ]),
-                            ),
-                          )
-                        }
-                      >
-                        Agregar sugeridas
-                      </Button>
-                    )}
-                  </div>
-
-                  {visibleAiSuggestions.length > 0 ? (
-                    <List
-                      dataSource={visibleAiSuggestions}
-                      split
-                      renderItem={item => {
-                        const functionality = functionalityById.get(item.functionalityId);
-                        if (!functionality) return null;
-
-                        return (
-                          <List.Item
-                            actions={[
-                              <Button
-                                key="add"
-                                size="small"
-                                type="primary"
-                                ghost
-                                onClick={() => addSuggestedFunctionality(item.functionalityId)}
-                              >
-                                Agregar
-                              </Button>,
-                            ]}
-                          >
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-slate-800">
-                                  {functionality.name}
-                                </span>
-                                <Tag className="m-0 rounded-full border-none bg-slate-100 text-slate-600">
-                                  {functionality.module}
-                                </Tag>
-                              </div>
-                              <Text type="secondary" className="text-xs">
-                                {item.reason}
-                              </Text>
-                            </div>
-                          </List.Item>
-                        );
-                      }}
-                    />
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                      No hay sugerencias adicionales para esta combinacion.
-                    </div>
-                  )}
-                </Card>
-              )}
-            </div>
-          )}
-
-          <Form.Item name="description" label="Descripción / Objetivo" className="mt-4">
-            <Input.TextArea
-              rows={2}
-              placeholder="Objetivo de esta ejecución..."
-              className="rounded-lg"
-            />
-          </Form.Item>
-        </Form>
+        {testRunPlanningFormContent}
       </Modal>
     </div>
   );

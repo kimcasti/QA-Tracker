@@ -480,6 +480,8 @@ export interface RegressionCycle {
   browserVersion?: string;
   osVersion?: string;
   resolution?: string;
+  identifiedRisks?: string[];
+  exitCriteria?: string[];
   executions: RegressionExecution[];
 }
 

@@ -54,6 +54,8 @@ export interface TestCycleDto {
   browserVersion?: string;
   osVersion?: string;
   resolution?: string;
+  identifiedRisks?: string[] | null;
+  exitCriteria?: string[] | null;
   project?: {
     documentId: string;
     key: string;

@@ -525,9 +525,6 @@ export default function PublicLandingPage() {
                   Empieza gratis. Escala cuando lo necesites.
                 </Title>
               </div>
-              <Text className="text-sm text-slate-500">
-                Starter gratis, Growth accesible para Colombia y Enterprise con atención manual.
-              </Text>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-3">
@@ -551,15 +548,12 @@ export default function PublicLandingPage() {
                       <Title level={4} className="!mb-0 !mt-4 !text-slate-900">
                         {plan.name}
                       </Title>
-                      <Text
-                        className="mt-1 block text-lg font-semibold"
-                        style={{ color: plan.accentColor }}
-                      >
-                        {plan.price}
-                      </Text>
-                      {plan.name === 'Growth' ? (
-                        <Text className="mt-1 block text-xs uppercase tracking-[0.14em] text-slate-400">
-                          Sigue creciendo sin interrupciones
+                      {plan.name !== 'Growth' ? (
+                        <Text
+                          className="mt-1 block text-lg font-semibold"
+                          style={{ color: plan.accentColor }}
+                        >
+                          {plan.price}
                         </Text>
                       ) : null}
                     </div>

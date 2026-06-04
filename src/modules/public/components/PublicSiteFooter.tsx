@@ -18,7 +18,7 @@ export function PublicSiteFooter({ className = '' }: PublicSiteFooterProps) {
         <div>
           <Text className="block text-sm font-semibold text-slate-900">{qaBrand.name}</Text>
           <Text className="text-sm text-slate-500">
-            Operaci\u00f3n QA con trazabilidad, reportes t\u00e9cnicos e IA asistencial.
+            Operación QA con trazabilidad, reportes técnicos e IA asistencial.
           </Text>
         </div>
 

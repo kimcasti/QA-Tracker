@@ -135,6 +135,8 @@ function mapCycle(document: TestCycleDto): RegressionCycle {
     browserVersion: document.browserVersion,
     osVersion: document.osVersion,
     resolution: document.resolution,
+    identifiedRisks: Array.isArray(document.identifiedRisks) ? document.identifiedRisks : [],
+    exitCriteria: Array.isArray(document.exitCriteria) ? document.exitCriteria : [],
     executions: dedupedExecutions,
   };
 }
@@ -244,6 +246,8 @@ export async function saveTestCycle(cycle: RegressionCycle) {
     browserVersion: cycle.browserVersion || null,
     osVersion: cycle.osVersion || null,
     resolution: cycle.resolution || null,
+    identifiedRisks: cycle.identifiedRisks || [],
+    exitCriteria: cycle.exitCriteria || [],
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
     sprint: relation(sprint?.id),

@@ -29,17 +29,20 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   HistoryOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { saveAs } from 'file-saver';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import {
   buildNextFunctionalityCode,
   getNextFunctionalityCode,
 } from '../modules/functionalities/services/functionalitiesService';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
@@ -92,7 +95,6 @@ type FunctionalityColumnsConfig = {
   onView: (record: Functionality) => void;
   onManageTestCases: (record: Functionality) => void;
   onMarkRecentChange: (record: Functionality) => void;
-  onEdit: (record: Functionality) => void;
   onDelete: (id: string) => void;
 };
 
@@ -147,19 +149,18 @@ const RISK_TEXT_CLASSNAMES: Record<RiskLevel, string> = {
   [RiskLevel.LOW]: 'text-emerald-700',
 };
 
-const STATUS_BADGE_CONFIG: Partial<
-  Record<TestStatus, { bg: string; text: string; dot: string }>
-> = {
-  [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
-  [TestStatus.IN_PROGRESS]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
-  [TestStatus.COMPLETED]: {
-    bg: 'bg-emerald-100',
-    text: 'text-emerald-700',
-    dot: 'bg-emerald-500',
-  },
-  [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-  [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
-};
+const STATUS_BADGE_CONFIG: Partial<Record<TestStatus, { bg: string; text: string; dot: string }>> =
+  {
+    [TestStatus.BACKLOG]: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
+    [TestStatus.IN_PROGRESS]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
+    [TestStatus.COMPLETED]: {
+      bg: 'bg-emerald-100',
+      text: 'text-emerald-700',
+      dot: 'bg-emerald-500',
+    },
+    [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
+    [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+  };
 
 const FALLBACK_STATUS_BADGE_CONFIG = {
   bg: 'bg-gray-100',
@@ -193,15 +194,12 @@ function validateOptionalUrl(_: unknown, value?: string) {
 }
 
 function valuesLooksLikeFunctionalityDuplicate(value?: string) {
-  return String(value || '').toLowerCase().includes('already exists in this project');
+  return String(value || '')
+    .toLowerCase()
+    .includes('already exists in this project');
 }
 
-function SummaryMetricCard({
-  label,
-  value,
-  valueClassName,
-  lgSpan = 5,
-}: SummaryMetricCardProps) {
+function SummaryMetricCard({ label, value, valueClassName, lgSpan = 5 }: SummaryMetricCardProps) {
   return (
     <Col xs={24} sm={12} lg={lgSpan}>
       <Card className="rounded-2xl shadow-sm border-slate-100">
@@ -293,16 +291,98 @@ function FunctionalityEditorForm({
         />
       </Form.Item>
 
-      <Form.Item label={<span className="font-semibold text-slate-600">Cobertura QA</span>}>
+      <Form.Item
+        label={<span className="font-semibold text-slate-600">Clasificación QA</span>}
+        extra="Define si esta funcionalidad es crítica para el negocio y en qué ciclos de prueba debe aparecer: regresión, smoke o ambos."
+      >
         <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
           <Form.Item name="isCore" valuePropName="checked" noStyle>
-            <Checkbox>Es Core</Checkbox>
+            <Checkbox>
+              <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span>Es Core ⭐</span>
+                <Tooltip
+                  title={
+                    <div className="space-y-2">
+                      <p className="m-0">Funcionalidad crítica para el negocio.</p>
+                      <p className="m-0">
+                        Si falla, el proceso principal del sistema se ve afectado.
+                      </p>
+                      <p className="m-0">Ejemplos: Login, Crear paciente, Crear reporte.</p>
+                    </div>
+                  }
+                >
+                  <span
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                    onClick={event => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <InfoCircleOutlined className="text-xs" />
+                  </span>
+                </Tooltip>
+              </span>
+            </Checkbox>
           </Form.Item>
           <Form.Item name="isRegression" valuePropName="checked" noStyle>
-            <Checkbox>Aplica a Regresión</Checkbox>
+            <Checkbox>
+              <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span>Incluir en Regresión 🔄</span>
+                <Tooltip
+                  title={
+                    <div className="space-y-2">
+                      <p className="m-0">
+                        Debe probarse cuando se realizan cambios para verificar que no se afectaron
+                        funcionalidades existentes.
+                      </p>
+                      <p className="m-0">
+                        Ejemplos: Filtros, Búsquedas, Exportaciones, Validaciones.
+                      </p>
+                    </div>
+                  }
+                >
+                  <span
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                    onClick={event => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <InfoCircleOutlined className="text-xs" />
+                  </span>
+                </Tooltip>
+              </span>
+            </Checkbox>
           </Form.Item>
           <Form.Item name="isSmoke" valuePropName="checked" noStyle>
-            <Checkbox>Aplica a Smoke</Checkbox>
+            <Checkbox>
+              <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span>Incluir en Smoke 🔥</span>
+                <Tooltip
+                  title={
+                    <div className="space-y-2">
+                      <p className="m-0">
+                        Debe ejecutarse en cada despliegue para confirmar que la aplicación
+                        funciona.
+                      </p>
+                      <p className="m-0">
+                        Pregúntese: "Si esto falla, ¿el usuario puede seguir trabajando?"
+                      </p>
+                    </div>
+                  }
+                >
+                  <span
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                    onClick={event => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <InfoCircleOutlined className="text-xs" />
+                  </span>
+                </Tooltip>
+              </span>
+            </Checkbox>
           </Form.Item>
         </div>
       </Form.Item>
@@ -441,13 +521,7 @@ function FunctionalityTableToolbar({
   );
 }
 
-function FunctionalityDetailValue({
-  label,
-  value,
-}: {
-  label: string;
-  value?: React.ReactNode;
-}) {
+function FunctionalityDetailValue({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</div>
@@ -481,9 +555,7 @@ function getFunctionalityMetrics(functionalities: Functionality[]) {
 
 function getCoverageTags(record: Functionality) {
   return [
-    record.isCore
-      ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' }
-      : null,
+    record.isCore ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' } : null,
     record.isRegression
       ? {
           key: 'regression',
@@ -530,11 +602,7 @@ function normalizeImportedStatus(value: unknown): TestStatus {
     return TestStatus.IN_PROGRESS;
   }
   if (normalized === 'mvp') return TestStatus.MVP;
-  if (
-    normalized === 'post mvp' ||
-    normalized === 'post-mvp' ||
-    normalized === 'post_mvp'
-  ) {
+  if (normalized === 'post mvp' || normalized === 'post-mvp' || normalized === 'post_mvp') {
     return TestStatus.POST_MVP;
   }
 
@@ -560,18 +628,10 @@ function normalizeImportedRiskLevel(value: unknown): RiskLevel {
     .trim()
     .toLowerCase();
 
-  if (
-    normalized === 'high' ||
-    normalized === 'alto riesgo' ||
-    normalized === 'riesgo alto'
-  ) {
+  if (normalized === 'high' || normalized === 'alto riesgo' || normalized === 'riesgo alto') {
     return RiskLevel.HIGH;
   }
-  if (
-    normalized === 'low' ||
-    normalized === 'bajo riesgo' ||
-    normalized === 'riesgo bajo'
-  ) {
+  if (normalized === 'low' || normalized === 'bajo riesgo' || normalized === 'riesgo bajo') {
     return RiskLevel.LOW;
   }
 
@@ -583,7 +643,9 @@ function parseBooleanLike(value: unknown) {
     .trim()
     .toLowerCase();
 
-  return normalized === 'true' || normalized === 'sí' || normalized === 'si' || normalized === 'yes';
+  return (
+    normalized === 'true' || normalized === 'sí' || normalized === 'si' || normalized === 'yes'
+  );
 }
 
 function normalizeComparableText(value: string | undefined) {
@@ -683,8 +745,7 @@ function mapImportedRowsToFunctionalities(
             'Issue key',
             'Issue Key',
           ]) ?? '',
-        ).trim() ||
-        `IMP-${Date.now()}-${index}`,
+        ).trim() || `IMP-${Date.now()}-${index}`,
       projectId: projectId || '',
       module:
         String(
@@ -795,7 +856,6 @@ function createFunctionalityColumns({
   onView,
   onManageTestCases,
   onMarkRecentChange,
-  onEdit,
   onDelete,
 }: FunctionalityColumnsConfig): ColumnsType<Functionality> {
   return [
@@ -824,7 +884,8 @@ function createFunctionalityColumns({
       filters: nativeModuleFilters,
       filterSearch: true,
       filteredValue: tableFilters.module,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.module === String(value),
+      onFilter: (value: boolean | React.Key, record: Functionality) =>
+        record.module === String(value),
       render: (module: string) => renderTruncatedText(module, 'block truncate text-slate-600'),
     },
     {
@@ -873,7 +934,9 @@ function createFunctionalityColumns({
       render: (risk: RiskLevel) => (
         <div className="flex items-center gap-1">
           <ShieldAlert size={14} className={RISK_TEXT_CLASSNAMES[risk] || 'text-slate-400'} />
-          <span className={`text-[12px] font-medium ${RISK_TEXT_CLASSNAMES[risk] || 'text-slate-600'}`}>
+          <span
+            className={`text-[12px] font-medium ${RISK_TEXT_CLASSNAMES[risk] || 'text-slate-600'}`}
+          >
             {risk}
           </span>
         </div>
@@ -1035,10 +1098,7 @@ export default function FunctionalityList({
   );
 
   const hasActiveNativeTableFilters = React.useMemo(
-    () =>
-      Object.values(tableFilters).some(
-        value => Array.isArray(value) && value.length > 0,
-      ),
+    () => Object.values(tableFilters).some(value => Array.isArray(value) && value.length > 0),
     [tableFilters],
   );
 
@@ -1050,7 +1110,9 @@ export default function FunctionalityList({
     }
 
     return functionalities.filter(item =>
-      String(item?.name || '').toLowerCase().includes(normalizedSearch),
+      String(item?.name || '')
+        .toLowerCase()
+        .includes(normalizedSearch),
     );
   }, [functionalities, functionalitySearch]);
 
@@ -1247,8 +1309,7 @@ export default function FunctionalityList({
         ...values,
         id: finalId,
         jiraTaskUrl: values.jiraTaskUrl?.trim() || '',
-        testTypes:
-          values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
+        testTypes: values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
         isCore: Boolean(values.isCore),
         isRegression: Boolean(values.isRegression),
         isSmoke: Boolean(values.isSmoke),
@@ -1256,7 +1317,9 @@ export default function FunctionalityList({
       };
       await save(payload);
       message.success(
-        editingFunc ? 'Funcionalidad actualizada correctamente.' : 'Funcionalidad creada correctamente.',
+        editingFunc
+          ? 'Funcionalidad actualizada correctamente.'
+          : 'Funcionalidad creada correctamente.',
       );
       setIsModalOpen(false);
       form.resetFields();
@@ -1318,9 +1381,7 @@ export default function FunctionalityList({
     onChange: onSelectChange,
   };
 
-  const handleNativeTableChange = (
-    filters: Record<string, FilterValue | null>,
-  ) => {
+  const handleNativeTableChange = (filters: Record<string, FilterValue | null>) => {
     setTableFilters({
       module: (filters.module as React.Key[] | null) || null,
       riskLevel: (filters.riskLevel as React.Key[] | null) || null,
@@ -1343,7 +1404,6 @@ export default function FunctionalityList({
           setIsTestCaseModalOpen(true);
         },
         onMarkRecentChange: handleMarkRecentChange,
-        onEdit: handleEdit,
         onDelete: handleDelete,
       }),
     [
@@ -1353,7 +1413,6 @@ export default function FunctionalityList({
       nativeRiskFilters,
       nativeStatusFilters,
       handleMarkRecentChange,
-      handleEdit,
       handleDelete,
     ],
   );
@@ -1456,9 +1515,7 @@ export default function FunctionalityList({
               <div className="space-y-3 pt-2">
                 <p className="m-0 text-slate-600">
                   {count} funcionalidades importadas.{' '}
-                  {skippedCount > 0
-                    ? `${skippedCount} omitidas por ID existente. `
-                    : ''}
+                  {skippedCount > 0 ? `${skippedCount} omitidas por ID existente. ` : ''}
                   {preparedImport.reviewRows.length > 0
                     ? `${preparedImport.reviewRows.length} requieren revisión manual.`
                     : 'No se detectaron observaciones de revisión.'}
@@ -1504,40 +1561,40 @@ export default function FunctionalityList({
         return;
       }
 
-      if (!functionalities || functionalities.length === 0) {
+      if (!filteredFunctionalities || filteredFunctionalities.length === 0) {
         message.warning('No hay datos para exportar.');
         return;
       }
 
-      const exportData = buildFunctionalityExportData(functionalities);
+      const exportData = buildFunctionalityExportData(filteredFunctionalities);
 
-      const XLSX = await import('xlsx');
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Funcionalidades');
+      await runTrackedExport({
+        projectId,
+        action: async () => {
+          const XLSX = await import('xlsx');
+          const worksheet = XLSX.utils.json_to_sheet(exportData);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Funcionalidades');
 
-      const fileName = `Funcionalidades_${filter || 'Todas'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+          const fileName = `Funcionalidades_${filter || 'Todas'}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-      // Use writeFile but wrap in try-catch specifically
-      try {
-        XLSX.writeFile(workbook, fileName);
-        message.success('Archivo Excel generado correctamente.');
-      } catch (writeErr) {
-        console.error('XLSX.writeFile error:', writeErr);
-        // Fallback: try to generate buffer and trigger download manually if possible
-        const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([wbout], { type: 'application/octet-stream' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        message.success('Archivo Excel generado (vía fallback).');
-      }
+          try {
+            XLSX.writeFile(workbook, fileName);
+          } catch (writeErr) {
+            console.error('XLSX.writeFile error:', writeErr);
+            const workbookBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([workbookBuffer], {
+              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
+            saveAs(blob, fileName);
+          }
+        },
+      });
+
+      message.success('Archivo Excel generado correctamente.');
     } catch (err) {
       console.error('Export error details:', err);
-      message.error('Error al exportar a Excel. Revisa la consola para más detalles.');
+      message.error('Error al exportar a Excel. Revisa la consola para mas detalles.');
     }
   };
 
@@ -1607,9 +1664,33 @@ export default function FunctionalityList({
         </Space>
       </div>
 
+      <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm">
+            <InfoCircleOutlined className="text-lg" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-800">
+              Antes de registrar funcionalidades, configura los sprints, módulos y roles del
+              proyecto.
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              QA Tracker usa esa configuración para clasificar correctamente cada funcionalidad,
+              mantener el alcance ordenado y facilitar su trazabilidad en ejecución, smoke y
+              regresión.
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {/* Metrics Cards */}
-      <Row gutter={[20, 20]}>
-        <SummaryMetricCard label="Total" value={totalFuncs} valueClassName="text-slate-800" lgSpan={4} />
+      <Row gutter={[20, 20]} className="mt-4">
+        <SummaryMetricCard
+          label="Total"
+          value={totalFuncs}
+          valueClassName="text-slate-800"
+          lgSpan={4}
+        />
         <SummaryMetricCard
           label="Completadas"
           value={completedFuncs}
@@ -1715,7 +1796,9 @@ export default function FunctionalityList({
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
                     <AppstoreOutlined className="text-lg" />
                   </div>
-                  <div className="text-sm text-slate-500">Datos base y contexto general de la funcionalidad.</div>
+                  <div className="text-sm text-slate-500">
+                    Datos base y contexto general de la funcionalidad.
+                  </div>
                 </div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Identificación
@@ -1743,7 +1826,9 @@ export default function FunctionalityList({
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
                     <LinkOutlined className="text-lg" />
                   </div>
-                  <div className="text-sm text-slate-500">Vinculaci&oacute;n externa con la tarea o incidencia de origen.</div>
+                  <div className="text-sm text-slate-500">
+                    Vinculaci&oacute;n externa con la tarea o incidencia de origen.
+                  </div>
                 </div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Jira
@@ -1782,7 +1867,9 @@ export default function FunctionalityList({
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
                     <SafetyCertificateOutlined className="text-lg" />
                   </div>
-                  <div className="text-sm text-slate-500">Estado funcional, cobertura y se&ntilde;ales de riesgo para seguimiento.</div>
+                  <div className="text-sm text-slate-500">
+                    Estado funcional, cobertura y se&ntilde;ales de riesgo para seguimiento.
+                  </div>
                 </div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   QA
@@ -1809,7 +1896,10 @@ export default function FunctionalityList({
                       <div className="flex flex-wrap gap-2">
                         {getCoverageTags(detailFunctionality).length > 0 ? (
                           getCoverageTags(detailFunctionality).map(tag => (
-                            <Tag key={tag.key} className={`m-0 rounded-full border-0 ${tag.className}`}>
+                            <Tag
+                              key={tag.key}
+                              className={`m-0 rounded-full border-0 ${tag.className}`}
+                            >
                               {tag.label}
                             </Tag>
                           ))
@@ -1827,7 +1917,9 @@ export default function FunctionalityList({
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
                     <DeploymentUnitOutlined className="text-lg" />
                   </div>
-                  <div className="text-sm text-slate-500">Datos operativos para planificaci&oacute;n y seguimiento de releases.</div>
+                  <div className="text-sm text-slate-500">
+                    Datos operativos para planificaci&oacute;n y seguimiento de releases.
+                  </div>
                 </div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Entrega
@@ -1862,7 +1954,13 @@ export default function FunctionalityList({
         destroyOnHidden
       >
         {selectedFunctionality && (
-          <Suspense fallback={<div className="py-6 text-center text-sm text-slate-400">Cargando casos de prueba...</div>}>
+          <Suspense
+            fallback={
+              <div className="py-6 text-center text-sm text-slate-400">
+                Cargando casos de prueba...
+              </div>
+            }
+          >
             <TestCaseManagement
               projectId={projectId || ''}
               functionalityId={selectedFunctionality.id}
@@ -1976,4 +2074,3 @@ export default function FunctionalityList({
     </div>
   );
 }
-
