@@ -66,6 +66,7 @@ import {
   Browser,
   DeviceType,
   TestExecution,
+  TestStatus,
   TestResult,
   TestType,
   ExecutionStatus,
@@ -465,13 +466,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return functionalities.filter(func => functionalityIdsWithTestCases.has(func.id));
   }, [functionalities, functionalityIdsWithTestCases]);
 
+  const completedFunctionalitiesWithTestCases = useMemo(() => {
+    return functionalitiesWithTestCases.filter(func => func.status === TestStatus.COMPLETED);
+  }, [functionalitiesWithTestCases]);
+
   const moduleOptions = useMemo(() => {
-    const validModules = new Set(functionalitiesWithTestCases.map(func => func.module));
+    const validModules = new Set(completedFunctionalitiesWithTestCases.map(func => func.module));
 
     return modulesData
       .filter(module => validModules.has(module.name))
       .map(module => ({ label: module.name, value: module.name }));
-  }, [functionalitiesWithTestCases, modulesData]);
+  }, [completedFunctionalitiesWithTestCases, modulesData]);
 
   const openEvidenceModal = (record: TestRunResult) => {
     setOriginalEvidenceRecord({ ...record });
@@ -602,8 +607,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const availableFunctionalities = useMemo(() => {
-    return functionalitiesWithTestCases.filter(f => selectedModules.includes(f.module));
-  }, [selectedModules, functionalitiesWithTestCases]);
+    return completedFunctionalitiesWithTestCases.filter(f => selectedModules.includes(f.module));
+  }, [selectedModules, completedFunctionalitiesWithTestCases]);
 
   const selectedTestType = Form.useWatch('testType', form) as TestType | undefined;
   const watchedTitle = Form.useWatch('title', form) as string | undefined;
@@ -661,7 +666,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     const selectedRoleSet = new Set(selectedFunctionalityModels.flatMap(func => func.roles || []));
 
-    const scored = functionalitiesWithTestCases
+    const scored = completedFunctionalitiesWithTestCases
       .filter(func => !selectedFuncIds.includes(func.id))
       .map(func => {
         let score = 0;
@@ -730,7 +735,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     return scored;
   }, [
-    functionalitiesWithTestCases,
+    completedFunctionalitiesWithTestCases,
     selectedFuncIds,
     selectedFunctionalityModels,
     selectedModules,

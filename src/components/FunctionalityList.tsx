@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -31,6 +32,7 @@ import {
   HistoryOutlined,
   InfoCircleOutlined,
   LinkOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
@@ -46,9 +48,10 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
+import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { toApiError } from '../config/http';
-import { Functionality, TestStatus, Priority, RiskLevel, TestType } from '../types';
+import { Functionality, TestCase, TestStatus, Priority, RiskLevel, TestType } from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import type { FormInstance, InputRef } from 'antd';
 import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
@@ -92,6 +95,7 @@ type FunctionalityColumnsConfig = {
   nativeModuleFilters: FunctionalityColumnFilters;
   nativeRiskFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
+  testCaseCountByFunctionality: Map<string, number>;
   onView: (record: Functionality) => void;
   onManageTestCases: (record: Functionality) => void;
   onMarkRecentChange: (record: Functionality) => void;
@@ -281,7 +285,6 @@ function FunctionalityEditorForm({
       <Form.Item
         name="roles"
         label={<span className="font-semibold text-slate-600">Roles Autorizados</span>}
-        rules={[{ required: true }]}
       >
         <Select
           mode="multiple"
@@ -853,6 +856,7 @@ function createFunctionalityColumns({
   nativeModuleFilters,
   nativeRiskFilters,
   nativeStatusFilters,
+  testCaseCountByFunctionality,
   onView,
   onManageTestCases,
   onMarkRecentChange,
@@ -896,7 +900,6 @@ function createFunctionalityColumns({
       ),
       dataIndex: 'name',
       key: 'name',
-      width: 280,
       ellipsis: true,
       render: (name: string, record: Functionality) => (
         <div className="flex items-center gap-2 min-w-0">
@@ -918,6 +921,32 @@ function createFunctionalityColumns({
           ) : null}
         </div>
       ),
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          CASOS
+        </span>
+      ),
+      key: 'testCasesCount',
+      width: 110,
+      align: 'center',
+      render: (_: unknown, record: Functionality) => {
+        const count = testCaseCountByFunctionality.get(record.id) || 0;
+
+        return (
+          <div className="flex items-center justify-center gap-2">
+            <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
+              <FileSearchOutlined className={count > 0 ? 'text-emerald-500' : 'text-slate-300'} />
+            </Badge>
+            <span
+              className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
+            >
+              {count}
+            </span>
+          </div>
+        );
+      },
     },
     {
       title: (
@@ -1039,6 +1068,7 @@ export default function FunctionalityList({
     bulkUpdate,
     bulkAdd,
   } = useFunctionalities(projectId);
+  const { data: testCasesData = [] } = useTestCases(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -1046,6 +1076,16 @@ export default function FunctionalityList({
   const { isViewer } = useWorkspaceAccess();
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
+  const allTestCases = Array.isArray(testCasesData) ? testCasesData : [];
+
+  const testCaseCountByFunctionality = React.useMemo(() => {
+    return allTestCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+
+      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+  }, [allTestCases]);
 
   const [tableFilters, setTableFilters] = useState<NativeTableFilterState>(
     INITIAL_NATIVE_TABLE_FILTERS,
@@ -1104,15 +1144,27 @@ export default function FunctionalityList({
 
   const filteredFunctionalities = React.useMemo(() => {
     const normalizedSearch = functionalitySearch.trim().toLowerCase();
+    const sortByModule = (items: Functionality[]) =>
+      [...items].sort((left, right) => {
+        const moduleCompare = String(left?.module || '').localeCompare(String(right?.module || ''));
+
+        if (moduleCompare !== 0) {
+          return moduleCompare;
+        }
+
+        return String(left?.id || '').localeCompare(String(right?.id || ''));
+      });
 
     if (!normalizedSearch) {
-      return functionalities;
+      return sortByModule(functionalities);
     }
 
-    return functionalities.filter(item =>
-      String(item?.name || '')
-        .toLowerCase()
-        .includes(normalizedSearch),
+    return sortByModule(
+      functionalities.filter(item =>
+        String(item?.name || '')
+          .toLowerCase()
+          .includes(normalizedSearch),
+      ),
     );
   }, [functionalities, functionalitySearch]);
 
@@ -1309,6 +1361,7 @@ export default function FunctionalityList({
         ...values,
         id: finalId,
         jiraTaskUrl: values.jiraTaskUrl?.trim() || '',
+        roles: values.roles ?? editingFunc?.roles ?? [],
         testTypes: values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
         isCore: Boolean(values.isCore),
         isRegression: Boolean(values.isRegression),
@@ -1398,6 +1451,7 @@ export default function FunctionalityList({
         nativeModuleFilters,
         nativeRiskFilters,
         nativeStatusFilters,
+        testCaseCountByFunctionality,
         onView: handleView,
         onManageTestCases: record => {
           setSelectedFunctionality(record);
@@ -1412,6 +1466,7 @@ export default function FunctionalityList({
       nativeModuleFilters,
       nativeRiskFilters,
       nativeStatusFilters,
+      testCaseCountByFunctionality,
       handleMarkRecentChange,
       handleDelete,
     ],
@@ -1735,9 +1790,7 @@ export default function FunctionalityList({
           rowKey="id"
           className="executive-table"
           size="middle"
-          tableLayout="fixed"
-          pagination={{ pageSize: 10 }}
-          scroll={{ x: 'max-content' }}
+          pagination={{ pageSize: 20 }}
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>

@@ -135,6 +135,8 @@ export async function saveFunctionality(functionality: Functionality) {
     throw new Error(`Project ${functionality.projectId} is not available in the workspace.`);
   }
 
+  const selectedRoles = functionality.roles || [];
+
   const [modules, roles, sprints] = await Promise.all([
     getModules(functionality.projectId),
     getRoles(functionality.projectId),
@@ -144,7 +146,7 @@ export async function saveFunctionality(functionality: Functionality) {
   const module = modules.find(item => item.name === functionality.module);
   const sprint = sprints.find(item => item.name === functionality.sprint);
   const personaRoles = roles
-    .filter(item => functionality.roles.includes(item.name))
+    .filter(item => selectedRoles.includes(item.name))
     .map(item => ({ documentId: item.id }));
 
   const saved = await upsertDocument<FunctionalityDto>(
@@ -174,7 +176,7 @@ export async function saveFunctionality(functionality: Functionality) {
       module: relation(module?.id),
       sprint: relation(sprint?.id),
       deliveryUnit: functionality.deliveryUnitId ? relation(functionality.deliveryUnitId) : null,
-      personaRoles: personaRoles.length ? { connect: personaRoles } : { disconnect: [] },
+      personaRoles: personaRoles.length ? { connect: personaRoles } : { set: [] },
     },
   );
 
