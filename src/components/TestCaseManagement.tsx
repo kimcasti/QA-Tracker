@@ -178,9 +178,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     ? 'La IA está generando y guardando los casos de prueba.'
     : !canUseAi
       ? 'Disponible en Growth. Actualiza tu plan para generar casos de prueba con IA.'
-    : hasGeneratedCasesForCurrentFunctionality
-      ? 'La generación ya fue exitosa para esta funcionalidad. Si necesitas más casos, recarga la vista o edita los existentes.'
-      : 'Genera casos sugeridos con IA para esta funcionalidad.';
+      : hasGeneratedCasesForCurrentFunctionality
+        ? 'La generación ya fue exitosa para esta funcionalidad. Si necesitas más casos, recarga la vista o edita los existentes.'
+        : 'Genera casos sugeridos con IA para esta funcionalidad.';
 
   const runGenerateAI = async () => {
     setIsGenerating(true);
@@ -439,11 +439,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       ) : null}
 
       <Alert
-        className="mb-4 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+        className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
         type="info"
         showIcon
-        message="Si deseas estandarizar la estructura, puedes registrar una plantilla de casos desde Configuración."
-        description="QA Tracker puede reutilizar esa plantilla para acelerar la creación de casos y mantener consistencia entre funcionalidades."
+        message="Utiliza plantillas para estandarizar tus casos de prueba."
+        description="Las plantillas se configuran por módulo y permiten acelerar la creación de casos manteniendo consistencia entre funcionalidades."
       />
 
       <UpgradeModal
@@ -455,14 +455,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         description="Si quieres combinar trabajo manual con IA y más capacidad operativa, aquí puedes ver con claridad el siguiente paso."
         onUpgradeGrowth={() => handleUpgradeClick('test-case-upgrade-modal-growth')}
         onContactEnterprise={() => handleEnterpriseClick()}
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        className="mb-4"
-        message="Si quieres estandarizar la creación de casos, puedes registrar plantillas desde Configuración."
-        description="Luego podrás seleccionarlas aquí al crear o editar un caso de prueba para autocompletar su estructura base."
       />
 
       {isError ? (
@@ -485,6 +477,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       ) : null}
 
       <Table
+        className="mt-2"
         columns={columns}
         dataSource={visibleTestCases}
         rowKey="id"
@@ -540,104 +533,104 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               isAutomated: false,
             }}
           >
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item
-              name="title"
-              label="Título"
-              rules={[{ required: true, message: 'Por favor ingresa el título' }]}
-              className="col-span-2"
-            >
-              <Input placeholder="Ej: Validar login con credenciales correctas" />
-            </Form.Item>
+            <div className="grid grid-cols-2 gap-4">
+              <Form.Item
+                name="title"
+                label="Título"
+                rules={[{ required: true, message: 'Por favor ingresa el título' }]}
+                className="col-span-2"
+              >
+                <Input placeholder="Ej: Validar login con credenciales correctas" />
+              </Form.Item>
 
-            <Form.Item name="templateId" label="Plantilla" className="col-span-2">
-              <Select
-                allowClear
-                placeholder={
-                  templates.length > 0
-                    ? 'Selecciona una plantilla para autocompletar'
-                    : 'No hay plantillas para este módulo'
-                }
-                options={templates.map(template => ({
-                  label: template.name,
-                  value: template.id,
-                }))}
-                onChange={handleTemplateSelect}
-              />
-            </Form.Item>
+              <Form.Item name="templateId" label="Plantilla" className="col-span-2">
+                <Select
+                  allowClear
+                  placeholder={
+                    templates.length > 0
+                      ? 'Selecciona una plantilla para autocompletar'
+                      : 'No hay plantillas para este módulo'
+                  }
+                  options={templates.map(template => ({
+                    label: template.name,
+                    value: template.id,
+                  }))}
+                  onChange={handleTemplateSelect}
+                />
+              </Form.Item>
 
-            <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
-              <Select>
-                {Object.values(TestType).map(type => (
-                  <Select.Option key={type} value={type}>
-                    {type}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
+              <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
+                <Select>
+                  {Object.values(TestType).map(type => (
+                    <Select.Option key={type} value={type}>
+                      {type}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-            <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
-              <Select>
-                {Object.values(Priority).map(priority => (
-                  <Select.Option key={priority} value={priority}>
-                    {labelPriority(priority, t)}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
+              <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
+                <Select>
+                  {Object.values(Priority).map(priority => (
+                    <Select.Option key={priority} value={priority}>
+                      {labelPriority(priority, t)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-            <Form.Item name="description" label="Descripción" className="col-span-2">
-              <BasicRichTextEditor placeholder="Descripción breve del objetivo de la prueba" />
-            </Form.Item>
+              <Form.Item name="description" label="Descripción" className="col-span-2">
+                <BasicRichTextEditor placeholder="Descripción breve del objetivo de la prueba" />
+              </Form.Item>
 
-            <Form.Item
-              name="isAutomated"
-              label="Automatizado"
-              valuePropName="checked"
-              className="col-span-2"
-            >
-              <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
-            </Form.Item>
+              <Form.Item
+                name="isAutomated"
+                label="Automatizado"
+                valuePropName="checked"
+                className="col-span-2"
+              >
+                <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
+              </Form.Item>
 
-            <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
-              <TextArea rows={2} placeholder="Estado inicial requerido" />
-            </Form.Item>
+              <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
+                <TextArea rows={2} placeholder="Estado inicial requerido" />
+              </Form.Item>
 
-            <Form.Item
-              name="testSteps"
-              label="Pasos de Prueba"
-              rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
-              className="col-span-2"
-            >
-              <BasicRichTextEditor
-                placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
-                minHeightClassName="min-h-[160px]"
-              />
-            </Form.Item>
+              <Form.Item
+                name="testSteps"
+                label="Pasos de Prueba"
+                rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
+                className="col-span-2"
+              >
+                <BasicRichTextEditor
+                  placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
+                  minHeightClassName="min-h-[160px]"
+                />
+              </Form.Item>
 
-            <Form.Item
-              name="expectedResult"
-              label="Resultado Esperado"
-              rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
-              className="col-span-2"
-            >
-              <BasicRichTextEditor
-                placeholder="El sistema debe mostrar el dashboard..."
-                minHeightClassName="min-h-[120px]"
-              />
-            </Form.Item>
-          </div>
+              <Form.Item
+                name="expectedResult"
+                label="Resultado Esperado"
+                rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
+                className="col-span-2"
+              >
+                <BasicRichTextEditor
+                  placeholder="El sistema debe mostrar el dashboard..."
+                  minHeightClassName="min-h-[120px]"
+                />
+              </Form.Item>
+            </div>
 
-          <Form.Item className="mb-0 mt-4 flex justify-end">
-            <Space>
-              <Button onClick={handleCancel}>Cancelar</Button>
-              {!isViewer ? (
-                <Button type="primary" htmlType="submit">
-                  {editingTestCase ? 'Actualizar' : 'Crear'}
-                </Button>
-              ) : null}
-            </Space>
-          </Form.Item>
+            <Form.Item className="mb-0 mt-4 flex justify-end">
+              <Space>
+                <Button onClick={handleCancel}>Cancelar</Button>
+                {!isViewer ? (
+                  <Button type="primary" htmlType="submit">
+                    {editingTestCase ? 'Actualizar' : 'Crear'}
+                  </Button>
+                ) : null}
+              </Space>
+            </Form.Item>
           </Form>
         </Suspense>
       </Modal>
