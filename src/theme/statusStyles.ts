@@ -6,7 +6,7 @@ export const functionalityStatusColors: Record<TestStatus, string> = {
   [TestStatus.POST_MVP]: qaPalette.functionalityStatus.postMvp,
   [TestStatus.IN_PROGRESS]: qaPalette.functionalityStatus.inProgress,
   [TestStatus.COMPLETED]: qaPalette.functionalityStatus.completed,
-  [TestStatus.FAILED]: qaPalette.functionalityStatus.failed,
+  [TestStatus.FAILED]: qaPalette.functionalityStatus.inProgress,
   [TestStatus.MVP]: qaPalette.functionalityStatus.inProgress,
 };
 

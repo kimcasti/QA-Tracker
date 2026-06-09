@@ -53,10 +53,17 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
     await expect(regressionCoverageCard).toContainText('2');
     await expect(smokeCoverageCard).toContainText('2');
 
-    await page.goto(`/projects/${seed.projectKey}/coverage`);
-    await expect(page.getByRole('heading', { name: 'Matriz de Cobertura' })).toBeVisible();
+    await page.goto(`/projects/${seed.projectKey}/testing`);
+    await expect(page.getByRole('heading', { name: 'Ejecución de Pruebas' })).toBeVisible();
+    const coverageTab = page.getByRole('tab', { name: 'Cobertura de Casos' });
+    await coverageTab.click();
+    await expect(coverageTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByText('Total Funcionalidades')).toBeVisible();
-    await expect(page.getByText('Cobertura de Casos', { exact: true })).toBeVisible();
+    const coverageSummaryCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Cobertura de Casos' })
+      .first();
+    await expect(coverageSummaryCard).toBeVisible();
     await expect(page.getByText('Bugs Activos')).toBeVisible();
 
     for (const code of seed.functionalityCodes) {
@@ -77,15 +84,14 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
     await expect(page.locator('main')).toContainText('En Desarrollo');
     await expect(page.locator('main')).toContainText('Backlog');
 
-    for (const code of seed.functionalityCodes) {
-      const row = page.locator('tr', { hasText: code });
+    for (const functionalityName of ['Agregar plan medico', 'Desactivar y activar usuario']) {
+      const row = page.locator('tr', { hasText: functionalityName });
       await expect(row).toBeVisible();
-      await expect(row).toContainText('Medio');
-      await expect(row).toContainText('Riesgo Medio');
+      await expect(row).toContainText('En desarrollo');
     }
 
-    await expect(page.locator('tr').filter({ hasText: seed.functionalityCodes[0] })).toHaveCount(1);
-    await expect(page.locator('tr').filter({ hasText: seed.functionalityCodes[1] })).toHaveCount(1);
+    await expect(page.locator('tr').filter({ hasText: 'Pacientes' })).toHaveCount(1);
+    await expect(page.locator('tr').filter({ hasText: 'Usuarios' })).toHaveCount(1);
   });
 
   test('shows seeded execution history in the testing view', async ({ page }) => {

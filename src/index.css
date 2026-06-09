@@ -252,6 +252,28 @@
   @apply bg-transparent;
 }
 
+.functionality-table .ant-table-thead > tr > th {
+  @apply py-3 px-3 text-[10px];
+}
+
+.functionality-table .ant-table-tbody > tr > td {
+  @apply py-2.5 px-3 text-[13px];
+}
+
+.functionality-table .ant-table-selection-column {
+  padding-inline: 10px !important;
+}
+
+.functionality-table .ant-btn {
+  min-width: 28px;
+  height: 28px;
+  padding-inline: 7px;
+}
+
+.functionality-table .ant-tag {
+  margin-inline-end: 0;
+}
+
 .execution-detail-table .ant-table-thead > tr > th {
   @apply uppercase text-[10px] tracking-widest font-bold py-4 px-6;
   background: var(--qa-color-bg, #F4F8FB) !important;

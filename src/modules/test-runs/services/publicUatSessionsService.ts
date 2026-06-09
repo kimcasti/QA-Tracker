@@ -1,7 +1,14 @@
 import { Http, PublicHttp } from '../../../config/http';
 import type { PublicUatSessionSummary, TestRun, TestRunResult } from '../../../types';
 import { extractFirstImageSrc } from '../../../utils/evidenceRichText';
-import { testResultFromApi, testResultToApi } from '../../shared/services/enumMappers';
+import {
+  environmentFromApi,
+  executionStatusFromApi,
+  priorityFromApi,
+  testResultFromApi,
+  testResultToApi,
+  testTypeFromApi,
+} from '../../shared/services/enumMappers';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type {
   ActivatePublicUatSessionInput,
@@ -109,19 +116,19 @@ function mapPublicResult(dto: NonNullable<NonNullable<PublicSessionDetailDto['te
 
 function mapPublicDetail(dto: PublicSessionDetailDto): PublicUatSessionDetail {
   const mappedTestRun: TestRun | null = dto.testRun
-    ? {
+      ? {
         id: dto.testRun.documentId,
         projectId: '',
         title: dto.testRun.title,
         description: dto.testRun.description || '',
         executionDate: dto.testRun.executionDate || '',
-        status: (dto.testRun.status as TestRun['status']) || 'Borrador',
-        testType: (dto.testRun.testType as TestRun['testType']) || 'UAT',
+        status: executionStatusFromApi(dto.testRun.status),
+        testType: testTypeFromApi(dto.testRun.testType),
         sprint: dto.testRun.sprint?.name || '',
-        priority: (dto.testRun.priority as TestRun['priority']) || 'Medio',
+        priority: priorityFromApi(dto.testRun.priority),
         tester: dto.testRun.tester || '',
         buildVersion: dto.testRun.buildVersion || '',
-        environment: dto.testRun.environment as TestRun['environment'],
+        environment: environmentFromApi(dto.testRun.environment),
         selectedModules: [],
         selectedFunctionalities: [],
         results: (dto.testRun.results || []).map(mapPublicResult),

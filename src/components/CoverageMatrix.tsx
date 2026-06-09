@@ -37,7 +37,13 @@ import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 
-export default function CoverageMatrix({ projectId }: { projectId?: string }) {
+export default function CoverageMatrix({
+  projectId,
+  embedded = false,
+}: {
+  projectId?: string;
+  embedded?: boolean;
+}) {
   const { data: functionalitiesData } = useFunctionalities(projectId);
   const { data: executionsData } = useExecutions(projectId);
   const { data: testCasesData } = useTestCases(projectId);
@@ -416,17 +422,17 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Matriz de Cobertura');
+        XLSX.utils.book_append_sheet(wb, ws, 'Cobertura de Casos');
 
         if (format === 'xlsx') {
-          XLSX.writeFile(wb, `Matriz_Cobertura_${projectId || 'QA'}.xlsx`);
+          XLSX.writeFile(wb, `Cobertura_Casos_${projectId || 'QA'}.xlsx`);
         } else {
           const csv = XLSX.utils.sheet_to_csv(ws);
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const link = document.createElement('a');
           const url = URL.createObjectURL(blob);
           link.setAttribute('href', url);
-          link.setAttribute('download', `Matriz_Cobertura_${projectId || 'QA'}.csv`);
+          link.setAttribute('download', `Cobertura_Casos_${projectId || 'QA'}.csv`);
           link.style.visibility = 'hidden';
           document.body.appendChild(link);
           link.click();
@@ -445,26 +451,28 @@ export default function CoverageMatrix({ projectId }: { projectId?: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <div>
-          <Title level={2} className="!mb-1">
-            Matriz de Cobertura
-          </Title>
-          <Paragraph type="secondary">
-            Visualización detallada de la trazabilidad y cobertura de casos por funcionalidad.
-            Esta vista se enfoca en casos de prueba y ejecuciones registradas, no en ciclos de
-            regresión o smoke.
-          </Paragraph>
+      {embedded ? null : (
+        <div className="flex justify-between items-start">
+          <div>
+            <Title level={2} className="!mb-1">
+              Cobertura de Casos
+            </Title>
+            <Paragraph type="secondary">
+              Visualización detallada de la trazabilidad y cobertura de casos por funcionalidad.
+              Esta vista se enfoca en casos de prueba y ejecuciones registradas, no en ciclos de
+              regresión o smoke.
+            </Paragraph>
+          </div>
+          <Dropdown menu={exportMenu} trigger={['click']}>
+            <Button
+              icon={<ExportOutlined />}
+              className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
+            >
+              Exportar Cobertura
+            </Button>
+          </Dropdown>
         </div>
-        <Dropdown menu={exportMenu} trigger={['click']}>
-          <Button
-            icon={<ExportOutlined />}
-            className="rounded-xl h-11 px-6 border-slate-200 text-slate-600 font-semibold"
-          >
-            Exportar Matriz
-          </Button>
-        </Dropdown>
-      </div>
+      )}
 
       <Row gutter={20}>
         <Col span={8}>

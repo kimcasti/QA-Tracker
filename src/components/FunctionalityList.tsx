@@ -1,8 +1,8 @@
 import {
-  Badge,
   Button,
   Card,
   Checkbox,
+  Empty,
   Form,
   Input,
   Modal,
@@ -29,12 +29,9 @@ import {
   UploadOutlined,
   DownloadOutlined,
   FileTextOutlined,
-  HistoryOutlined,
   InfoCircleOutlined,
   LinkOutlined,
-  FileSearchOutlined,
 } from '@ant-design/icons';
-import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { saveAs } from 'file-saver';
@@ -48,10 +45,16 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
-import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { toApiError } from '../config/http';
-import { Functionality, TestCase, TestStatus, Priority, RiskLevel, TestType } from '../types';
+import {
+  Functionality,
+  FUNCTIONALITY_DEVELOPMENT_STATUSES,
+  TestStatus,
+  Priority,
+  RiskLevel,
+  TestType,
+} from '../types';
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import type { FormInstance, InputRef } from 'antd';
 import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
@@ -62,8 +65,10 @@ const { Title, Text } = Typography;
 type NativeTableFilterState = {
   module: React.Key[] | null;
   riskLevel: React.Key[] | null;
+  priority: React.Key[] | null;
   status: React.Key[] | null;
   deliveryUnit: React.Key[] | null;
+  qaCoverage: React.Key[] | null;
 };
 
 type SummaryMetricCardProps = {
@@ -74,6 +79,7 @@ type SummaryMetricCardProps = {
 };
 
 type FunctionalityTableTitleProps = {
+  planningMode: boolean;
   selectedCount: number;
 };
 
@@ -81,10 +87,14 @@ type FunctionalityTableToolbarProps = {
   functionalitySearch: string;
   hasActiveFilters: boolean;
   isViewer: boolean;
+  planningMode: boolean;
   selectedCount: number;
+  selectedPreset: QaPlanningPreset;
   onSearchChange: (value: string) => void;
   onClearFilters: () => void;
   onOpenBulkEdit: () => void;
+  onPresetChange: (value: QaPlanningPreset) => void;
+  onTogglePlanningMode: () => void;
 };
 
 type FunctionalityColumnFilters = NonNullable<ColumnsType<Functionality>[number]['filters']>;
@@ -93,12 +103,9 @@ type FunctionalityColumnsConfig = {
   isViewer: boolean;
   tableFilters: NativeTableFilterState;
   nativeModuleFilters: FunctionalityColumnFilters;
-  nativeRiskFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
-  testCaseCountByFunctionality: Map<string, number>;
   onView: (record: Functionality) => void;
   onManageTestCases: (record: Functionality) => void;
-  onMarkRecentChange: (record: Functionality) => void;
   onDelete: (id: string) => void;
 };
 
@@ -108,6 +115,14 @@ type SelectOption = {
   label: string;
   value: string;
 };
+
+type QaPlanningPreset =
+  | 'all'
+  | 'withoutCoverage'
+  | 'smokeCandidates'
+  | 'regressionCandidates'
+  | 'highRisk'
+  | 'highPriority';
 
 type FunctionalityDeliveryUnitOption = {
   label: string;
@@ -143,14 +158,29 @@ type FunctionalityEditorFormProps = {
 const INITIAL_NATIVE_TABLE_FILTERS: NativeTableFilterState = {
   module: null,
   riskLevel: null,
+  priority: null,
   status: null,
   deliveryUnit: null,
+  qaCoverage: null,
 };
 
 const RISK_TEXT_CLASSNAMES: Record<RiskLevel, string> = {
   [RiskLevel.HIGH]: 'text-red-700',
   [RiskLevel.MEDIUM]: 'text-amber-700',
   [RiskLevel.LOW]: 'text-emerald-700',
+};
+
+const RISK_BADGE_CLASSNAMES: Record<RiskLevel, string> = {
+  [RiskLevel.HIGH]: 'border-red-200 bg-red-50 text-red-700',
+  [RiskLevel.MEDIUM]: 'border-amber-200 bg-amber-50 text-amber-700',
+  [RiskLevel.LOW]: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
+
+const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
+  [Priority.CRITICAL]: 'border-red-200 bg-red-50 text-red-700',
+  [Priority.HIGH]: 'border-orange-200 bg-orange-50 text-orange-700',
+  [Priority.MEDIUM]: 'border-sky-200 bg-sky-50 text-sky-700',
+  [Priority.LOW]: 'border-slate-200 bg-slate-50 text-slate-600',
 };
 
 const STATUS_BADGE_CONFIG: Partial<Record<TestStatus, { bg: string; text: string; dot: string }>> =
@@ -163,7 +193,7 @@ const STATUS_BADGE_CONFIG: Partial<Record<TestStatus, { bg: string; text: string
       dot: 'bg-emerald-500',
     },
     [TestStatus.MVP]: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-    [TestStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+    [TestStatus.FAILED]: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
   };
 
 const FALLBACK_STATUS_BADGE_CONFIG = {
@@ -464,12 +494,14 @@ function FunctionalityEditorForm({
   );
 }
 
-function FunctionalityTableTitle({ selectedCount }: FunctionalityTableTitleProps) {
+function FunctionalityTableTitle({ planningMode, selectedCount }: FunctionalityTableTitleProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <span className="text-slate-800 font-bold">Listado de Funcionalidades</span>
+          <span className="text-slate-800 font-bold">
+            {planningMode ? 'Planificación QA' : 'Listado de Funcionalidades'}
+          </span>
           {selectedCount > 0 && (
             <Tag
               color="blue"
@@ -480,7 +512,9 @@ function FunctionalityTableTitle({ selectedCount }: FunctionalityTableTitleProps
           )}
         </div>
         <span className="text-xs text-slate-400">
-          Usa los filtros nativos en los encabezados de la tabla.
+          {planningMode
+            ? 'Clasifica cobertura, riesgo y prioridad de forma masiva usando la tabla y sus filtros.'
+            : 'Usa los filtros nativos en los encabezados de la tabla.'}
         </span>
       </div>
     </div>
@@ -491,16 +525,47 @@ function FunctionalityTableToolbar({
   functionalitySearch,
   hasActiveFilters,
   isViewer,
+  planningMode,
   selectedCount,
+  selectedPreset,
   onSearchChange,
   onClearFilters,
   onOpenBulkEdit,
+  onPresetChange,
+  onTogglePlanningMode,
 }: FunctionalityTableToolbarProps) {
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {planningMode ? (
+        <Button
+          type="primary"
+          icon={<SafetyCertificateOutlined />}
+          onClick={onTogglePlanningMode}
+          className="rounded-lg h-9 px-4"
+        >
+          {planningMode ? 'Salir de planificación QA' : 'Planificación QA'}
+        </Button>
+      ) : null}
+      {planningMode ? (
+        <Select
+          value={selectedPreset}
+          onChange={value => onPresetChange(value)}
+          className="w-[220px]"
+          options={[
+            { label: 'Todas', value: 'all' },
+            { label: 'Sin cobertura', value: 'withoutCoverage' },
+            { label: 'Candidatas a Smoke', value: 'smokeCandidates' },
+            { label: 'Candidatas a Regresión', value: 'regressionCandidates' },
+            { label: 'Alto riesgo', value: 'highRisk' },
+            { label: 'Alta prioridad', value: 'highPriority' },
+          ]}
+        />
+      ) : null}
       <Input.Search
         allowClear
-        placeholder="Buscar por funcionalidad"
+        placeholder={
+          planningMode ? 'Buscar por ID, funcionalidad o módulo' : 'Buscar por funcionalidad'
+        }
         value={functionalitySearch}
         onChange={event => onSearchChange(event.target.value)}
         className="w-[260px]"
@@ -521,6 +586,166 @@ function FunctionalityTableToolbar({
         </Button>
       )}
     </div>
+  );
+}
+
+type QaPlanningFilterBarProps = {
+  moduleOptions: SelectOption[];
+  planningMode: boolean;
+  qaPlanningPreset: QaPlanningPreset;
+  riskOptions: SelectOption[];
+  priorityOptions: SelectOption[];
+  tableFilters: NativeTableFilterState;
+  onPresetChange: (value: QaPlanningPreset) => void;
+  onTableFilterChange: (key: keyof NativeTableFilterState, values: React.Key[] | null) => void;
+};
+
+type QaPlanningBulkActionsProps = {
+  selectedCount: number;
+  onMarkRecentChange: () => void;
+  onMarkSmoke: () => void;
+  onMarkRegression: () => void;
+  onSetHighRisk: () => void;
+  onSetHighPriority: () => void;
+  onClearCoverage: () => void;
+  onOpenBulkEdit: () => void;
+};
+
+function QaPlanningFilterBar({
+  moduleOptions,
+  planningMode,
+  qaPlanningPreset,
+  riskOptions,
+  priorityOptions,
+  tableFilters,
+  onPresetChange,
+  onTableFilterChange,
+}: QaPlanningFilterBarProps) {
+  if (!planningMode) return null;
+
+  const presetButtons: Array<{ value: QaPlanningPreset; label: string }> = [
+    { value: 'all', label: 'Todas' },
+    { value: 'withoutCoverage', label: 'Sin cobertura' },
+    { value: 'smokeCandidates', label: 'Candidatas Smoke' },
+    { value: 'regressionCandidates', label: 'Candidatas Regresión' },
+    { value: 'highRisk', label: 'Alto riesgo' },
+    { value: 'highPriority', label: 'Alta prioridad' },
+  ];
+
+  return (
+    <Card className="rounded-2xl border-slate-200 shadow-sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          {presetButtons.map(preset => (
+            <Button
+              key={preset.value}
+              type={qaPlanningPreset === preset.value ? 'primary' : 'default'}
+              className="rounded-full"
+              onClick={() => onPresetChange(preset.value)}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Select
+            allowClear
+            placeholder="Filtrar por módulo"
+            value={tableFilters.module?.[0] as string | undefined}
+            onChange={value => onTableFilterChange('module', value ? [value] : null)}
+            options={moduleOptions}
+          />
+          <Select
+            allowClear
+            placeholder="Filtrar por cobertura"
+            value={tableFilters.qaCoverage?.[0] as string | undefined}
+            onChange={value => onTableFilterChange('qaCoverage', value ? [value] : null)}
+            options={[
+              { label: 'Core', value: 'core' },
+              { label: 'Sin cobertura', value: 'without-coverage' },
+              { label: 'Regresión', value: 'regression' },
+              { label: 'Smoke', value: 'smoke' },
+              { label: 'Cambio reciente', value: 'recent-change' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="Filtrar por riesgo"
+            value={tableFilters.riskLevel?.[0] as string | undefined}
+            onChange={value => onTableFilterChange('riskLevel', value ? [value] : null)}
+            options={riskOptions}
+          />
+          <Select
+            allowClear
+            placeholder="Filtrar por prioridad"
+            value={tableFilters.priority?.[0] as string | undefined}
+            onChange={value => onTableFilterChange('priority', value ? [value] : null)}
+            options={priorityOptions}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function QaPlanningBulkActions({
+  selectedCount,
+  onMarkRecentChange,
+  onMarkSmoke,
+  onMarkRegression,
+  onSetHighRisk,
+  onSetHighPriority,
+  onClearCoverage,
+  onOpenBulkEdit,
+}: QaPlanningBulkActionsProps) {
+  if (selectedCount === 0) {
+    return (
+      <Card className="rounded-2xl border-dashed border-slate-200 bg-slate-50 shadow-sm">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="Selecciona funcionalidades para aplicar acciones masivas rápidas."
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="rounded-2xl border-blue-100 bg-blue-50/70 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">
+            {selectedCount} funcionalidades seleccionadas
+          </div>
+          <div className="text-sm text-slate-500">
+            Aplica clasificación inmediata sin abrir el modal completo.
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button className="rounded-full" onClick={onMarkRecentChange}>
+            Marcar cambio reciente
+          </Button>
+          <Button className="rounded-full" onClick={onMarkSmoke}>
+            Marcar Smoke
+          </Button>
+          <Button className="rounded-full" onClick={onMarkRegression}>
+            Marcar Regresión
+          </Button>
+          <Button className="rounded-full" danger onClick={onSetHighRisk}>
+            Riesgo Alto
+          </Button>
+          <Button className="rounded-full" type="primary" onClick={onSetHighPriority}>
+            Prioridad Alta
+          </Button>
+          <Button className="rounded-full" onClick={onClearCoverage}>
+            Limpiar cobertura
+          </Button>
+          <Button className="rounded-full" onClick={onOpenBulkEdit}>
+            Más opciones
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -546,6 +771,31 @@ function renderTruncatedText(
   );
 }
 
+function parseDateOnly(value?: string) {
+  if (!value) return null;
+
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed;
+}
+
+function formatRecentChangeBadge(value?: string) {
+  const parsed = parseDateOnly(value);
+  if (!parsed) return null;
+
+  const today = new Date();
+  const todayAtMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffInDays = Math.round(
+    (todayAtMidnight.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (diffInDays <= 0) return 'Actualizado hoy';
+  if (diffInDays === 1) return 'Actualizado hace 1 día';
+
+  return `Actualizado hace ${diffInDays} días`;
+}
+
 function getFunctionalityMetrics(functionalities: Functionality[]) {
   return {
     total: functionalities.length,
@@ -556,7 +806,92 @@ function getFunctionalityMetrics(functionalities: Functionality[]) {
   };
 }
 
+function getQaPlanningMetrics(functionalities: Functionality[]) {
+  return {
+    total: functionalities.length,
+    withoutCoverage: functionalities.filter(f => !f.isSmoke && !f.isRegression).length,
+    smoke: functionalities.filter(f => f.isSmoke).length,
+    regression: functionalities.filter(f => f.isRegression).length,
+    highRisk: functionalities.filter(f => f.riskLevel === RiskLevel.HIGH).length,
+    highPriority: functionalities.filter(
+      f => f.priority === Priority.CRITICAL || f.priority === Priority.HIGH,
+    ).length,
+  };
+}
+
+function matchesQaCoverageFilter(record: Functionality, value: string) {
+  switch (value) {
+    case 'core':
+      return record.isCore;
+    case 'without-coverage':
+      return !record.isSmoke && !record.isRegression;
+    case 'regression':
+      return record.isRegression;
+    case 'smoke':
+      return record.isSmoke;
+    case 'recent-change':
+      return Boolean(record.lastFunctionalChangeAt);
+    default:
+      return false;
+  }
+}
+
+function matchesQaPlanningPreset(record: Functionality, preset: QaPlanningPreset) {
+  switch (preset) {
+    case 'withoutCoverage':
+      return !record.isSmoke && !record.isRegression;
+    case 'smokeCandidates':
+      return !record.isSmoke && (record.isCore || record.riskLevel === RiskLevel.HIGH);
+    case 'regressionCandidates':
+      return (
+        !record.isRegression &&
+        (record.isCore ||
+          record.riskLevel === RiskLevel.HIGH ||
+          record.priority === Priority.CRITICAL ||
+          record.priority === Priority.HIGH)
+      );
+    case 'highRisk':
+      return record.riskLevel === RiskLevel.HIGH;
+    case 'highPriority':
+      return record.priority === Priority.CRITICAL || record.priority === Priority.HIGH;
+    case 'all':
+    default:
+      return true;
+  }
+}
+
+function getFunctionalityAttentionLevel(record: Functionality) {
+  const hasCoverage = record.isSmoke || record.isRegression;
+  const isHighRisk = record.riskLevel === RiskLevel.HIGH;
+  const isHighPriority = record.priority === Priority.CRITICAL || record.priority === Priority.HIGH;
+
+  if (!hasCoverage && isHighRisk && isHighPriority) return 'critical-gap';
+  if (!hasCoverage && (isHighRisk || isHighPriority)) return 'coverage-gap';
+  if (isHighRisk || isHighPriority) return 'watch';
+  return 'default';
+}
+
+function getFunctionalityRowClassName(record: Functionality) {
+  const attention = getFunctionalityAttentionLevel(record);
+
+  if (attention === 'critical-gap') {
+    return 'bg-red-50/60';
+  }
+
+  if (attention === 'coverage-gap') {
+    return 'bg-amber-50/60';
+  }
+
+  return '';
+}
+
 function getCoverageTags(record: Functionality) {
+  const isHighPriority = record.priority === Priority.CRITICAL || record.priority === Priority.HIGH;
+  const needsCoverageAttention =
+    !record.isSmoke &&
+    !record.isRegression &&
+    (record.riskLevel === RiskLevel.HIGH || isHighPriority);
+
   return [
     record.isCore ? { key: 'core', className: 'bg-slate-900 text-white', label: 'Core' } : null,
     record.isRegression
@@ -574,6 +909,13 @@ function getCoverageTags(record: Functionality) {
           key: 'recent-change',
           className: 'bg-sky-50 text-sky-700',
           label: 'Cambio reciente',
+        }
+      : null,
+    needsCoverageAttention
+      ? {
+          key: 'coverage-gap',
+          className: 'bg-red-50 text-red-700',
+          label: 'Sin cobertura crítica',
         }
       : null,
   ].filter(Boolean) as Array<{ key: string; className: string; label: string }>;
@@ -596,7 +938,7 @@ function normalizeImportedStatus(value: unknown): TestStatus {
     .toLowerCase();
 
   if (normalized === 'completado' || normalized === 'completed') return TestStatus.COMPLETED;
-  if (normalized === 'fallido' || normalized === 'failed') return TestStatus.FAILED;
+  if (normalized === 'fallido' || normalized === 'failed') return TestStatus.IN_PROGRESS;
   if (
     normalized === 'en progreso' ||
     normalized === 'in progress' ||
@@ -854,27 +1196,12 @@ function createFunctionalityColumns({
   isViewer,
   tableFilters,
   nativeModuleFilters,
-  nativeRiskFilters,
   nativeStatusFilters,
-  testCaseCountByFunctionality,
   onView,
   onManageTestCases,
-  onMarkRecentChange,
   onDelete,
 }: FunctionalityColumnsConfig): ColumnsType<Functionality> {
   return [
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">ID</span>
-      ),
-      dataIndex: 'id',
-      key: 'id',
-      width: 110,
-      ellipsis: true,
-      render: (value: string) => (
-        <span className="font-medium tracking-wide text-slate-600 whitespace-nowrap">{value}</span>
-      ),
-    },
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
@@ -883,7 +1210,7 @@ function createFunctionalityColumns({
       ),
       dataIndex: 'module',
       key: 'module',
-      width: 180,
+      width: 150,
       ellipsis: true,
       filters: nativeModuleFilters,
       filterSearch: true,
@@ -900,76 +1227,30 @@ function createFunctionalityColumns({
       ),
       dataIndex: 'name',
       key: 'name',
+      width: 420,
       ellipsis: true,
-      render: (name: string, record: Functionality) => (
-        <div className="flex items-center gap-2 min-w-0">
-          <Tooltip title={name}>
-            <span className="block truncate font-medium text-slate-700">{name}</span>
-          </Tooltip>
-          {record.jiraTaskUrl ? (
-            <Tooltip title="Abrir tarea en Jira">
-              <a
-                href={record.jiraTaskUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                onClick={event => event.stopPropagation()}
-              >
-                <LinkOutlined className="text-xs" />
-              </a>
-            </Tooltip>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          CASOS
-        </span>
-      ),
-      key: 'testCasesCount',
-      width: 110,
-      align: 'center',
-      render: (_: unknown, record: Functionality) => {
-        const count = testCaseCountByFunctionality.get(record.id) || 0;
+      render: (name: string, record: Functionality) => {
+        const recentChangeLabel = formatRecentChangeBadge(record.lastFunctionalChangeAt);
 
         return (
-          <div className="flex items-center justify-center gap-2">
-            <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
-              <FileSearchOutlined className={count > 0 ? 'text-emerald-500' : 'text-slate-300'} />
-            </Badge>
-            <span
-              className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
-            >
-              {count}
-            </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Tooltip title={name}>
+                <span className="block truncate text-[13px] font-medium text-slate-700">
+                  {name}
+                </span>
+              </Tooltip>
+            </div>
+            {recentChangeLabel ? (
+              <Tooltip title={`Último cambio funcional: ${record.lastFunctionalChangeAt}`}>
+                <span className="inline-flex w-fit rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                  🕒 {recentChangeLabel}
+                </span>
+              </Tooltip>
+            ) : null}
           </div>
         );
       },
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          RIESGO
-        </span>
-      ),
-      dataIndex: 'riskLevel',
-      key: 'riskLevel',
-      width: 150,
-      filters: nativeRiskFilters,
-      filteredValue: tableFilters.riskLevel,
-      onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
-      render: (risk: RiskLevel) => (
-        <div className="flex items-center gap-1">
-          <ShieldAlert size={14} className={RISK_TEXT_CLASSNAMES[risk] || 'text-slate-400'} />
-          <span
-            className={`text-[12px] font-medium ${RISK_TEXT_CLASSNAMES[risk] || 'text-slate-600'}`}
-          >
-            {risk}
-          </span>
-        </div>
-      ),
     },
     {
       title: (
@@ -979,7 +1260,7 @@ function createFunctionalityColumns({
       ),
       dataIndex: 'status',
       key: 'status',
-      width: 180,
+      width: 160,
       filters: nativeStatusFilters,
       filteredValue: tableFilters.status,
       onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
@@ -988,7 +1269,7 @@ function createFunctionalityColumns({
 
         return (
           <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} text-xs font-bold`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full ${config.bg} ${config.text} text-[11px] font-bold`}
           >
             <span className={`w-2 h-2 rounded-full ${config.dot}`} />
             {status}
@@ -1003,14 +1284,14 @@ function createFunctionalityColumns({
         </span>
       ),
       key: 'actions',
-      width: isViewer ? 140 : 188,
+      width: isViewer ? 112 : 104,
       render: (_: unknown, record: Functionality) => (
-        <Space size={8} wrap>
+        <Space size={6} wrap>
           <Tooltip title="Ver detalle">
             <Button
               icon={<EyeOutlined />}
               onClick={() => onView(record)}
-              size="middle"
+              size="small"
               className="rounded-full text-slate-700 border-slate-200 hover:bg-slate-50"
             />
           </Tooltip>
@@ -1018,31 +1299,17 @@ function createFunctionalityColumns({
             <Button
               icon={<FileTextOutlined />}
               onClick={() => onManageTestCases(record)}
-              size="middle"
+              size="small"
               className="rounded-full text-blue-600 border-blue-100 hover:bg-blue-50"
             />
           </Tooltip>
           {!isViewer ? (
             <>
-              <Tooltip
-                title={
-                  record.lastFunctionalChangeAt
-                    ? `Actualizar cambio reciente (${record.lastFunctionalChangeAt})`
-                    : 'Marcar cambio reciente'
-                }
-              >
-                <Button
-                  icon={<HistoryOutlined />}
-                  onClick={() => onMarkRecentChange(record)}
-                  size="middle"
-                  className="rounded-full text-sky-700 border-sky-100 hover:bg-sky-50"
-                />
-              </Tooltip>
               <Button
                 icon={<DeleteOutlined />}
                 danger
                 onClick={() => onDelete(record.id)}
-                size="middle"
+                size="small"
                 className="rounded-full"
               />
             </>
@@ -1055,9 +1322,11 @@ function createFunctionalityColumns({
 
 export default function FunctionalityList({
   filter,
+  initialPlanningMode = false,
   projectId,
 }: {
   filter?: 'regression' | 'smoke';
+  initialPlanningMode?: boolean;
   projectId?: string;
 }) {
   const { t } = useTranslation();
@@ -1068,7 +1337,6 @@ export default function FunctionalityList({
     bulkUpdate,
     bulkAdd,
   } = useFunctionalities(projectId);
-  const { data: testCasesData = [] } = useTestCases(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
@@ -1076,21 +1344,17 @@ export default function FunctionalityList({
   const { isViewer } = useWorkspaceAccess();
 
   const allFunctionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
-  const allTestCases = Array.isArray(testCasesData) ? testCasesData : [];
-
-  const testCaseCountByFunctionality = React.useMemo(() => {
-    return allTestCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
-
-      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
-      return acc;
-    }, new Map<string, number>());
-  }, [allTestCases]);
 
   const [tableFilters, setTableFilters] = useState<NativeTableFilterState>(
     INITIAL_NATIVE_TABLE_FILTERS,
   );
   const [functionalitySearch, setFunctionalitySearch] = useState('');
+  const [isQaPlanningMode, setIsQaPlanningMode] = useState(initialPlanningMode);
+  const [qaPlanningPreset, setQaPlanningPreset] = useState<QaPlanningPreset>('all');
+
+  React.useEffect(() => {
+    setIsQaPlanningMode(initialPlanningMode);
+  }, [initialPlanningMode]);
 
   const functionalities = allFunctionalities.filter(f => {
     if (!f) return false;
@@ -1118,9 +1382,18 @@ export default function FunctionalityList({
     [t],
   );
 
+  const nativePriorityFilters = React.useMemo(
+    () =>
+      Object.values(Priority).map(priority => ({
+        text: labelPriority(priority, t),
+        value: priority,
+      })),
+    [t],
+  );
+
   const nativeStatusFilters = React.useMemo(
     () =>
-      Object.values(TestStatus).map(status => ({
+      FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
         text: labelTestStatus(status, t),
         value: status,
       })),
@@ -1130,6 +1403,7 @@ export default function FunctionalityList({
   const nativeQaCoverageFilters = React.useMemo(
     () => [
       { text: 'Core', value: 'core' },
+      { text: 'Sin cobertura', value: 'without-coverage' },
       { text: 'Regresión', value: 'regression' },
       { text: 'Smoke', value: 'smoke' },
       { text: 'Cambio reciente', value: 'recent-change' },
@@ -1156,21 +1430,46 @@ export default function FunctionalityList({
       });
 
     if (!normalizedSearch) {
-      return sortByModule(functionalities);
+      const scopedItems = isQaPlanningMode
+        ? functionalities.filter(item => matchesQaPlanningPreset(item, qaPlanningPreset))
+        : functionalities;
+
+      return sortByModule(scopedItems);
     }
 
     return sortByModule(
-      functionalities.filter(item =>
-        String(item?.name || '')
-          .toLowerCase()
-          .includes(normalizedSearch),
-      ),
+      functionalities.filter(item => {
+        const matchesSearch =
+          String(item?.name || '')
+            .toLowerCase()
+            .includes(normalizedSearch) ||
+          String(item?.id || '')
+            .toLowerCase()
+            .includes(normalizedSearch) ||
+          String(item?.module || '')
+            .toLowerCase()
+            .includes(normalizedSearch);
+
+        const matchesPreset = isQaPlanningMode
+          ? matchesQaPlanningPreset(item, qaPlanningPreset)
+          : true;
+
+        return matchesSearch && matchesPreset;
+      }),
     );
-  }, [functionalities, functionalitySearch]);
+  }, [functionalities, functionalitySearch, isQaPlanningMode, qaPlanningPreset]);
 
   const clearNativeTableFilters = () => {
     setTableFilters(INITIAL_NATIVE_TABLE_FILTERS);
     setFunctionalitySearch('');
+    setQaPlanningPreset('all');
+  };
+
+  const setSingleTableFilter = (key: keyof NativeTableFilterState, values: React.Key[] | null) => {
+    setTableFilters(current => ({
+      ...current,
+      [key]: values,
+    }));
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1226,7 +1525,7 @@ export default function FunctionalityList({
   );
   const statusOptions = React.useMemo(
     () =>
-      Object.values(TestStatus).map(status => ({
+      FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
         label: labelTestStatus(status, t),
         value: status,
       })),
@@ -1333,19 +1632,6 @@ export default function FunctionalityList({
     });
   };
 
-  const handleMarkRecentChange = async (func: Functionality) => {
-    try {
-      await save({
-        ...func,
-        lastFunctionalChangeAt: new Date().toISOString().split('T')[0],
-      });
-      message.success('Cambio reciente marcado correctamente.');
-    } catch (error) {
-      console.error('Recent change mark failed:', error);
-      message.error('No se pudo marcar el cambio reciente.');
-    }
-  };
-
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -1409,9 +1695,14 @@ export default function FunctionalityList({
       if (typeof values.isCore === 'boolean') updates.isCore = values.isCore;
       if (typeof values.isRegression === 'boolean') updates.isRegression = values.isRegression;
       if (typeof values.isSmoke === 'boolean') updates.isSmoke = values.isSmoke;
+      if (values.priority) updates.priority = values.priority;
+      if (values.riskLevel) updates.riskLevel = values.riskLevel;
       if (values.status) updates.status = values.status;
       if (values.deliveryUnitId) {
         updates.deliveryUnitId = values.deliveryUnitId;
+      }
+      if (values.markRecentChange) {
+        updates.lastFunctionalChangeAt = new Date().toISOString().split('T')[0];
       }
 
       if (Object.keys(updates).length > 0) {
@@ -1423,6 +1714,25 @@ export default function FunctionalityList({
     } catch (error) {
       console.error('Bulk update failed:', error);
     }
+  };
+
+  const applyQuickBulkUpdate = async (updates: Partial<Functionality>, successMessage: string) => {
+    if (selectedRowKeys.length === 0) return;
+
+    try {
+      await bulkUpdate({ ids: selectedRowKeys as string[], updates });
+      message.success(successMessage);
+    } catch (error) {
+      console.error('Quick bulk update failed:', error);
+      message.error('No se pudo aplicar la actualización masiva.');
+    }
+  };
+
+  const handleBulkMarkRecentChange = async () => {
+    await applyQuickBulkUpdate(
+      { lastFunctionalChangeAt: new Date().toISOString().split('T')[0] },
+      'Cambio reciente aplicado a la selección.',
+    );
   };
 
   const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
@@ -1438,8 +1748,10 @@ export default function FunctionalityList({
     setTableFilters({
       module: (filters.module as React.Key[] | null) || null,
       riskLevel: (filters.riskLevel as React.Key[] | null) || null,
+      priority: (filters.priority as React.Key[] | null) || null,
       status: (filters.status as React.Key[] | null) || null,
       deliveryUnit: (filters.deliveryUnit as React.Key[] | null) || null,
+      qaCoverage: (filters.qaCoverage as React.Key[] | null) || null,
     });
   };
 
@@ -1449,25 +1761,19 @@ export default function FunctionalityList({
         isViewer,
         tableFilters,
         nativeModuleFilters,
-        nativeRiskFilters,
         nativeStatusFilters,
-        testCaseCountByFunctionality,
         onView: handleView,
         onManageTestCases: record => {
           setSelectedFunctionality(record);
           setIsTestCaseModalOpen(true);
         },
-        onMarkRecentChange: handleMarkRecentChange,
         onDelete: handleDelete,
       }),
     [
       isViewer,
       tableFilters,
       nativeModuleFilters,
-      nativeRiskFilters,
       nativeStatusFilters,
-      testCaseCountByFunctionality,
-      handleMarkRecentChange,
       handleDelete,
     ],
   );
@@ -1666,6 +1972,10 @@ export default function FunctionalityList({
     backlog: backlogFuncs,
     mvp: mvpFuncs,
   } = React.useMemo(() => getFunctionalityMetrics(allFunctionalities), [allFunctionalities]);
+  const qaPlanningMetrics = React.useMemo(
+    () => getQaPlanningMetrics(filteredFunctionalities),
+    [filteredFunctionalities],
+  );
 
   return (
     <div className="space-y-6 pb-10">
@@ -1673,10 +1983,12 @@ export default function FunctionalityList({
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
           <Title level={2} className="m-0 font-bold text-slate-800">
-            Gestión de Funcionalidades
+            {isQaPlanningMode ? 'Planificación QA' : 'Gestión de Funcionalidades'}
           </Title>
           <Text type="secondary" className="text-slate-500">
-            Administra el inventario de funcionalidades y su estado de desarrollo.
+            {isQaPlanningMode
+              ? 'Clasifica cobertura, riesgo y prioridad para organizar el alcance de smoke y regresión.'
+              : 'Administra el inventario de funcionalidades y su estado de desarrollo.'}
           </Text>
         </div>
         <Space>
@@ -1738,32 +2050,135 @@ export default function FunctionalityList({
         </div>
       </Card>
 
+      {isQaPlanningMode ? (
+        <Card className="rounded-2xl border-amber-100 bg-amber-50/70 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-slate-800">
+                Vista enfocada en planificación y cobertura QA
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                Selecciona funcionalidades, aplica filtros rápidos y usa la edición masiva para
+                dejar listas las candidatas a smoke, regresión, riesgo y prioridad.
+              </div>
+            </div>
+            <Tag className="m-0 rounded-full border-0 bg-white px-3 py-1 text-amber-700">
+              {filteredFunctionalities.length} visibles
+            </Tag>
+          </div>
+        </Card>
+      ) : null}
+
+      <QaPlanningFilterBar
+        planningMode={isQaPlanningMode}
+        qaPlanningPreset={qaPlanningPreset}
+        moduleOptions={moduleOptions}
+        riskOptions={riskOptions}
+        priorityOptions={priorityOptions}
+        tableFilters={tableFilters}
+        onPresetChange={setQaPlanningPreset}
+        onTableFilterChange={setSingleTableFilter}
+      />
+
       {/* Metrics Cards */}
       <Row gutter={[20, 20]} className="mt-4">
-        <SummaryMetricCard
-          label="Total"
-          value={totalFuncs}
-          valueClassName="text-slate-800"
-          lgSpan={4}
-        />
-        <SummaryMetricCard
-          label="Completadas"
-          value={completedFuncs}
-          valueClassName="text-emerald-600"
-        />
-        <SummaryMetricCard
-          label="En Desarrollo"
-          value={inProgressFuncs}
-          valueClassName="text-blue-600"
-        />
-        <SummaryMetricCard label="Backlog" value={backlogFuncs} valueClassName="text-slate-500" />
-        <SummaryMetricCard label="MVP" value={mvpFuncs} valueClassName="text-amber-600" />
+        {isQaPlanningMode ? (
+          <>
+            <SummaryMetricCard
+              label="Total visibles"
+              value={qaPlanningMetrics.total}
+              valueClassName="text-slate-800"
+              lgSpan={4}
+            />
+            <SummaryMetricCard
+              label="Sin cobertura"
+              value={qaPlanningMetrics.withoutCoverage}
+              valueClassName="text-slate-700"
+            />
+            <SummaryMetricCard
+              label="Smoke"
+              value={qaPlanningMetrics.smoke}
+              valueClassName="text-orange-600"
+            />
+            <SummaryMetricCard
+              label="Regresión"
+              value={qaPlanningMetrics.regression}
+              valueClassName="text-violet-600"
+            />
+            <SummaryMetricCard
+              label="Alto riesgo"
+              value={qaPlanningMetrics.highRisk}
+              valueClassName="text-red-600"
+            />
+            <SummaryMetricCard
+              label="Alta prioridad"
+              value={qaPlanningMetrics.highPriority}
+              valueClassName="text-amber-600"
+            />
+          </>
+        ) : (
+          <>
+            <SummaryMetricCard
+              label="Total"
+              value={totalFuncs}
+              valueClassName="text-slate-800"
+              lgSpan={4}
+            />
+            <SummaryMetricCard
+              label="Completadas"
+              value={completedFuncs}
+              valueClassName="text-emerald-600"
+            />
+            <SummaryMetricCard
+              label="En Desarrollo"
+              value={inProgressFuncs}
+              valueClassName="text-blue-600"
+            />
+            <SummaryMetricCard
+              label="Backlog"
+              value={backlogFuncs}
+              valueClassName="text-slate-500"
+            />
+            <SummaryMetricCard label="MVP" value={mvpFuncs} valueClassName="text-amber-600" />
+          </>
+        )}
       </Row>
+
+      {isQaPlanningMode && !isViewer ? (
+        <QaPlanningBulkActions
+          selectedCount={selectedRowKeys.length}
+          onMarkRecentChange={() => void handleBulkMarkRecentChange()}
+          onMarkSmoke={() =>
+            applyQuickBulkUpdate({ isSmoke: true }, 'Funcionalidades marcadas para Smoke.')
+          }
+          onMarkRegression={() =>
+            applyQuickBulkUpdate({ isRegression: true }, 'Funcionalidades marcadas para Regresión.')
+          }
+          onSetHighRisk={() =>
+            applyQuickBulkUpdate({ riskLevel: RiskLevel.HIGH }, 'Riesgo alto aplicado.')
+          }
+          onSetHighPriority={() =>
+            applyQuickBulkUpdate({ priority: Priority.HIGH }, 'Prioridad alta aplicada.')
+          }
+          onClearCoverage={() =>
+            applyQuickBulkUpdate(
+              { isSmoke: false, isRegression: false, isCore: false },
+              'Cobertura QA limpiada para la selección.',
+            )
+          }
+          onOpenBulkEdit={() => setIsBulkModalOpen(true)}
+        />
+      ) : null}
 
       {/* Table Card */}
       <Card
         className="rounded-2xl shadow-sm border-slate-100"
-        title={<FunctionalityTableTitle selectedCount={selectedRowKeys.length} />}
+        title={
+          <FunctionalityTableTitle
+            planningMode={isQaPlanningMode}
+            selectedCount={selectedRowKeys.length}
+          />
+        }
         extra={
           <FunctionalityTableToolbar
             functionalitySearch={functionalitySearch}
@@ -1771,8 +2186,17 @@ export default function FunctionalityList({
             onClearFilters={clearNativeTableFilters}
             hasActiveFilters={hasActiveNativeTableFilters}
             isViewer={isViewer}
+            planningMode={isQaPlanningMode}
             selectedCount={selectedRowKeys.length}
+            selectedPreset={qaPlanningPreset}
             onOpenBulkEdit={() => setIsBulkModalOpen(true)}
+            onPresetChange={setQaPlanningPreset}
+            onTogglePlanningMode={() => {
+              setIsQaPlanningMode(current => !current);
+              setSelectedRowKeys([]);
+              setTableFilters(INITIAL_NATIVE_TABLE_FILTERS);
+              setQaPlanningPreset('all');
+            }}
           />
         }
       >
@@ -1782,14 +2206,16 @@ export default function FunctionalityList({
               ? undefined
               : {
                   ...rowSelection,
-                  columnWidth: 52,
+                  columnWidth: 44,
                 }
           }
           columns={columns}
           dataSource={filteredFunctionalities}
           rowKey="id"
-          className="executive-table"
-          size="middle"
+          rowClassName={record => getFunctionalityRowClassName(record)}
+          className="executive-table functionality-table"
+          size="small"
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20 }}
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
@@ -2095,13 +2521,35 @@ export default function FunctionalityList({
           </Form.Item>
 
           <Form.Item
+            name="priority"
+            label={<span className="font-semibold text-slate-600">Prioridad</span>}
+          >
+            <Select
+              placeholder="Cambiar prioridad para todos..."
+              className="h-10 rounded-lg"
+              options={priorityOptions}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="riskLevel"
+            label={<span className="font-semibold text-slate-600">Riesgo</span>}
+          >
+            <Select
+              placeholder="Cambiar riesgo para todos..."
+              className="h-10 rounded-lg"
+              options={riskOptions}
+            />
+          </Form.Item>
+
+          <Form.Item
             name="status"
             label={<span className="font-semibold text-slate-600">Estado Actual</span>}
           >
             <Select
               placeholder="Cambiar estado para todos..."
               className="h-10 rounded-lg"
-              options={Object.values(TestStatus).map(v => ({
+              options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(v => ({
                 label: labelTestStatus(v, t),
                 value: v,
               }))}
@@ -2121,6 +2569,10 @@ export default function FunctionalityList({
                 value: item.documentId || item.id,
               }))}
             />
+          </Form.Item>
+
+          <Form.Item name="markRecentChange" valuePropName="checked">
+            <Checkbox>Marcar cambio reciente con fecha de hoy</Checkbox>
           </Form.Item>
         </Form>
       </Modal>

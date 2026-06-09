@@ -17,6 +17,7 @@ import type { TestCaseDto } from '../types/api';
 
 function mapTestCase(document: TestCaseDto): TestCase {
   return {
+    documentId: document.documentId,
     id: document.documentId,
     projectId: document.project?.key || '',
     functionalityId: document.functionality?.code || '',

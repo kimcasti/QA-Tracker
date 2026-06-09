@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -64,6 +65,7 @@ import {
   DeviceType,
   RegressionCycle,
   TestResult,
+  TestStatus,
   TestType,
   RegressionExecution,
   Severity,
@@ -307,6 +309,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   });
   const [detailSearch, setDetailSearch] = useState('');
   const [detailFilter, setDetailFilter] = useState<'ALL' | 'FAILED' | 'PENDING'>('ALL');
+  const [showCompletedOnlyNotice, setShowCompletedOnlyNotice] = useState(false);
 
   // Evidence Modal State
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
@@ -408,9 +411,27 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
       .catch(() => undefined);
   }, [currentExecution, evidenceForm, selectedCycle]);
 
+  useEffect(() => {
+    if (!isModalOpen) {
+      setShowCompletedOnlyNotice(false);
+      return;
+    }
+
+    setShowCompletedOnlyNotice(true);
+    const timeoutId = window.setTimeout(() => {
+      setShowCompletedOnlyNotice(false);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isModalOpen]);
+
   // Filter smoke functionalities for new cycles
   const smokeFuncs = Array.isArray(functionalities)
-    ? functionalities.filter(f => f?.isSmoke || f?.testTypes?.includes(TestType.SMOKE))
+    ? functionalities.filter(
+        f =>
+          f?.status === TestStatus.COMPLETED &&
+          (f?.isSmoke || f?.testTypes?.includes(TestType.SMOKE)),
+      )
     : [];
 
   const smokeMandatoryFuncs = smokeFuncs.filter(functionality => functionality.isCore);
@@ -2361,6 +2382,16 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
           className="mt-4"
           initialValues={{ date: dayjs(), status: 'EN_PROGRESO' }}
         >
+          {showCompletedOnlyNotice ? (
+            <Alert
+              className="mb-4 rounded-2xl"
+              type="info"
+              showIcon
+              message="Solo se muestran funcionalidades completadas"
+              description="Las sugerencias y la selección del ciclo consideran únicamente funcionalidades en estado Completed."
+            />
+          ) : null}
+
           <div className="mb-6 grid gap-3 md:grid-cols-6">
             {smokePlanningSteps.sections.map((section, index) => {
               const isCurrent = smokePlanningSteps.currentIndex === index;

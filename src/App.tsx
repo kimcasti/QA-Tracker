@@ -29,12 +29,12 @@ import { qaBrand } from './theme/palette';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const FunctionalityList = lazy(() => import('./components/FunctionalityList'));
+const QaPlanningPage = lazy(() => import('./components/QaPlanningPage'));
 const TestExecutionView = lazy(() => import('./components/TestExecutionView'));
 const RegressionCycles = lazy(() => import('./components/RegressionCycles'));
 const SmokeCycles = lazy(() => import('./components/SmokeCycles'));
 const TestPlanView = lazy(() => import('./components/TestPlanView'));
 const Reports = lazy(() => import('./components/Reports'));
-const CoverageMatrix = lazy(() => import('./components/CoverageMatrix'));
 const ProjectManagement = lazy(() => import('./components/ProjectManagement'));
 const EditProject = lazy(() => import('./components/EditProject'));
 const Settings = lazy(() => import('./components/Settings'));
@@ -60,13 +60,13 @@ const { Text } = Typography;
 type WorkspaceViewKey =
   | 'dashboard'
   | 'functionalities'
+  | 'qa_planning'
   | 'storymap'
   | 'testing'
   | 'plans'
   | 'regression_cycles'
   | 'smoke_cycles'
   | 'reports'
-  | 'coverage'
   | 'config'
   | 'about';
 
@@ -79,19 +79,21 @@ type ParsedRoute =
   | { type: 'legacy_workspace'; scene: string }
   | { type: 'unknown' };
 
+type PublicView = 'terms' | 'privacy' | 'ai-policy' | 'public-uat' | 'auth' | 'landing';
+
 const SELECTED_PROJECT_STORAGE_KEY = 'qa_tracker_selected_project_id';
 const SELECTED_PROJECT_OWNER_STORAGE_KEY = 'qa_tracker_selected_project_owner';
 
 const WORKSPACE_VIEW_TO_PATH: Record<WorkspaceViewKey, string> = {
   dashboard: 'dashboard',
   functionalities: 'functionalities',
+  qa_planning: 'qa-planning',
   storymap: 'story-map',
   testing: 'testing',
   plans: 'plans',
   regression_cycles: 'regression-cycles',
   smoke_cycles: 'smoke-cycles',
   reports: 'reports',
-  coverage: 'coverage',
   config: 'config',
   about: 'about',
 };
@@ -99,6 +101,8 @@ const WORKSPACE_VIEW_TO_PATH: Record<WorkspaceViewKey, string> = {
 const SCENE_TO_WORKSPACE_VIEW: Record<string, WorkspaceViewKey> = {
   dashboard: 'dashboard',
   functionalities: 'functionalities',
+  qa_planning: 'qa_planning',
+  'qa-planning': 'qa_planning',
   storymap: 'storymap',
   'story-map': 'storymap',
   testing: 'testing',
@@ -108,7 +112,7 @@ const SCENE_TO_WORKSPACE_VIEW: Record<string, WorkspaceViewKey> = {
   smoke_cycles: 'smoke_cycles',
   'smoke-cycles': 'smoke_cycles',
   reports: 'reports',
-  coverage: 'coverage',
+  coverage: 'testing',
   config: 'config',
   about: 'about',
 };
@@ -170,14 +174,14 @@ function renderWorkspaceContent(view: WorkspaceViewKey, currentProject: Project)
   switch (view) {
     case 'dashboard':
       return <Dashboard projectId={currentProject.id} />;
-    case 'coverage':
-      return <CoverageMatrix projectId={currentProject.id} />;
     case 'regression_cycles':
       return <RegressionCycles projectId={currentProject.id} />;
     case 'smoke_cycles':
       return <SmokeCycles projectId={currentProject.id} />;
     case 'functionalities':
-      return <FunctionalityList projectId={currentProject.id} />;
+      return <FunctionalityList key="functionalities" projectId={currentProject.id} />;
+    case 'qa_planning':
+      return <QaPlanningPage projectId={currentProject.id} />;
     case 'storymap':
       return <StoryMapPage projectId={currentProject.id} />;
     case 'testing':
@@ -219,7 +223,7 @@ export default function App() {
   const location = useLocation();
   const { status, isAuthenticated, user, logout } = useAuthSession();
   const hideWhatsAppSupportButton = location.pathname === '/superadmin';
-  const publicView = useMemo(() => {
+  const publicView = useMemo<PublicView>(() => {
     const normalizedPath = normalizePublicPathname(location.pathname);
 
     if (normalizedPath === '/terminos') return 'terms';
@@ -268,7 +272,6 @@ export default function App() {
     return (
       <Suspense fallback={<PageLoader />}>
         {publicView === 'landing' ? <PublicLandingPage /> : null}
-        {publicView === 'public-uat' ? <PublicUatSessionPage /> : null}
         {publicView === 'terms' ? <TermsPage /> : null}
         {publicView === 'privacy' ? <PrivacyPage /> : null}
         {publicView === 'ai-policy' ? <AIPolicyPage /> : null}
@@ -377,10 +380,14 @@ function WorkspaceApp({
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
         { key: 'functionalities', icon: <DatabaseOutlined />, label: t('nav.functionalities') },
+        {
+          key: 'qa_planning',
+          icon: <SafetyCertificateOutlined />,
+          label: 'Planificación QA',
+        },
         { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
         { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },
         { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: t('nav.smoke') },
-        { key: 'coverage', icon: <DatabaseOutlined />, label: t('nav.coverage') },
         { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
         {
           key: 'more',

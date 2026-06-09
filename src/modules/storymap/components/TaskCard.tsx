@@ -46,7 +46,7 @@ export function TaskCard({
       case TestStatus.COMPLETED:
         return softTagStyle(functionalityStatusColors[TestStatus.COMPLETED]);
       case TestStatus.FAILED:
-        return softTagStyle(functionalityStatusColors[TestStatus.FAILED]);
+        return softTagStyle(functionalityStatusColors[TestStatus.IN_PROGRESS]);
       default:
         return softTagStyle(functionalityStatusColors[TestStatus.BACKLOG]);
     }

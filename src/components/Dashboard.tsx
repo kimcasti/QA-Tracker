@@ -251,7 +251,6 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   ).length;
   const backlogFuncs = functionalities.filter(item => item.status === TestStatus.BACKLOG).length;
   const mvpFuncs = functionalities.filter(item => item.status === TestStatus.MVP).length;
-  const failedFuncs = functionalities.filter(item => item.status === TestStatus.FAILED).length;
 
   const activeBugs = bugs.filter(item => item.status !== BugStatus.RESOLVED);
   const totalBugs = activeBugs.length;

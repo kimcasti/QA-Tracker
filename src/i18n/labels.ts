@@ -19,7 +19,7 @@ export function labelTestStatus(value: TestStatus | string | undefined, t: TFunc
     case TestStatus.COMPLETED:
       return t('status.completed');
     case TestStatus.FAILED:
-      return t('status.failed');
+      return t('status.in_progress');
     case TestStatus.MVP:
       return t('status.mvp');
     default:
@@ -93,4 +93,3 @@ export function labelEnvironment(value: Environment | string | undefined, t: TFu
       return value || '';
   }
 }
-

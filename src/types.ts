@@ -17,6 +17,14 @@ export enum TestStatus {
   POST_MVP = 'Post MVP',
 }
 
+export const FUNCTIONALITY_DEVELOPMENT_STATUSES = [
+  TestStatus.BACKLOG,
+  TestStatus.IN_PROGRESS,
+  TestStatus.MVP,
+  TestStatus.POST_MVP,
+  TestStatus.COMPLETED,
+] as const;
+
 export enum TestResult {
   PASSED = 'Aprobado',
   FAILED = 'Fallido',
@@ -196,6 +204,7 @@ export interface Functionality {
 }
 
 export interface TestCase {
+  documentId?: string;
   id: string;
   projectId: string;
   functionalityId: string;

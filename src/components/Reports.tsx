@@ -257,7 +257,7 @@ const getFunctionalityStatusTag = (status?: string) => {
   const value = String(status || '');
   if (value === TestStatus.COMPLETED) return <Tag color="green">Completado</Tag>;
   if (value === TestStatus.IN_PROGRESS) return <Tag color="blue">En progreso</Tag>;
-  if (value === TestStatus.FAILED) return <Tag color="red">Fallido</Tag>;
+  if (value === TestStatus.FAILED) return <Tag color="blue">En progreso</Tag>;
   if (value === TestStatus.MVP) return <Tag color="gold">MVP</Tag>;
   if (value === TestStatus.POST_MVP) return <Tag color="purple">Post MVP</Tag>;
   return <Tag color="default">Backlog</Tag>;
@@ -271,7 +271,7 @@ const getQaStatusTag = (status?: string) => {
       : value === TestStatus.IN_PROGRESS
         ? '#2563eb'
         : value === TestStatus.FAILED
-          ? '#dc2626'
+          ? '#2563eb'
           : '#64748b';
 
   return (
@@ -279,7 +279,7 @@ const getQaStatusTag = (status?: string) => {
       className="rounded-full border px-3 py-0.5 text-xs font-medium"
       style={{ color, borderColor: `${color}33`, backgroundColor: '#ffffff' }}
     >
-      {value || 'Sin estado'}
+      {value === TestStatus.FAILED ? 'En desarrollo' : value || 'Sin estado'}
     </Tag>
   );
 };

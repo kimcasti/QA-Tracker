@@ -40,7 +40,7 @@ export function projectStatusFromApi(status?: string) {
 export function testStatusToApi(status: TestStatus) {
   return {
     [TestStatus.COMPLETED]: 'completed',
-    [TestStatus.FAILED]: 'failed',
+    [TestStatus.FAILED]: 'in_progress',
     [TestStatus.IN_PROGRESS]: 'in_progress',
     [TestStatus.BACKLOG]: 'backlog',
     [TestStatus.MVP]: 'mvp',
@@ -52,7 +52,7 @@ export function testStatusFromApi(status?: string) {
   return (
     {
       completed: TestStatus.COMPLETED,
-      failed: TestStatus.FAILED,
+      failed: TestStatus.IN_PROGRESS,
       in_progress: TestStatus.IN_PROGRESS,
       backlog: TestStatus.BACKLOG,
       mvp: TestStatus.MVP,

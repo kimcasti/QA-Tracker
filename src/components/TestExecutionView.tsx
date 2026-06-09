@@ -90,6 +90,7 @@ import {
 } from '../i18n/labels';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
+import CoverageMatrix from './CoverageMatrix';
 import dayjs from 'dayjs';
 import type { FilterValue } from 'antd/es/table/interface';
 import { isPayloadTooLargeError, showPayloadTooLargeMessage } from '../utils/uploadValidation';
@@ -2935,6 +2936,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </Card>
               </div>
             ),
+          },
+          {
+            key: 'coverage',
+            label: 'Cobertura de Casos',
+            children: <CoverageMatrix projectId={projectId} embedded />,
           },
           {
             key: 'bugs',
