@@ -383,7 +383,7 @@ function WorkspaceApp({
         {
           key: 'qa_planning',
           icon: <SafetyCertificateOutlined />,
-          label: 'Planificación QA',
+          label: 'Estrategia QA',
         },
         { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
         { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },

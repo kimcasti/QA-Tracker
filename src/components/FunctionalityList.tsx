@@ -28,11 +28,10 @@ import {
   SafetyCertificateOutlined,
   UploadOutlined,
   DownloadOutlined,
-  FileTextOutlined,
   InfoCircleOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import React, { Suspense, lazy, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { saveAs } from 'file-saver';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
@@ -59,7 +58,6 @@ import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 import type { FormInstance, InputRef } from 'antd';
 import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
 
-const TestCaseManagement = lazy(() => import('./TestCaseManagement'));
 const { Title, Text } = Typography;
 
 type NativeTableFilterState = {
@@ -105,7 +103,6 @@ type FunctionalityColumnsConfig = {
   nativeModuleFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
   onView: (record: Functionality) => void;
-  onManageTestCases: (record: Functionality) => void;
   onDelete: (id: string) => void;
 };
 
@@ -1198,7 +1195,6 @@ function createFunctionalityColumns({
   nativeModuleFilters,
   nativeStatusFilters,
   onView,
-  onManageTestCases,
   onDelete,
 }: FunctionalityColumnsConfig): ColumnsType<Functionality> {
   return [
@@ -1293,14 +1289,6 @@ function createFunctionalityColumns({
               onClick={() => onView(record)}
               size="small"
               className="rounded-full text-slate-700 border-slate-200 hover:bg-slate-50"
-            />
-          </Tooltip>
-          <Tooltip title="Gestionar Casos de Prueba">
-            <Button
-              icon={<FileTextOutlined />}
-              onClick={() => onManageTestCases(record)}
-              size="small"
-              className="rounded-full text-blue-600 border-blue-100 hover:bg-blue-50"
             />
           </Tooltip>
           {!isViewer ? (
@@ -1474,10 +1462,8 @@ export default function FunctionalityList({
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [isTestCaseModalOpen, setIsTestCaseModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [selectedFunctionality, setSelectedFunctionality] = useState<Functionality | null>(null);
   const [detailFunctionality, setDetailFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
   const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
@@ -1763,10 +1749,6 @@ export default function FunctionalityList({
         nativeModuleFilters,
         nativeStatusFilters,
         onView: handleView,
-        onManageTestCases: record => {
-          setSelectedFunctionality(record);
-          setIsTestCaseModalOpen(true);
-        },
         onDelete: handleDelete,
       }),
     [
@@ -2421,33 +2403,6 @@ export default function FunctionalityList({
             </div>
           </div>
         ) : null}
-      </Modal>
-
-      <Modal
-        title={null}
-        open={isTestCaseModalOpen}
-        onCancel={() => setIsTestCaseModalOpen(false)}
-        footer={null}
-        width={1000}
-        centered
-        destroyOnHidden
-      >
-        {selectedFunctionality && (
-          <Suspense
-            fallback={
-              <div className="py-6 text-center text-sm text-slate-400">
-                Cargando casos de prueba...
-              </div>
-            }
-          >
-            <TestCaseManagement
-              projectId={projectId || ''}
-              functionalityId={selectedFunctionality.id}
-              functionalityName={selectedFunctionality.name}
-              moduleName={selectedFunctionality.module}
-            />
-          </Suspense>
-        )}
       </Modal>
 
       <Modal

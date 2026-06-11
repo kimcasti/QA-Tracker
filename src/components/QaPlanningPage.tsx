@@ -6,6 +6,7 @@ import {
   Col,
   Empty,
   Input,
+  Modal,
   Row,
   Select,
   Space,
@@ -14,11 +15,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import {
-  FileSearchOutlined,
-  MinusOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import { FileSearchOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Flame, Info, RefreshCw, ShieldAlert, Star, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnsType } from 'antd/es/table';
@@ -49,6 +46,7 @@ import {
 import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
 
 const { Title, Text, Paragraph } = Typography;
+const TestCaseManagement = React.lazy(() => import('./TestCaseManagement'));
 const INFO_TOOLTIP_OVERLAY_STYLE = { maxWidth: 320 };
 const INFO_TOOLTIP_INNER_STYLE: React.CSSProperties = {
   whiteSpace: 'normal',
@@ -227,9 +225,7 @@ function RecommendationCard({
         </span>
         <span
           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            active
-              ? 'bg-sky-100 text-sky-700'
-              : 'bg-slate-100 text-slate-600'
+            active ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'
           }`}
         >
           {active ? 'Activo' : 'Aplicar'}
@@ -295,8 +291,7 @@ function matchesCoverageFilter(record: Functionality, value: string) {
 function getRowClassName(record: Functionality) {
   const hasCoverage = record.isCore || record.isRegression || record.isSmoke;
   const isHighRisk = record.riskLevel === RiskLevel.HIGH;
-  const isHighPriority =
-    record.priority === Priority.CRITICAL || record.priority === Priority.HIGH;
+  const isHighPriority = record.priority === Priority.CRITICAL || record.priority === Priority.HIGH;
 
   if (!hasCoverage && isHighRisk && isHighPriority) return 'bg-red-50/60';
   if (!hasCoverage && (isHighRisk || isHighPriority)) return 'bg-amber-50/60';
@@ -314,8 +309,7 @@ function isRecentlyChanged(record: Functionality) {
   if (Number.isNaN(changedAt.getTime())) return false;
 
   const today = new Date();
-  const diffInDays =
-    (today.getTime() - changedAt.getTime()) / (1000 * 60 * 60 * 24);
+  const diffInDays = (today.getTime() - changedAt.getTime()) / (1000 * 60 * 60 * 24);
 
   return diffInDays <= 14;
 }
@@ -354,10 +348,14 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const [savingIds, setSavingIds] = React.useState<string[]>([]);
   const [isBulkSaving, setIsBulkSaving] = React.useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = React.useState<React.Key[]>([]);
-  const [activeRecommendation, setActiveRecommendation] =
-    React.useState<RecommendationKey | null>(null);
-  const [tableFilters, setTableFilters] = React.useState<PlanningTableFilters>(
-    INITIAL_TABLE_FILTERS,
+  const [activeRecommendation, setActiveRecommendation] = React.useState<RecommendationKey | null>(
+    null,
+  );
+  const [tableFilters, setTableFilters] =
+    React.useState<PlanningTableFilters>(INITIAL_TABLE_FILTERS);
+  const [isTestCaseModalOpen, setIsTestCaseModalOpen] = React.useState(false);
+  const [selectedFunctionality, setSelectedFunctionality] = React.useState<Functionality | null>(
+    null,
   );
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
@@ -404,8 +402,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     );
     const highRiskWithoutCases = filteredFunctionalities.filter(
       item =>
-        item.riskLevel === RiskLevel.HIGH &&
-        (testCaseCountByFunctionality.get(item.id) || 0) === 0,
+        item.riskLevel === RiskLevel.HIGH && (testCaseCountByFunctionality.get(item.id) || 0) === 0,
     );
     const highPriorityWithoutRegression = filteredFunctionalities.filter(
       item => isHighPriorityFunctionality(item) && !item.isRegression,
@@ -428,8 +425,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     () => [
       {
         key: 'critical_outside_smoke' as RecommendationKey,
-        label: 'Criticas fuera de Smoke',
-        description: 'Funcionalidades criticas que todavia no entran en la validacion rapida.',
+        label: 'Críticas fuera de Smoke',
+        description: 'Funcionalidades críticas que todavía no entran en la validación rápida.',
         toneClassName: 'bg-red-50 text-red-700',
       },
       {
@@ -440,20 +437,20 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       },
       {
         key: 'high_priority_without_regression' as RecommendationKey,
-        label: 'Alta prioridad fuera de Regresion',
-        description: 'Items de negocio relevantes que aun no quedaron cubiertos en regresion.',
+        label: 'Alta prioridad fuera de Regresión',
+        description: 'Ítems de negocio relevantes que aún no quedaron cubiertos en regresión.',
         toneClassName: 'bg-orange-50 text-orange-700',
       },
       {
         key: 'without_coverage' as RecommendationKey,
-        label: 'Sin clasificacion QA',
-        description: 'Funcionalidades sin marca en Core, Smoke o Regresion.',
+        label: 'Sin clasificación QA',
+        description: 'Funcionalidades sin marca en Core, Smoke o Regresión.',
         toneClassName: 'bg-slate-100 text-slate-700',
       },
       {
         key: 'recent_changes' as RecommendationKey,
         label: 'Cambios recientes',
-        description: 'Funcionalidades con actualizacion funcional reciente para revisar primero.',
+        description: 'Funcionalidades con actualización funcional reciente para revisar primero.',
         toneClassName: 'bg-sky-50 text-sky-700',
       },
     ],
@@ -479,7 +476,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         value: visibleFunctionalities.filter(item => item.isCore).length,
       },
       {
-        name: 'Regresion',
+        name: 'Regresión',
         value: visibleFunctionalities.filter(item => item.isRegression).length,
       },
       {
@@ -817,18 +814,32 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           const count = testCaseCountByFunctionality.get(record.id) || 0;
 
           return (
-            <div className="flex items-center justify-center gap-2">
-              <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
-                <FileSearchOutlined
-                  className={count > 0 ? 'text-emerald-500' : 'text-slate-300'}
-                />
-              </Badge>
-              <span
-                className={`text-xs font-bold ${count > 0 ? 'text-emerald-600' : 'text-slate-400'}`}
+            <Tooltip title="Ver y gestionar casos de prueba">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-2 py-1 transition hover:bg-slate-50"
+                onClick={event => {
+                  event.stopPropagation();
+                  setSelectedFunctionality(record);
+                  setIsTestCaseModalOpen(true);
+                }}
               >
-                {count}
-              </span>
-            </div>
+                <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
+                  <FileSearchOutlined
+                    className={`text-base transition ${
+                      count > 0 ? 'text-emerald-500' : 'text-slate-400'
+                    }`}
+                  />
+                </Badge>
+                <span
+                  className={`text-xs font-bold ${
+                    count > 0 ? 'text-emerald-600' : 'text-slate-500'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            </Tooltip>
           );
         },
       },
@@ -898,15 +909,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           [option.key]: !option.checked,
                         } as Partial<Functionality>)
                       }
-                      >
+                    >
                       <span
                         className={`mr-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border ${
-                          option.checked
-                            ? 'border-current bg-white'
-                            : 'border-slate-300 bg-white'
+                          option.checked ? 'border-current bg-white' : 'border-slate-300 bg-white'
                         }`}
                       >
-                        {option.checked ? <span className="h-1.5 w-1.5 rounded-full bg-current" /> : null}
+                        {option.checked ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        ) : null}
                       </span>
                       {option.label}
                     </button>
@@ -928,8 +939,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         width: 126,
         filters: riskOptions.map(option => ({ text: option.label, value: option.value })),
         filteredValue: tableFilters.riskLevel,
-        onFilter: (value: boolean | React.Key, record: Functionality) =>
-          record.riskLevel === value,
+        onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
         render: (risk: RiskLevel, record: Functionality) => (
           <Tooltip
             title={getRiskImpactText(risk)}
@@ -991,8 +1001,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         width: 116,
         filters: priorityOptions.map(option => ({ text: option.label, value: option.value })),
         filteredValue: tableFilters.priority,
-        onFilter: (value: boolean | React.Key, record: Functionality) =>
-          record.priority === value,
+        onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
         render: (priority: Priority, record: Functionality) => (
           <Tooltip
             title={getPriorityImpactText(priority)}
@@ -1179,7 +1188,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Title level={2} className="!m-0 text-slate-800">
-            Planificación QA
+            Estrategia QA
           </Title>
           <Text type="secondary">
             Clasifica cobertura, riesgo y prioridad para organizar el alcance de smoke y regresión.
@@ -1195,16 +1204,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           valueClassName="text-slate-700"
         />
         <MetricCard label="Smoke" value={metrics.smoke} valueClassName="text-orange-600" />
-        <MetricCard
-          label="Regresión"
-          value={metrics.regression}
-          valueClassName="text-violet-600"
-        />
-        <MetricCard
-          label="Alto riesgo"
-          value={metrics.highRisk}
-          valueClassName="text-red-600"
-        />
+        <MetricCard label="Regresión" value={metrics.regression} valueClassName="text-violet-600" />
+        <MetricCard label="Alto riesgo" value={metrics.highRisk} valueClassName="text-red-600" />
         <MetricCard
           label="Alta prioridad"
           value={metrics.highPriority}
@@ -1260,11 +1261,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             }`}
           >
             {activeRecommendation
-              ? `${recommendationFilteredFunctionalities.length} funcionalidades filtradas por recomendacion`
-              : 'Sin recomendacion aplicada'}
+              ? `${recommendationFilteredFunctionalities.length} funcionalidades filtradas por recomendación`
+              : 'Sin recomendación aplicada'}
           </div>
           <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
-            El filtro actua sobre la tabla actual y mantiene la edicion inline.
+            El filtro actúa sobre la tabla actual y mantiene la edición inline.
           </div>
         </div>
       </Card>
@@ -1304,7 +1305,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               <Button
                 className="rounded-full border-amber-200 bg-amber-50 px-4 font-semibold text-amber-700 shadow-sm hover:!border-amber-300 hover:!bg-amber-100 hover:!text-amber-800"
                 disabled={isBulkSaving}
-                onClick={() => void saveBulkUpdate({ isCore: true }, 'Core aplicado a la selección.')}
+                onClick={() =>
+                  void saveBulkUpdate({ isCore: true }, 'Core aplicado a la selección.')
+                }
               >
                 Marcar Core
               </Button>
@@ -1312,10 +1315,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 className="rounded-full border-violet-200 bg-violet-50 px-4 font-semibold text-violet-700 shadow-sm hover:!border-violet-300 hover:!bg-violet-100 hover:!text-violet-800"
                 disabled={isBulkSaving}
                 onClick={() =>
-                  void saveBulkUpdate(
-                    { isRegression: true },
-                    'Regresión aplicada a la selección.',
-                  )
+                  void saveBulkUpdate({ isRegression: true }, 'Regresión aplicada a la selección.')
                 }
               >
                 Marcar Regresión
@@ -1323,7 +1323,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               <Button
                 className="rounded-full border-orange-200 bg-orange-50 px-4 font-semibold text-orange-700 shadow-sm hover:!border-orange-300 hover:!bg-orange-100 hover:!text-orange-800"
                 disabled={isBulkSaving}
-                onClick={() => void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.')}
+                onClick={() =>
+                  void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.')
+                }
               >
                 Marcar Smoke
               </Button>
@@ -1348,10 +1350,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Operacion
+              Operación
             </div>
             <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-              Tabla de planificacion
+              Tabla de planificación
             </Title>
             <Text type="secondary" className="text-sm">
               Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
@@ -1397,7 +1399,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             icon={<Flame size={14} className="text-orange-500" />}
           />
           <GuidanceItem
-            label="Regresion"
+            label="Regresión"
             message="Revalidar ante cambios"
             toneClassName="bg-transparent text-slate-700"
             icon={<RefreshCw size={14} className="text-violet-500" />}
@@ -1421,9 +1423,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           columns={orderedColumns}
           dataSource={recommendationFilteredFunctionalities}
           rowKey={record => record.documentId || record.id}
-          loading={
-            isLoading || (isFetching && recommendationFilteredFunctionalities.length === 0)
-          }
+          loading={isLoading || (isFetching && recommendationFilteredFunctionalities.length === 0)}
           expandable={expandable}
           rowClassName={record => getRowClassName(record)}
           size="small"
@@ -1436,7 +1436,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             emptyText: searchTerm.trim()
               ? 'No encontramos funcionalidades con esa búsqueda.'
               : activeRecommendation
-                ? 'No hay funcionalidades para esta recomendacion en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
+                ? 'No hay funcionalidades para esta recomendación en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
                 : 'No hay funcionalidades registradas para este proyecto.',
           }}
           onChange={(_, filters) => handleTableChange(filters)}
@@ -1448,13 +1448,14 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="mb-2 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-              Analitica
+              Analítica
             </div>
             <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-              Vision analitica QA
+              Visión analítica QA
             </Title>
             <Text type="secondary" className="text-sm">
-              Resumen ejecutivo de la vista actual. Sirve para validar panorama, no para reemplazar la tabla.
+              Resumen ejecutivo de la vista actual. Sirve para validar panorama, no para reemplazar
+              la tabla.
             </Text>
           </div>
           <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
@@ -1469,7 +1470,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               <div>
                 <div className="text-sm font-semibold text-slate-800">Cobertura por tipo</div>
                 <div className="mt-1 text-sm text-slate-500">
-                  Distribucion visible entre Core, Regresion, Smoke y sin cobertura.
+                  Distribución visible entre Core, Regresión, Smoke y sin cobertura.
                 </div>
               </div>
             </div>
@@ -1521,7 +1522,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">Distribucion de prioridad</div>
+              <div className="text-sm font-semibold text-slate-800">Distribución de prioridad</div>
               <div className="mt-1 text-sm text-slate-500">
                 Balance actual de prioridades dentro del alcance visible.
               </div>
@@ -1551,11 +1552,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">
-                Cobertura por modulo top 5
-              </div>
+              <div className="text-sm font-semibold text-slate-800">Cobertura por módulo top 5</div>
               <div className="mt-1 text-sm text-slate-500">
-                Modulos con mayor volumen dentro de la vista actual.
+                Módulos con mayor volumen dentro de la vista actual.
               </div>
             </div>
             <div className="space-y-4">
@@ -1579,7 +1578,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               ))}
               {analytics.moduleCoverage.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No hay modulos visibles para resumir ahora mismo.
+                  No hay módulos visibles para resumir ahora mismo.
                 </div>
               ) : null}
             </div>
@@ -1587,9 +1586,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">Mapa riesgo vs cobertura</div>
+              <div className="text-sm font-semibold text-slate-800">
+                Mapa de riesgo vs. cobertura
+              </div>
               <div className="mt-1 text-sm text-slate-500">
-                Identifica rapido donde siguen las mayores brechas QA.
+                Identifica rápido dónde siguen las mayores brechas QA.
               </div>
             </div>
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -1645,6 +1646,33 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           </Button>
         </div>
       ) : null}
+
+      <Modal
+        title={null}
+        open={isTestCaseModalOpen}
+        onCancel={() => setIsTestCaseModalOpen(false)}
+        footer={null}
+        width={1000}
+        centered
+        destroyOnHidden
+      >
+        {selectedFunctionality ? (
+          <React.Suspense
+            fallback={
+              <div className="py-6 text-center text-sm text-slate-400">
+                Cargando casos de prueba...
+              </div>
+            }
+          >
+            <TestCaseManagement
+              projectId={projectId || ''}
+              functionalityId={selectedFunctionality.id}
+              functionalityName={selectedFunctionality.name}
+              moduleName={selectedFunctionality.module}
+            />
+          </React.Suspense>
+        ) : null}
+      </Modal>
     </div>
   );
 }
