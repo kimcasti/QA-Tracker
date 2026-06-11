@@ -1,9 +1,11 @@
 import { TestType, type Functionality } from '../../../types';
 import {
+  impactFromApi,
+  impactToApi,
   priorityFromApi,
   priorityToApi,
-  riskFromApi,
-  riskToApi,
+  probabilityFromApi,
+  probabilityToApi,
   testStatusFromApi,
   testStatusToApi,
   testTypeFromApi,
@@ -18,6 +20,7 @@ import {
 import { getModules, getRoles, getSprints } from '../../settings/services/settingsService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { FunctionalityDto } from '../types/api';
+import { calculateRiskLevel } from '../utils/riskMatrix';
 
 export function normalizeDateOnly(value?: string | null) {
   if (!value) return '';
@@ -75,6 +78,9 @@ export function buildNextFunctionalityCode(
 }
 
 function mapFunctionality(document: FunctionalityDto): Functionality {
+  const impactLevel = impactFromApi(document.impactLevel);
+  const probabilityLevel = probabilityFromApi(document.probabilityLevel);
+
   return {
     documentId: document.documentId,
     id: document.code,
@@ -93,7 +99,9 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     deliveryDate: normalizeDateOnly(document.deliveryDate),
     status: testStatusFromApi(document.status),
     priority: priorityFromApi(document.priority),
-    riskLevel: riskFromApi(document.riskLevel),
+    impactLevel,
+    probabilityLevel,
+    riskLevel: calculateRiskLevel(impactLevel, probabilityLevel),
     sprint: document.sprint?.name,
     storyId: document.storyLegacyId,
     deliveryUnitId: document.deliveryUnit?.documentId,
@@ -169,7 +177,8 @@ export async function saveFunctionality(functionality: Functionality) {
       deliveryDate: normalizeDateOnly(functionality.deliveryDate) || null,
       status: testStatusToApi(functionality.status),
       priority: priorityToApi(functionality.priority),
-      riskLevel: riskToApi(functionality.riskLevel),
+      impactLevel: impactToApi(functionality.impactLevel),
+      probabilityLevel: probabilityToApi(functionality.probabilityLevel),
       storyLegacyId: functionality.storyId || null,
       organization: relation(context.organizationDocumentId),
       project: relation(context.documentId),

@@ -33,6 +33,7 @@ import {
 } from '@ant-design/icons';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { saveAs } from 'file-saver';
 import { useDeliveryUnits } from '../modules/delivery-units/hooks/useDeliveryUnits';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -49,12 +50,21 @@ import { toApiError } from '../config/http';
 import {
   Functionality,
   FUNCTIONALITY_DEVELOPMENT_STATUSES,
+  ImpactLevel,
+  ProbabilityLevel,
   TestStatus,
   Priority,
   RiskLevel,
   TestType,
 } from '../types';
-import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
+import {
+  labelImpact,
+  labelPriority,
+  labelProbability,
+  labelRisk,
+  labelTestStatus,
+} from '../i18n/labels';
+import { calculateRiskLevel } from '../modules/functionalities/utils/riskMatrix';
 import type { FormInstance, InputRef } from 'antd';
 import type { ColumnsType, FilterValue } from 'antd/es/table/interface';
 
@@ -147,8 +157,10 @@ type FunctionalityEditorFormProps = {
   sprintOptions: SelectOption[];
   deliveryUnitOptions: FunctionalityDeliveryUnitOption[];
   priorityOptions: SelectOption[];
-  riskOptions: SelectOption[];
+  impactOptions: SelectOption[];
+  probabilityOptions: SelectOption[];
   statusOptions: SelectOption[];
+  t: TFunction;
   onValuesChange: (changedValues: Record<string, unknown>) => void;
 };
 
@@ -159,12 +171,6 @@ const INITIAL_NATIVE_TABLE_FILTERS: NativeTableFilterState = {
   status: null,
   deliveryUnit: null,
   qaCoverage: null,
-};
-
-const RISK_TEXT_CLASSNAMES: Record<RiskLevel, string> = {
-  [RiskLevel.HIGH]: 'text-red-700',
-  [RiskLevel.MEDIUM]: 'text-amber-700',
-  [RiskLevel.LOW]: 'text-emerald-700',
 };
 
 const RISK_BADGE_CLASSNAMES: Record<RiskLevel, string> = {
@@ -202,7 +208,8 @@ const FALLBACK_STATUS_BADGE_CONFIG = {
 const FUNCTIONALITY_FORM_INITIAL_VALUES = {
   status: TestStatus.BACKLOG,
   priority: Priority.MEDIUM,
-  riskLevel: RiskLevel.MEDIUM,
+  impactLevel: ImpactLevel.MEDIUM,
+  probabilityLevel: ProbabilityLevel.MEDIUM,
   isCore: false,
   isRegression: false,
   isSmoke: false,
@@ -253,8 +260,10 @@ function FunctionalityEditorForm({
   sprintOptions,
   deliveryUnitOptions,
   priorityOptions,
-  riskOptions,
+  impactOptions,
+  probabilityOptions,
   statusOptions,
+  t,
   onValuesChange,
 }: FunctionalityEditorFormProps) {
   return (
@@ -325,7 +334,8 @@ function FunctionalityEditorForm({
         label={<span className="font-semibold text-slate-600">Clasificación QA</span>}
         extra="Define si esta funcionalidad es crítica para el negocio y en qué ciclos de prueba debe aparecer: regresión, smoke o ambos."
       >
-        <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <Space size={16} wrap>
           <Form.Item name="isCore" valuePropName="checked" noStyle>
             <Checkbox>
               <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -414,6 +424,7 @@ function FunctionalityEditorForm({
               </span>
             </Checkbox>
           </Form.Item>
+          </Space>
         </div>
       </Form.Item>
 
@@ -429,11 +440,36 @@ function FunctionalityEditorForm({
         </Col>
         <Col span={12}>
           <Form.Item
-            name="riskLevel"
-            label={<span className="font-semibold text-slate-600">Nivel de Riesgo</span>}
+            name="impactLevel"
+            label={<span className="font-semibold text-slate-600">Impacto</span>}
             rules={[{ required: true }]}
           >
-            <Select className="h-10 rounded-lg" options={riskOptions} />
+            <Select className="h-10 rounded-lg" options={impactOptions} />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={20}>
+        <Col span={12}>
+          <Form.Item
+            name="probabilityLevel"
+            label={<span className="font-semibold text-slate-600">Probabilidad</span>}
+            rules={[{ required: true }]}
+          >
+            <Select className="h-10 rounded-lg" options={probabilityOptions} />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item label={<span className="font-semibold text-slate-600">Riesgo calculado</span>}>
+            <div className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">
+              {labelRisk(
+                calculateRiskLevel(
+                  form.getFieldValue('impactLevel') || ImpactLevel.MEDIUM,
+                  form.getFieldValue('probabilityLevel') || ProbabilityLevel.MEDIUM,
+                ),
+                t,
+              )}
+            </div>
           </Form.Item>
         </Col>
       </Row>
@@ -602,7 +638,7 @@ type QaPlanningBulkActionsProps = {
   onMarkRecentChange: () => void;
   onMarkSmoke: () => void;
   onMarkRegression: () => void;
-  onSetHighRisk: () => void;
+  onSetHighImpact: () => void;
   onSetHighPriority: () => void;
   onClearCoverage: () => void;
   onOpenBulkEdit: () => void;
@@ -691,7 +727,7 @@ function QaPlanningBulkActions({
   onMarkRecentChange,
   onMarkSmoke,
   onMarkRegression,
-  onSetHighRisk,
+  onSetHighImpact,
   onSetHighPriority,
   onClearCoverage,
   onOpenBulkEdit,
@@ -728,8 +764,8 @@ function QaPlanningBulkActions({
           <Button className="rounded-full" onClick={onMarkRegression}>
             Marcar Regresión
           </Button>
-          <Button className="rounded-full" danger onClick={onSetHighRisk}>
-            Riesgo Alto
+          <Button className="rounded-full" danger onClick={onSetHighImpact}>
+            Impacto Alto
           </Button>
           <Button className="rounded-full" type="primary" onClick={onSetHighPriority}>
             Prioridad Alta
@@ -965,19 +1001,34 @@ function normalizeImportedPriority(value: unknown): Priority {
   return Priority.MEDIUM;
 }
 
-function normalizeImportedRiskLevel(value: unknown): RiskLevel {
+function normalizeImportedImpactLevel(value: unknown): ImpactLevel {
   const normalized = String(value ?? '')
     .trim()
     .toLowerCase();
 
-  if (normalized === 'high' || normalized === 'alto riesgo' || normalized === 'riesgo alto') {
-    return RiskLevel.HIGH;
+  if (normalized === 'high' || normalized === 'alto') {
+    return ImpactLevel.HIGH;
   }
-  if (normalized === 'low' || normalized === 'bajo riesgo' || normalized === 'riesgo bajo') {
-    return RiskLevel.LOW;
+  if (normalized === 'low' || normalized === 'bajo') {
+    return ImpactLevel.LOW;
   }
 
-  return RiskLevel.MEDIUM;
+  return ImpactLevel.MEDIUM;
+}
+
+function normalizeImportedProbabilityLevel(value: unknown): ProbabilityLevel {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'high' || normalized === 'alta' || normalized === 'probabilidad alta') {
+    return ProbabilityLevel.HIGH;
+  }
+  if (normalized === 'low' || normalized === 'baja' || normalized === 'probabilidad baja') {
+    return ProbabilityLevel.LOW;
+  }
+
+  return ProbabilityLevel.MEDIUM;
 }
 
 function parseBooleanLike(value: unknown) {
@@ -1123,8 +1174,17 @@ function mapImportedRowsToFunctionalities(
         ).trim() || new Date().toISOString().split('T')[0],
       status: normalizeImportedStatus(getImportedFieldValue(item, ['status', 'Estado'])),
       priority: normalizeImportedPriority(getImportedFieldValue(item, ['priority', 'Prioridad'])),
-      riskLevel: normalizeImportedRiskLevel(
-        getImportedFieldValue(item, ['riskLevel', 'Nivel de Riesgo', 'Riesgo']),
+      impactLevel: normalizeImportedImpactLevel(
+        getImportedFieldValue(item, ['impactLevel', 'Impacto']),
+      ),
+      probabilityLevel: normalizeImportedProbabilityLevel(
+        getImportedFieldValue(item, ['probabilityLevel', 'Probabilidad']),
+      ),
+      riskLevel: calculateRiskLevel(
+        normalizeImportedImpactLevel(getImportedFieldValue(item, ['impactLevel', 'Impacto'])),
+        normalizeImportedProbabilityLevel(
+          getImportedFieldValue(item, ['probabilityLevel', 'Probabilidad']),
+        ),
       ),
       sprint: importedSprint.sprint,
       importReviewReasons: reviewReasons,
@@ -1184,6 +1244,8 @@ function buildFunctionalityExportData(functionalities: Functionality[]) {
     'Fecha Entrega': item.deliveryDate || '',
     Sprint: item.sprint || '',
     Prioridad: item.priority || '',
+    Impacto: item.impactLevel || '',
+    Probabilidad: item.probabilityLevel || '',
     'Nivel de Riesgo': item.riskLevel || '',
     Estado: item.status || '',
   }));
@@ -1361,24 +1423,6 @@ export default function FunctionalityList({
     [allFunctionalities],
   );
 
-  const nativeRiskFilters = React.useMemo(
-    () =>
-      Object.values(RiskLevel).map(risk => ({
-        text: labelRisk(risk, t),
-        value: risk,
-      })),
-    [t],
-  );
-
-  const nativePriorityFilters = React.useMemo(
-    () =>
-      Object.values(Priority).map(priority => ({
-        text: labelPriority(priority, t),
-        value: priority,
-      })),
-    [t],
-  );
-
   const nativeStatusFilters = React.useMemo(
     () =>
       FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
@@ -1509,6 +1553,22 @@ export default function FunctionalityList({
       })),
     [t],
   );
+  const impactOptions = React.useMemo(
+    () =>
+      Object.values(ImpactLevel).map(impact => ({
+        label: labelImpact(impact),
+        value: impact,
+      })),
+    [],
+  );
+  const probabilityOptions = React.useMemo(
+    () =>
+      Object.values(ProbabilityLevel).map(probability => ({
+        label: labelProbability(probability),
+        value: probability,
+      })),
+    [],
+  );
   const statusOptions = React.useMemo(
     () =>
       FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
@@ -1632,6 +1692,7 @@ export default function FunctionalityList({
         ...editingFunc,
         ...values,
         id: finalId,
+        riskLevel: calculateRiskLevel(values.impactLevel, values.probabilityLevel),
         jiraTaskUrl: values.jiraTaskUrl?.trim() || '',
         roles: values.roles ?? editingFunc?.roles ?? [],
         testTypes: values.testTypes || editingFunc?.testTypes || [TestType.FUNCTIONAL],
@@ -1682,7 +1743,8 @@ export default function FunctionalityList({
       if (typeof values.isRegression === 'boolean') updates.isRegression = values.isRegression;
       if (typeof values.isSmoke === 'boolean') updates.isSmoke = values.isSmoke;
       if (values.priority) updates.priority = values.priority;
-      if (values.riskLevel) updates.riskLevel = values.riskLevel;
+      if (values.impactLevel) updates.impactLevel = values.impactLevel;
+      if (values.probabilityLevel) updates.probabilityLevel = values.probabilityLevel;
       if (values.status) updates.status = values.status;
       if (values.deliveryUnitId) {
         updates.deliveryUnitId = values.deliveryUnitId;
@@ -2136,8 +2198,8 @@ export default function FunctionalityList({
           onMarkRegression={() =>
             applyQuickBulkUpdate({ isRegression: true }, 'Funcionalidades marcadas para Regresión.')
           }
-          onSetHighRisk={() =>
-            applyQuickBulkUpdate({ riskLevel: RiskLevel.HIGH }, 'Riesgo alto aplicado.')
+          onSetHighImpact={() =>
+            applyQuickBulkUpdate({ impactLevel: ImpactLevel.HIGH }, 'Impacto alto aplicado.')
           }
           onSetHighPriority={() =>
             applyQuickBulkUpdate({ priority: Priority.HIGH }, 'Prioridad alta aplicada.')
@@ -2226,8 +2288,10 @@ export default function FunctionalityList({
           sprintOptions={sprintOptions}
           deliveryUnitOptions={deliveryUnitOptions}
           priorityOptions={priorityOptions}
-          riskOptions={riskOptions}
+          impactOptions={impactOptions}
+          probabilityOptions={probabilityOptions}
           statusOptions={statusOptions}
+          t={t}
           onValuesChange={handleValuesChange}
         />
       </Modal>
@@ -2343,6 +2407,14 @@ export default function FunctionalityList({
                   <FunctionalityDetailValue
                     label="Prioridad"
                     value={labelPriority(detailFunctionality.priority, t)}
+                  />
+                  <FunctionalityDetailValue
+                    label="Impacto"
+                    value={labelImpact(detailFunctionality.impactLevel)}
+                  />
+                  <FunctionalityDetailValue
+                    label="Probabilidad"
+                    value={labelProbability(detailFunctionality.probabilityLevel)}
                   />
                   <FunctionalityDetailValue
                     label="Riesgo"
@@ -2487,13 +2559,24 @@ export default function FunctionalityList({
           </Form.Item>
 
           <Form.Item
-            name="riskLevel"
-            label={<span className="font-semibold text-slate-600">Riesgo</span>}
+            name="impactLevel"
+            label={<span className="font-semibold text-slate-600">Impacto</span>}
           >
             <Select
-              placeholder="Cambiar riesgo para todos..."
+              placeholder="Cambiar impacto para todos..."
               className="h-10 rounded-lg"
-              options={riskOptions}
+              options={impactOptions}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="probabilityLevel"
+            label={<span className="font-semibold text-slate-600">Probabilidad</span>}
+          >
+            <Select
+              placeholder="Cambiar probabilidad para todos..."
+              className="h-10 rounded-lg"
+              options={probabilityOptions}
             />
           </Form.Item>
 

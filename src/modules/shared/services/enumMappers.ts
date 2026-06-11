@@ -8,8 +8,10 @@ import {
   ExecutionMode,
   ExecutionStatus,
   FunctionalityScope,
+  ImpactLevel,
   OperatingSystem,
   Priority,
+  ProbabilityLevel,
   ProjectStatus,
   RiskLevel,
   Severity,
@@ -96,6 +98,42 @@ export function riskFromApi(risk?: string) {
       medium: RiskLevel.MEDIUM,
       low: RiskLevel.LOW,
     }[risk || ''] || RiskLevel.MEDIUM
+  );
+}
+
+export function impactToApi(impact: ImpactLevel) {
+  return {
+    [ImpactLevel.HIGH]: 'high',
+    [ImpactLevel.MEDIUM]: 'medium',
+    [ImpactLevel.LOW]: 'low',
+  }[impact];
+}
+
+export function impactFromApi(impact?: string) {
+  return (
+    {
+      high: ImpactLevel.HIGH,
+      medium: ImpactLevel.MEDIUM,
+      low: ImpactLevel.LOW,
+    }[impact || ''] || ImpactLevel.MEDIUM
+  );
+}
+
+export function probabilityToApi(probability: ProbabilityLevel) {
+  return {
+    [ProbabilityLevel.HIGH]: 'high',
+    [ProbabilityLevel.MEDIUM]: 'medium',
+    [ProbabilityLevel.LOW]: 'low',
+  }[probability];
+}
+
+export function probabilityFromApi(probability?: string) {
+  return (
+    {
+      high: ProbabilityLevel.HIGH,
+      medium: ProbabilityLevel.MEDIUM,
+      low: ProbabilityLevel.LOW,
+    }[probability || ''] || ProbabilityLevel.MEDIUM
   );
 }
 

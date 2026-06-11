@@ -2,7 +2,9 @@ import type { TFunction } from 'i18next';
 import {
   Environment,
   ExecutionStatus,
+  ImpactLevel,
   Priority,
+  ProbabilityLevel,
   RiskLevel,
   TestResult,
   TestStatus,
@@ -50,6 +52,32 @@ export function labelRisk(value: RiskLevel | string | undefined, t: TFunction) {
       return t('risk.medium');
     case RiskLevel.LOW:
       return t('risk.low');
+    default:
+      return value || '';
+  }
+}
+
+export function labelImpact(value: ImpactLevel | string | undefined) {
+  switch (value) {
+    case ImpactLevel.HIGH:
+      return 'Alto';
+    case ImpactLevel.MEDIUM:
+      return 'Medio';
+    case ImpactLevel.LOW:
+      return 'Bajo';
+    default:
+      return value || '';
+  }
+}
+
+export function labelProbability(value: ProbabilityLevel | string | undefined) {
+  switch (value) {
+    case ProbabilityLevel.HIGH:
+      return 'Alta';
+    case ProbabilityLevel.MEDIUM:
+      return 'Media';
+    case ProbabilityLevel.LOW:
+      return 'Baja';
     default:
       return value || '';
   }

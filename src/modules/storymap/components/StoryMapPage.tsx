@@ -20,9 +20,16 @@ import { CopyOutlined, DownloadOutlined, InfoCircleOutlined, PlusOutlined } from
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Functionality } from '../../../types';
-import { Priority, RiskLevel, TestStatus, TestType } from '../../../types';
-import { labelPriority, labelRisk } from '../../../i18n/labels';
+import {
+  ImpactLevel,
+  Priority,
+  ProbabilityLevel,
+  TestStatus,
+  TestType,
+} from '../../../types';
+import { labelImpact, labelPriority, labelProbability } from '../../../i18n/labels';
 import { useFunctionalities } from '../../functionalities/hooks/useFunctionalities';
+import { calculateRiskLevel } from '../../functionalities/utils/riskMatrix';
 import {
   buildNextFunctionalityCode,
 } from '../../functionalities/services/functionalitiesService';
@@ -245,7 +252,8 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
     funcForm.resetFields();
     funcForm.setFieldsValue({
       priority: Priority.MEDIUM,
-      riskLevel: RiskLevel.MEDIUM,
+      impactLevel: ImpactLevel.MEDIUM,
+      probabilityLevel: ProbabilityLevel.MEDIUM,
       roles: [],
       sprint: undefined,
       deliveryDate: undefined,
@@ -428,7 +436,9 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
               deliveryDate: deliveryDateStr,
               status: TestStatus.BACKLOG,
               priority: values.priority,
-              riskLevel: values.riskLevel,
+              impactLevel: values.impactLevel,
+              probabilityLevel: values.probabilityLevel,
+              riskLevel: calculateRiskLevel(values.impactLevel, values.probabilityLevel),
               sprint: values.sprint,
               storyId: createFuncStoryId,
             };
@@ -511,14 +521,28 @@ export default function StoryMapPage({ projectId }: { projectId?: string }) {
             </Col>
             <Col span={12}>
               <Form.Item
-                name="riskLevel"
-                label={t('functionality.risk')}
+                name="impactLevel"
+                label="Impacto"
                 rules={[{ required: true }]}
               >
                 <Select
-                  options={Object.values(RiskLevel).map(r => ({
-                    label: labelRisk(r, t),
-                    value: r,
+                  options={Object.values(ImpactLevel).map(level => ({
+                    label: labelImpact(level),
+                    value: level,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="probabilityLevel"
+                label="Probabilidad"
+                rules={[{ required: true }]}
+              >
+                <Select
+                  options={Object.values(ProbabilityLevel).map(level => ({
+                    label: labelProbability(level),
+                    value: level,
                   }))}
                 />
               </Form.Item>

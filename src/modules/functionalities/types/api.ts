@@ -13,6 +13,8 @@ export interface FunctionalityDto {
   deliveryDate?: string;
   status?: string;
   priority?: string;
+  impactLevel?: string;
+  probabilityLevel?: string;
   riskLevel?: string;
   storyLegacyId?: string;
   project?: {

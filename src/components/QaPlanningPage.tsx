@@ -3,10 +3,13 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Col,
+  Dropdown,
   Empty,
   Input,
   Modal,
+  Popover,
   Row,
   Select,
   Space,
@@ -16,10 +19,11 @@ import {
   message,
 } from 'antd';
 import { FileSearchOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
-import { Flame, Info, RefreshCw, ShieldAlert, Star, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Flame, Info, RefreshCw, Settings2, Star, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnsType } from 'antd/es/table';
 import type { ExpandableConfig, FilterValue } from 'antd/es/table/interface';
+import type { MenuProps } from 'antd';
 import {
   Bar,
   BarChart,
@@ -38,12 +42,20 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import {
   Functionality,
   FUNCTIONALITY_DEVELOPMENT_STATUSES,
+  ImpactLevel,
   Priority,
+  ProbabilityLevel,
   RiskLevel,
   TestCase,
   TestStatus,
 } from '../types';
-import { labelPriority, labelRisk, labelTestStatus } from '../i18n/labels';
+import {
+  labelImpact,
+  labelPriority,
+  labelProbability,
+  labelRisk,
+  labelTestStatus,
+} from '../i18n/labels';
 
 const { Title, Text, Paragraph } = Typography;
 const TestCaseManagement = React.lazy(() => import('./TestCaseManagement'));
@@ -54,6 +66,21 @@ const INFO_TOOLTIP_INNER_STYLE: React.CSSProperties = {
 };
 const COVERAGE_CHART_COLORS = ['#f59e0b', '#7c3aed', '#f97316', '#cbd5e1'];
 const PRIORITY_CHART_COLORS = ['#ef4444', '#f97316', '#0ea5e9', '#94a3b8'];
+const PLANNING_TABLE_COLUMN_STORAGE_KEY = 'qa-planning-table-visible-columns';
+const PLANNING_TABLE_COLUMN_ORDER = [
+  'id',
+  'module',
+  'name',
+  'cases',
+  'priority',
+  'impactLevel',
+  'probabilityLevel',
+  'riskLevel',
+  'coverage',
+  'status',
+] as const;
+
+type PlanningColumnKey = (typeof PLANNING_TABLE_COLUMN_ORDER)[number];
 
 type MetricCardProps = {
   label: string;
@@ -84,6 +111,16 @@ type GuidanceItemProps = {
   icon: React.ReactNode;
 };
 
+type PlanningColumnOption = {
+  key: PlanningColumnKey;
+  label: string;
+};
+
+type ChipSelectOption<TValue extends string> = {
+  label: string;
+  value: TValue;
+};
+
 type PlanningTableFilters = {
   module: React.Key[] | null;
   coverage: React.Key[] | null;
@@ -100,10 +137,29 @@ const INITIAL_TABLE_FILTERS: PlanningTableFilters = {
   status: null,
 };
 
+const PLANNING_TABLE_COLUMN_OPTIONS: PlanningColumnOption[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'module', label: 'Módulo' },
+  { key: 'name', label: 'Funcionalidad' },
+  { key: 'cases', label: 'Casos' },
+  { key: 'priority', label: 'Prioridad' },
+  { key: 'impactLevel', label: 'Impacto' },
+  { key: 'probabilityLevel', label: 'Probabilidad' },
+  { key: 'riskLevel', label: 'Riesgo' },
+  { key: 'coverage', label: 'Cobertura' },
+  { key: 'status', label: 'Estado de desarrollo' },
+];
+
 const RISK_BADGE_CLASSNAMES: Record<RiskLevel, string> = {
   [RiskLevel.HIGH]: 'border-red-200 bg-red-50 text-red-700',
   [RiskLevel.MEDIUM]: 'border-amber-200 bg-amber-50 text-amber-700',
   [RiskLevel.LOW]: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
+
+const RISK_DOT_CLASSNAMES: Record<RiskLevel, string> = {
+  [RiskLevel.HIGH]: 'bg-gradient-to-br from-rose-300 to-red-600',
+  [RiskLevel.MEDIUM]: 'bg-gradient-to-br from-amber-200 to-yellow-500',
+  [RiskLevel.LOW]: 'bg-gradient-to-br from-emerald-300 to-green-500',
 };
 
 const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
@@ -111,6 +167,18 @@ const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
   [Priority.HIGH]: 'border-orange-200 bg-orange-50 text-orange-700',
   [Priority.MEDIUM]: 'border-sky-200 bg-sky-50 text-sky-700',
   [Priority.LOW]: 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const IMPACT_BADGE_CLASSNAMES: Record<ImpactLevel, string> = {
+  [ImpactLevel.HIGH]: 'border-red-200 bg-red-50 text-red-700',
+  [ImpactLevel.MEDIUM]: 'border-amber-200 bg-amber-50 text-amber-700',
+  [ImpactLevel.LOW]: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
+
+const PROBABILITY_BADGE_CLASSNAMES: Record<ProbabilityLevel, string> = {
+  [ProbabilityLevel.HIGH]: 'border-red-200 bg-red-50 text-red-700',
+  [ProbabilityLevel.MEDIUM]: 'border-amber-200 bg-amber-50 text-amber-700',
+  [ProbabilityLevel.LOW]: 'border-emerald-200 bg-emerald-50 text-emerald-700',
 };
 
 const STATUS_CHIP_CLASSNAMES: Partial<Record<TestStatus, string>> = {
@@ -140,6 +208,37 @@ const FALLBACK_STATUS_BADGE_CONFIG = {
   dot: 'bg-gray-400',
 };
 
+const MOJIBAKE_PATTERN = /Ã.|Â/g;
+
+function repairMojibakeText(text: string) {
+  if (!MOJIBAKE_PATTERN.test(text)) {
+    return text;
+  }
+
+  let normalizedText = text;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const decodedText = new TextDecoder('utf-8').decode(
+        Uint8Array.from(normalizedText, (character) => character.charCodeAt(0)),
+      );
+
+      if (decodedText === normalizedText) {
+        break;
+      }
+
+      normalizedText = decodedText;
+      if (!MOJIBAKE_PATTERN.test(normalizedText)) {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
+
+  return normalizedText;
+}
+
 function getRiskImpactText(risk: RiskLevel) {
   switch (risk) {
     case RiskLevel.HIGH:
@@ -148,6 +247,32 @@ function getRiskImpactText(risk: RiskLevel) {
       return 'Medio: mantiene seguimiento regular dentro del alcance QA.';
     case RiskLevel.LOW:
       return 'Bajo: menor urgencia funcional, pero sigue visible en el inventario.';
+    default:
+      return '';
+  }
+}
+
+function getImpactLevelText(impact: ImpactLevel) {
+  switch (impact) {
+    case ImpactLevel.HIGH:
+      return 'Alto: si falla, el impacto en negocio o usuarios es significativo.';
+    case ImpactLevel.MEDIUM:
+      return 'Medio: afecta el flujo, pero existe contenciÃ³n operativa.';
+    case ImpactLevel.LOW:
+      return 'Bajo: el daÃ±o esperado es acotado.';
+    default:
+      return '';
+  }
+}
+
+function getProbabilityImpactText(probability: ProbabilityLevel) {
+  switch (probability) {
+    case ProbabilityLevel.HIGH:
+      return 'Alta: es mÃ¡s probable que falle por complejidad o cambios recientes.';
+    case ProbabilityLevel.MEDIUM:
+      return 'Media: requiere seguimiento normal.';
+    case ProbabilityLevel.LOW:
+      return 'Baja: se espera estabilidad relativa.';
     default:
       return '';
   }
@@ -232,6 +357,63 @@ function RecommendationCard({
         </span>
       </div>
     </button>
+  );
+}
+
+function InlineChipSelect<TValue extends string>({
+  value,
+  options,
+  disabled,
+  chipClassName,
+  onSelect,
+  getDescription,
+}: {
+  value: TValue;
+  options: ChipSelectOption<TValue>[];
+  disabled?: boolean;
+  chipClassName: string;
+  onSelect: (value: TValue) => void;
+  getDescription: (value: TValue) => string;
+}) {
+  const selectedOption = options.find(option => option.value === value) || options[0];
+
+  const items: NonNullable<MenuProps['items']> = options.map(option => ({
+    key: option.value,
+    label: (
+      <div className="py-0.5 pr-2">
+        <div className="text-xs font-semibold text-slate-700">{option.label}</div>
+        <div className="mt-1 whitespace-normal text-[11px] leading-4 text-slate-400">
+          {getDescription(option.value)}
+        </div>
+      </div>
+    ),
+  }));
+
+  return (
+    <Dropdown
+      trigger={disabled ? [] : ['click']}
+      placement="bottomLeft"
+      menu={{
+        items,
+        selectable: true,
+        selectedKeys: [value],
+        onClick: ({ key }) => onSelect(key as TValue),
+      }}
+      overlayClassName="[&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-1 [&_.ant-dropdown-menu-item]:rounded-xl [&_.ant-dropdown-menu-item]:px-3 [&_.ant-dropdown-menu-item]:py-2"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        className={`relative inline-flex h-6 w-full min-w-0 items-center justify-center gap-1 rounded-full border px-3 pr-7 text-[10px] font-semibold leading-none transition ${chipClassName} ${
+          disabled ? 'cursor-not-allowed opacity-70' : 'hover:brightness-95'
+        }`}
+      >
+        <span className="truncate">{selectedOption?.label}</span>
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-60">
+          <ChevronDown size={12} strokeWidth={2} />
+        </span>
+      </button>
+    </Dropdown>
   );
 }
 
@@ -353,6 +535,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
   const [tableFilters, setTableFilters] =
     React.useState<PlanningTableFilters>(INITIAL_TABLE_FILTERS);
+  const [visibleColumnKeys, setVisibleColumnKeys] =
+    React.useState<PlanningColumnKey[]>(PLANNING_TABLE_COLUMN_ORDER.slice());
   const [isTestCaseModalOpen, setIsTestCaseModalOpen] = React.useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = React.useState<Functionality | null>(
     null,
@@ -368,6 +552,36 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       return acc;
     }, new Map<string, number>());
   }, [testCases]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storageKey = `${PLANNING_TABLE_COLUMN_STORAGE_KEY}:${projectId || 'default'}`;
+    const storedValue = window.localStorage.getItem(storageKey);
+    if (!storedValue) return;
+
+    try {
+      const parsed = JSON.parse(storedValue);
+      if (!Array.isArray(parsed)) return;
+
+      const sanitizedKeys = PLANNING_TABLE_COLUMN_ORDER.filter(columnKey =>
+        parsed.includes(columnKey),
+      );
+
+      if (sanitizedKeys.length > 0) {
+        setVisibleColumnKeys(sanitizedKeys);
+      }
+    } catch {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storageKey = `${PLANNING_TABLE_COLUMN_STORAGE_KEY}:${projectId || 'default'}`;
+    window.localStorage.setItem(storageKey, JSON.stringify(visibleColumnKeys));
+  }, [projectId, visibleColumnKeys]);
 
   const filteredFunctionalities = React.useMemo(() => {
     const normalized = searchTerm.trim().toLowerCase();
@@ -637,6 +851,24 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         value: priority,
       })),
     [t],
+  );
+
+  const impactOptions = React.useMemo(
+    () =>
+      Object.values(ImpactLevel).map(impact => ({
+        label: labelImpact(impact),
+        value: impact,
+      })),
+    [],
+  );
+
+  const probabilityOptions = React.useMemo(
+    () =>
+      Object.values(ProbabilityLevel).map(probability => ({
+        label: labelProbability(probability),
+        value: probability,
+      })),
+    [],
   );
 
   const riskOptions = React.useMemo(
@@ -931,60 +1163,30 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       {
         title: (
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Riesgo
+            Prioridad
           </span>
         ),
-        dataIndex: 'riskLevel',
-        key: 'riskLevel',
-        width: 126,
-        filters: riskOptions.map(option => ({ text: option.label, value: option.value })),
-        filteredValue: tableFilters.riskLevel,
-        onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
-        render: (risk: RiskLevel, record: Functionality) => (
+        dataIndex: 'priority',
+        key: 'priority',
+        width: 112,
+        filters: priorityOptions.map(option => ({ text: option.label, value: option.value })),
+        filteredValue: tableFilters.priority,
+        onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
+        render: (priority: Priority, record: Functionality) => (
           <Tooltip
-            title={getRiskImpactText(risk)}
+            title={repairMojibakeText(getPriorityImpactText(priority))}
             placement="topLeft"
             overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
             overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
           >
-            <div
-              className={`rounded-full border px-2 py-[2px] transition ${
-                RISK_BADGE_CLASSNAMES[risk]
-              } ${
-                isViewer || isRowSaving(record.documentId || record.id)
-                  ? 'opacity-70'
-                  : 'hover:brightness-95'
-              }`}
-            >
-              <Select
-                value={risk}
+            <div onClick={event => event.stopPropagation()}>
+              <InlineChipSelect
+                value={priority}
                 disabled={isViewer || isRowSaving(record.documentId || record.id)}
-                options={riskOptions}
-                variant="borderless"
-                size="small"
-                popupMatchSelectWidth={340}
-                listHeight={240}
-                popupClassName="[&_.ant-select-item-option-content]:whitespace-normal [&_.ant-select-item-option-content]:leading-5"
-                className="w-full min-w-[108px] [&_.ant-select-arrow]:right-1.5 [&_.ant-select-arrow]:text-current [&_.ant-select-arrow]:opacity-60 [&_.ant-select-selector]:px-0 [&_.ant-select-selection-item]:leading-none"
-                onClick={event => event.stopPropagation()}
-                onChange={value => void saveRowUpdate(record, { riskLevel: value })}
-                optionRender={option => (
-                  <div className="py-0.5 pr-2">
-                    <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <ShieldAlert size={13} className="text-slate-400" />
-                      {option.label}
-                    </span>
-                    <div className="mt-1 pl-5 text-[11px] leading-4 text-slate-400 whitespace-normal">
-                      {getRiskImpactText(option.value as RiskLevel)}
-                    </div>
-                  </div>
-                )}
-                labelRender={({ value }) => (
-                  <span className="inline-flex w-full items-center justify-center gap-1 pr-3 text-[10px] font-semibold leading-none">
-                    <ShieldAlert size={10} />
-                    {labelRisk(value as RiskLevel, t)}
-                  </span>
-                )}
+                options={priorityOptions}
+                chipClassName={PRIORITY_BADGE_CLASSNAMES[priority]}
+                onSelect={value => void saveRowUpdate(record, { priority: value })}
+                getDescription={(value) => repairMojibakeText(getPriorityImpactText(value))}
               />
             </div>
           </Tooltip>
@@ -993,58 +1195,99 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       {
         title: (
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Prioridad
+            Impacto
           </span>
         ),
-        dataIndex: 'priority',
-        key: 'priority',
-        width: 116,
-        filters: priorityOptions.map(option => ({ text: option.label, value: option.value })),
-        filteredValue: tableFilters.priority,
-        onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
-        render: (priority: Priority, record: Functionality) => (
+        dataIndex: 'impactLevel',
+        key: 'impactLevel',
+        width: 110,
+        render: (impact: ImpactLevel, record: Functionality) => (
           <Tooltip
-            title={getPriorityImpactText(priority)}
+            title={repairMojibakeText(getImpactLevelText(impact))}
             placement="topLeft"
             overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
             overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
           >
-            <div
-              className={`rounded-full border px-2 py-[2px] transition ${
-                PRIORITY_BADGE_CLASSNAMES[priority]
-              } ${
-                isViewer || isRowSaving(record.documentId || record.id)
-                  ? 'opacity-70'
-                  : 'hover:brightness-95'
-              }`}
-            >
-              <Select
-                value={priority}
+            <div onClick={event => event.stopPropagation()}>
+              <InlineChipSelect
+                value={impact}
                 disabled={isViewer || isRowSaving(record.documentId || record.id)}
-                options={priorityOptions}
-                variant="borderless"
-                size="small"
-                popupMatchSelectWidth={340}
-                listHeight={240}
-                popupClassName="[&_.ant-select-item-option-content]:whitespace-normal [&_.ant-select-item-option-content]:leading-5"
-                className="w-full min-w-[98px] [&_.ant-select-arrow]:right-1.5 [&_.ant-select-arrow]:text-current [&_.ant-select-arrow]:opacity-60 [&_.ant-select-selector]:px-0 [&_.ant-select-selection-item]:leading-none"
-                onClick={event => event.stopPropagation()}
-                onChange={value => void saveRowUpdate(record, { priority: value })}
-                optionRender={option => (
-                  <div className="py-0.5 pr-2">
-                    <span className="text-xs font-semibold text-slate-700">{option.label}</span>
-                    <div className="mt-1 text-[11px] leading-4 text-slate-400 whitespace-normal">
-                      {getPriorityImpactText(option.value as Priority)}
-                    </div>
-                  </div>
-                )}
-                labelRender={({ value }) => (
-                  <span className="inline-flex w-full items-center justify-center pr-3 text-[10px] font-semibold leading-none">
-                    {labelPriority(value as Priority, t)}
-                  </span>
-                )}
+                options={impactOptions}
+                chipClassName={IMPACT_BADGE_CLASSNAMES[impact]}
+                onSelect={value => void saveRowUpdate(record, { impactLevel: value })}
+                getDescription={(value) => repairMojibakeText(getImpactLevelText(value))}
               />
             </div>
+          </Tooltip>
+        ),
+      },
+      {
+        title: (
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Probabilidad
+          </span>
+        ),
+        dataIndex: 'probabilityLevel',
+        key: 'probabilityLevel',
+        width: 122,
+        render: (probability: ProbabilityLevel, record: Functionality) => (
+          <Tooltip
+            title={repairMojibakeText(getProbabilityImpactText(probability))}
+            placement="topLeft"
+            overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
+            overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
+          >
+            <div onClick={event => event.stopPropagation()}>
+              <InlineChipSelect
+                value={probability}
+                disabled={isViewer || isRowSaving(record.documentId || record.id)}
+                options={probabilityOptions}
+                chipClassName={PROBABILITY_BADGE_CLASSNAMES[probability]}
+                onSelect={value => void saveRowUpdate(record, { probabilityLevel: value })}
+                getDescription={(value) => repairMojibakeText(getProbabilityImpactText(value))}
+              />
+            </div>
+          </Tooltip>
+        ),
+      },
+      {
+        title: (
+          <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-amber-200 to-yellow-500" />
+            <span>Riesgo</span>
+          </div>
+        ),
+        dataIndex: 'riskLevel',
+        key: 'riskLevel',
+        width: 68,
+        align: 'center',
+        filters: riskOptions.map(option => ({ text: option.label, value: option.value })),
+        filteredValue: tableFilters.riskLevel,
+        onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
+        render: (risk: RiskLevel) => (
+          <Tooltip
+            title={
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-slate-700">{labelRisk(risk, t)}</div>
+                <div className="text-[11px] leading-4 text-slate-500">
+                  {repairMojibakeText(getRiskImpactText(risk))}
+                </div>
+              </div>
+            }
+            placement="topLeft"
+            overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
+            overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
+          >
+            <button
+              type="button"
+              aria-label={labelRisk(risk, t)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full"
+              onClick={event => event.stopPropagation()}
+            >
+              <span
+                className={`h-4 w-4 rounded-full shadow-sm ring-1 ring-black/5 ${RISK_DOT_CLASSNAMES[risk]}`}
+              />
+            </button>
           </Tooltip>
         ),
       },
@@ -1078,10 +1321,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     ],
     [
       coverageFilters,
+      impactOptions,
       isRowSaving,
       isViewer,
       moduleFilters,
       priorityOptions,
+      probabilityOptions,
       riskOptions,
       saveRowUpdate,
       statusFilters,
@@ -1092,21 +1337,75 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const orderedColumns = React.useMemo<ColumnsType<Functionality>>(() => {
-    const desiredOrder = [
-      'id',
-      'module',
-      'name',
-      'cases',
-      'riskLevel',
-      'priority',
-      'coverage',
-      'status',
-    ];
-
-    return desiredOrder
+    return PLANNING_TABLE_COLUMN_ORDER
       .map(columnKey => columns.find(column => String(column.key) === columnKey))
-      .filter((column): column is ColumnsType<Functionality>[number] => Boolean(column));
-  }, [columns]);
+      .filter((column): column is ColumnsType<Functionality>[number] => Boolean(column))
+      .filter(column => visibleColumnKeys.includes(String(column.key) as PlanningColumnKey));
+  }, [columns, visibleColumnKeys]);
+
+  const visibleColumnCount = visibleColumnKeys.length;
+
+  const handleVisibleColumnToggle = React.useCallback((columnKey: PlanningColumnKey) => {
+    setVisibleColumnKeys(previous => {
+      if (previous.includes(columnKey)) {
+        if (previous.length === 1) return previous;
+        return previous.filter(key => key !== columnKey);
+      }
+
+      return PLANNING_TABLE_COLUMN_ORDER.filter(
+        key => key === columnKey || previous.includes(key),
+      );
+    });
+  }, []);
+
+  const restoreAllColumns = React.useCallback(() => {
+    setVisibleColumnKeys(PLANNING_TABLE_COLUMN_ORDER.slice());
+  }, []);
+
+  const columnSettingsContent = React.useMemo(
+    () => (
+      <div className="w-[260px] space-y-3">
+        <div className="border-b border-slate-100 pb-2">
+          <div className="text-sm font-semibold text-slate-800">Columnas visibles</div>
+          <div className="mt-1 text-xs leading-5 text-slate-500">
+            Elige qué columnas quieres ver en la tabla. Esta preferencia se guarda
+            automáticamente.
+          </div>
+        </div>
+        <div className="grid gap-2">
+          {PLANNING_TABLE_COLUMN_OPTIONS.map(option => {
+            const checked = visibleColumnKeys.includes(option.key);
+            const disableToggle = checked && visibleColumnCount === 1;
+
+            return (
+              <label
+                key={option.key}
+                className={`flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition ${
+                  disableToggle
+                    ? 'cursor-not-allowed opacity-60'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <Checkbox
+                  checked={checked}
+                  disabled={disableToggle}
+                  onChange={() => handleVisibleColumnToggle(option.key)}
+                />
+                <span className="text-sm text-slate-700">{option.label}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+          <span className="text-xs text-slate-500">{visibleColumnCount} columnas activas</span>
+          <Button type="link" size="small" className="px-0" onClick={restoreAllColumns}>
+            Mostrar todas
+          </Button>
+        </div>
+      </div>
+    ),
+    [handleVisibleColumnToggle, restoreAllColumns, visibleColumnCount, visibleColumnKeys],
+  );
 
   const expandable = React.useMemo<ExpandableConfig<Functionality>>(
     () => ({
@@ -1347,8 +1646,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       ) : null}
 
       <Card className="mx-auto max-w-[1520px] rounded-2xl border-slate-100 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-          <div>
+        <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Operación
             </div>
@@ -1359,25 +1658,38 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
             </Text>
           </div>
-          {activeRecommendation ? (
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
-              <div className="font-semibold">Vista filtrada por recomendacion QA</div>
-              <div className="mt-1 text-sky-700">
-                Estas viendo solo funcionalidades priorizadas por la alerta activa.
-              </div>
-            </div>
-          ) : null}
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[620px]">
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              content={columnSettingsContent}
+              overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-4"
+            >
+              <Button
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+              >
+                <Settings2 size={16} />
+                Columnas
+              </Button>
+            </Popover>
+            <Input.Search
+              allowClear
+              placeholder="Buscar por funcionalidad"
+              value={searchTerm}
+              onChange={event => setSearchTerm(event.target.value)}
+              className="w-full sm:flex-1 xl:max-w-[440px]"
+            />
+          </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-          <Input.Search
-            allowClear
-            placeholder="Buscar por funcionalidad"
-            value={searchTerm}
-            onChange={event => setSearchTerm(event.target.value)}
-            className="w-full max-w-[440px]"
-          />
-        </div>
+        {activeRecommendation ? (
+          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
+            <div className="font-semibold">Vista filtrada por recomendacion QA</div>
+            <div className="mt-1 text-sky-700">
+              Estas viendo solo funcionalidades priorizadas por la alerta activa.
+            </div>
+          </div>
+        ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-slate-50/70 px-4 py-2.5">
           <GuidanceItem
@@ -1432,6 +1744,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             showSizeChanger: true,
           }}
           sticky={{ offsetHeader: 0 }}
+          scroll={{ x: 1500 }}
           locale={{
             emptyText: searchTerm.trim()
               ? 'No encontramos funcionalidades con esa búsqueda.'

@@ -196,6 +196,8 @@ export interface Functionality {
   deliveryDate: string;
   status: TestStatus;
   priority: Priority;
+  impactLevel: ImpactLevel;
+  probabilityLevel: ProbabilityLevel;
   riskLevel: RiskLevel;
   sprint?: string;
   storyId?: string;
@@ -249,6 +251,18 @@ export enum RiskLevel {
   HIGH = 'Alto Riesgo',
   MEDIUM = 'Riesgo Medio',
   LOW = 'Bajo Riesgo',
+}
+
+export enum ImpactLevel {
+  HIGH = 'Alto',
+  MEDIUM = 'Medio',
+  LOW = 'Bajo',
+}
+
+export enum ProbabilityLevel {
+  HIGH = 'Alta',
+  MEDIUM = 'Media',
+  LOW = 'Baja',
 }
 
 export enum Severity {
