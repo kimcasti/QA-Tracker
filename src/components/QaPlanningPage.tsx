@@ -171,7 +171,7 @@ function getPriorityImpactText(priority: Priority) {
 function getCoverageImpactText(type: 'isCore' | 'isRegression' | 'isSmoke') {
   switch (type) {
     case 'isCore':
-      return 'Core: funcionalidad base o crítica para validar los flujos esenciales.';
+      return 'Core business: funcionalidad base o crítica para validar los flujos esenciales.';
     case 'isRegression':
       return 'Regresión: se incluye dentro del alcance de validaciones de regresión.';
     case 'isSmoke':
@@ -444,7 +444,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       {
         key: 'without_coverage' as RecommendationKey,
         label: 'Sin clasificación QA',
-        description: 'Funcionalidades sin marca en Core, Smoke o Regresión.',
+        description: 'Funcionalidades sin marca en Core business, Smoke o Regresión.',
         toneClassName: 'bg-slate-100 text-slate-700',
       },
       {
@@ -472,7 +472,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
     const coverageByType = [
       {
-        name: 'Core',
+        name: 'Core business',
         value: visibleFunctionalities.filter(item => item.isCore).length,
       },
       {
@@ -670,7 +670,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
   const coverageFilters = React.useMemo(
     () => [
-      { text: 'Core', value: 'core' },
+      { text: 'Core business', value: 'core' },
       { text: 'Regresión', value: 'regression' },
       { text: 'Smoke', value: 'smoke' },
       { text: 'Sin cobertura', value: 'without-coverage' },
@@ -850,7 +850,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           </span>
         ),
         key: 'coverage',
-        width: 236,
+        width: 320,
         filters: coverageFilters,
         filteredValue: tableFilters.coverage,
         onFilter: (value: boolean | React.Key, record: Functionality) =>
@@ -861,7 +861,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             {
               key: 'isCore',
               checked: Boolean(record.isCore),
-              label: 'Core',
+              label: 'Core business',
               activeClassName:
                 'border-amber-200 bg-amber-50 text-amber-700 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.15)]',
             },
@@ -895,7 +895,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     <button
                       type="button"
                       disabled={isViewer || saving}
-                      className={`inline-flex min-w-[66px] items-center justify-center rounded-full border px-2.5 py-[6px] text-[10px] font-semibold leading-none transition ${
+                      className={`inline-flex min-w-[66px] items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-[6px] text-[10px] font-semibold leading-none transition ${
                         option.checked
                           ? option.activeClassName
                           : 'border-slate-200 bg-white text-slate-500'
@@ -1306,10 +1306,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 className="rounded-full border-amber-200 bg-amber-50 px-4 font-semibold text-amber-700 shadow-sm hover:!border-amber-300 hover:!bg-amber-100 hover:!text-amber-800"
                 disabled={isBulkSaving}
                 onClick={() =>
-                  void saveBulkUpdate({ isCore: true }, 'Core aplicado a la selección.')
+                  void saveBulkUpdate({ isCore: true }, 'Core business aplicado a la selección.')
                 }
               >
-                Marcar Core
+                Marcar Core business
               </Button>
               <Button
                 className="rounded-full border-violet-200 bg-violet-50 px-4 font-semibold text-violet-700 shadow-sm hover:!border-violet-300 hover:!bg-violet-100 hover:!text-violet-800"
@@ -1470,7 +1470,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               <div>
                 <div className="text-sm font-semibold text-slate-800">Cobertura por tipo</div>
                 <div className="mt-1 text-sm text-slate-500">
-                  Distribución visible entre Core, Regresión, Smoke y sin cobertura.
+                  Distribución visible entre Core business, Regresión, Smoke y sin cobertura.
                 </div>
               </div>
             </div>
