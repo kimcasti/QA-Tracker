@@ -1,25 +1,38 @@
-import React from 'react';
+﻿import React from 'react';
 import {
-  Badge,
   Button,
   Card,
   Checkbox,
   Col,
+  Drawer,
   Dropdown,
-  Empty,
+  Grid,
   Input,
   Modal,
   Popover,
   Row,
   Select,
-  Space,
   Table,
   Tooltip,
   Typography,
   message,
 } from 'antd';
 import { FileSearchOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
-import { ChevronDown, Flame, Info, RefreshCw, Settings2, Star, TriangleAlert } from 'lucide-react';
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  ChevronsUp,
+  Clock3,
+  Flame,
+  Info,
+  RefreshCw,
+  Settings2,
+  Star,
+  TriangleAlert,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnsType } from 'antd/es/table';
 import type { ExpandableConfig, FilterValue } from 'antd/es/table/interface';
@@ -56,8 +69,10 @@ import {
   labelRisk,
   labelTestStatus,
 } from '../i18n/labels';
+import { calculateRiskLevel } from '../modules/functionalities/utils/riskMatrix';
 
 const { Title, Text, Paragraph } = Typography;
+const { useBreakpoint } = Grid;
 const TestCaseManagement = React.lazy(() => import('./TestCaseManagement'));
 const INFO_TOOLTIP_OVERLAY_STYLE = { maxWidth: 320 };
 const INFO_TOOLTIP_INNER_STYLE: React.CSSProperties = {
@@ -66,19 +81,27 @@ const INFO_TOOLTIP_INNER_STYLE: React.CSSProperties = {
 };
 const COVERAGE_CHART_COLORS = ['#f59e0b', '#7c3aed', '#f97316', '#cbd5e1'];
 const PRIORITY_CHART_COLORS = ['#ef4444', '#f97316', '#0ea5e9', '#94a3b8'];
-const PLANNING_TABLE_COLUMN_STORAGE_KEY = 'qa-planning-table-visible-columns';
+const PLANNING_TABLE_COLUMN_STORAGE_KEY = 'qa-planning-table-visible-columns-v2';
 const PLANNING_TABLE_COLUMN_ORDER = [
-  'id',
-  'module',
   'name',
   'cases',
   'priority',
-  'impactLevel',
-  'probabilityLevel',
   'riskLevel',
   'coverage',
   'status',
+  'module',
+  'id',
+  'impactLevel',
+  'probabilityLevel',
 ] as const;
+const DEFAULT_VISIBLE_COLUMN_KEYS = [
+  'name',
+  'cases',
+  'priority',
+  'riskLevel',
+  'coverage',
+  'status',
+] as const satisfies readonly (typeof PLANNING_TABLE_COLUMN_ORDER)[number][];
 
 type PlanningColumnKey = (typeof PLANNING_TABLE_COLUMN_ORDER)[number];
 
@@ -99,8 +122,10 @@ type RecommendationCardProps = {
   active: boolean;
   count: number;
   description: string;
+  icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  outlineClassName: string;
   toneClassName: string;
 };
 
@@ -117,7 +142,7 @@ type PlanningColumnOption = {
 };
 
 type ChipSelectOption<TValue extends string> = {
-  label: string;
+  label: React.ReactNode;
   value: TValue;
 };
 
@@ -129,12 +154,42 @@ type PlanningTableFilters = {
   status: React.Key[] | null;
 };
 
+type BulkEditDraft = {
+  priority?: Priority;
+  status?: TestStatus;
+  isCore?: boolean;
+  isSmoke?: boolean;
+  isRegression?: boolean;
+};
+
+type DetailEditDraft = {
+  priority: Priority;
+  impactLevel: ImpactLevel;
+  probabilityLevel: ProbabilityLevel;
+  isCore: boolean;
+  isSmoke: boolean;
+  isRegression: boolean;
+  status: TestStatus;
+  sprint: string;
+  markRecentChange: boolean;
+};
+
+type BulkCoverageValue = boolean | undefined;
+
 const INITIAL_TABLE_FILTERS: PlanningTableFilters = {
   module: null,
   coverage: null,
   riskLevel: null,
   priority: null,
   status: null,
+};
+
+const INITIAL_BULK_EDIT_DRAFT: BulkEditDraft = {
+  priority: undefined,
+  status: undefined,
+  isCore: undefined,
+  isSmoke: undefined,
+  isRegression: undefined,
 };
 
 const PLANNING_TABLE_COLUMN_OPTIONS: PlanningColumnOption[] = [
@@ -167,6 +222,13 @@ const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
   [Priority.HIGH]: 'border-orange-200 bg-orange-50 text-orange-700',
   [Priority.MEDIUM]: 'border-sky-200 bg-sky-50 text-sky-700',
   [Priority.LOW]: 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const PRIORITY_TEXT_CLASSNAMES: Record<Priority, string> = {
+  [Priority.CRITICAL]: 'text-red-700',
+  [Priority.HIGH]: 'text-orange-700',
+  [Priority.MEDIUM]: 'text-sky-700',
+  [Priority.LOW]: 'text-slate-600',
 };
 
 const IMPACT_BADGE_CLASSNAMES: Record<ImpactLevel, string> = {
@@ -208,7 +270,7 @@ const FALLBACK_STATUS_BADGE_CONFIG = {
   dot: 'bg-gray-400',
 };
 
-const MOJIBAKE_PATTERN = /Ã.|Â/g;
+const MOJIBAKE_PATTERN = /Ãƒ.|Ã‚/g;
 
 function repairMojibakeText(text: string) {
   if (!MOJIBAKE_PATTERN.test(text)) {
@@ -220,7 +282,7 @@ function repairMojibakeText(text: string) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const decodedText = new TextDecoder('utf-8').decode(
-        Uint8Array.from(normalizedText, (character) => character.charCodeAt(0)),
+        Uint8Array.from(normalizedText, character => character.charCodeAt(0)),
       );
 
       if (decodedText === normalizedText) {
@@ -257,9 +319,9 @@ function getImpactLevelText(impact: ImpactLevel) {
     case ImpactLevel.HIGH:
       return 'Alto: si falla, el impacto en negocio o usuarios es significativo.';
     case ImpactLevel.MEDIUM:
-      return 'Medio: afecta el flujo, pero existe contenciÃ³n operativa.';
+      return 'Medio: afecta el flujo, pero existe contención operativa.';
     case ImpactLevel.LOW:
-      return 'Bajo: el daÃ±o esperado es acotado.';
+      return 'Bajo: el daño esperado es acotado.';
     default:
       return '';
   }
@@ -268,7 +330,7 @@ function getImpactLevelText(impact: ImpactLevel) {
 function getProbabilityImpactText(probability: ProbabilityLevel) {
   switch (probability) {
     case ProbabilityLevel.HIGH:
-      return 'Alta: es mÃ¡s probable que falle por complejidad o cambios recientes.';
+      return 'Alta: es más probable que falle por complejidad o cambios recientes.';
     case ProbabilityLevel.MEDIUM:
       return 'Media: requiere seguimiento normal.';
     case ProbabilityLevel.LOW:
@@ -323,8 +385,10 @@ function RecommendationCard({
   active,
   count,
   description,
+  icon,
   label,
   onClick,
+  outlineClassName,
   toneClassName,
 }: RecommendationCardProps) {
   return (
@@ -338,23 +402,22 @@ function RecommendationCard({
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-800">{label}</div>
-          <div className="mt-1 text-sm leading-5 text-slate-500">{description}</div>
+        <div className="min-w-0 flex items-start gap-2.5">
+          <span
+            className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${outlineClassName}`}
+          >
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold leading-5 text-slate-800">{label}</div>
+            <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{description}</div>
+          </div>
         </div>
-        <div className={`rounded-full px-3 py-1 text-sm font-bold ${toneClassName}`}>{count}</div>
+        <div className={`rounded-full px-2.5 py-1 text-xs font-bold ${toneClassName}`}>{count}</div>
       </div>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold text-sky-700">
-          {active ? 'Filtro activo en tabla' : 'Ver detalles'}
-        </span>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            active ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'
-          }`}
-        >
-          {active ? 'Activo' : 'Aplicar'}
-        </span>
+      <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-sky-700">
+        <span>{active ? 'Filtro activo' : 'Ver detalle'}</span>
+        <span aria-hidden="true">&rarr;</span>
       </div>
     </button>
   );
@@ -514,8 +577,112 @@ function formatRecentChangeBadge(value?: string) {
   return `Actualizado hace ${diffInDays} días`;
 }
 
+function getCoverageSummary(record: Functionality) {
+  const coverageItems: Array<{ key: 'core' | 'smoke' | 'regression'; label: string }> = [];
+
+  if (record.isCore) coverageItems.push({ key: 'core', label: 'Core' });
+  if (record.isSmoke) coverageItems.push({ key: 'smoke', label: 'Smoke' });
+  if (record.isRegression) coverageItems.push({ key: 'regression', label: 'Regresión' });
+
+  return coverageItems;
+}
+
+function getCoverageChipClassName(key: 'core' | 'smoke' | 'regression') {
+  switch (key) {
+    case 'core':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'smoke':
+      return 'border-orange-200 bg-orange-50 text-orange-700';
+    case 'regression':
+      return 'border-violet-200 bg-violet-50 text-violet-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600';
+  }
+}
+
+function getCoverageChipIcon(key: 'core' | 'smoke' | 'regression') {
+  const iconClassName = 'h-4 w-4';
+
+  switch (key) {
+    case 'core':
+      return (
+        <span className={`${iconClassName} text-sky-600`}>
+          <Building2 size={13} strokeWidth={2} />
+        </span>
+      );
+    case 'smoke':
+      return (
+        <span className={`${iconClassName} text-orange-500`}>
+          <Flame size={13} strokeWidth={2} />
+        </span>
+      );
+    case 'regression':
+      return (
+        <span className={`${iconClassName} text-violet-600`}>
+          <RefreshCw size={13} strokeWidth={2} />
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+function getPriorityVisualLabel(priority: Priority) {
+  switch (priority) {
+    case Priority.CRITICAL:
+      return {
+        icon: <ChevronsUp size={15} strokeWidth={2.25} />,
+        label: 'Crítico',
+      };
+    case Priority.HIGH:
+      return {
+        icon: <ChevronUp size={15} strokeWidth={2.5} />,
+        label: 'Alto',
+      };
+    case Priority.MEDIUM:
+      return {
+        icon: <ChevronRight size={15} strokeWidth={2.5} />,
+        label: 'Medio',
+      };
+    case Priority.LOW:
+      return {
+        icon: <ChevronDown size={15} strokeWidth={2.5} />,
+        label: 'Bajo',
+      };
+    default:
+      return {
+        icon: <ChevronRight size={15} strokeWidth={2.5} />,
+        label: String(priority),
+      };
+  }
+}
+
+function getBulkCoverageOptionClassName(
+  currentValue: BulkCoverageValue,
+  optionValue: BulkCoverageValue,
+) {
+  const isActive = currentValue === optionValue;
+
+  if (optionValue === undefined) {
+    return isActive
+      ? 'border-slate-300 bg-slate-100 text-slate-700'
+      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300';
+  }
+
+  if (optionValue) {
+    return isActive
+      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+      : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-200';
+  }
+
+  return isActive
+    ? 'border-rose-300 bg-rose-50 text-rose-700'
+    : 'border-slate-200 bg-white text-slate-600 hover:border-rose-200';
+}
+
 export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
+  const screens = useBreakpoint();
   const { isViewer } = useWorkspaceAccess();
   const {
     data: functionalitiesData,
@@ -535,12 +702,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
   const [tableFilters, setTableFilters] =
     React.useState<PlanningTableFilters>(INITIAL_TABLE_FILTERS);
-  const [visibleColumnKeys, setVisibleColumnKeys] =
-    React.useState<PlanningColumnKey[]>(PLANNING_TABLE_COLUMN_ORDER.slice());
+  const [visibleColumnKeys, setVisibleColumnKeys] = React.useState<PlanningColumnKey[]>([
+    ...DEFAULT_VISIBLE_COLUMN_KEYS,
+  ]);
   const [isTestCaseModalOpen, setIsTestCaseModalOpen] = React.useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = React.useState<Functionality | null>(
     null,
   );
+  const [isBulkDrawerOpen, setIsBulkDrawerOpen] = React.useState(false);
+  const [detailEditDraft, setDetailEditDraft] = React.useState<DetailEditDraft | null>(null);
+  const [bulkEditDraft, setBulkEditDraft] = React.useState<BulkEditDraft>(INITIAL_BULK_EDIT_DRAFT);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
@@ -552,6 +723,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       return acc;
     }, new Map<string, number>());
   }, [testCases]);
+
+  const openTestCaseModal = React.useCallback((record: Functionality) => {
+    setSelectedFunctionality(record);
+    setIsTestCaseModalOpen(true);
+  }, []);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -582,6 +758,39 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     const storageKey = `${PLANNING_TABLE_COLUMN_STORAGE_KEY}:${projectId || 'default'}`;
     window.localStorage.setItem(storageKey, JSON.stringify(visibleColumnKeys));
   }, [projectId, visibleColumnKeys]);
+
+  React.useEffect(() => {
+    if (!selectedFunctionality) return;
+
+    const refreshedSelection =
+      functionalities.find(item => item.id === selectedFunctionality.id) || null;
+    setSelectedFunctionality(refreshedSelection);
+  }, [functionalities, selectedFunctionality]);
+
+  React.useEffect(() => {
+    if (!selectedFunctionality) {
+      setDetailEditDraft(null);
+      return;
+    }
+
+    setDetailEditDraft({
+      priority: selectedFunctionality.priority,
+      impactLevel: selectedFunctionality.impactLevel,
+      probabilityLevel: selectedFunctionality.probabilityLevel,
+      isCore: Boolean(selectedFunctionality.isCore),
+      isSmoke: Boolean(selectedFunctionality.isSmoke),
+      isRegression: Boolean(selectedFunctionality.isRegression),
+      status: selectedFunctionality.status,
+      sprint: selectedFunctionality.sprint || '',
+      markRecentChange: false,
+    });
+  }, [selectedFunctionality]);
+
+  React.useEffect(() => {
+    if (selectedRowKeys.length === 0) {
+      setBulkEditDraft(INITIAL_BULK_EDIT_DRAFT);
+    }
+  }, [selectedRowKeys]);
 
   const filteredFunctionalities = React.useMemo(() => {
     const normalized = searchTerm.trim().toLowerCase();
@@ -641,30 +850,40 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         key: 'critical_outside_smoke' as RecommendationKey,
         label: 'Críticas fuera de Smoke',
         description: 'Funcionalidades críticas que todavía no entran en la validación rápida.',
+        icon: <TriangleAlert size={12} className="text-red-500" />,
+        outlineClassName: 'border-red-200 bg-red-50 text-red-600',
         toneClassName: 'bg-red-50 text-red-700',
       },
       {
         key: 'high_risk_without_cases' as RecommendationKey,
         label: 'Alto riesgo sin casos',
         description: 'Puntos sensibles que siguen sin casos de prueba asociados.',
+        icon: <TriangleAlert size={12} className="text-amber-500" />,
+        outlineClassName: 'border-amber-200 bg-amber-50 text-amber-600',
         toneClassName: 'bg-amber-50 text-amber-700',
       },
       {
         key: 'high_priority_without_regression' as RecommendationKey,
         label: 'Alta prioridad fuera de Regresión',
         description: 'Ítems de negocio relevantes que aún no quedaron cubiertos en regresión.',
+        icon: <Star size={12} className="text-orange-500" />,
+        outlineClassName: 'border-orange-200 bg-orange-50 text-orange-600',
         toneClassName: 'bg-orange-50 text-orange-700',
       },
       {
         key: 'without_coverage' as RecommendationKey,
         label: 'Sin clasificación QA',
         description: 'Funcionalidades sin marca en Core business, Smoke o Regresión.',
+        icon: <Info size={12} className="text-blue-500" />,
+        outlineClassName: 'border-blue-200 bg-blue-50 text-blue-600',
         toneClassName: 'bg-slate-100 text-slate-700',
       },
       {
         key: 'recent_changes' as RecommendationKey,
         label: 'Cambios recientes',
         description: 'Funcionalidades con actualización funcional reciente para revisar primero.',
+        icon: <RefreshCw size={12} className="text-emerald-500" />,
+        outlineClassName: 'border-emerald-200 bg-emerald-50 text-emerald-600',
         toneClassName: 'bg-sky-50 text-sky-700',
       },
     ],
@@ -840,17 +1059,176 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     };
   }, [visibleFunctionalities]);
 
+  const selectedFunctionalityCasesCount = React.useMemo(
+    () =>
+      selectedFunctionality ? testCaseCountByFunctionality.get(selectedFunctionality.id) || 0 : 0,
+    [selectedFunctionality, testCaseCountByFunctionality],
+  );
+
+  const selectedFunctionalityGuidance = React.useMemo(() => {
+    if (!selectedFunctionality) {
+      return {
+        recommendations: [] as string[],
+        reasons: [] as string[],
+        actionable: false,
+      };
+    }
+
+    const recommendations: string[] = [];
+    const reasons: string[] = [];
+
+    if (selectedFunctionality.priority === Priority.CRITICAL && !selectedFunctionality.isSmoke) {
+      recommendations.push('Debe permanecer en Smoke');
+      reasons.push('Funcionalidad crítica para validación rápida.');
+    }
+
+    if (isHighPriorityFunctionality(selectedFunctionality) && !selectedFunctionality.isRegression) {
+      recommendations.push('Debe permanecer en Regresión');
+      reasons.push('Alta prioridad con necesidad de cobertura transversal.');
+    }
+
+    if (
+      selectedFunctionality.riskLevel === RiskLevel.HIGH &&
+      selectedFunctionalityCasesCount === 0
+    ) {
+      recommendations.push('Necesita casos de prueba');
+      reasons.push('Alto riesgo sin casos asociados.');
+    }
+
+    if (
+      !selectedFunctionality.isCore &&
+      !selectedFunctionality.isSmoke &&
+      !selectedFunctionality.isRegression
+    ) {
+      recommendations.push('Requiere clasificación QA');
+      reasons.push('Aún no tiene cobertura QA definida.');
+    }
+
+    if (isRecentlyChanged(selectedFunctionality)) {
+      recommendations.push('Conviene revisar cambio reciente');
+      reasons.push('Tuvo cambios funcionales recientes.');
+    }
+
+    if (selectedFunctionality.isCore) {
+      reasons.push('Está marcada como funcionalidad core del negocio.');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('Tiene cobertura suficiente');
+    }
+
+    return {
+      recommendations,
+      reasons,
+      actionable:
+        (selectedFunctionality.priority === Priority.CRITICAL && !selectedFunctionality.isSmoke) ||
+        (isHighPriorityFunctionality(selectedFunctionality) &&
+          !selectedFunctionality.isRegression) ||
+        isRecentlyChanged(selectedFunctionality),
+    };
+  }, [selectedFunctionality, selectedFunctionalityCasesCount]);
+
+  const selectedFunctionalityRelations = React.useMemo(() => {
+    if (!selectedFunctionality) {
+      return {
+        moduleCount: 0,
+        sprintCount: 0,
+      };
+    }
+
+    const siblings = functionalities.filter(item => item.id !== selectedFunctionality.id);
+
+    return {
+      moduleCount: siblings.filter(item => item.module === selectedFunctionality.module).length,
+      sprintCount: selectedFunctionality.sprint
+        ? siblings.filter(item => item.sprint === selectedFunctionality.sprint).length
+        : 0,
+    };
+  }, [functionalities, selectedFunctionality]);
+
+  const selectedFunctionalityCoverageItems = React.useMemo(
+    () => (selectedFunctionality ? getCoverageSummary(selectedFunctionality) : []),
+    [selectedFunctionality],
+  );
+
+  const selectedFunctionalityQaScore = React.useMemo(() => {
+    if (!selectedFunctionality) {
+      return { value: 0, label: 'Sin evaluar' };
+    }
+
+    const coveragePoints = selectedFunctionalityCoverageItems.length * 22;
+    const casesPoints = selectedFunctionalityCasesCount > 0 ? 16 : 0;
+    const corePoints = selectedFunctionality.isCore ? 12 : 0;
+    const recentPenalty = isRecentlyChanged(selectedFunctionality) ? -6 : 4;
+    const riskPoints =
+      selectedFunctionality.riskLevel === RiskLevel.LOW
+        ? 18
+        : selectedFunctionality.riskLevel === RiskLevel.MEDIUM
+          ? 10
+          : 2;
+
+    const value = Math.max(
+      0,
+      Math.min(100, coveragePoints + casesPoints + corePoints + recentPenalty + riskPoints),
+    );
+
+    const label =
+      value >= 85
+        ? 'Muy bueno'
+        : value >= 70
+          ? 'Bueno'
+          : value >= 50
+            ? 'Aceptable'
+            : 'Por reforzar';
+
+    return { value, label };
+  }, [selectedFunctionality, selectedFunctionalityCasesCount, selectedFunctionalityCoverageItems]);
+
+  const detailCalculatedRisk = React.useMemo(() => {
+    if (!detailEditDraft) return RiskLevel.MEDIUM;
+
+    return calculateRiskLevel(detailEditDraft.impactLevel, detailEditDraft.probabilityLevel);
+  }, [detailEditDraft]);
+
+  const selectedBulkFunctionalities = React.useMemo(
+    () => functionalities.filter(item => selectedRowKeys.includes(item.documentId || item.id)),
+    [functionalities, selectedRowKeys],
+  );
+
+  const selectedBulkCount = selectedRowKeys.length;
+
+  const previousBulkCountRef = React.useRef(0);
+
   React.useEffect(() => {
     setSelectedRowKeys([]);
   }, [activeRecommendation]);
 
+  React.useEffect(() => {
+    const previousCount = previousBulkCountRef.current;
+
+    if (selectedBulkCount > 0 && previousCount === 0) {
+      setIsBulkDrawerOpen(true);
+    }
+
+    if (selectedBulkCount === 0) {
+      setIsBulkDrawerOpen(false);
+    }
+
+    previousBulkCountRef.current = selectedBulkCount;
+  }, [selectedBulkCount]);
+
   const priorityOptions = React.useMemo(
     () =>
       Object.values(Priority).map(priority => ({
-        label: labelPriority(priority, t),
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            {getPriorityVisualLabel(priority).icon}
+            <span>{getPriorityVisualLabel(priority).label}</span>
+          </span>
+        ),
         value: priority,
       })),
-    [t],
+    [],
   );
 
   const impactOptions = React.useMemo(
@@ -870,6 +1248,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       })),
     [],
   );
+
+  const hasCoverageChanges =
+    bulkEditDraft.isCore !== undefined ||
+    bulkEditDraft.isSmoke !== undefined ||
+    bulkEditDraft.isRegression !== undefined;
+
+  const bulkChangesCount =
+    Number(bulkEditDraft.priority !== undefined) +
+    Number(bulkEditDraft.status !== undefined) +
+    Number(hasCoverageChanges);
 
   const riskOptions = React.useMemo(
     () =>
@@ -965,6 +1353,125 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     [bulkUpdate, functionalities, isBulkSaving, selectedRowKeys],
   );
 
+  const applyBulkDraft = React.useCallback(async () => {
+    if (
+      bulkEditDraft.priority === undefined &&
+      bulkEditDraft.status === undefined &&
+      !hasCoverageChanges
+    ) {
+      message.info('Selecciona al menos un cambio antes de aplicar la edición masiva.');
+      return;
+    }
+
+    const updates: Partial<Functionality> = {};
+
+    if (bulkEditDraft.priority !== undefined) {
+      updates.priority = bulkEditDraft.priority;
+    }
+
+    if (bulkEditDraft.status !== undefined) {
+      updates.status = bulkEditDraft.status;
+    }
+
+    if (bulkEditDraft.isCore !== undefined) {
+      updates.isCore = bulkEditDraft.isCore;
+    }
+    if (bulkEditDraft.isSmoke !== undefined) {
+      updates.isSmoke = bulkEditDraft.isSmoke;
+    }
+    if (bulkEditDraft.isRegression !== undefined) {
+      updates.isRegression = bulkEditDraft.isRegression;
+    }
+
+    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.');
+  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate]);
+
+  const saveDetailChanges = React.useCallback(async () => {
+    if (!selectedFunctionality || !detailEditDraft) return;
+
+    const updates: Partial<Functionality> = {};
+
+    if (detailEditDraft.priority !== selectedFunctionality.priority) {
+      updates.priority = detailEditDraft.priority;
+    }
+
+    if (detailEditDraft.impactLevel !== selectedFunctionality.impactLevel) {
+      updates.impactLevel = detailEditDraft.impactLevel;
+    }
+
+    if (detailEditDraft.probabilityLevel !== selectedFunctionality.probabilityLevel) {
+      updates.probabilityLevel = detailEditDraft.probabilityLevel;
+    }
+
+    if (
+      detailEditDraft.impactLevel !== selectedFunctionality.impactLevel ||
+      detailEditDraft.probabilityLevel !== selectedFunctionality.probabilityLevel
+    ) {
+      updates.riskLevel = detailCalculatedRisk;
+    }
+
+    if (detailEditDraft.isCore !== Boolean(selectedFunctionality.isCore)) {
+      updates.isCore = detailEditDraft.isCore;
+    }
+
+    if (detailEditDraft.isSmoke !== Boolean(selectedFunctionality.isSmoke)) {
+      updates.isSmoke = detailEditDraft.isSmoke;
+    }
+
+    if (detailEditDraft.isRegression !== Boolean(selectedFunctionality.isRegression)) {
+      updates.isRegression = detailEditDraft.isRegression;
+    }
+
+    if (detailEditDraft.status !== selectedFunctionality.status) {
+      updates.status = detailEditDraft.status;
+    }
+
+    if ((detailEditDraft.sprint || '') !== (selectedFunctionality.sprint || '')) {
+      updates.sprint = detailEditDraft.sprint || undefined;
+    }
+
+    if (detailEditDraft.markRecentChange) {
+      updates.lastFunctionalChangeAt = new Date().toISOString().split('T')[0];
+    }
+
+    if (Object.keys(updates).length === 0) {
+      message.info('No hay cambios por guardar en esta funcionalidad.');
+      return;
+    }
+
+    await saveRowUpdate(selectedFunctionality, updates, 'Funcionalidad actualizada correctamente.');
+  }, [detailCalculatedRisk, detailEditDraft, saveRowUpdate, selectedFunctionality]);
+
+  const applyDetailRecommendation = React.useCallback(() => {
+    if (!selectedFunctionality || !detailEditDraft) return;
+
+    let changed = false;
+    const nextDraft: DetailEditDraft = { ...detailEditDraft };
+
+    if (selectedFunctionality.priority === Priority.CRITICAL && !nextDraft.isSmoke) {
+      nextDraft.isSmoke = true;
+      changed = true;
+    }
+
+    if (isHighPriorityFunctionality(selectedFunctionality) && !nextDraft.isRegression) {
+      nextDraft.isRegression = true;
+      changed = true;
+    }
+
+    if (isRecentlyChanged(selectedFunctionality) && !nextDraft.markRecentChange) {
+      nextDraft.markRecentChange = true;
+      changed = true;
+    }
+
+    if (!changed) {
+      message.info('Esta funcionalidad ya refleja la recomendación actual.');
+      return;
+    }
+
+    setDetailEditDraft(nextDraft);
+    message.success('Recomendación aplicada al formulario. Recuerda guardar los cambios.');
+  }, [detailEditDraft, selectedFunctionality]);
+
   const handleTableChange = React.useCallback((filters: Record<string, FilterValue | null>) => {
     setTableFilters({
       module: (filters.module as React.Key[] | null) || null,
@@ -983,6 +1490,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         ),
         dataIndex: 'id',
         key: 'id',
+        align: 'center',
         width: 92,
         render: (value: string) => (
           <span className="whitespace-nowrap font-medium text-slate-700">{value}</span>
@@ -996,6 +1504,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         ),
         dataIndex: 'module',
         key: 'module',
+        align: 'center',
         width: 120,
         filters: moduleFilters,
         filteredValue: tableFilters.module,
@@ -1005,27 +1514,29 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       },
       {
         title: (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
             Funcionalidad
           </span>
         ),
         dataIndex: 'name',
         key: 'name',
-        width: 220,
+        ellipsis: true,
+        width: 320,
         render: (value: string, record: Functionality) => {
           const recentChangeLabel = formatRecentChangeBadge(record.lastFunctionalChangeAt);
 
           return (
-            <div className="flex min-w-[170px] flex-col gap-1">
+            <div className="flex min-w-0 max-w-[360px] flex-col gap-1">
               <Tooltip title={value}>
-                <span className="block whitespace-normal break-words text-sm font-medium leading-5 text-slate-700">
+                <span className="block truncate text-sm font-medium leading-5 text-slate-700">
                   {value}
                 </span>
               </Tooltip>
               {recentChangeLabel ? (
                 <Tooltip title={`Último cambio funcional: ${record.lastFunctionalChangeAt}`}>
-                  <span className="inline-flex w-fit rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                    🕒 {recentChangeLabel}
+                  <span className="inline-flex w-fit max-w-full items-center gap-1 rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                    <Clock3 size={11} strokeWidth={2} />
+                    <span className="truncate">{recentChangeLabel}</span>
                   </span>
                 </Tooltip>
               ) : null}
@@ -1035,159 +1546,124 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       },
       {
         title: (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
             Casos
           </span>
         ),
         key: 'cases',
-        width: 64,
         align: 'center',
+        width: 60,
         render: (_: unknown, record: Functionality) => {
           const count = testCaseCountByFunctionality.get(record.id) || 0;
 
           return (
-            <Tooltip title="Ver y gestionar casos de prueba">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center gap-2 rounded-full px-2 py-1 transition hover:bg-slate-50"
-                onClick={event => {
-                  event.stopPropagation();
-                  setSelectedFunctionality(record);
-                  setIsTestCaseModalOpen(true);
-                }}
+            <div className="flex min-w-[24px] flex-col items-center">
+              <span
+                className={`text-sm font-semibold ${
+                  count > 0 ? 'text-slate-700' : 'text-amber-700'
+                }`}
               >
-                <Badge count={count} color={count > 0 ? '#10b981' : '#cbd5e1'} size="small">
-                  <FileSearchOutlined
-                    className={`text-base transition ${
-                      count > 0 ? 'text-emerald-500' : 'text-slate-400'
-                    }`}
-                  />
-                </Badge>
-                <span
-                  className={`text-xs font-bold ${
-                    count > 0 ? 'text-emerald-600' : 'text-slate-500'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            </Tooltip>
-          );
-        },
-      },
-      {
-        title: (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Cobertura
-          </span>
-        ),
-        key: 'coverage',
-        width: 320,
-        filters: coverageFilters,
-        filteredValue: tableFilters.coverage,
-        onFilter: (value: boolean | React.Key, record: Functionality) =>
-          matchesCoverageFilter(record, String(value)),
-        render: (_: unknown, record: Functionality) => {
-          const saving = isRowSaving(record.documentId || record.id);
-          const options = [
-            {
-              key: 'isCore',
-              checked: Boolean(record.isCore),
-              label: 'Core business',
-              activeClassName:
-                'border-amber-200 bg-amber-50 text-amber-700 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.15)]',
-            },
-            {
-              key: 'isSmoke',
-              checked: Boolean(record.isSmoke),
-              label: 'Smoke',
-              activeClassName:
-                'border-orange-200 bg-orange-50 text-orange-700 shadow-[inset_0_0_0_1px_rgba(251,146,60,0.14)]',
-            },
-            {
-              key: 'isRegression',
-              checked: Boolean(record.isRegression),
-              label: 'Regresión',
-              activeClassName:
-                'border-violet-200 bg-violet-50 text-violet-700 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.14)]',
-            },
-          ] as const;
-
-          return (
-            <div onClick={event => event.stopPropagation()}>
-              <div className="inline-flex items-center gap-1.5">
-                {options.map(option => (
-                  <Tooltip
-                    key={option.key}
-                    title={getCoverageImpactText(option.key)}
-                    placement="top"
-                    overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
-                    overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
-                  >
-                    <button
-                      type="button"
-                      disabled={isViewer || saving}
-                      className={`inline-flex min-w-[66px] items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-[6px] text-[10px] font-semibold leading-none transition ${
-                        option.checked
-                          ? option.activeClassName
-                          : 'border-slate-200 bg-white text-slate-500'
-                      } ${
-                        isViewer || saving
-                          ? 'cursor-not-allowed opacity-60'
-                          : 'hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                      onClick={() =>
-                        void saveRowUpdate(record, {
-                          [option.key]: !option.checked,
-                        } as Partial<Functionality>)
-                      }
-                    >
-                      <span
-                        className={`mr-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border ${
-                          option.checked ? 'border-current bg-white' : 'border-slate-300 bg-white'
-                        }`}
-                      >
-                        {option.checked ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                        ) : null}
-                      </span>
-                      {option.label}
-                    </button>
-                  </Tooltip>
-                ))}
-              </div>
+                {count}
+              </span>
             </div>
           );
         },
       },
       {
         title: (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Cobertura
+          </span>
+        ),
+        key: 'coverage',
+        align: 'center',
+        width: 170,
+        filters: coverageFilters,
+        filteredValue: tableFilters.coverage,
+        onFilter: (value: boolean | React.Key, record: Functionality) =>
+          matchesCoverageFilter(record, String(value)),
+        render: (_: unknown, record: Functionality) => {
+          const coverageItems = getCoverageSummary(record);
+
+          return (
+            <div className="flex min-w-0 flex-wrap justify-center gap-1">
+              {coverageItems.length > 0 ? (
+                coverageItems.map(item => (
+                  <Tooltip key={item.key} title={item.label} placement="top">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-900">
+                      {getCoverageChipIcon(item.key)}
+                      <span>{item.label}</span>
+                    </span>
+                  </Tooltip>
+                ))
+              ) : (
+                <span className="inline-flex h-6 items-center rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold text-slate-500">
+                  Sin cobertura
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        title: (
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
             Prioridad
           </span>
         ),
         dataIndex: 'priority',
         key: 'priority',
-        width: 112,
-        filters: priorityOptions.map(option => ({ text: option.label, value: option.value })),
+        align: 'center',
+        width: 88,
+        filters: Object.values(Priority).map(priority => ({
+          text: getPriorityVisualLabel(priority).label,
+          value: priority,
+        })),
         filteredValue: tableFilters.priority,
         onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
         render: (priority: Priority, record: Functionality) => (
           <Tooltip
-            title={repairMojibakeText(getPriorityImpactText(priority))}
-            placement="topLeft"
+            title={getPriorityVisualLabel(priority).label}
+            placement="top"
             overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
             overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
           >
             <div onClick={event => event.stopPropagation()}>
-              <InlineChipSelect
-                value={priority}
-                disabled={isViewer || isRowSaving(record.documentId || record.id)}
-                options={priorityOptions}
-                chipClassName={PRIORITY_BADGE_CLASSNAMES[priority]}
-                onSelect={value => void saveRowUpdate(record, { priority: value })}
-                getDescription={(value) => repairMojibakeText(getPriorityImpactText(value))}
-              />
+              <Dropdown
+                trigger={isViewer || isRowSaving(record.documentId || record.id) ? [] : ['click']}
+                placement="bottomLeft"
+                menu={{
+                  items: Object.values(Priority).map(value => ({
+                    key: value,
+                    label: (
+                      <div className="inline-flex items-center gap-1.5 py-0.5">
+                        <span className={PRIORITY_TEXT_CLASSNAMES[value]}>
+                          {getPriorityVisualLabel(value).icon}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-700">
+                          {getPriorityVisualLabel(value).label}
+                        </span>
+                      </div>
+                    ),
+                  })),
+                  selectable: true,
+                  selectedKeys: [priority],
+                  onClick: ({ key }) => void saveRowUpdate(record, { priority: key as Priority }),
+                }}
+                overlayClassName="[&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-1 [&_.ant-dropdown-menu-item]:rounded-xl [&_.ant-dropdown-menu-item]:px-3 [&_.ant-dropdown-menu-item]:py-2"
+              >
+                <button
+                  type="button"
+                  disabled={isViewer || isRowSaving(record.documentId || record.id)}
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${PRIORITY_TEXT_CLASSNAMES[priority]} ${
+                    isViewer || isRowSaving(record.documentId || record.id)
+                      ? 'cursor-not-allowed opacity-70'
+                      : 'hover:bg-slate-100 hover:opacity-85'
+                  }`}
+                >
+                  {getPriorityVisualLabel(priority).icon}
+                </button>
+              </Dropdown>
             </div>
           </Tooltip>
         ),
@@ -1200,6 +1676,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         ),
         dataIndex: 'impactLevel',
         key: 'impactLevel',
+        align: 'center',
         width: 110,
         render: (impact: ImpactLevel, record: Functionality) => (
           <Tooltip
@@ -1215,7 +1692,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 options={impactOptions}
                 chipClassName={IMPACT_BADGE_CLASSNAMES[impact]}
                 onSelect={value => void saveRowUpdate(record, { impactLevel: value })}
-                getDescription={(value) => repairMojibakeText(getImpactLevelText(value))}
+                getDescription={value => repairMojibakeText(getImpactLevelText(value))}
               />
             </div>
           </Tooltip>
@@ -1229,6 +1706,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         ),
         dataIndex: 'probabilityLevel',
         key: 'probabilityLevel',
+        align: 'center',
         width: 122,
         render: (probability: ProbabilityLevel, record: Functionality) => (
           <Tooltip
@@ -1244,7 +1722,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 options={probabilityOptions}
                 chipClassName={PROBABILITY_BADGE_CLASSNAMES[probability]}
                 onSelect={value => void saveRowUpdate(record, { probabilityLevel: value })}
-                getDescription={(value) => repairMojibakeText(getProbabilityImpactText(value))}
+                getDescription={value => repairMojibakeText(getProbabilityImpactText(value))}
               />
             </div>
           </Tooltip>
@@ -1252,54 +1730,35 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       },
       {
         title: (
-          <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-amber-200 to-yellow-500" />
-            <span>Riesgo</span>
-          </div>
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Riesgo
+          </span>
         ),
         dataIndex: 'riskLevel',
         key: 'riskLevel',
-        width: 68,
         align: 'center',
+        width: 88,
         filters: riskOptions.map(option => ({ text: option.label, value: option.value })),
         filteredValue: tableFilters.riskLevel,
         onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
         render: (risk: RiskLevel) => (
-          <Tooltip
-            title={
-              <div className="space-y-1">
-                <div className="text-xs font-semibold text-slate-700">{labelRisk(risk, t)}</div>
-                <div className="text-[11px] leading-4 text-slate-500">
-                  {repairMojibakeText(getRiskImpactText(risk))}
-                </div>
-              </div>
-            }
-            placement="topLeft"
-            overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
-            overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
-          >
-            <button
-              type="button"
-              aria-label={labelRisk(risk, t)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full"
-              onClick={event => event.stopPropagation()}
-            >
-              <span
-                className={`h-4 w-4 rounded-full shadow-sm ring-1 ring-black/5 ${RISK_DOT_CLASSNAMES[risk]}`}
-              />
-            </button>
+          <Tooltip title={labelRisk(risk, t)} placement="top">
+            <span
+              className={`inline-flex h-3 w-3 rounded-full shadow-sm ring-1 ring-black/5 ${RISK_DOT_CLASSNAMES[risk]}`}
+            />
           </Tooltip>
         ),
       },
       {
         title: (
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Estado de desarrollo
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Estado
           </span>
         ),
         dataIndex: 'status',
         key: 'status',
-        width: 126,
+        align: 'center',
+        width: 120,
         filters: statusFilters,
         filteredValue: tableFilters.status,
         onFilter: (value: boolean | React.Key, record: Functionality) => record.status === value,
@@ -1310,7 +1769,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           return (
             <div
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[6px] text-[10px] font-semibold leading-none ${statusChipClassName}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold leading-none ${statusChipClassName}`}
             >
               <span className={`h-2 w-2 rounded-full ${config.dot}`} />
               {labelTestStatus(status, t)}
@@ -1337,11 +1796,40 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const orderedColumns = React.useMemo<ColumnsType<Functionality>>(() => {
-    return PLANNING_TABLE_COLUMN_ORDER
-      .map(columnKey => columns.find(column => String(column.key) === columnKey))
+    return PLANNING_TABLE_COLUMN_ORDER.map(columnKey =>
+      columns.find(column => String(column.key) === columnKey),
+    )
       .filter((column): column is ColumnsType<Functionality>[number] => Boolean(column))
       .filter(column => visibleColumnKeys.includes(String(column.key) as PlanningColumnKey));
   }, [columns, visibleColumnKeys]);
+
+  const tableColumns = React.useMemo<ColumnsType<Functionality>>(
+    () => [
+      ...orderedColumns,
+      {
+        title: '',
+        key: 'actions',
+        width: 32,
+        align: 'center',
+        render: (_: unknown, record: Functionality) => (
+          <div
+            className="flex items-center justify-center"
+            onClick={event => event.stopPropagation()}
+          >
+            <Button
+              size="small"
+              aria-label={`Ver detalle de ${record.name}`}
+              className="rounded-full border-slate-200 px-1.5 text-xs font-medium text-slate-700"
+              onClick={() => setSelectedFunctionality(record)}
+            >
+              ...
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [orderedColumns],
+  );
 
   const visibleColumnCount = visibleColumnKeys.length;
 
@@ -1352,14 +1840,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         return previous.filter(key => key !== columnKey);
       }
 
-      return PLANNING_TABLE_COLUMN_ORDER.filter(
-        key => key === columnKey || previous.includes(key),
-      );
+      return PLANNING_TABLE_COLUMN_ORDER.filter(key => key === columnKey || previous.includes(key));
     });
   }, []);
 
   const restoreAllColumns = React.useCallback(() => {
-    setVisibleColumnKeys(PLANNING_TABLE_COLUMN_ORDER.slice());
+    setVisibleColumnKeys([...DEFAULT_VISIBLE_COLUMN_KEYS]);
   }, []);
 
   const columnSettingsContent = React.useMemo(
@@ -1368,8 +1854,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         <div className="border-b border-slate-100 pb-2">
           <div className="text-sm font-semibold text-slate-800">Columnas visibles</div>
           <div className="mt-1 text-xs leading-5 text-slate-500">
-            Elige qué columnas quieres ver en la tabla. Esta preferencia se guarda
-            automáticamente.
+            Elige qué columnas quieres ver en la tabla. Esta preferencia se guarda automáticamente.
           </div>
         </div>
         <div className="grid gap-2">
@@ -1381,9 +1866,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               <label
                 key={option.key}
                 className={`flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition ${
-                  disableToggle
-                    ? 'cursor-not-allowed opacity-60'
-                    : 'hover:bg-slate-50'
+                  disableToggle ? 'cursor-not-allowed opacity-60' : 'hover:bg-slate-50'
                 }`}
               >
                 <Checkbox
@@ -1482,6 +1965,736 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     [],
   );
 
+  const sidePanelContent =
+    selectedBulkCount > 0 ? (
+      <div className="space-y-5">
+        <div
+          data-testid="qa-bulk-drawer-header"
+          className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Title level={5} className="!mb-1 !mt-0 text-slate-800">
+                Edición masiva
+              </Title>
+              <Text type="secondary" className="text-sm">
+                Estás editando {selectedBulkCount} funcionalidades.
+              </Text>
+            </div>
+            <Button type="text" onClick={() => setSelectedRowKeys([])}>
+              Cerrar
+            </Button>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            Los cambios solo se aplicarán a los campos que modifiques aquí.
+          </div>
+        </div>
+
+        <div
+          data-testid="qa-bulk-selected-list"
+          className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <Text strong>Funcionalidades seleccionadas</Text>
+            <Text type="secondary" className="text-xs">
+              {selectedBulkFunctionalities.length} en total
+            </Text>
+          </div>
+          <div className="mt-3 max-h-[220px] space-y-2 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50 p-3">
+            {selectedBulkFunctionalities.map(item => (
+              <div
+                key={item.documentId || item.id}
+                className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
+              >
+                <Checkbox
+                  checked
+                  className="mt-1"
+                  onChange={event => {
+                    if (!event.target.checked) {
+                      setSelectedRowKeys(current =>
+                        current.filter(key => key !== (item.documentId || item.id)),
+                      );
+                    }
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-slate-800">{item.name}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {item.id} · {item.module || 'Sin módulo'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          data-testid="qa-bulk-edit-fields"
+          className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+        >
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <Text strong className="block">
+                Prioridad
+              </Text>
+
+              <Select
+                value={bulkEditDraft.priority}
+                allowClear
+                placeholder="Sin cambio"
+                options={priorityOptions}
+                onChange={value =>
+                  setBulkEditDraft(current => ({
+                    ...current,
+                    priority: value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <Text strong>Cobertura</Text>
+              <div className="space-y-3">
+                {[
+                  { key: 'isCore' as const, label: 'Core business' },
+                  { key: 'isSmoke' as const, label: 'Smoke' },
+                  { key: 'isRegression' as const, label: 'Regresión' },
+                ].map(item => (
+                  <div
+                    key={item.key}
+                    className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { label: 'Sin cambio', value: undefined as BulkCoverageValue },
+                          { label: 'Marcar', value: true as BulkCoverageValue },
+                          { label: 'Quitar', value: false as BulkCoverageValue },
+                        ].map(option => (
+                          <button
+                            key={option.label}
+                            type="button"
+                            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${getBulkCoverageOptionClassName(
+                              bulkEditDraft[item.key],
+                              option.value,
+                            )}`}
+                            onClick={() =>
+                              setBulkEditDraft(current => ({
+                                ...current,
+                                [item.key]: option.value,
+                              }))
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs text-slate-500">
+                Solo se aplican las marcas que cambies aquí. Lo demás permanece igual.
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div>
+                <Text strong>Estado</Text>
+              </div>
+
+              <Select
+                value={bulkEditDraft.status}
+                allowClear
+                placeholder="Sin cambio"
+                options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                  label: labelTestStatus(status, t),
+                  value: status,
+                }))}
+                onChange={value =>
+                  setBulkEditDraft(current => ({
+                    ...current,
+                    status: value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          data-testid="qa-bulk-summary"
+          className="rounded-[24px] border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+        >
+          Se aplicarán {bulkChangesCount} cambios configurados.
+        </div>
+
+        <div
+          data-testid="qa-bulk-actions"
+          className="sticky bottom-0 z-10 rounded-[24px] border border-slate-100 bg-white/95 p-4 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+        >
+          <div className="flex gap-3">
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setIsBulkDrawerOpen(false);
+                setSelectedRowKeys([]);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              className="flex-1"
+              loading={isBulkSaving}
+              disabled={bulkChangesCount === 0}
+              onClick={() => void applyBulkDraft()}
+            >
+              Aplicar cambios
+            </Button>
+          </div>
+        </div>
+      </div>
+    ) : selectedFunctionality ? (
+      <div className="space-y-5">
+        <div
+          data-testid="qa-detail-header"
+          className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-sm sm:p-5"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <Title level={4} className="!mb-1 !mt-0 text-slate-800">
+                  {selectedFunctionality.name}
+                </Title>
+                <Text type="secondary">
+                  {selectedFunctionality.id} · {selectedFunctionality.module || 'Sin módulo'}
+                </Text>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                  (
+                    STATUS_BADGE_CONFIG[selectedFunctionality.status] ||
+                    FALLBACK_STATUS_BADGE_CONFIG
+                  ).bg
+                } ${(STATUS_BADGE_CONFIG[selectedFunctionality.status] || FALLBACK_STATUS_BADGE_CONFIG).text}`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    (
+                      STATUS_BADGE_CONFIG[selectedFunctionality.status] ||
+                      FALLBACK_STATUS_BADGE_CONFIG
+                    ).dot
+                  }`}
+                />
+                {labelTestStatus(selectedFunctionality.status, t)}
+              </span>
+              <Button type="text" onClick={() => setSelectedFunctionality(null)}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[22px] border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Casos
+              </div>
+              <div className="mt-1 text-lg font-bold text-slate-800">
+                {selectedFunctionalityCasesCount}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">registrados</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Prioridad
+              </div>
+              <div
+                className={`mt-1 inline-flex items-center gap-2 text-sm font-semibold ${PRIORITY_TEXT_CLASSNAMES[selectedFunctionality.priority]}`}
+              >
+                {getPriorityVisualLabel(selectedFunctionality.priority).icon}
+                <span className="text-slate-800">
+                  {labelPriority(selectedFunctionality.priority, t)}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-[22px] border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Riesgo
+              </div>
+              <div className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <span
+                  className={`h-3.5 w-3.5 rounded-full shadow-sm ${RISK_DOT_CLASSNAMES[selectedFunctionality.riskLevel]}`}
+                />
+                {labelRisk(selectedFunctionality.riskLevel, t)}
+              </div>
+            </div>
+            <div className="rounded-[22px] border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Score QA
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-blue-100 text-lg font-bold text-blue-700">
+                  {selectedFunctionalityQaScore.value}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">
+                    {selectedFunctionalityQaScore.label}
+                  </div>
+                  <div className="text-xs text-slate-500">Basado en cobertura y casos</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+          <div className="space-y-5">
+            <div
+              data-testid="qa-detail-coverage"
+              className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+            >
+              <Text strong>Cobertura QA</Text>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {getCoverageSummary(selectedFunctionality).length > 0 ? (
+                  getCoverageSummary(selectedFunctionality).map(item => (
+                    <span
+                      key={item.key}
+                      className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-900"
+                    >
+                      {getCoverageChipIcon(item.key)}
+                      {item.label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-amber-700">Sin cobertura</span>
+                )}
+              </div>
+            </div>
+
+            <div
+              data-testid="qa-detail-cases"
+              className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+            >
+              <Text strong>Casos de prueba</Text>
+              <div className="mt-2">
+                {selectedFunctionalityCasesCount > 0 ? (
+                  <Text type="secondary" className="block text-sm">
+                    {selectedFunctionalityCasesCount} casos registrados para esta funcionalidad.
+                  </Text>
+                ) : (
+                  <Text className="block text-sm text-amber-700">Sin casos asociados todavía.</Text>
+                )}
+              </div>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <Button type="primary" onClick={() => openTestCaseModal(selectedFunctionality)}>
+                  {selectedFunctionalityCasesCount > 0
+                    ? `Ver casos (${selectedFunctionalityCasesCount})`
+                    : 'Crear caso'}
+                </Button>
+              </div>
+            </div>
+
+            {detailEditDraft ? (
+              <div
+                data-testid="qa-detail-classification"
+                className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+              >
+                <div className="text-sm font-semibold text-slate-800">Clasificación QA</div>
+
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                      <div className="flex flex-col gap-3">
+                        <Text strong className="block">
+                          Prioridad
+                        </Text>
+
+                        <Select
+                          value={detailEditDraft.priority}
+                          disabled={
+                            isViewer ||
+                            isRowSaving(
+                              selectedFunctionality.documentId || selectedFunctionality.id,
+                            )
+                          }
+                          options={Object.values(Priority).map(priority => ({
+                            label: (
+                              <span className="inline-flex items-center gap-2">
+                                <span className={PRIORITY_TEXT_CLASSNAMES[priority]}>
+                                  {getPriorityVisualLabel(priority).icon}
+                                </span>
+                                <span>{labelPriority(priority, t)}</span>
+                              </span>
+                            ),
+                            value: priority,
+                          }))}
+                          onChange={value =>
+                            setDetailEditDraft(current =>
+                              current ? { ...current, priority: value } : current,
+                            )
+                          }
+                        />
+
+                        <div className="text-xs text-slate-500">
+                          {getPriorityImpactText(detailEditDraft.priority)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`rounded-2xl border p-3 ${RISK_BADGE_CLASSNAMES[detailCalculatedRisk]}`}
+                    >
+                      <Text strong className="!text-current">
+                        Riesgo calculado
+                      </Text>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                        <span
+                          className={`h-3.5 w-3.5 rounded-full ${RISK_DOT_CLASSNAMES[detailCalculatedRisk]}`}
+                        />
+                        {labelRisk(detailCalculatedRisk, t)}
+                      </div>
+                      <div className="mt-2 text-xs opacity-80">
+                        {getRiskImpactText(detailCalculatedRisk)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                      <div className="flex flex-col gap-3">
+                        <Text strong className="block">
+                          Impacto
+                        </Text>
+
+                        <Select
+                          value={detailEditDraft.impactLevel}
+                          disabled={
+                            isViewer ||
+                            isRowSaving(
+                              selectedFunctionality.documentId || selectedFunctionality.id,
+                            )
+                          }
+                          options={impactOptions}
+                          onChange={value =>
+                            setDetailEditDraft(current =>
+                              current ? { ...current, impactLevel: value } : current,
+                            )
+                          }
+                        />
+
+                        <div className="text-xs text-slate-500">
+                          {getImpactLevelText(detailEditDraft.impactLevel)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                      <div className="flex flex-col gap-3">
+                        <Text strong>Probabilidad</Text>
+
+                        <Select
+                          value={detailEditDraft.probabilityLevel}
+                          disabled={
+                            isViewer ||
+                            isRowSaving(
+                              selectedFunctionality.documentId || selectedFunctionality.id,
+                            )
+                          }
+                          options={probabilityOptions}
+                          onChange={value =>
+                            setDetailEditDraft(current =>
+                              current ? { ...current, probabilityLevel: value } : current,
+                            )
+                          }
+                        />
+
+                        <div className="text-xs text-slate-500">
+                          {getProbabilityImpactText(detailEditDraft.probabilityLevel)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-100 bg-white p-3">
+                    <Text strong>Cobertura (editar)</Text>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Checkbox
+                        checked={detailEditDraft.isCore}
+                        disabled={
+                          isViewer ||
+                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                        }
+                        onChange={event =>
+                          setDetailEditDraft(current =>
+                            current ? { ...current, isCore: event.target.checked } : current,
+                          )
+                        }
+                      >
+                        Core business
+                      </Checkbox>
+                      <Checkbox
+                        checked={detailEditDraft.isSmoke}
+                        disabled={
+                          isViewer ||
+                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                        }
+                        onChange={event =>
+                          setDetailEditDraft(current =>
+                            current ? { ...current, isSmoke: event.target.checked } : current,
+                          )
+                        }
+                      >
+                        Smoke
+                      </Checkbox>
+                      <Checkbox
+                        checked={detailEditDraft.isRegression}
+                        disabled={
+                          isViewer ||
+                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                        }
+                        onChange={event =>
+                          setDetailEditDraft(current =>
+                            current ? { ...current, isRegression: event.target.checked } : current,
+                          )
+                        }
+                      >
+                        Regresión
+                      </Checkbox>
+                      <Checkbox
+                        checked={detailEditDraft.markRecentChange}
+                        disabled={
+                          isViewer ||
+                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                        }
+                        onChange={event =>
+                          setDetailEditDraft(current =>
+                            current
+                              ? { ...current, markRecentChange: event.target.checked }
+                              : current,
+                          )
+                        }
+                      >
+                        Marcar cambio reciente
+                      </Checkbox>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                      <div className="flex items-center gap-4">
+                        <Text strong className="whitespace-nowrap">
+                          Estado
+                        </Text>
+
+                        <Select
+                          className="min-w-[150px]"
+                          value={detailEditDraft.status}
+                          disabled={
+                            isViewer ||
+                            isRowSaving(
+                              selectedFunctionality.documentId || selectedFunctionality.id,
+                            )
+                          }
+                          options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                            label: labelTestStatus(status, t),
+                            value: status,
+                          }))}
+                          onChange={value =>
+                            setDetailEditDraft(current =>
+                              current ? { ...current, status: value } : current,
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-[24px] border border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">Recomendación QA</div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    Sugerencias basadas en cobertura, riesgo y cambios recientes.
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {selectedFunctionalityGuidance.recommendations.map(item => (
+                  <div key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4">
+                <Button
+                  onClick={applyDetailRecommendation}
+                  disabled={
+                    !detailEditDraft || isViewer || !selectedFunctionalityGuidance.actionable
+                  }
+                >
+                  Aplicar recomendación
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="text-sm font-semibold text-slate-800">Motivo de clasificación</div>
+              <div className="mt-3 space-y-2">
+                {selectedFunctionalityGuidance.reasons.length > 0 ? (
+                  selectedFunctionalityGuidance.reasons.map(reason => (
+                    <div key={reason} className="flex items-start gap-2 text-sm text-slate-600">
+                      <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      <span>{reason}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-slate-500">
+                    No hay observaciones adicionales para esta clasificación.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="text-sm font-semibold text-slate-800">Relaciones</div>
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">Mismo módulo</div>
+                    <div className="text-xs text-slate-500">
+                      {selectedFunctionality.module || 'Sin módulo'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <span>{selectedFunctionalityRelations.moduleCount}</span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">Mismo sprint</div>
+                    <div className="text-xs text-slate-500">
+                      {selectedFunctionality.sprint || 'Sin sprint'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <span>{selectedFunctionalityRelations.sprintCount}</span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="text-sm font-semibold text-slate-800">Información adicional</div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Sprint
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.sprint || 'Sin sprint'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Último cambio
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.lastFunctionalChangeAt || 'No marcado'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Roles
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.roles.length > 0
+                      ? selectedFunctionality.roles.join(', ')
+                      : 'Sin roles'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Jira
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.jiraIssueKey ||
+                      selectedFunctionality.jiraTaskUrl ||
+                      'Sin vínculo'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Unidad de entrega
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.deliveryUnitName || 'N/A'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Fecha de entrega
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.deliveryDate || 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {detailEditDraft ? (
+          <div
+            data-testid="qa-detail-actions"
+            className="sticky bottom-0 z-10 rounded-[24px] border border-slate-100 bg-white/95 p-4 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="hidden flex-1 sm:block" />
+              <Button className="sm:min-w-[140px]" onClick={() => setSelectedFunctionality(null)}>
+                Cancelar
+              </Button>
+              <Button
+                type="primary"
+                className="sm:min-w-[160px]"
+                loading={isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)}
+                disabled={isViewer}
+                onClick={() => void saveDetailChanges()}
+              >
+                Guardar cambios
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    ) : (
+      <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
+        <FileSearchOutlined className="text-3xl text-slate-300" />
+        <div className="mt-3 text-base font-semibold text-slate-700">
+          Selecciona una funcionalidad
+        </div>
+        <div className="mt-1 max-w-[240px] text-sm text-slate-500">
+          Haz click en una fila para ver su resumen QA y acceder a los casos de prueba.
+        </div>
+      </div>
+    );
+
   return (
     <div className="mx-auto max-w-[1520px] space-y-6 pb-12">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1542,8 +2755,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               active={activeRecommendation === card.key}
               count={recommendationBuckets[card.key].length}
               description={card.description}
+              icon={card.icon}
               label={card.label}
               toneClassName={card.toneClassName}
+              outlineClassName={card.outlineClassName}
               onClick={() =>
                 setActiveRecommendation(current => (current === card.key ? null : card.key))
               }
@@ -1570,27 +2785,133 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       </Card>
 
       {!isViewer && selectedRowKeys.length > 0 ? (
-        <Card className="mt-4 mb-3 rounded-2xl border-sky-200 bg-gradient-to-r from-sky-50 via-white to-blue-50 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
+        <Card className="mb-3 mt-4 rounded-2xl border border-sky-300 shadow-sm shadow-sky-100/70">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <div className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-sky-700 text-white shadow-sm">
+                <Check size={14} strokeWidth={2.75} />
+              </div>
               <div className="text-sm font-semibold text-slate-800">
                 {selectedRowKeys.length} funcionalidades seleccionadas
               </div>
-              <div className="text-sm text-slate-500">
-                {isBulkSaving
-                  ? 'Guardando cambios masivos sobre la selección...'
-                  : 'Aplica cobertura masiva directamente sobre la funcionalidad.'}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
+              <Button
+                type="link"
+                className="px-0 text-sm font-medium text-sky-600"
+                disabled={isBulkSaving}
+                onClick={() => setSelectedRowKeys([])}
+              >
+                Limpiar selección
+              </Button>
               {isBulkSaving ? (
-                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-3 py-2 text-xs font-semibold text-sky-700 shadow-sm">
+                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
-                  Guardando cambios masivos...
+                  Guardando cambios...
                 </div>
               ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                placeholder="Prioridad"
+                value={undefined}
+                disabled={isBulkSaving}
+                popupMatchSelectWidth={false}
+                className="min-w-[140px]"
+                onChange={value =>
+                  void saveBulkUpdate(
+                    { priority: value },
+                    `Prioridad ${labelPriority(value, t).toLowerCase()} aplicada a la selección.`,
+                  )
+                }
+                options={Object.values(Priority).map(priority => ({
+                  label: getPriorityVisualLabel(priority).label,
+                  value: priority,
+                }))}
+              />
+
+              <Dropdown
+                trigger={isBulkSaving ? [] : ['click']}
+                placement="bottomLeft"
+                menu={{
+                  items: [
+                    {
+                      key: 'core',
+                      label: 'Marcar Core business',
+                    },
+                    {
+                      key: 'smoke',
+                      label: 'Marcar Smoke',
+                    },
+                    {
+                      key: 'regression',
+                      label: 'Marcar Regresión',
+                    },
+                    {
+                      type: 'divider',
+                    },
+                    {
+                      key: 'clear',
+                      label: 'Limpiar cobertura',
+                    },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'core') {
+                      void saveBulkUpdate(
+                        { isCore: true },
+                        'Core business aplicado a la selección.',
+                      );
+                    }
+
+                    if (key === 'smoke') {
+                      void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.');
+                    }
+
+                    if (key === 'regression') {
+                      void saveBulkUpdate(
+                        { isRegression: true },
+                        'Regresión aplicada a la selección.',
+                      );
+                    }
+
+                    if (key === 'clear') {
+                      void saveBulkUpdate(
+                        { isCore: false, isRegression: false, isSmoke: false },
+                        'Cobertura limpiada para la selección.',
+                      );
+                    }
+                  },
+                }}
+                overlayClassName="[&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-1 [&_.ant-dropdown-menu-item]:rounded-xl [&_.ant-dropdown-menu-item]:px-3 [&_.ant-dropdown-menu-item]:py-2"
+              >
+                <Button
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
+                  disabled={isBulkSaving}
+                >
+                  Cobertura
+                  <ChevronDown size={14} strokeWidth={2} />
+                </Button>
+              </Dropdown>
+
+              <Select
+                placeholder="Estado"
+                value={undefined}
+                disabled={isBulkSaving}
+                popupMatchSelectWidth={false}
+                className="min-w-[140px]"
+                onChange={value =>
+                  void saveBulkUpdate(
+                    { status: value },
+                    `Estado ${labelTestStatus(value, t).toLowerCase()} aplicado a la selección.`,
+                  )
+                }
+                options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                  label: labelTestStatus(status, t),
+                  value: status,
+                }))}
+              />
+
               <Button
-                className="rounded-full border-sky-200 bg-white px-4 font-semibold text-sky-700 shadow-sm hover:!border-sky-300 hover:!bg-sky-50 hover:!text-sky-800"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
                 disabled={isBulkSaving}
                 onClick={() =>
                   void saveBulkUpdate(
@@ -1601,161 +2922,172 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               >
                 Marcar cambio reciente
               </Button>
-              <Button
-                className="rounded-full border-amber-200 bg-amber-50 px-4 font-semibold text-amber-700 shadow-sm hover:!border-amber-300 hover:!bg-amber-100 hover:!text-amber-800"
-                disabled={isBulkSaving}
-                onClick={() =>
-                  void saveBulkUpdate({ isCore: true }, 'Core business aplicado a la selección.')
-                }
-              >
-                Marcar Core business
-              </Button>
-              <Button
-                className="rounded-full border-violet-200 bg-violet-50 px-4 font-semibold text-violet-700 shadow-sm hover:!border-violet-300 hover:!bg-violet-100 hover:!text-violet-800"
-                disabled={isBulkSaving}
-                onClick={() =>
-                  void saveBulkUpdate({ isRegression: true }, 'Regresión aplicada a la selección.')
-                }
-              >
-                Marcar Regresión
-              </Button>
-              <Button
-                className="rounded-full border-orange-200 bg-orange-50 px-4 font-semibold text-orange-700 shadow-sm hover:!border-orange-300 hover:!bg-orange-100 hover:!text-orange-800"
-                disabled={isBulkSaving}
-                onClick={() =>
-                  void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.')
-                }
-              >
-                Marcar Smoke
-              </Button>
-              <Button
-                className="rounded-full border-slate-200 bg-white px-4 font-semibold text-slate-700 shadow-sm hover:!border-slate-300 hover:!bg-slate-50 hover:!text-slate-800"
-                disabled={isBulkSaving}
-                onClick={() =>
-                  void saveBulkUpdate(
-                    { isCore: false, isRegression: false, isSmoke: false },
-                    'Cobertura limpiada para la selección.',
-                  )
-                }
-              >
-                Limpiar cobertura
-              </Button>
             </div>
           </div>
         </Card>
       ) : null}
 
-      <Card className="mx-auto max-w-[1520px] rounded-2xl border-slate-100 shadow-sm">
-        <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Operación
+      <div className="grid gap-6">
+        <Card className="mx-auto max-w-[1520px] rounded-2xl border-slate-100 shadow-sm xl:max-w-none">
+          <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                Operación
+              </div>
+              <Title level={5} className="!mb-1 !mt-0 text-slate-800">
+                Tabla de planificación
+              </Title>
+              <Text type="secondary" className="text-sm">
+                Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
+              </Text>
             </div>
-            <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-              Tabla de planificación
-            </Title>
-            <Text type="secondary" className="text-sm">
-              Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
-            </Text>
-          </div>
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[620px]">
-            <Popover
-              trigger="click"
-              placement="bottomRight"
-              content={columnSettingsContent}
-              overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-4"
-            >
-              <Button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[620px]">
+              <Select
+                allowClear
+                placeholder="Filtrar por módulo"
+                value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
+                options={moduleFilters.map(option => ({
+                  label: String(option.text),
+                  value: String(option.value),
+                }))}
+                onChange={value =>
+                  setTableFilters(current => ({
+                    ...current,
+                    module: value ? [value] : null,
+                  }))
+                }
+                className="w-full sm:w-[220px]"
+              />
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                content={columnSettingsContent}
+                overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-4"
               >
-                <Settings2 size={16} />
-                Columnas
-              </Button>
-            </Popover>
-            <Input.Search
-              allowClear
-              placeholder="Buscar por funcionalidad"
-              value={searchTerm}
-              onChange={event => setSearchTerm(event.target.value)}
-              className="w-full sm:flex-1 xl:max-w-[440px]"
-            />
-          </div>
-        </div>
-
-        {activeRecommendation ? (
-          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
-            <div className="font-semibold">Vista filtrada por recomendacion QA</div>
-            <div className="mt-1 text-sky-700">
-              Estas viendo solo funcionalidades priorizadas por la alerta activa.
+                <Button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto">
+                  <Settings2 size={16} />
+                  Columnas
+                </Button>
+              </Popover>
+              <Input.Search
+                allowClear
+                placeholder="Buscar por funcionalidad"
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                className="w-full sm:flex-1 xl:max-w-[440px]"
+              />
             </div>
           </div>
-        ) : null}
 
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-slate-50/70 px-4 py-2.5">
-          <GuidanceItem
-            label="Riesgo"
-            message="Medir impacto"
-            toneClassName="bg-transparent text-slate-700"
-            icon={<TriangleAlert size={14} className="text-amber-500" />}
-          />
-          <GuidanceItem
-            label="Prioridad"
-            message="Definir orden de ejecución"
-            toneClassName="bg-transparent text-slate-700"
-            icon={<Star size={14} className="text-sky-500" />}
-          />
-          <GuidanceItem
-            label="Smoke"
-            message="Validar en cada release"
-            toneClassName="bg-transparent text-slate-700"
-            icon={<Flame size={14} className="text-orange-500" />}
-          />
-          <GuidanceItem
-            label="Regresión"
-            message="Revalidar ante cambios"
-            toneClassName="bg-transparent text-slate-700"
-            icon={<RefreshCw size={14} className="text-violet-500" />}
-          />
           {activeRecommendation ? (
-            <div className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-              Recomendacion activa
+            <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
+              <div className="font-semibold">Vista filtrada por recomendación QA</div>
+              <div className="mt-1 text-sky-700">
+                Estás viendo solo funcionalidades priorizadas por la alerta activa.
+              </div>
             </div>
           ) : null}
-        </div>
-        <Table
-          rowSelection={
-            isViewer
-              ? undefined
-              : {
-                  selectedRowKeys,
-                  onChange: keys => setSelectedRowKeys(keys),
-                  columnWidth: 52,
-                }
+
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-slate-50/70 px-4 py-2.5">
+            <GuidanceItem
+              label="Riesgo"
+              message="Medir impacto"
+              toneClassName="bg-transparent text-slate-700"
+              icon={<TriangleAlert size={14} className="text-amber-500" />}
+            />
+            <GuidanceItem
+              label="Prioridad"
+              message="Definir orden de ejecución"
+              toneClassName="bg-transparent text-slate-700"
+              icon={<Star size={14} className="text-sky-500" />}
+            />
+            <GuidanceItem
+              label="Smoke"
+              message="Validar en cada release"
+              toneClassName="bg-transparent text-slate-700"
+              icon={<Flame size={14} className="text-orange-500" />}
+            />
+            <GuidanceItem
+              label="Regresión"
+              message="Revalidar ante cambios"
+              toneClassName="bg-transparent text-slate-700"
+              icon={<RefreshCw size={14} className="text-violet-500" />}
+            />
+            {activeRecommendation ? (
+              <div className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                Recomendacion activa
+              </div>
+            ) : null}
+          </div>
+          <Table
+            rowSelection={
+              isViewer
+                ? undefined
+                : {
+                    selectedRowKeys,
+                    onChange: keys => setSelectedRowKeys(keys),
+                    columnWidth: 36,
+                  }
+            }
+            columns={tableColumns}
+            dataSource={recommendationFilteredFunctionalities}
+            rowKey={record => record.documentId || record.id}
+            loading={
+              isLoading || (isFetching && recommendationFilteredFunctionalities.length === 0)
+            }
+            rowClassName={record => getRowClassName(record)}
+            size="small"
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+            }}
+            sticky={{ offsetHeader: 0 }}
+            locale={{
+              emptyText: searchTerm.trim()
+                ? 'No encontramos funcionalidades con esa búsqueda.'
+                : activeRecommendation
+                  ? 'No hay funcionalidades para esta recomendación en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
+                  : 'No hay funcionalidades registradas para este proyecto.',
+            }}
+            onChange={(_, filters) => handleTableChange(filters)}
+            className="[&_.ant-table-container]:rounded-2xl [&_.ant-table]:text-slate-700 [&_.ant-table-thead>tr>th]:sticky [&_.ant-table-thead>tr>th]:top-0 [&_.ant-table-thead>tr>th]:z-10 [&_.ant-table-thead>tr>th]:bg-sky-50 [&_.ant-table-thead>tr>th]:px-2.5 [&_.ant-table-thead>tr>th]:py-3 [&_.ant-table-tbody>tr:hover>td]:bg-sky-50/40 [&_.ant-table-tbody>tr>td]:px-2.5 [&_.ant-table-tbody>tr>td]:py-1.5 [&_.ant-table-tbody>tr>td]:align-middle [&_.ant-table-tbody>tr>td]:border-b-slate-100"
+          />
+        </Card>
+        {false ? (
+          <Card className="hidden rounded-2xl border-slate-100 shadow-sm xl:sticky xl:top-6 xl:block">
+            {sidePanelContent}
+          </Card>
+        ) : null}
+        <Drawer
+          title={selectedBulkCount > 0 ? 'Edición masiva QA' : 'Detalle QA'}
+          placement="right"
+          width={
+            selectedBulkCount > 0
+              ? screens.md
+                ? 520
+                : '100%'
+              : screens.xl
+                ? 980
+                : screens.lg
+                  ? 860
+                  : '100%'
           }
-          columns={orderedColumns}
-          dataSource={recommendationFilteredFunctionalities}
-          rowKey={record => record.documentId || record.id}
-          loading={isLoading || (isFetching && recommendationFilteredFunctionalities.length === 0)}
-          expandable={expandable}
-          rowClassName={record => getRowClassName(record)}
-          size="small"
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
+          open={Boolean(selectedFunctionality) || (selectedBulkCount > 0 && isBulkDrawerOpen)}
+          onClose={() => {
+            if (selectedBulkCount > 0 && isBulkDrawerOpen) {
+              setIsBulkDrawerOpen(false);
+              return;
+            }
+
+            setSelectedFunctionality(null);
           }}
-          sticky={{ offsetHeader: 0 }}
-          scroll={{ x: 1500 }}
-          locale={{
-            emptyText: searchTerm.trim()
-              ? 'No encontramos funcionalidades con esa búsqueda.'
-              : activeRecommendation
-                ? 'No hay funcionalidades para esta recomendación en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
-                : 'No hay funcionalidades registradas para este proyecto.',
-          }}
-          onChange={(_, filters) => handleTableChange(filters)}
-          className="[&_.ant-table-container]:rounded-2xl [&_.ant-table]:text-slate-700 [&_.ant-table-thead>tr>th]:sticky [&_.ant-table-thead>tr>th]:top-0 [&_.ant-table-thead>tr>th]:z-10 [&_.ant-table-thead>tr>th]:bg-sky-50 [&_.ant-table-thead>tr>th]:py-3 [&_.ant-table-tbody>tr:hover>td]:bg-sky-50/40 [&_.ant-table-tbody>tr>td]:py-1.5 [&_.ant-table-tbody>tr>td]:align-middle [&_.ant-table-tbody>tr>td]:border-b-slate-100"
-        />
-      </Card>
+          destroyOnHidden={false}
+          rootClassName="[&_.ant-drawer-content-wrapper]:max-w-full"
+          styles={{ body: { padding: screens.lg ? 20 : 16 } }}
+        >
+          {sidePanelContent}
+        </Drawer>
+      </div>
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
