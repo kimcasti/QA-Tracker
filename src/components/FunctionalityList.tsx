@@ -568,7 +568,7 @@ function FunctionalityTableToolbar({
   onTogglePlanningMode,
 }: FunctionalityTableToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
       {planningMode ? (
         <Button
           type="primary"
