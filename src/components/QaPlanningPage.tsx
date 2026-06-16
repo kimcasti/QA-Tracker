@@ -533,6 +533,39 @@ function matchesCoverageFilter(record: Functionality, value: string) {
   }
 }
 
+function matchesTableFilters(record: Functionality, filters: PlanningTableFilters) {
+  if (filters.module?.length && !filters.module.some(value => record.module === String(value))) {
+    return false;
+  }
+
+  if (
+    filters.coverage?.length &&
+    !filters.coverage.some(value => matchesCoverageFilter(record, String(value)))
+  ) {
+    return false;
+  }
+
+  if (
+    filters.riskLevel?.length &&
+    !filters.riskLevel.some(value => record.riskLevel === String(value))
+  ) {
+    return false;
+  }
+
+  if (
+    filters.priority?.length &&
+    !filters.priority.some(value => record.priority === String(value))
+  ) {
+    return false;
+  }
+
+  if (filters.status?.length && !filters.status.some(value => record.status === String(value))) {
+    return false;
+  }
+
+  return true;
+}
+
 function getRowClassName(record: Functionality) {
   const hasCoverage = record.isCore || record.isRegression || record.isSmoke;
   const isHighRisk = record.riskLevel === RiskLevel.HIGH;
@@ -895,7 +928,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     return recommendationBuckets[activeRecommendation];
   }, [activeRecommendation, filteredFunctionalities, recommendationBuckets]);
 
-  const visibleFunctionalities = recommendationFilteredFunctionalities;
+  const visibleFunctionalities = React.useMemo(
+    () =>
+      recommendationFilteredFunctionalities.filter(record =>
+        matchesTableFilters(record, tableFilters),
+      ),
+    [recommendationFilteredFunctionalities, tableFilters],
+  );
 
   const analytics = React.useMemo(() => {
     const totalVisible = visibleFunctionalities.length;
@@ -2775,7 +2814,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             }`}
           >
             {activeRecommendation
-              ? `${recommendationFilteredFunctionalities.length} funcionalidades filtradas por recomendación`
+              ? `${visibleFunctionalities.length} funcionalidades filtradas por recomendación`
               : 'Sin recomendación aplicada'}
           </div>
           <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
@@ -2941,23 +2980,32 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
               </Text>
             </div>
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[620px]">
-              <Select
-                allowClear
-                placeholder="Filtrar por módulo"
-                value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
-                options={moduleFilters.map(option => ({
-                  label: String(option.text),
-                  value: String(option.value),
-                }))}
-                onChange={value =>
-                  setTableFilters(current => ({
-                    ...current,
-                    module: value ? [value] : null,
-                  }))
-                }
-                className="w-full sm:w-[220px]"
-              />
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[760px]">
+              <div className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center">
+                <Select
+                  allowClear
+                  placeholder="Filtrar por módulo"
+                  value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
+                  options={moduleFilters.map(option => ({
+                    label: String(option.text),
+                    value: String(option.value),
+                  }))}
+                  onChange={value =>
+                    setTableFilters(current => ({
+                      ...current,
+                      module: value ? [value] : null,
+                    }))
+                  }
+                  className="w-full sm:w-[220px]"
+                />
+                <Input.Search
+                  allowClear
+                  placeholder="Buscar por funcionalidad"
+                  value={searchTerm}
+                  onChange={event => setSearchTerm(event.target.value)}
+                  className="w-full sm:flex-1"
+                />
+              </div>
               <Popover
                 trigger="click"
                 placement="bottomRight"
@@ -2969,13 +3017,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                   Columnas
                 </Button>
               </Popover>
-              <Input.Search
-                allowClear
-                placeholder="Buscar por funcionalidad"
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                className="w-full sm:flex-1 xl:max-w-[440px]"
-              />
             </div>
           </div>
 
@@ -3030,11 +3071,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                   }
             }
             columns={tableColumns}
-            dataSource={recommendationFilteredFunctionalities}
+            dataSource={visibleFunctionalities}
             rowKey={record => record.documentId || record.id}
-            loading={
-              isLoading || (isFetching && recommendationFilteredFunctionalities.length === 0)
-            }
+            loading={isLoading || (isFetching && visibleFunctionalities.length === 0)}
             rowClassName={record => getRowClassName(record)}
             size="small"
             pagination={{
