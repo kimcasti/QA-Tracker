@@ -22,6 +22,7 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   ThunderboltOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
@@ -66,6 +67,22 @@ function renderRichTextContent(value?: string) {
       dangerouslySetInnerHTML={{ __html: normalizedHtml }}
     />
   );
+}
+
+function buildDuplicatedTestCaseTitle(title: string, existingTitles: string[]) {
+  const normalizedExistingTitles = new Set(existingTitles.map(item => item.trim().toLowerCase()));
+  const baseCopyTitle = `${title} (copia)`;
+
+  if (!normalizedExistingTitles.has(baseCopyTitle.trim().toLowerCase())) {
+    return baseCopyTitle;
+  }
+
+  let copyIndex = 2;
+  while (normalizedExistingTitles.has(`${title} (copia ${copyIndex})`.trim().toLowerCase())) {
+    copyIndex += 1;
+  }
+
+  return `${title} (copia ${copyIndex})`;
 }
 
 interface TestCaseManagementProps {
@@ -316,6 +333,27 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     });
   };
 
+  const handleDuplicate = (testCase: TestCase) => {
+    const duplicatedTestCase: TestCase = {
+      ...testCase,
+      documentId: undefined,
+      id: `TC-${Date.now()}`,
+      title: buildDuplicatedTestCaseTitle(
+        testCase.title,
+        visibleTestCases.map(item => item.title),
+      ),
+    };
+
+    save(duplicatedTestCase, {
+      onSuccess: () => {
+        message.success('Caso de prueba duplicado');
+      },
+      onError: () => {
+        message.error('Error al duplicar el caso de prueba');
+      },
+    });
+  };
+
   const columns = [
     {
       title: 'Título',
@@ -365,6 +403,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           {!isViewer ? (
             <>
               <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
+              <Tooltip title="Duplicar caso de prueba">
+                <Button
+                  type="text"
+                  icon={<CopyOutlined />}
+                  onClick={() => handleDuplicate(record)}
+                />
+              </Tooltip>
               <Popconfirm
                 title="¿Estás seguro de eliminar este caso de prueba?"
                 onConfirm={() => handleDelete(record.id)}
