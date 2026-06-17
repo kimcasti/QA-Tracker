@@ -738,6 +738,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const [visibleColumnKeys, setVisibleColumnKeys] = React.useState<PlanningColumnKey[]>([
     ...DEFAULT_VISIBLE_COLUMN_KEYS,
   ]);
+  const [moduleCoverageFilter, setModuleCoverageFilter] = React.useState<string[]>([]);
   const [isTestCaseModalOpen, setIsTestCaseModalOpen] = React.useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = React.useState<Functionality | null>(
     null,
@@ -985,21 +986,21 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     const moduleCoverage = Array.from(
       visibleFunctionalities.reduce((acc, item) => {
         const key = item.module || 'N/A';
+        const hasQaClassification = Boolean(item.isCore || item.isRegression || item.isSmoke);
+        const hasTestCases = (testCaseCountByFunctionality.get(item.id) || 0) > 0;
         const current = acc.get(key) || {
           module: key,
           total: 0,
-          covered: 0,
-          core: 0,
-          regression: 0,
-          smoke: 0,
+          qaCovered: 0,
+          tested: 0,
+          classifiedAndTested: 0,
           withoutCoverage: 0,
         };
         current.total += 1;
-        if (item.isCore) current.core += 1;
-        if (item.isRegression) current.regression += 1;
-        if (item.isSmoke) current.smoke += 1;
-        if (item.isCore || item.isRegression || item.isSmoke) current.covered += 1;
-        if (!item.isCore && !item.isRegression && !item.isSmoke) current.withoutCoverage += 1;
+        if (hasQaClassification) current.qaCovered += 1;
+        if (hasTestCases) current.tested += 1;
+        if (hasQaClassification && hasTestCases) current.classifiedAndTested += 1;
+        if (!hasTestCases) current.withoutCoverage += 1;
         acc.set(key, current);
         return acc;
       }, new Map<
@@ -1007,20 +1008,20 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         {
           module: string;
           total: number;
-          covered: number;
-          core: number;
-          regression: number;
-          smoke: number;
+          qaCovered: number;
+          tested: number;
+          classifiedAndTested: number;
           withoutCoverage: number;
         }
       >()),
     )
       .map(([, value]) => ({
         ...value,
-        percent: value.total > 0 ? Math.round((value.covered / value.total) * 100) : 0,
+        testedPercent: value.total > 0 ? Math.round((value.tested / value.total) * 100) : 0,
+        classifiedAndTestedPercent:
+          value.total > 0 ? Math.round((value.classifiedAndTested / value.total) * 100) : 0,
       }))
-      .sort((left, right) => right.total - left.total)
-      .slice(0, 5);
+      .sort((left, right) => right.total - left.total);
 
     const riskCoverageMatrix = [
       {
@@ -1117,7 +1118,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       riskCoverageMatrix,
       totalVisible,
     };
-  }, [visibleFunctionalities]);
+  }, [testCaseCountByFunctionality, visibleFunctionalities]);
+
+  const visibleModuleCoverage = React.useMemo(() => {
+    if (moduleCoverageFilter.length === 0) {
+      return analytics.moduleCoverage;
+    }
+
+    const selectedModules = new Set(moduleCoverageFilter);
+    return analytics.moduleCoverage.filter(item => selectedModules.has(item.module));
+  }, [analytics.moduleCoverage, moduleCoverageFilter]);
 
   const selectedFunctionalityCasesCount = React.useMemo(
     () =>
@@ -3256,43 +3266,78 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           </Card>
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">
-                Cobertura por módulo top 5
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">Cobertura por módulo</div>
+                <div className="mt-1 text-sm text-slate-500">
+                  Compara cobertura mínima con casos y cobertura QA clasificada por módulo.
+                </div>
               </div>
-              <div className="mt-1 text-sm text-slate-500">
-                Porcentaje total de cobertura QA por módulo dentro de la vista actual.
-              </div>
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="Filtrar módulos"
+                value={moduleCoverageFilter}
+                onChange={values => setModuleCoverageFilter(values)}
+                options={analytics.moduleCoverage.map(item => ({
+                  label: item.module,
+                  value: item.module,
+                }))}
+                className="w-full sm:w-[260px]"
+                maxTagCount="responsive"
+              />
             </div>
-            <div className="space-y-4">
-              {analytics.moduleCoverage.map(item => (
+            <div className="max-h-[440px] space-y-4 overflow-y-auto pr-1">
+              {visibleModuleCoverage.map(item => (
                 <div
                   key={item.module}
                   className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3"
                 >
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium text-slate-700">{item.module}</span>
-                    <span className="text-sm font-semibold text-slate-700">
-                      {item.percent}%
+                    <span className="truncate text-sm font-medium text-slate-700">
+                      {item.module}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {item.total} funcionalidades
+                    </span>
+                  </div>
+                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
+                    <span className="font-semibold text-slate-600">Cobertura con casos</span>
+                    <span className="font-semibold text-slate-700">
+                      {item.testedPercent}% ({item.tested}/{item.total})
                     </span>
                   </div>
                   <div className="h-2.5 rounded-full bg-slate-100">
                     <div
-                      className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
-                      style={{ width: `${item.percent}%` }}
+                      className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
+                      style={{ width: `${item.testedPercent}%` }}
                     />
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
-                    <span>
-                      {item.covered} de {item.total} funcionalidades con cobertura QA
+                  <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
+                    <span className="font-semibold text-slate-600">
+                      Cobertura QA clasificada
                     </span>
-                    <span>Sin cobertura: {item.withoutCoverage}</span>
+                    <span className="font-semibold text-slate-700">
+                      {item.classifiedAndTestedPercent}% ({item.classifiedAndTested}/{item.total})
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-slate-100">
+                    <div
+                      className="h-2.5 rounded-full bg-gradient-to-r from-violet-500 to-emerald-400"
+                      style={{ width: `${item.classifiedAndTestedPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                    <span>
+                      Clasificadas QA: {item.qaCovered} de {item.total}
+                    </span>
+                    <span>Sin casos: {item.withoutCoverage}</span>
                   </div>
                 </div>
               ))}
-              {analytics.moduleCoverage.length === 0 ? (
+              {visibleModuleCoverage.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No hay módulos visibles para resumir ahora mismo.
+                  No hay módulos para el filtro seleccionado.
                 </div>
               ) : null}
             </div>
