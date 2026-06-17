@@ -882,7 +882,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     const { hasAiProviderConfigured, recommendExecutionFunctionalitiesWithAI } =
       await import('../services/geminiService');
 
-    if (!hasAiProviderConfigured()) {
+    if (!(await hasAiProviderConfigured())) {
       setAiSuggestions(fallbackSuggestions);
       setAiSuggestionMode('rules');
       message.warning(
@@ -933,7 +933,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       const msg = (error instanceof Error ? error.message : (error as any)?.message) || '';
       if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
         message.warning(
-          'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar sugerencias con IA.',
+          'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar sugerencias con IA.',
         );
       } else if (msg === 'GEMINI_API_KEY_INVALID' || msg === 'GEMINI_API_KEY_LEAKED') {
         message.error(

@@ -616,9 +616,9 @@ const TechnicalReportAnalysisCard: React.FC<TechnicalAnalysisCardProps> = ({
       return;
     }
 
-    if (!hasAiProviderConfigured()) {
+    if (!(await hasAiProviderConfigured())) {
       message.warning(
-        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
+        'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
       );
       return;
     }
@@ -756,9 +756,9 @@ const QAStatusExecutiveAnalysisCard: React.FC<{
       return;
     }
 
-    if (!hasAiProviderConfigured()) {
+    if (!(await hasAiProviderConfigured())) {
       message.warning(
-        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generacion con IA.',
+        'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
       );
       return;
     }

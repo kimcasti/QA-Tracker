@@ -82,6 +82,18 @@ function toServiceError(error: unknown) {
   throw new Error(apiError.message);
 }
 
+type AiProviderStatus = {
+  configured: boolean;
+  providers?: {
+    gemini?: boolean;
+    groq?: boolean;
+  };
+};
+
+let aiProviderStatusCache: AiProviderStatus | null = null;
+let aiProviderStatusFetchedAt = 0;
+const AI_PROVIDER_STATUS_TTL_MS = 30_000;
+
 async function postAi<T>(path: string, data: Record<string, unknown>) {
   try {
     const response = await Http.post(path, { data });
@@ -96,7 +108,31 @@ async function postAi<T>(path: string, data: Record<string, unknown>) {
   }
 }
 
-export const hasAiProviderConfigured = () => isApiConfigured();
+export async function hasAiProviderConfigured(forceRefresh = false) {
+  if (!isApiConfigured()) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    aiProviderStatusCache &&
+    now - aiProviderStatusFetchedAt < AI_PROVIDER_STATUS_TTL_MS
+  ) {
+    return aiProviderStatusCache.configured;
+  }
+
+  try {
+    const response = await Http.get('/api/ai/provider-status');
+    aiProviderStatusCache = (response.data?.data || { configured: false }) as AiProviderStatus;
+    aiProviderStatusFetchedAt = now;
+    return aiProviderStatusCache.configured;
+  } catch {
+    aiProviderStatusCache = null;
+    aiProviderStatusFetchedAt = 0;
+    return false;
+  }
+}
 
 export async function generateTestCasesWithAI(
   functionalityName: string,

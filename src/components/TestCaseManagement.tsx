@@ -286,7 +286,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
       if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
         message.warning(
-          'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
+          'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
         );
       } else if (isInvalidKey) {
         message.error(
@@ -310,9 +310,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
     const { hasAiProviderConfigured } = await import('../services/geminiService');
 
-    if (!hasAiProviderConfigured()) {
+    if (!(await hasAiProviderConfigured())) {
       message.warning(
-        'Configura VITE_GEMINI_API_KEY o VITE_GROQ_API_KEY en el .env del cliente para usar la generación con IA.',
+        'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
       );
       return;
     }
