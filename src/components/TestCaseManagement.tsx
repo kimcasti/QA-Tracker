@@ -541,23 +541,27 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     {
       title: 'Acciones',
       key: 'actions',
-      width: 220,
+      width: 190,
+      align: 'center' as const,
       render: (_: any, record: TestCase) => (
-        <Space size="middle">
+        <div className="flex flex-nowrap items-center justify-center gap-1">
           {!isViewer ? (
             <>
               <Tooltip title="Mover arriba">
                 <Button
+                  size="small"
                   type="text"
                   icon={<ArrowUpOutlined />}
                   onClick={() => void handleMoveTestCase(record.id, 'up')}
                   disabled={
                     isReordering || visibleTestCases.findIndex(item => item.id === record.id) === 0
                   }
+                  className="!px-1"
                 />
               </Tooltip>
               <Tooltip title="Mover abajo">
                 <Button
+                  size="small"
                   type="text"
                   icon={<ArrowDownOutlined />}
                   onClick={() => void handleMoveTestCase(record.id, 'down')}
@@ -566,14 +570,23 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     visibleTestCases.findIndex(item => item.id === record.id) ===
                       visibleTestCases.length - 1
                   }
+                  className="!px-1"
                 />
               </Tooltip>
-              <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
+              <Button
+                size="small"
+                type="text"
+                icon={<EditOutlined />}
+                onClick={() => showModal(record)}
+                className="!px-1"
+              />
               <Tooltip title="Duplicar caso de prueba">
                 <Button
+                  size="small"
                   type="text"
                   icon={<CopyOutlined />}
                   onClick={() => handleDuplicate(record)}
+                  className="!px-1"
                 />
               </Tooltip>
               <Popconfirm
@@ -582,11 +595,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 okText="Sí"
                 cancelText="No"
               >
-                <Button type="text" danger icon={<DeleteOutlined />} />
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  className="!px-1"
+                />
               </Popconfirm>
             </>
           ) : null}
-        </Space>
+        </div>
       ),
     },
   ];
