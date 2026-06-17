@@ -29,6 +29,7 @@ function mapTestCase(document: TestCaseDto): TestCase {
     testType: testTypeFromApi(document.testType),
     priority: priorityFromApi(document.priority),
     isAutomated: Boolean(document.isAutomated),
+    sortOrder: typeof document.sortOrder === 'number' ? document.sortOrder : undefined,
   };
 }
 
@@ -39,9 +40,20 @@ export async function getTestCases(projectId?: string, functionalityId?: string)
     'populate[functionality][fields][0]': 'code',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     ...(functionalityId ? { 'filters[functionality][code][$eq]': functionalityId } : {}),
+    'sort[0]': 'sortOrder:asc',
+    'sort[1]': 'createdAt:asc',
   });
 
-  return documents.map(mapTestCase);
+  return documents.map((document, index) => {
+    const mapped = mapTestCase(document);
+    return {
+      ...mapped,
+      sortOrder:
+        typeof mapped.sortOrder === 'number' && Number.isFinite(mapped.sortOrder)
+          ? mapped.sortOrder
+          : index,
+    };
+  });
 }
 
 export async function saveTestCase(testCase: TestCase) {
@@ -64,6 +76,10 @@ export async function saveTestCase(testCase: TestCase) {
     testType: testTypeToApi(testCase.testType),
     priority: priorityToApi(testCase.priority),
     isAutomated: Boolean(testCase.isAutomated),
+    sortOrder:
+      typeof testCase.sortOrder === 'number' && Number.isFinite(testCase.sortOrder)
+        ? testCase.sortOrder
+        : 0,
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
     functionality: relation(functionality?.documentId || functionality?.id),

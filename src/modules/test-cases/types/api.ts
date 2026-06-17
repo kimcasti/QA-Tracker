@@ -8,6 +8,7 @@ export interface TestCaseDto {
   testType?: string;
   priority?: string;
   isAutomated?: boolean;
+  sortOrder?: number;
   project?: {
     documentId: string;
     key: string;

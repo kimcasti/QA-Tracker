@@ -218,6 +218,7 @@ export interface TestCase {
   testType: TestType;
   priority: Priority;
   isAutomated?: boolean;
+  sortOrder?: number;
 }
 
 export interface TestCaseTemplate {

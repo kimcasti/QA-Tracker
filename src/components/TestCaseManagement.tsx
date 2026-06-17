@@ -23,6 +23,9 @@ import {
   FileTextOutlined,
   ThunderboltOutlined,
   CopyOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  HolderOutlined,
 } from '@ant-design/icons';
 import { TestCase, Priority, TestType } from '../types';
 import { useTranslation } from 'react-i18next';
@@ -85,6 +88,41 @@ function buildDuplicatedTestCaseTitle(title: string, existingTitles: string[]) {
   return `${title} (copia ${copyIndex})`;
 }
 
+function getStableSortOrder(testCase: Pick<TestCase, 'sortOrder'>, fallback = 0) {
+  return typeof testCase.sortOrder === 'number' && Number.isFinite(testCase.sortOrder)
+    ? testCase.sortOrder
+    : fallback;
+}
+
+function normalizeTestCaseOrder(testCases: TestCase[]) {
+  return testCases.map((testCase, index) => ({
+    ...testCase,
+    sortOrder: index,
+  }));
+}
+
+function moveTestCase(testCases: TestCase[], fromIndex: number, toIndex: number) {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= testCases.length ||
+    toIndex >= testCases.length ||
+    fromIndex === toIndex
+  ) {
+    return testCases;
+  }
+
+  const reordered = [...testCases];
+  const [movedTestCase] = reordered.splice(fromIndex, 1);
+
+  if (!movedTestCase) {
+    return testCases;
+  }
+
+  reordered.splice(toIndex, 0, movedTestCase);
+  return normalizeTestCaseOrder(reordered);
+}
+
 interface TestCaseManagementProps {
   projectId: string;
   functionalityId: string;
@@ -115,6 +153,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const [draggedTestCaseId, setDraggedTestCaseId] = useState<string | null>(null);
+  const [dragOverTestCaseId, setDragOverTestCaseId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
   const [generatedForFunctionalityId, setGeneratedForFunctionalityId] = useState<string | null>(
     null,
   );
@@ -123,7 +166,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const hasGeneratedCasesForCurrentFunctionality =
     generatedForFunctionalityId === functionalityId && (testCases?.length ?? 0) > 0;
   const isGenerateAiDisabled = isGenerating || hasGeneratedCasesForCurrentFunctionality;
-  const visibleTestCases = Array.isArray(testCases) ? testCases : [];
+  const visibleTestCases = Array.isArray(testCases)
+    ? [...testCases].sort(
+        (left, right) => getStableSortOrder(left) - getStableSortOrder(right),
+      )
+    : [];
   const loadErrorMessage = isError ? toApiError(error).message : '';
   const generateAiButtonLabel = isGenerating
     ? 'Generando con IA...'
@@ -152,6 +199,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
   const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
   const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
+  const pageStartIndex = (currentPage - 1) * pageSize;
   const aiUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
     organizationName: activeMembership?.organization?.name,
     currentCount: projectUsageCount,
@@ -204,12 +252,14 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     try {
       const { generateTestCasesWithAI } = await import('../services/geminiService');
       const generated = await generateTestCasesWithAI(functionalityName, moduleName, projectId);
-      const generatedTestCases: TestCase[] = generated.map(tc => ({
+      const nextSortOrder = visibleTestCases.length;
+      const generatedTestCases: TestCase[] = generated.map((tc, index) => ({
         ...tc,
         id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         projectId,
         functionalityId,
         isAutomated: false,
+        sortOrder: nextSortOrder + index,
       }));
 
       await saveManyWithSingleRefresh(generatedTestCases);
@@ -303,11 +353,16 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const onFinish = (values: any) => {
+    const nextSortOrder =
+      visibleTestCases.length > 0
+        ? Math.max(...visibleTestCases.map(testCase => getStableSortOrder(testCase))) + 1
+        : 0;
     const newTestCase: TestCase = {
       ...values,
       id: editingTestCase?.id || `TC-${Date.now()}`,
       projectId,
       functionalityId,
+      sortOrder: editingTestCase?.sortOrder ?? nextSortOrder,
     };
 
     save(newTestCase, {
@@ -334,6 +389,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const handleDuplicate = (testCase: TestCase) => {
+    const nextSortOrder =
+      visibleTestCases.length > 0
+        ? Math.max(...visibleTestCases.map(item => getStableSortOrder(item))) + 1
+        : 0;
     const duplicatedTestCase: TestCase = {
       ...testCase,
       documentId: undefined,
@@ -342,6 +401,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         testCase.title,
         visibleTestCases.map(item => item.title),
       ),
+      sortOrder: nextSortOrder,
     };
 
     save(duplicatedTestCase, {
@@ -354,7 +414,91 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     });
   };
 
+  const handlePersistReorder = async (reorderedTestCases: TestCase[]) => {
+    setIsReordering(true);
+    try {
+      await saveManyWithSingleRefresh(reorderedTestCases);
+      message.success('Orden de casos de prueba actualizado');
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos actualizar el orden de los casos de prueba.',
+      );
+    } finally {
+      setIsReordering(false);
+      setDraggedTestCaseId(null);
+      setDragOverTestCaseId(null);
+    }
+  };
+
+  const handleMoveTestCase = async (testCaseId: string, direction: 'up' | 'down') => {
+    const currentIndex = visibleTestCases.findIndex(testCase => testCase.id === testCaseId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= visibleTestCases.length) {
+      return;
+    }
+
+    const reorderedTestCases = moveTestCase(visibleTestCases, currentIndex, targetIndex);
+    await handlePersistReorder(reorderedTestCases);
+  };
+
+  const handleDragStart = (testCaseId: string) => {
+    if (isViewer || isReordering) {
+      return;
+    }
+
+    setDraggedTestCaseId(testCaseId);
+    setDragOverTestCaseId(testCaseId);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTestCaseId(null);
+    setDragOverTestCaseId(null);
+  };
+
+  const handleDropOnRow = async (targetTestCaseId: string) => {
+    if (!draggedTestCaseId || draggedTestCaseId === targetTestCaseId) {
+      handleDragEnd();
+      return;
+    }
+
+    const fromIndex = visibleTestCases.findIndex(testCase => testCase.id === draggedTestCaseId);
+    const toIndex = visibleTestCases.findIndex(testCase => testCase.id === targetTestCaseId);
+
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+      handleDragEnd();
+      return;
+    }
+
+    const reorderedTestCases = moveTestCase(visibleTestCases, fromIndex, toIndex);
+    await handlePersistReorder(reorderedTestCases);
+  };
+
   const columns = [
+    {
+      title: '',
+      key: 'drag',
+      width: 52,
+      align: 'center' as const,
+      render: () =>
+        !isViewer ? (
+          <Tooltip title="Arrastra para reordenar">
+            <span
+              className={`qa-test-case-drag-handle${
+                isReordering ? ' qa-test-case-drag-handle--disabled' : ''
+              }`}
+            >
+              <HolderOutlined />
+            </span>
+          </Tooltip>
+        ) : null,
+    },
     {
       title: 'Título',
       dataIndex: 'title',
@@ -397,11 +541,33 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     {
       title: 'Acciones',
       key: 'actions',
-      width: 150,
+      width: 220,
       render: (_: any, record: TestCase) => (
         <Space size="middle">
           {!isViewer ? (
             <>
+              <Tooltip title="Mover arriba">
+                <Button
+                  type="text"
+                  icon={<ArrowUpOutlined />}
+                  onClick={() => void handleMoveTestCase(record.id, 'up')}
+                  disabled={
+                    isReordering || visibleTestCases.findIndex(item => item.id === record.id) === 0
+                  }
+                />
+              </Tooltip>
+              <Tooltip title="Mover abajo">
+                <Button
+                  type="text"
+                  icon={<ArrowDownOutlined />}
+                  onClick={() => void handleMoveTestCase(record.id, 'down')}
+                  disabled={
+                    isReordering ||
+                    visibleTestCases.findIndex(item => item.id === record.id) ===
+                      visibleTestCases.length - 1
+                  }
+                />
+              </Tooltip>
               <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
               <Tooltip title="Duplicar caso de prueba">
                 <Button
@@ -522,14 +688,71 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       ) : null}
 
       <Table
-        className="mt-2"
+        className="mt-2 qa-test-case-table"
         columns={columns}
         dataSource={visibleTestCases}
         rowKey="id"
-        loading={isLoading || (isFetching && visibleTestCases.length === 0)}
+        loading={isLoading || isReordering || (isFetching && visibleTestCases.length === 0)}
         pagination={{
-          pageSize: 5,
+          current: currentPage,
+          pageSize,
           showTotal: total => `${total} caso${total === 1 ? '' : 's'}`,
+          onChange: (page, nextPageSize) => {
+            setCurrentPage(page);
+            if (typeof nextPageSize === 'number' && nextPageSize !== pageSize) {
+              setPageSize(nextPageSize);
+            }
+          },
+        }}
+        onRow={(record, index) => {
+          const globalIndex = pageStartIndex + (index ?? 0);
+          const rowPositionLabel = globalIndex + 1;
+          const isDraggedRow = draggedTestCaseId === record.id;
+          const isDragOverRow = dragOverTestCaseId === record.id && draggedTestCaseId !== record.id;
+
+          return {
+            draggable: !isViewer && !isReordering,
+            onDragStart: event => {
+              const target = event.target as HTMLElement | null;
+              if (!target?.closest('.qa-test-case-drag-handle')) {
+                event.preventDefault();
+                return;
+              }
+
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', record.id);
+              handleDragStart(record.id);
+            },
+            onDragEnter: event => {
+              event.preventDefault();
+              if (!isViewer && draggedTestCaseId && draggedTestCaseId !== record.id) {
+                setDragOverTestCaseId(record.id);
+              }
+            },
+            onDragOver: event => {
+              if (!isViewer && draggedTestCaseId) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }
+            },
+            onDrop: async event => {
+              event.preventDefault();
+              await handleDropOnRow(record.id);
+            },
+            onDragEnd: () => {
+              handleDragEnd();
+            },
+            className: [
+              !isViewer ? 'qa-test-case-table__draggable-row' : '',
+              isDraggedRow ? 'qa-test-case-table__draggable-row--dragging' : '',
+              isDragOverRow ? 'qa-test-case-table__draggable-row--over' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'aria-label': !isViewer
+              ? `Caso de prueba ${rowPositionLabel}. Arrastra para cambiar su posición.`
+              : undefined,
+          };
         }}
         locale={{
           emptyText: isError
