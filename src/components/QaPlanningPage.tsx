@@ -985,14 +985,35 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     const moduleCoverage = Array.from(
       visibleFunctionalities.reduce((acc, item) => {
         const key = item.module || 'N/A';
-        const current = acc.get(key) || { module: key, total: 0, covered: 0 };
+        const current = acc.get(key) || {
+          module: key,
+          total: 0,
+          covered: 0,
+          core: 0,
+          regression: 0,
+          smoke: 0,
+          withoutCoverage: 0,
+        };
         current.total += 1;
-        if (item.isCore || item.isRegression || item.isSmoke) {
-          current.covered += 1;
-        }
+        if (item.isCore) current.core += 1;
+        if (item.isRegression) current.regression += 1;
+        if (item.isSmoke) current.smoke += 1;
+        if (item.isCore || item.isRegression || item.isSmoke) current.covered += 1;
+        if (!item.isCore && !item.isRegression && !item.isSmoke) current.withoutCoverage += 1;
         acc.set(key, current);
         return acc;
-      }, new Map<string, { module: string; total: number; covered: number }>()),
+      }, new Map<
+        string,
+        {
+          module: string;
+          total: number;
+          covered: number;
+          core: number;
+          regression: number;
+          smoke: number;
+          withoutCoverage: number;
+        }
+      >()),
     )
       .map(([, value]) => ({
         ...value,
@@ -3236,27 +3257,42 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           <Card className="rounded-2xl border-slate-100 shadow-sm">
             <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">Cobertura por módulo top 5</div>
+              <div className="text-sm font-semibold text-slate-800">
+                Cobertura por módulo top 5
+              </div>
               <div className="mt-1 text-sm text-slate-500">
-                Módulos con mayor volumen dentro de la vista actual.
+                Desglose de cobertura QA por módulo dentro de la vista actual.
               </div>
             </div>
             <div className="space-y-4">
               {analytics.moduleCoverage.map(item => (
-                <div key={item.module}>
-                  <div className="mb-1 flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium text-slate-700">
-                      {item.module}
-                    </span>
+                <div
+                  key={item.module}
+                  className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-medium text-slate-700">{item.module}</span>
                     <span className="text-xs font-semibold text-slate-500">
-                      {item.percent}% ({item.covered}/{item.total})
+                      {item.total} funcionalidades
                     </span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-slate-100">
-                    <div
-                      className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
-                      style={{ width: `${item.percent}%` }}
-                    />
+                  <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                      <span className="h-2 w-2 rounded-full bg-sky-500" />
+                      Core: {item.core}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                      <span className="h-2 w-2 rounded-full bg-violet-500" />
+                      Regresión: {item.regression}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-700">
+                      <span className="h-2 w-2 rounded-full bg-orange-500" />
+                      Smoke: {item.smoke}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      <span className="h-2 w-2 rounded-full bg-slate-400" />
+                      Sin cobertura: {item.withoutCoverage}
+                    </span>
                   </div>
                 </div>
               ))}
