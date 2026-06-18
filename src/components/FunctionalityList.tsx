@@ -1408,7 +1408,9 @@ function createFunctionalityColumns({
                   size="small"
                   disabled={
                     isReordering ||
-                    orderedVisibleFunctionalities.findIndex(item => item.id === record.id) === 0
+                    orderedVisibleFunctionalities.filter(item => item.module === record.module).findIndex(
+                      item => item.id === record.id,
+                    ) === 0
                   }
                   className="rounded-full"
                 />
@@ -1420,8 +1422,12 @@ function createFunctionalityColumns({
                   size="small"
                   disabled={
                     isReordering ||
-                    orderedVisibleFunctionalities.findIndex(item => item.id === record.id) ===
-                      orderedVisibleFunctionalities.length - 1
+                    orderedVisibleFunctionalities.filter(item => item.module === record.module).findIndex(
+                      item => item.id === record.id,
+                    ) ===
+                      orderedVisibleFunctionalities.filter(item => item.module === record.module)
+                        .length -
+                        1
                   }
                   className="rounded-full"
                 />
@@ -1486,10 +1492,22 @@ export default function FunctionalityList({
 
   const orderedFunctionalities = React.useMemo(
     () =>
-      [...functionalities].sort(
-        (left, right) =>
-          getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right),
-      ),
+      [...functionalities].sort((left, right) => {
+        const moduleCompare = String(left?.module || '').localeCompare(String(right?.module || ''));
+
+        if (moduleCompare !== 0) {
+          return moduleCompare;
+        }
+
+        const sortOrderCompare =
+          getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right);
+
+        if (sortOrderCompare !== 0) {
+          return sortOrderCompare;
+        }
+
+        return String(left?.id || '').localeCompare(String(right?.id || ''));
+      }),
     [functionalities],
   );
 
@@ -1765,19 +1783,28 @@ export default function FunctionalityList({
   };
 
   const handleMoveFunctionality = async (functionalityId: string, direction: 'up' | 'down') => {
-    const currentIndex = filteredFunctionalities.findIndex(item => item.id === functionalityId);
+    const selectedFunctionality = filteredFunctionalities.find(item => item.id === functionalityId);
+
+    if (!selectedFunctionality) {
+      return;
+    }
+
+    const visibleModuleFunctionalities = filteredFunctionalities.filter(
+      item => item.module === selectedFunctionality.module,
+    );
+    const currentIndex = visibleModuleFunctionalities.findIndex(item => item.id === functionalityId);
 
     if (currentIndex === -1) {
       return;
     }
 
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= filteredFunctionalities.length) {
+    if (targetIndex < 0 || targetIndex >= visibleModuleFunctionalities.length) {
       return;
     }
 
     const reorderedVisibleFunctionalities = moveFunctionality(
-      filteredFunctionalities,
+      visibleModuleFunctionalities,
       currentIndex,
       targetIndex,
     );
