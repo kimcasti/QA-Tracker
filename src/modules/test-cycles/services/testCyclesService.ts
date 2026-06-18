@@ -1,7 +1,10 @@
 import { Http } from '../../../config/http';
 import {
+  AutomationStatus,
   ExecutionMode,
   TestResult,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
   type RegressionCycle,
   type RegressionExecution,
 } from '../../../types';
@@ -67,6 +70,20 @@ function findSprintByValue(
 }
 
 function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
+  const automationStatus = deriveAutomationStatus({
+    automationStatus:
+      document.testCase?.automationStatus === 'candidate'
+        ? AutomationStatus.CANDIDATE
+        : document.testCase?.automationStatus === 'automated'
+          ? AutomationStatus.AUTOMATED
+          : document.testCase?.automationStatus === 'obsolete'
+            ? AutomationStatus.OBSOLETE
+            : document.testCase?.automationStatus === 'not_automated'
+              ? AutomationStatus.NOT_AUTOMATED
+              : undefined,
+    isAutomated: document.testCase?.isAutomated,
+  });
+
   return {
     id: document.documentId,
     functionalityId: document.functionality?.code || '',
@@ -76,7 +93,7 @@ function mapExecution(document: TestCycleExecutionDto): RegressionExecution {
     testCaseTitle: document.testCase?.title || document.testCaseTitle,
     executionMode:
       executionModeFromApi(document.executionMode) ||
-      (document.testCase?.isAutomated ? ExecutionMode.AUTOMATED : ExecutionMode.MANUAL),
+      (isAutomatedCoverageStatus(automationStatus) ? ExecutionMode.AUTOMATED : ExecutionMode.MANUAL),
     executed: Boolean(document.executed),
     date: document.date,
     result: testResultFromApi(document.result),

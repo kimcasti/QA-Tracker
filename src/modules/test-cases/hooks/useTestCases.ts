@@ -19,6 +19,7 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
       invalidateWorkspaceCache();
       await queryClient.invalidateQueries({ queryKey: ['workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey });
       await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
       await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
@@ -30,6 +31,7 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
       invalidateWorkspaceCache();
       await queryClient.invalidateQueries({ queryKey: ['workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey });
       await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
       await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },
@@ -43,6 +45,7 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
     delete: deleteMutation.mutate,
     invalidate: async () => {
       await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey });
     },
     saveManyWithSingleRefresh: async (testCases: TestCase[]) => {
       for (const testCase of testCases) {
@@ -52,6 +55,7 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
       invalidateWorkspaceCache();
       await queryClient.invalidateQueries({ queryKey: ['workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+      await queryClient.invalidateQueries({ queryKey });
       await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] });
       await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
     },

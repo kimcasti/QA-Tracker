@@ -164,6 +164,20 @@ const TEST_TYPE_DEFAULTS: Partial<
     exitCriteria: ['all-executed', 'no-critical-bugs'],
     helperText: 'Ideal para una validaciÃ³n rÃ¡pida despuÃ©s de cambios sensibles o despliegues.',
   },
+  [TestType.REGRESSION]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['high-regression-risk', 'api-changes', 'database-changes'],
+    exitCriteria: ['all-executed', 'no-critical-bugs', 'no-active-blockers', 'pass-rate-90'],
+    helperText:
+      'Pensada para validar funcionalidades marcadas para regresion y proteger flujos sensibles del producto.',
+  },
+  [TestType.SMOKE]: {
+    environment: Environment.TEST,
+    identifiedRisks: ['high-regression-risk', 'external-integrations'],
+    exitCriteria: ['all-executed', 'no-critical-bugs'],
+    helperText:
+      'Enfocada en una validacion rapida de funcionalidades clave antes de avanzar con mas detalle.',
+  },
   [TestType.EXPLORATORY]: {
     environment: Environment.TEST,
     identifiedRisks: ['ui-ux-changes', 'other'],
@@ -301,6 +315,40 @@ function publicUatStatusColor(status?: PublicUatSessionSummary['status'] | null)
   }
 }
 
+function matchesFunctionalityToExecutionType(
+  functionality: Functionality,
+  selectedTestType?: TestType,
+) {
+  if (!selectedTestType) return true;
+
+  switch (selectedTestType) {
+    case TestType.REGRESSION:
+      return Boolean(functionality.isRegression);
+    case TestType.SMOKE:
+      return Boolean(functionality.isSmoke);
+    case TestType.SANITY:
+      return Boolean(functionality.isCore);
+    case TestType.UAT:
+      return Boolean(
+        functionality.isCore ||
+          functionality.priority === Priority.HIGH ||
+          functionality.priority === Priority.CRITICAL,
+      );
+    case TestType.EXPLORATORY: {
+      const hasHighPriority =
+        functionality.priority === Priority.HIGH || functionality.priority === Priority.CRITICAL;
+      const hasHighRisk = functionality.riskLevel === RiskLevel.HIGH;
+      return Boolean(
+        functionality.lastFunctionalChangeAt || hasHighPriority || hasHighRisk,
+      );
+    }
+    case TestType.INTEGRATION:
+    case TestType.FUNCTIONAL:
+    default:
+      return true;
+  }
+}
+
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -413,6 +461,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedFuncIds, setSelectedFuncIds] = useState<string[]>([]);
+  const [selectedExecutionType, setSelectedExecutionType] = useState<TestType>(
+    TestType.FUNCTIONAL,
+  );
   const [aiSuggestions, setAiSuggestions] = useState<AiExecutionSuggestion[]>([]);
   const [isSuggestingAi, setIsSuggestingAi] = useState(false);
   const [aiSuggestionMode, setAiSuggestionMode] = useState<'ai' | 'rules' | null>(null);
@@ -467,17 +518,39 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return functionalities.filter(func => functionalityIdsWithTestCases.has(func.id));
   }, [functionalities, functionalityIdsWithTestCases]);
 
+  const completedFunctionalities = useMemo(() => {
+    return functionalities.filter(func => func.status === TestStatus.COMPLETED);
+  }, [functionalities]);
+
   const completedFunctionalitiesWithTestCases = useMemo(() => {
     return functionalitiesWithTestCases.filter(func => func.status === TestStatus.COMPLETED);
   }, [functionalitiesWithTestCases]);
 
-  const moduleOptions = useMemo(() => {
-    const validModules = new Set(completedFunctionalitiesWithTestCases.map(func => func.module));
+  const watchedTestType = Form.useWatch('testType', form) as TestType | undefined;
+  const selectedTestType = watchedTestType || selectedExecutionType;
 
-    return modulesData
-      .filter(module => validModules.has(module.name))
+  const scopeFunctionalities = useMemo(() => {
+    return completedFunctionalities.filter(func =>
+      matchesFunctionalityToExecutionType(func, selectedTestType),
+    );
+  }, [completedFunctionalities, selectedTestType]);
+
+  const moduleOptions = useMemo(() => {
+    const validModules = Array.from(
+      new Set(scopeFunctionalities.map(func => func.module).filter(Boolean)),
+    );
+
+    const configuredModules = modulesData
+      .filter(module => validModules.includes(module.name))
       .map(module => ({ label: module.name, value: module.name }));
-  }, [completedFunctionalitiesWithTestCases, modulesData]);
+
+    const configuredModuleNames = new Set(configuredModules.map(module => module.value));
+    const fallbackModules = validModules
+      .filter(moduleName => !configuredModuleNames.has(moduleName))
+      .map(moduleName => ({ label: moduleName, value: moduleName }));
+
+    return [...configuredModules, ...fallbackModules];
+  }, [modulesData, scopeFunctionalities]);
 
   const openEvidenceModal = (record: TestRunResult) => {
     setOriginalEvidenceRecord({ ...record });
@@ -608,10 +681,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const availableFunctionalities = useMemo(() => {
-    return completedFunctionalitiesWithTestCases.filter(f => selectedModules.includes(f.module));
-  }, [selectedModules, completedFunctionalitiesWithTestCases]);
-
-  const selectedTestType = Form.useWatch('testType', form) as TestType | undefined;
+    return scopeFunctionalities.filter(f => selectedModules.includes(f.module));
+  }, [scopeFunctionalities, selectedModules]);
   const watchedTitle = Form.useWatch('title', form) as string | undefined;
   const watchedSprint = Form.useWatch('sprint', form) as string | undefined;
   const watchedPriority = Form.useWatch('priority', form) as Priority | undefined;
@@ -712,6 +783,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           score += 2;
           reasons.push('podría impactar integraciones relacionadas');
         }
+        if (selectedTestType === TestType.REGRESSION && func.isRegression) {
+          score += 3;
+          reasons.push('esta marcada para regresion');
+        }
+        if (selectedTestType === TestType.SMOKE && func.isSmoke) {
+          score += 3;
+          reasons.push('esta marcada para smoke');
+        }
         if (
           selectedTestType === TestType.EXPLORATORY &&
           (recentChange || hasHighRisk || hasHighPriority)
@@ -758,6 +837,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return groups;
   }, [availableFunctionalities]);
 
+  const selectableFunctionalityIds = useMemo(() => {
+    return new Set(completedFunctionalitiesWithTestCases.map(func => func.id));
+  }, [completedFunctionalitiesWithTestCases]);
+
   const selectedTestCaseCount = useMemo(
     () =>
       selectedFuncIds.reduce(
@@ -766,6 +849,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
     [selectedFuncIds, testCaseCountByFunctionality],
   );
+
+  const availableExecutableFunctionalities = useMemo(() => {
+    return availableFunctionalities.filter(func => selectableFunctionalityIds.has(func.id));
+  }, [availableFunctionalities, selectableFunctionalityIds]);
+
+  const unavailableFunctionalitiesCount =
+    availableFunctionalities.length - availableExecutableFunctionalities.length;
+
+  const shouldShowScopeCoverageNotice =
+    (selectedTestType === TestType.SMOKE || selectedTestType === TestType.REGRESSION) &&
+    selectedModules.length > 0 &&
+    availableFunctionalities.length > 0 &&
+    unavailableFunctionalitiesCount > 0;
 
   const executionPlanningSteps = useMemo(() => {
     const generalComplete = Boolean(
@@ -817,10 +913,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   ]);
 
   const executionTestTypeOptions = useMemo(
-    () =>
-      Object.values(TestType)
-        .filter(type => type !== TestType.REGRESSION && type !== TestType.SMOKE)
-        .map(type => ({ label: type, value: type })),
+    () => Object.values(TestType).map(type => ({ label: type, value: type })),
     [],
   );
 
@@ -830,9 +923,23 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   useEffect(() => {
     // Auto-select all functionalities when modules change
-    const newIds = availableFunctionalities.map(f => f.id);
+    const newIds = availableFunctionalities
+      .filter(f => selectableFunctionalityIds.has(f.id))
+      .map(f => f.id);
     setSelectedFuncIds(newIds);
-  }, [availableFunctionalities]);
+  }, [availableFunctionalities, selectableFunctionalityIds]);
+
+  useEffect(() => {
+    setSelectedModules(prev =>
+      prev.filter(moduleName => moduleOptions.some(option => option.value === moduleName)),
+    );
+  }, [moduleOptions]);
+
+  useEffect(() => {
+    if (watchedTestType && watchedTestType !== selectedExecutionType) {
+      setSelectedExecutionType(watchedTestType);
+    }
+  }, [selectedExecutionType, watchedTestType]);
 
   useEffect(() => {
     setAiSuggestions([]);
@@ -1094,6 +1201,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const openCreateTestRunModal = () => {
     setIsEditingRunInfo(false);
     form.resetFields();
+    setSelectedExecutionType(TestType.FUNCTIONAL);
     form.setFieldsValue({
       executionDate: dayjs(),
       testType: TestType.FUNCTIONAL,
@@ -1111,6 +1219,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     if (!activeTestRun) return;
 
     setIsEditingRunInfo(true);
+    setSelectedExecutionType(activeTestRun.testType);
     form.setFieldsValue({
       title: activeTestRun.title,
       description: activeTestRun.description || '',
@@ -1138,7 +1247,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const handleCreateTestRun = async () => {
     try {
       const values = await form.validateFields();
-      if (selectedFuncIds.length === 0) {
+      if (selectedFuncIds.length === 0 || selectedTestCaseCount === 0) {
         message.error('Selecciona al menos una funcionalidad con casos de prueba registrados.');
         return;
       }
@@ -1454,6 +1563,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     <Form
       form={form}
       layout="vertical"
+      onValuesChange={changedValues => {
+        if (changedValues.testType) {
+          setSelectedExecutionType(changedValues.testType as TestType);
+        }
+      }}
       initialValues={{
         executionDate: dayjs(),
         testType: TestType.FUNCTIONAL,
@@ -1684,7 +1798,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   <Button
                     size="small"
                     type="link"
-                    onClick={() => setSelectedFuncIds(availableFunctionalities.map(f => f.id))}
+                    onClick={() =>
+                      setSelectedFuncIds(availableExecutableFunctionalities.map(f => f.id))
+                    }
                     className="text-[11px] p-0"
                   >
                     Seleccionar todas
@@ -1726,11 +1842,33 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 onContactEnterprise={() => handleEnterpriseClick()}
               />
 
+              {shouldShowScopeCoverageNotice ? (
+                <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="font-semibold">Cobertura parcial del alcance seleccionado</div>
+                  <div className="mt-1 text-amber-800">
+                    {availableExecutableFunctionalities.length} funcionalidades ya tienen casos de
+                    prueba y {unavailableFunctionalitiesCount} aún no.
+                  </div>
+                  <div className="mt-1 text-xs text-amber-700">
+                    Las funcionalidades sin casos siguen visibles como referencia, pero no se pueden
+                    seleccionar hasta que tengan casos de prueba registrados.
+                  </div>
+                </div>
+              ) : null}
+
               <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
                   const moduleFuncIds = funcs.map(f => f.id);
+                  const executableFuncIds = funcs
+                    .filter(item => selectableFunctionalityIds.has(item.id))
+                    .map(item => item.id);
                   const selectedInModule = selectedFuncIds.filter(id => moduleFuncIds.includes(id));
-                  const isAllSelected = selectedInModule.length === moduleFuncIds.length;
+                  const selectedExecutableInModule = selectedFuncIds.filter(id =>
+                    executableFuncIds.includes(id),
+                  );
+                  const isAllSelected =
+                    executableFuncIds.length > 0 &&
+                    selectedExecutableInModule.length === executableFuncIds.length;
 
                   return (
                     <div
@@ -1740,26 +1878,27 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-2">
                         <Space>
                           <Checkbox
+                            disabled={executableFuncIds.length === 0}
                             indeterminate={
-                              selectedInModule.length > 0 &&
-                              selectedInModule.length < moduleFuncIds.length
+                              selectedExecutableInModule.length > 0 &&
+                              selectedExecutableInModule.length < executableFuncIds.length
                             }
                             checked={isAllSelected}
                             onChange={e => {
                               if (e.target.checked) {
                                 setSelectedFuncIds(prev =>
-                                  Array.from(new Set([...prev, ...moduleFuncIds])),
+                                  Array.from(new Set([...prev, ...executableFuncIds])),
                                 );
                               } else {
                                 setSelectedFuncIds(prev =>
-                                  prev.filter(id => !moduleFuncIds.includes(id)),
+                                  prev.filter(id => !executableFuncIds.includes(id)),
                                 );
                               }
                             }}
                           />
                           <span className="text-sm font-bold text-slate-700">{moduleName}</span>
                           <Tag className="m-0 rounded-full border-none bg-slate-100 text-[10px] text-slate-500">
-                            {selectedInModule.length} / {moduleFuncIds.length}
+                            {selectedExecutableInModule.length} / {executableFuncIds.length} ejecutables
                           </Tag>
                         </Space>
                       </div>
@@ -1771,38 +1910,50 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                             const nextModuleValues = vals as string[];
                             setSelectedFuncIds(prev => {
                               const withoutCurrentModule = prev.filter(
-                                id => !moduleFuncIds.includes(id),
+                                id => !executableFuncIds.includes(id),
                               );
                               return [...withoutCurrentModule, ...nextModuleValues];
                             });
                           }}
                         >
                           <Row gutter={[12, 12]}>
-                            {funcs.map(item => (
-                              <Col span={12} key={item.id}>
-                                <div
-                                  className={`rounded-lg border p-2 transition-all ${
-                                    selectedFuncIds.includes(item.id)
-                                      ? 'border-blue-200 bg-blue-50'
-                                      : 'border-slate-200 bg-white'
-                                  }`}
-                                >
-                                  <Checkbox value={item.id} className="w-full">
-                                    <div className="ml-1 flex flex-col">
-                                      <span className="text-xs font-bold leading-tight text-slate-800">
-                                        {item.id}
-                                      </span>
-                                      <span
-                                        className="max-w-[200px] truncate text-[11px] text-slate-500"
-                                        title={item.name}
-                                      >
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                  </Checkbox>
-                                </div>
-                              </Col>
-                            ))}
+                            {funcs.map(item => {
+                              const isExecutable = selectableFunctionalityIds.has(item.id);
+                              const testCaseCount = testCaseCountByFunctionality.get(item.id) || 0;
+
+                              return (
+                                <Col span={12} key={item.id}>
+                                  <div
+                                    className={`rounded-lg border p-2 transition-all ${
+                                      selectedFuncIds.includes(item.id)
+                                        ? 'border-blue-200 bg-blue-50'
+                                        : isExecutable
+                                          ? 'border-slate-200 bg-white'
+                                          : 'border-slate-200 bg-slate-100'
+                                    }`}
+                                  >
+                                    <Checkbox value={item.id} className="w-full" disabled={!isExecutable}>
+                                      <div className="ml-1 flex flex-col">
+                                        <span className="text-xs font-bold leading-tight text-slate-800">
+                                          {item.id}
+                                        </span>
+                                        <span
+                                          className="max-w-[200px] truncate text-[11px] text-slate-500"
+                                          title={item.name}
+                                        >
+                                          {item.name}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                          {isExecutable
+                                            ? `${testCaseCount} caso${testCaseCount === 1 ? '' : 's'} disponible${testCaseCount === 1 ? '' : 's'}`
+                                            : 'Sin casos de prueba registrados'}
+                                        </span>
+                                      </div>
+                                    </Checkbox>
+                                  </div>
+                                </Col>
+                              );
+                            })}
                           </Row>
                         </Checkbox.Group>
                       </div>
@@ -1811,7 +1962,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 })}
                 {Object.keys(groupedFunctionalities).length === 0 && (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    No hay funcionalidades con casos de prueba registrados en los módulos seleccionados.
+                    No hay funcionalidades compatibles con el tipo de prueba en los módulos seleccionados.
                   </div>
                 )}
               </div>

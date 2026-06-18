@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import {
   Table,
   Button,
@@ -26,8 +26,19 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   HolderOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
-import { TestCase, Priority, TestType } from '../types';
+import {
+  AutomationResultStatus,
+  AutomationStatus,
+  AutomationTool,
+  AutomationType,
+  Priority,
+  TestCase,
+  TestType,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
+} from '../types';
 import { useTranslation } from 'react-i18next';
 import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
@@ -47,6 +58,45 @@ import {
 const { TextArea } = Input;
 const { Text } = Typography;
 const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
+const automationStatusOptions = Object.values(AutomationStatus);
+const automationTypeOptions = Object.values(AutomationType);
+const automationToolOptions = Object.values(AutomationTool);
+const automationResultStatusOptions = Object.values(AutomationResultStatus);
+const automationFilterOptions = [
+  { label: 'Todos', value: 'all' },
+  { label: 'Automatizadas', value: 'automated' },
+  { label: 'Candidatas', value: 'candidate' },
+  { label: 'Obsoletas', value: 'obsolete' },
+  { label: 'Manuales', value: 'manual' },
+] as const;
+
+function getAutomationStatusColor(status?: AutomationStatus) {
+  switch (status) {
+    case AutomationStatus.AUTOMATED:
+      return 'green';
+    case AutomationStatus.CANDIDATE:
+      return 'gold';
+    case AutomationStatus.OBSOLETE:
+      return 'red';
+    case AutomationStatus.NOT_AUTOMATED:
+    default:
+      return 'default';
+  }
+}
+
+function getAutomationResultColor(status?: AutomationResultStatus) {
+  switch (status) {
+    case AutomationResultStatus.PASSED:
+      return 'green';
+    case AutomationResultStatus.FAILED:
+      return 'red';
+    case AutomationResultStatus.SKIPPED:
+      return 'gold';
+    case AutomationResultStatus.UNKNOWN:
+    default:
+      return 'default';
+  }
+}
 
 function BasicRichTextEditorField(props: React.ComponentProps<typeof BasicRichTextEditor>) {
   return (
@@ -162,15 +212,96 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     null,
   );
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
+  const [automationFilter, setAutomationFilter] =
+    useState<(typeof automationFilterOptions)[number]['value']>('all');
+  const [automationResultFilter, setAutomationResultFilter] = useState<
+    AutomationResultStatus | 'all'
+  >('all');
+  const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
   const [form] = Form.useForm();
+  const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
   const hasGeneratedCasesForCurrentFunctionality =
     generatedForFunctionalityId === functionalityId && (testCases?.length ?? 0) > 0;
   const isGenerateAiDisabled = isGenerating || hasGeneratedCasesForCurrentFunctionality;
   const visibleTestCases = Array.isArray(testCases)
-    ? [...testCases].sort(
-        (left, right) => getStableSortOrder(left) - getStableSortOrder(right),
-      )
+    ? [...testCases].sort((left, right) => getStableSortOrder(left) - getStableSortOrder(right))
     : [];
+  const automationSummary = useMemo(() => {
+    const total = visibleTestCases.length;
+    const byStatus = {
+      automated: 0,
+      candidate: 0,
+      obsolete: 0,
+      manual: 0,
+    };
+    const toolCounts = new Map<string, number>();
+    const resultCounts = new Map<string, number>();
+
+    for (const testCase of visibleTestCases) {
+      const status = deriveAutomationStatus(testCase);
+      if (status === AutomationStatus.AUTOMATED) byStatus.automated += 1;
+      else if (status === AutomationStatus.CANDIDATE) byStatus.candidate += 1;
+      else if (status === AutomationStatus.OBSOLETE) byStatus.obsolete += 1;
+      else byStatus.manual += 1;
+
+      if (testCase.automationTool) {
+        toolCounts.set(testCase.automationTool, (toolCounts.get(testCase.automationTool) || 0) + 1);
+      }
+
+      if (testCase.lastAutomationStatus) {
+        resultCounts.set(
+          testCase.lastAutomationStatus,
+          (resultCounts.get(testCase.lastAutomationStatus) || 0) + 1,
+        );
+      }
+    }
+
+    const automatedCoverage = total > 0 ? Math.round((byStatus.automated / total) * 100) : 0;
+    const candidateCoverage = total > 0 ? Math.round((byStatus.candidate / total) * 100) : 0;
+    const leadingTool =
+      [...toolCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const leadingResult =
+      [...resultCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+
+    return {
+      total,
+      automatedCoverage,
+      candidateCoverage,
+      byStatus,
+      leadingTool,
+      leadingResult,
+      resultCounts,
+      automatedCases: visibleTestCases.filter(testCase =>
+        isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+      ),
+    };
+  }, [visibleTestCases]);
+  const filteredTestCases = useMemo(() => {
+    return visibleTestCases.filter(testCase => {
+      const status = deriveAutomationStatus(testCase);
+
+      const matchesStatus =
+        automationFilter === 'all'
+          ? true
+          : automationFilter === 'automated'
+            ? status === AutomationStatus.AUTOMATED
+            : automationFilter === 'candidate'
+              ? status === AutomationStatus.CANDIDATE
+              : automationFilter === 'obsolete'
+                ? status === AutomationStatus.OBSOLETE
+                : status === AutomationStatus.NOT_AUTOMATED;
+
+      const matchesResult =
+        automationResultFilter === 'all'
+          ? true
+          : testCase.lastAutomationStatus === automationResultFilter;
+
+      const matchesTool =
+        automationToolFilter === 'all' ? true : testCase.automationTool === automationToolFilter;
+
+      return matchesStatus && matchesResult && matchesTool;
+    });
+  }, [automationFilter, automationResultFilter, automationToolFilter, visibleTestCases]);
   const loadErrorMessage = isError ? toApiError(error).message : '';
   const generateAiButtonLabel = isGenerating
     ? 'Generando con IA...'
@@ -259,6 +390,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         projectId,
         functionalityId,
         isAutomated: false,
+        automationStatus: AutomationStatus.NOT_AUTOMATED,
         sortOrder: nextSortOrder + index,
       }));
 
@@ -323,7 +455,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const showModal = (testCase?: TestCase) => {
     if (testCase) {
       setEditingTestCase(testCase);
-      form.setFieldsValue(testCase);
+      form.setFieldsValue({
+        ...testCase,
+        automationStatus: deriveAutomationStatus(testCase),
+      });
     } else {
       setEditingTestCase(null);
       form.resetFields();
@@ -349,19 +484,44 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       testType: template.testType,
       priority: template.priority,
       isAutomated: template.isAutomated,
+      automationStatus: deriveAutomationStatus(template),
+      automationType: template.automationType,
+      automationTool: template.automationTool,
+      automationReference: template.automationReference,
+      automationOwner: template.automationOwner,
     });
   };
 
   const onFinish = (values: any) => {
+    const formValues = form.getFieldsValue(true);
+    const mergedValues = {
+      ...formValues,
+      ...values,
+    };
     const nextSortOrder =
       visibleTestCases.length > 0
         ? Math.max(...visibleTestCases.map(testCase => getStableSortOrder(testCase))) + 1
         : 0;
+    const automationStatus = mergedValues.automationStatus || AutomationStatus.NOT_AUTOMATED;
     const newTestCase: TestCase = {
-      ...values,
+      ...mergedValues,
       id: editingTestCase?.id || `TC-${Date.now()}`,
       projectId,
       functionalityId,
+      automationStatus,
+      automationType: mergedValues.automationType,
+      automationTool: mergedValues.automationTool,
+      automationReference: mergedValues.automationReference || '',
+      automationOwner: mergedValues.automationOwner || '',
+      lastAutomationStatus:
+        automationStatus === AutomationStatus.AUTOMATED
+          ? mergedValues.lastAutomationStatus || AutomationResultStatus.UNKNOWN
+          : undefined,
+      lastAutomationRunAt:
+        automationStatus === AutomationStatus.AUTOMATED
+          ? mergedValues.lastAutomationRunAt || ''
+          : undefined,
+      isAutomated: isAutomatedCoverageStatus(automationStatus),
       sortOrder: editingTestCase?.sortOrder ?? nextSortOrder,
     };
 
@@ -370,6 +530,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         message.success(editingTestCase ? 'Caso de prueba actualizado' : 'Caso de prueba creado');
         setIsModalVisible(false);
         form.resetFields();
+        void refetch();
       },
       onError: () => {
         message.error('Error al guardar el caso de prueba');
@@ -516,12 +677,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       title: 'Automatización',
       dataIndex: 'isAutomated',
       key: 'isAutomated',
-      width: 140,
-      render: (isAutomated: boolean | undefined) => (
-        <Tag color={isAutomated ? 'green' : 'default'}>
-          {isAutomated ? 'Automatizado' : 'Manual'}
-        </Tag>
-      ),
+      width: 160,
+      render: (_: boolean | undefined, record: TestCase) => {
+        const automationStatus = deriveAutomationStatus(record);
+        return <Tag color={getAutomationStatusColor(automationStatus)}>{automationStatus}</Tag>;
+      },
     },
     {
       title: 'Prioridad',
@@ -668,13 +828,125 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         />
       ) : null}
 
-      <Alert
-        className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
-        type="info"
-        showIcon
-        message="Utiliza plantillas para estandarizar tus casos de prueba."
-        description="Las plantillas se configuran por módulo y permiten acelerar la creación de casos manteniendo consistencia entre funcionalidades."
-      />
+      <div className="mb-4">
+        <Alert
+          className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+          type="info"
+          showIcon
+          message="Utiliza plantillas para estandarizar tus casos de prueba."
+          description="Las plantillas se configuran por módulo y permiten acelerar la creación de casos manteniendo consistencia entre funcionalidades."
+        />
+      </div>
+
+      <Card
+        size="small"
+        title="Filtros de automatización"
+        className="rounded-2xl border-slate-200 shadow-sm"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div>
+            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+              Estado
+            </Text>
+            <Select
+              className="w-full"
+              value={automationFilter}
+              options={automationFilterOptions.map(option => ({
+                label: option.label,
+                value: option.value,
+              }))}
+              onChange={value => {
+                setAutomationFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <div>
+            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+              Último resultado
+            </Text>
+            <Select
+              className="w-full"
+              value={automationResultFilter}
+              options={[
+                { label: 'Todos', value: 'all' },
+                ...automationResultStatusOptions.map(option => ({
+                  label: option,
+                  value: option,
+                })),
+              ]}
+              onChange={value => {
+                setAutomationResultFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <div>
+            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+              Herramienta
+            </Text>
+            <Select
+              className="w-full"
+              value={automationToolFilter}
+              options={[
+                { label: 'Todas', value: 'all' },
+                ...automationToolOptions.map(option => ({
+                  label: option,
+                  value: option,
+                })),
+              ]}
+              onChange={value => {
+                setAutomationToolFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              onClick={() => {
+                setAutomationFilter('all');
+                setAutomationResultFilter('all');
+                setAutomationToolFilter('all');
+                setCurrentPage(1);
+              }}
+            >
+              Limpiar filtros
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Tag color="blue">Visibles: {filteredTestCases.length}</Tag>
+          <Tag color="green">
+            Automatizadas:{' '}
+            {
+              filteredTestCases.filter(
+                item => deriveAutomationStatus(item) === AutomationStatus.AUTOMATED,
+              ).length
+            }
+          </Tag>
+          <Tag color="gold">
+            Candidatas:{' '}
+            {
+              filteredTestCases.filter(
+                item => deriveAutomationStatus(item) === AutomationStatus.CANDIDATE,
+              ).length
+            }
+          </Tag>
+          <Tag color="red">
+            Obsoletas:{' '}
+            {
+              filteredTestCases.filter(
+                item => deriveAutomationStatus(item) === AutomationStatus.OBSOLETE,
+              ).length
+            }
+          </Tag>
+        </div>
+      </Card>
 
       <UpgradeModal
         open={isUpgradeModalOpen}
@@ -707,14 +979,16 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       ) : null}
 
       <Table
+        key={`${automationFilter}-${automationResultFilter}-${automationToolFilter}-${filteredTestCases.length}`}
         className="mt-2 qa-test-case-table"
         columns={columns}
-        dataSource={visibleTestCases}
+        dataSource={filteredTestCases}
         rowKey="id"
         loading={isLoading || isReordering || (isFetching && visibleTestCases.length === 0)}
         pagination={{
           current: currentPage,
           pageSize,
+          total: filteredTestCases.length,
           showTotal: total => `${total} caso${total === 1 ? '' : 's'}`,
           onChange: (page, nextPageSize) => {
             setCurrentPage(page);
@@ -817,7 +1091,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             initialValues={{
               priority: Priority.MEDIUM,
               testType: TestType.FUNCTIONAL,
+              automationStatus: AutomationStatus.NOT_AUTOMATED,
               isAutomated: false,
+              lastAutomationStatus: AutomationResultStatus.UNKNOWN,
             }}
           >
             <div className="grid grid-cols-2 gap-4">
@@ -870,14 +1146,76 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 <BasicRichTextEditor placeholder="Descripción breve del objetivo de la prueba" />
               </Form.Item>
 
-              <Form.Item
-                name="isAutomated"
-                label="Automatizado"
-                valuePropName="checked"
-                className="col-span-2"
-              >
+              <Form.Item name="isAutomated" valuePropName="checked" hidden>
                 <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
               </Form.Item>
+
+              <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <RobotOutlined className="text-slate-500" />
+                  <Text strong>Automatizacion</Text>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Form.Item
+                    name="automationStatus"
+                    label="Estado"
+                    rules={[{ required: true, message: 'Selecciona el estado de automatizacion' }]}
+                  >
+                    <Select
+                      options={automationStatusOptions.map(option => ({
+                        label: option,
+                        value: option,
+                      }))}
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="automationType" label="Tipo de automatizacion">
+                    <Select
+                      allowClear
+                      options={automationTypeOptions.map(option => ({
+                        label: option,
+                        value: option,
+                      }))}
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="automationTool" label="Herramienta">
+                    <Select
+                      allowClear
+                      options={automationToolOptions.map(option => ({
+                        label: option,
+                        value: option,
+                      }))}
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="automationOwner" label="Owner">
+                    <Input placeholder="Ej: QA Automation Team" />
+                  </Form.Item>
+
+                  <Form.Item name="automationReference" label="Referencia" className="col-span-2">
+                    <Input placeholder="Ej: tests/auth/login.spec.ts o AUTH-LOGIN-001" />
+                  </Form.Item>
+
+                  {selectedAutomationStatus === AutomationStatus.AUTOMATED ? (
+                    <>
+                      <Form.Item name="lastAutomationStatus" label="Ultimo resultado">
+                        <Select
+                          allowClear
+                          options={automationResultStatusOptions.map(option => ({
+                            label: option,
+                            value: option,
+                          }))}
+                        />
+                      </Form.Item>
+
+                      <Form.Item name="lastAutomationRunAt" label="Ultima ejecucion">
+                        <Input placeholder="Ej: 2026-06-17T15:00:00.000Z" />
+                      </Form.Item>
+                    </>
+                  ) : null}
+                </div>
+              </div>
 
               <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
                 <TextArea rows={2} placeholder="Estado inicial requerido" />

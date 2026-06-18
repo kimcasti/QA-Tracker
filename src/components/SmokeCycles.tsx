@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Empty,
   Form,
   Input,
   Modal,
@@ -40,6 +41,7 @@ import {
 import { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import type { ColumnsType, FilterDropdownProps, FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
@@ -256,6 +258,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   };
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const testCyclesQueryKey = ['test-cycles', 'smoke', projectId] as const;
   const { t } = useTranslation();
   const { data: cyclesData, save, isSaving } = useSmokeCycles(projectId);
@@ -268,6 +271,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
+  const hasHistoricalCycles = cycles.length > 0;
   const latestCycle = Array.isArray(cycles) && cycles.length > 0 ? cycles[0] : null;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
@@ -548,6 +552,11 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
     setModuleAssignmentSelections({});
     setSuggestionModuleFilter(undefined);
     form.resetFields();
+  };
+
+  const goToTestExecution = () => {
+    if (!projectId) return;
+    navigate(`/projects/${encodeURIComponent(projectId)}/testing`);
   };
 
   const handleOpenModal = () => {
@@ -2140,18 +2149,30 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                 </Space>
               )}
             </div>
-            {!isViewer && (
+            <Space wrap>
               <Button
-                type="primary"
-                icon={<PlusOutlined />}
+                icon={<RollbackOutlined />}
                 size="large"
-                className="rounded-xl h-12 px-6 shadow-lg shadow-orange-200 bg-orange-600 border-orange-600 hover:bg-orange-700"
-                onClick={handleOpenModal}
+                className="rounded-xl h-12 px-6"
+                onClick={goToTestExecution}
               >
-                Nuevo Ciclo de Smoke
+                Ir a Ejecución de Pruebas
               </Button>
-            )}
+            </Space>
           </div>
+
+          <Alert
+            showIcon
+            type="info"
+            className="rounded-2xl border-orange-100 bg-orange-50/70 shadow-sm"
+            message="Historial y compatibilidad"
+            description="Este flujo se conserva para consultar ciclos anteriores y apoyar la transición al nuevo modelo de ejecuciones. Para nuevas corridas, recomendamos usar Ejecución de Pruebas."
+            action={
+              <Button size="small" className="rounded-lg" onClick={goToTestExecution}>
+                Crear ejecución desde el flujo nuevo
+              </Button>
+            }
+          />
 
           <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
             <div className="flex items-start gap-4">
@@ -2171,6 +2192,8 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
             </div>
           </Card>
 
+          {hasHistoricalCycles ? (
+            <>
           {latestCycle && (
             <div className="space-y-4 pt-4">
               <div className="flex items-center gap-3">
@@ -2347,6 +2370,27 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               onChange={(_, filters) => handleNativeTableChange(filters)}
             />
           </Card>
+            </>
+          ) : (
+            <Card className="rounded-2xl border-slate-100 shadow-sm">
+              <div className="py-6">
+                <Empty description="No hay ciclos históricos de smoke para este proyecto." />
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="primary"
+                    className="rounded-xl h-11 px-6 shadow-lg shadow-orange-200 bg-orange-600 border-orange-600 hover:bg-orange-700"
+                    onClick={goToTestExecution}
+                  >
+                    Crear ejecución desde Ejecución de Pruebas
+                  </Button>
+                </div>
+                <div className="mt-4 text-center text-sm text-slate-500">
+                  Cuando este proyecto tenga ciclos legacy, se mostrarán aquí para consulta y
+                  compatibilidad histórica.
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 

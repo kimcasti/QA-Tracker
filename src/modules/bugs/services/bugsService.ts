@@ -17,11 +17,14 @@ import {
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { BugDto } from '../types/api';
 
-function extractCycleIdFromLinkedSourceId(linkedSourceId?: string) {
+function extractLinkedSourceParts(linkedSourceId?: string) {
   if (!linkedSourceId) return undefined;
   const parts = linkedSourceId.split('::');
-  const cycleId = parts[2];
-  return cycleId && cycleId !== 'no-cycle' ? cycleId : undefined;
+  return {
+    cycleId: parts[2] && parts[2] !== 'no-cycle' ? parts[2] : undefined,
+    testRunId: parts[3] && parts[3] !== 'no-run' ? parts[3] : undefined,
+    executionId: parts[4] && parts[4] !== 'no-execution' ? parts[4] : undefined,
+  };
 }
 
 function dedupeBugsByIdentity(bugs: QABug[]) {
@@ -49,6 +52,8 @@ function dedupeBugsByIdentity(bugs: QABug[]) {
 }
 
 function mapBug(document: BugDto): QABug {
+  const linkedSource = extractLinkedSourceParts(document.linkedSourceId);
+
   return {
     internalBugId: document.internalBugId,
     externalBugId: document.externalBugId,
@@ -63,14 +68,14 @@ function mapBug(document: BugDto): QABug {
     functionalityName: document.functionality?.name || document.functionalityName || '',
     module: document.moduleName || '',
     sprint: document.sprint?.name,
-    cycleId: document.testCycle?.code || extractCycleIdFromLinkedSourceId(document.linkedSourceId),
+    cycleId: document.testCycle?.code || linkedSource?.cycleId,
     detectedAt: document.detectedAt,
     reportedBy: document.reportedBy,
     status: bugStatusFromApi(document.status),
     testCaseId: document.testCase?.documentId,
     testCaseTitle: document.testCase?.title || document.testCaseTitle,
-    testRunId: document.testRun?.documentId,
-    executionId: undefined,
+    testRunId: document.testRun?.documentId || linkedSource?.testRunId,
+    executionId: linkedSource?.executionId,
     linkedSourceId: document.linkedSourceId,
     updatedAt: dayjs(document.detectedAt).toISOString(),
   };

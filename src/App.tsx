@@ -22,6 +22,8 @@ import { UserMenu } from './components/UserMenu';
 import { WhatsAppSupportButton } from './components/WhatsAppSupportButton';
 import { useProjects } from './modules/projects/hooks/useProjects';
 import { useWorkspaceAccess } from './modules/workspace/hooks/useWorkspaceAccess';
+import { useRegressionCycleSummaries } from './modules/test-cycles/hooks/useRegressionCycleSummaries';
+import { useSmokeCycleSummaries } from './modules/test-cycles/hooks/useSmokeCycleSummaries';
 import type { Project } from './types';
 import { useTranslation } from 'react-i18next';
 import { appBranding } from './assets/branding';
@@ -313,6 +315,10 @@ function WorkspaceApp({
     () => projects.find(project => project.id === selectedProjectId) || null,
     [projects, selectedProjectId],
   );
+  const { data: regressionCycleSummaries = [] } = useRegressionCycleSummaries(currentProject?.id);
+  const { data: smokeCycleSummaries = [] } = useSmokeCycleSummaries(currentProject?.id);
+  const hasRegressionLegacy = regressionCycleSummaries.length > 0;
+  const hasSmokeLegacy = smokeCycleSummaries.length > 0;
 
   const parsedRoute = useMemo(() => parseRoute(location.pathname), [location.pathname]);
 
@@ -375,7 +381,7 @@ function WorkspaceApp({
     ensureLink('apple-touch-icon').href = appBranding.appleTouchIconUrl;
   }, []);
 
-  const workspaceMenuItems = useMemo(
+const workspaceMenuItems = useMemo(
     () =>
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
@@ -386,13 +392,39 @@ function WorkspaceApp({
           label: 'Estrategia QA',
         },
         { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
-        { key: 'regression_cycles', icon: <HistoryOutlined />, label: t('nav.regression') },
-        { key: 'smoke_cycles', icon: <ThunderboltOutlined />, label: t('nav.smoke') },
         { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
         {
           key: 'more',
           label: 'Más',
           children: [
+            hasRegressionLegacy
+              ? {
+                  key: 'regression_cycles',
+                  icon: <HistoryOutlined />,
+                  label: (
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{t('nav.regression')}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Legacy
+                      </span>
+                    </div>
+                  ),
+                }
+              : null,
+            hasSmokeLegacy
+              ? {
+                  key: 'smoke_cycles',
+                  icon: <ThunderboltOutlined />,
+                  label: (
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{t('nav.smoke')}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Legacy
+                      </span>
+                    </div>
+                  ),
+                }
+              : null,
             canAccessSettings
               ? { key: 'config', icon: <SettingOutlined />, label: t('nav.config') }
               : null,
@@ -400,7 +432,7 @@ function WorkspaceApp({
           ].filter(Boolean),
         },
       ].filter(Boolean),
-    [canAccessSettings, t],
+    [canAccessSettings, hasRegressionLegacy, hasSmokeLegacy, t],
   );
 
   const handleViewProject = (project: Project) => {

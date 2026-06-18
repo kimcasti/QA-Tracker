@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -41,8 +42,21 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
 import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
+import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { BugStatus, ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
+import {
+  AutomationResultStatus,
+  AutomationStatus,
+  AutomationTool,
+  BugStatus,
+  ExecutionStatus,
+  Severity,
+  TestResult,
+  TestStatus,
+  TestType,
+  isAutomatedCoverageStatus,
+  deriveAutomationStatus,
+} from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../theme/statusStyles';
 
@@ -175,6 +189,41 @@ function MetricCard({
   );
 }
 
+function getAutomationTagColor(status?: string | null) {
+  if (status === AutomationStatus.AUTOMATED || status === AutomationResultStatus.PASSED) {
+    return 'green';
+  }
+
+  if (status === AutomationStatus.CANDIDATE || status === AutomationResultStatus.SKIPPED) {
+    return 'gold';
+  }
+
+  if (status === AutomationStatus.OBSOLETE || status === AutomationResultStatus.FAILED) {
+    return 'red';
+  }
+
+  return 'default';
+}
+
+function summarizeRunResults(results: Array<{ result: TestResult }>) {
+  const passed = results.filter(item => item.result === TestResult.PASSED).length;
+  const failed = results.filter(item => item.result === TestResult.FAILED).length;
+  const blocked = results.filter(item => item.result === TestResult.BLOCKED).length;
+  const pending = results.filter(item => item.result === TestResult.NOT_EXECUTED).length;
+  const total = results.length;
+  const executed = total - pending;
+
+  return {
+    passed,
+    failed,
+    blocked,
+    pending,
+    total,
+    executed,
+    passRate: executed > 0 ? Math.round((passed / executed) * 100) : 0,
+  };
+}
+
 export default function Dashboard({ projectId }: { projectId?: string }) {
   const [deliveryDateRange, setDeliveryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     null,
@@ -185,6 +234,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const { data: regressionCyclesData } = useRegressionCycleSummaries(projectId);
   const { data: smokeCyclesData } = useSmokeCycleSummaries(projectId);
   const { data: testCasesData } = useTestCases(projectId);
+  const { data: testRunsData = [] } = useTestRuns(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const { data: bugsData = [] } = useBugs(projectId);
 
@@ -195,6 +245,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
   const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
+  const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
   const sprints = Array.isArray(sprintsData) ? sprintsData : [];
   const bugs = Array.isArray(bugsData) ? bugsData : [];
   const activeOrganizationPlan = normalizeOrganizationPlan(
@@ -259,32 +310,82 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
 
-  const regressionPassedExecutions = regressionCycles.reduce(
-    (sum, cycle) => sum + (cycle.passed || 0),
-    0,
+  const finalizedRegressionRuns = testRuns.filter(
+    testRun => testRun.status === ExecutionStatus.FINAL && testRun.testType === TestType.REGRESSION,
   );
-  const regressionExecutedCount = regressionCycles.reduce((sum, cycle) => {
-    const executedCount = Math.max(
-      (cycle.totalTests || 0) - (cycle.pending || 0) - (cycle.blocked || 0),
-      0,
-    );
-    return sum + executedCount;
-  }, 0);
-  const regressionStability =
-    regressionExecutedCount > 0
-      ? (regressionPassedExecutions / regressionExecutedCount) * 100
-      : 0;
+  const finalizedSmokeRuns = testRuns.filter(
+    testRun => testRun.status === ExecutionStatus.FINAL && testRun.testType === TestType.SMOKE,
+  );
 
-  const automatedTests = testCases.filter(item => item.isAutomated).length;
+  const regressionRunAggregate = finalizedRegressionRuns.reduce(
+    (acc, testRun) => {
+      const summary = summarizeRunResults(testRun.results || []);
+      acc.passed += summary.passed;
+      acc.executed += summary.executed;
+      return acc;
+    },
+    { passed: 0, executed: 0 },
+  );
+  const legacyRegressionAggregate = regressionCycles.reduce(
+    (acc, cycle) => {
+      const executed = Math.max((cycle.totalTests || 0) - (cycle.pending || 0) - (cycle.blocked || 0), 0);
+      acc.passed += cycle.passed || 0;
+      acc.executed += executed;
+      return acc;
+    },
+    { passed: 0, executed: 0 },
+  );
+  const regressionStabilitySource = finalizedRegressionRuns.length > 0 ? 'execution' : 'legacy';
+  const regressionStability =
+    regressionStabilitySource === 'execution'
+      ? regressionRunAggregate.executed > 0
+        ? (regressionRunAggregate.passed / regressionRunAggregate.executed) * 100
+        : 0
+      : legacyRegressionAggregate.executed > 0
+        ? (legacyRegressionAggregate.passed / legacyRegressionAggregate.executed) * 100
+        : 0;
+
+  const automatedTests = testCases.filter(item =>
+    isAutomatedCoverageStatus(deriveAutomationStatus(item)),
+  ).length;
   const automationCoverage =
     testCases.length > 0 ? Math.round((automatedTests / testCases.length) * 100) : 0;
+  const automationCandidatesCount = testCases.filter(
+    item => deriveAutomationStatus(item) === AutomationStatus.CANDIDATE,
+  ).length;
+  const obsoleteAutomationCount = testCases.filter(
+    item => deriveAutomationStatus(item) === AutomationStatus.OBSOLETE,
+  ).length;
+  const leadingAutomationTool =
+    [
+      ...testCases
+        .reduce<Map<string, number>>((acc, item) => {
+          if (item.automationTool) {
+            acc.set(item.automationTool, (acc.get(item.automationTool) || 0) + 1);
+          }
+          return acc;
+        }, new Map())
+        .entries(),
+    ].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+  const latestAutomationResult =
+    [
+      ...testCases
+        .filter(item => item.lastAutomationStatus)
+        .sort(
+          (left, right) =>
+            new Date(right.lastAutomationRunAt || 0).getTime() -
+            new Date(left.lastAutomationRunAt || 0).getTime(),
+        ),
+    ][0]?.lastAutomationStatus || null;
   const coreFunctionalities = functionalities.filter(item => item.isCore).length;
   const regressionFunctionalities = functionalities.filter(item => item.isRegression).length;
   const smokeFunctionalities = functionalities.filter(item => item.isSmoke).length;
 
   const latestExecutionByTestCase = executions
     .filter(execution => execution.testCaseId)
-    .sort((left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf())
+    .sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )
     .reduce<Record<string, (typeof executions)[number]>>((acc, execution) => {
       const testCaseId = execution.testCaseId;
       if (!testCaseId || acc[testCaseId]) return acc;
@@ -308,32 +409,77 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   ).length;
   const passFailTotal = passedTestCasesCount + failedTestCasesCount;
   const passFailChartData = [
-    { name: 'Aprobados', value: passedTestCasesCount, color: qaPalette.functionalityStatus.completed },
+    {
+      name: 'Aprobados',
+      value: passedTestCasesCount,
+      color: qaPalette.functionalityStatus.completed,
+    },
     { name: 'Fallidos', value: failedTestCasesCount, color: qaPalette.functionalityStatus.failed },
   ].filter(item => item.value > 0);
-  const passedPercent = passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
-  const failedPercent = passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
+  const passedPercent =
+    passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
+  const failedPercent =
+    passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
 
   const latestFinalRegressionCycle = regressionCycles.find(cycle => cycle.status === 'FINALIZADA');
   const latestFinalSmokeCycle = smokeCycles.find(cycle => cycle.status === 'FINALIZADA');
 
-  const regressionPassed = latestFinalRegressionCycle?.passed || 0;
-  const regressionFailed = latestFinalRegressionCycle?.failed || 0;
-  const regressionRemaining =
-    latestFinalRegressionCycle?.blocked || latestFinalRegressionCycle?.pending || 0;
-  const regressionTotal =
-    latestFinalRegressionCycle?.totalTests ||
-    regressionPassed + regressionFailed + regressionRemaining;
-  const regressionPercent =
-    regressionTotal > 0 ? Math.round((regressionPassed / regressionTotal) * 100) : 0;
+  const latestFinalRegressionRun =
+    [...finalizedRegressionRuns].sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )[0] || null;
+  const latestFinalSmokeRun =
+    [...finalizedSmokeRuns].sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )[0] || null;
 
-  const smokePassed = latestFinalSmokeCycle?.passed || 0;
-  const smokeFailed = latestFinalSmokeCycle?.failed || 0;
+  const regressionRunSummary = summarizeRunResults(latestFinalRegressionRun?.results || []);
+  const smokeRunSummary = summarizeRunResults(latestFinalSmokeRun?.results || []);
+
+  const regressionSource = latestFinalRegressionRun
+    ? 'execution'
+    : latestFinalRegressionCycle
+      ? 'legacy'
+      : 'empty';
+  const smokeSource = latestFinalSmokeRun ? 'execution' : latestFinalSmokeCycle ? 'legacy' : 'empty';
+
+  const regressionPassed =
+    regressionSource === 'execution' ? regressionRunSummary.passed : latestFinalRegressionCycle?.passed || 0;
+  const regressionFailed =
+    regressionSource === 'execution' ? regressionRunSummary.failed : latestFinalRegressionCycle?.failed || 0;
+  const regressionRemaining =
+    regressionSource === 'execution'
+      ? regressionRunSummary.blocked + regressionRunSummary.pending
+      : (latestFinalRegressionCycle?.blocked || 0) + (latestFinalRegressionCycle?.pending || 0);
+  const regressionTotal =
+    regressionSource === 'execution'
+      ? regressionRunSummary.total
+      : latestFinalRegressionCycle?.totalTests || regressionPassed + regressionFailed + regressionRemaining;
+  const regressionPercent =
+    regressionSource === 'execution'
+      ? regressionRunSummary.passRate
+      : regressionTotal > 0
+        ? Math.round((regressionPassed / regressionTotal) * 100)
+        : 0;
+
+  const smokePassed =
+    smokeSource === 'execution' ? smokeRunSummary.passed : latestFinalSmokeCycle?.passed || 0;
+  const smokeFailed =
+    smokeSource === 'execution' ? smokeRunSummary.failed : latestFinalSmokeCycle?.failed || 0;
   const smokeRemaining =
-    latestFinalSmokeCycle?.blocked || latestFinalSmokeCycle?.pending || 0;
+    smokeSource === 'execution'
+      ? smokeRunSummary.blocked + smokeRunSummary.pending
+      : (latestFinalSmokeCycle?.blocked || 0) + (latestFinalSmokeCycle?.pending || 0);
   const smokeTotal =
-    latestFinalSmokeCycle?.totalTests || smokePassed + smokeFailed + smokeRemaining;
-  const smokePercent = smokeTotal > 0 ? Math.round((smokePassed / smokeTotal) * 100) : 0;
+    smokeSource === 'execution'
+      ? smokeRunSummary.total
+      : latestFinalSmokeCycle?.totalTests || smokePassed + smokeFailed + smokeRemaining;
+  const smokePercent =
+    smokeSource === 'execution'
+      ? smokeRunSummary.passRate
+      : smokeTotal > 0
+        ? Math.round((smokePassed / smokeTotal) * 100)
+        : 0;
 
   const regressionPieData = [
     { name: 'Aprobados', value: regressionPassed, color: CHART_COLORS.passed },
@@ -418,7 +564,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const totalCompletedByModules = moduleData.reduce((sum, item) => sum + item.completedCount, 0);
   const globalModuleProgress =
-    totalFunctionalities > 0 ? Math.round((totalCompletedByModules / totalFunctionalities) * 100) : 0;
+    totalFunctionalities > 0
+      ? Math.round((totalCompletedByModules / totalFunctionalities) * 100)
+      : 0;
 
   const getModuleAccent = (name: string) => {
     const lower = name.toLowerCase();
@@ -485,16 +633,15 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const tableData = useMemo(() => {
     const [startDate, endDate] = deliveryDateRange || [];
 
-    return normalizedBaseTableData
-      .filter(item => {
-        if (!startDate && !endDate) return true;
+    return normalizedBaseTableData.filter(item => {
+      if (!startDate && !endDate) return true;
 
-        const deliveryDate = dayjs(item.deliveryDate).startOf('day').valueOf();
-        const startsAt = startDate ? startDate.startOf('day').valueOf() : Number.NEGATIVE_INFINITY;
-        const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
+      const deliveryDate = dayjs(item.deliveryDate).startOf('day').valueOf();
+      const startsAt = startDate ? startDate.startOf('day').valueOf() : Number.NEGATIVE_INFINITY;
+      const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
 
-        return deliveryDate >= startsAt && deliveryDate <= endsAt;
-      });
+      return deliveryDate >= startsAt && deliveryDate <= endsAt;
+    });
   }, [deliveryDateRange, normalizedBaseTableData]);
 
   const tableColumns = [
@@ -575,9 +722,10 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           const XLSX = await import('xlsx');
           const worksheet = XLSX.utils.json_to_sheet(exportRows);
           const [startDate, endDate] = deliveryDateRange || [];
-          const rangeLabel = startDate || endDate
-            ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
-            : 'Todas';
+          const rangeLabel =
+            startDate || endDate
+              ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
+              : 'Todas';
           const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
           const csv = XLSX.utils.sheet_to_csv(worksheet);
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -632,6 +780,14 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Text>
         </div>
 
+        <Alert
+          showIcon
+          type="info"
+          className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+          message="Transición de modelo en progreso"
+          description="Durante esta etapa, el dashboard prioriza Test Execution para Smoke y Regresión cuando existe data oficial nueva, y usa historial legacy solo como respaldo temporal."
+        />
+
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
@@ -639,9 +795,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={`${executionCoveragePercent}%`}
               hint={`${executedTestCasesCount} de ${testCases.length} ejecutados`}
               accent={qaPalette.primary}
-              icon={
-                <FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />
-              }
+              icon={<FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -689,14 +843,79 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         </Row>
       </div>
 
-      <div className="space-y-4">
+      <Card
+        variant="borderless"
+        className="rounded-2xl qa-surface-card"
+        title={
+          <div className="flex items-center gap-2 text-slate-800">
+            <ThunderboltOutlined style={{ color: qaPalette.functionalityStatus.postMvp }} />
+            <span>Radar de automatización</span>
+          </div>
+        }
+      >
+        <Row gutter={[20, 20]}>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Automatizadas
+              </Text>
+              <div className="mt-2 text-2xl font-bold text-slate-800">{automatedTests}</div>
+              <Text className="text-xs text-slate-500">{automationCoverage}% del total</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Candidatas
+              </Text>
+              <div className="mt-2 text-2xl font-bold text-slate-800">
+                {automationCandidatesCount}
+              </div>
+              <Text className="text-xs text-slate-500">Backlog sugerido de automatización</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Herramienta líder
+              </Text>
+              <div className="mt-2 text-lg font-semibold text-slate-800">
+                {leadingAutomationTool || 'Sin definir'}
+              </div>
+              <Text className="text-xs text-slate-500">
+                {obsoleteAutomationCount > 0
+                  ? `${obsoleteAutomationCount} marcadas como obsoletas`
+                  : 'Sin automatizaciones obsoletas registradas'}
+              </Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Ultimo resultado
+              </Text>
+              <div className="mt-2">
+                <Tag color={getAutomationTagColor(latestAutomationResult)}>
+                  {latestAutomationResult || 'Sin datos'}
+                </Tag>
+              </div>
+              <Text className="text-xs text-slate-500">
+                Último estado reportado desde los casos
+              </Text>
+            </div>
+          </Col>
+        </Row>
+      </Card>
+
+      <div className="mt-8 space-y-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <HistoryOutlined style={{ color: qaPalette.primary }} />
             <span>Validación por funcionalidad</span>
           </div>
           <Text type="secondary" className="text-slate-500">
-            Métricas calculadas a partir de funcionalidades y ciclos de regresión o smoke.
+            Métricas calculadas a partir de funcionalidades y de la mejor fuente disponible entre
+            ejecuciones oficiales e historial legacy.
           </Text>
         </div>
 
@@ -705,7 +924,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <KpiCard
               title="Estabilidad regresión funcional"
               value={`${regressionStability.toFixed(1)}%`}
-              hint="Tasa de exito en ciclos"
+              hint={
+                regressionStabilitySource === 'execution'
+                  ? 'Tasa de exito en ejecuciones oficiales'
+                  : 'Tasa de exito en ciclos legacy'
+              }
               accent={qaPalette.primary}
               icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
             />
@@ -819,6 +1042,22 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <HistoryOutlined style={{ color: qaPalette.primary }} />
               <span>Regresión funcional</span>
+              <Tag
+                color={
+                  regressionSource === 'execution'
+                    ? 'blue'
+                    : regressionSource === 'legacy'
+                      ? 'default'
+                      : 'gold'
+                }
+                className="ml-2 rounded-full px-3 py-1"
+              >
+                {regressionSource === 'execution'
+                  ? 'Test Execution'
+                  : regressionSource === 'legacy'
+                    ? 'Histórico legacy'
+                    : 'Sin datos'}
+              </Tag>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -828,6 +1067,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </div>
               </div>
               <div className="space-y-3">
+                <div className="text-xs text-slate-400">
+                  {regressionSource === 'execution'
+                    ? latestFinalRegressionRun?.title || 'Ejecución oficial más reciente'
+                    : regressionSource === 'legacy'
+                      ? latestFinalRegressionCycle?.cycleId || 'Sin ciclos finalizados'
+                      : 'Aún no hay ejecuciones ni histórico legacy'}
+                </div>
                 {regressionPieData.map(item => (
                   <div key={item.name} className="flex items-center gap-3">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -846,6 +1092,22 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <ThunderboltOutlined style={{ color: qaPalette.functionalityStatus.inProgress }} />
               <span>Smoke funcional</span>
+              <Tag
+                color={
+                  smokeSource === 'execution'
+                    ? 'blue'
+                    : smokeSource === 'legacy'
+                      ? 'default'
+                      : 'gold'
+                }
+                className="ml-2 rounded-full px-3 py-1"
+              >
+                {smokeSource === 'execution'
+                  ? 'Test Execution'
+                  : smokeSource === 'legacy'
+                    ? 'Histórico legacy'
+                    : 'Sin datos'}
+              </Tag>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -855,6 +1117,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </div>
               </div>
               <div className="space-y-3">
+                <div className="text-xs text-slate-400">
+                  {smokeSource === 'execution'
+                    ? latestFinalSmokeRun?.title || 'Ejecución oficial más reciente'
+                    : smokeSource === 'legacy'
+                      ? latestFinalSmokeCycle?.cycleId || 'Sin ciclos finalizados'
+                      : 'Aún no hay ejecuciones ni histórico legacy'}
+                </div>
                 {smokePieData.map(item => (
                   <div key={item.name} className="flex items-center gap-3">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -875,11 +1144,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-4 font-semibold text-slate-800">Ejecución de casos</div>
             <div className="relative flex h-48 items-center justify-center">
               <FixedPie data={executionMixData} innerRadius={50} outerRadius={70} />
-                <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
-                </div>
+              <div className="absolute inset-0 flex items-center justify-center flex-col">
+                <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
+                <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
               </div>
+            </div>
           </Card>
         </Col>
 
@@ -1034,45 +1303,45 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               {moduleData.length > 0 ? (
                 <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
                   {moduleData.map(item => {
-                  const accent = getModuleAccent(item.name);
-                  return (
-                    <div
-                      key={item.name}
-                      className="rounded-xl border p-4"
-                      style={{
-                        backgroundColor: softSurface(accent),
-                        borderColor: softSurface(accent),
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
-                            {getModuleIcon(item.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-800">{item.name}</div>
-                            <div className="text-xs" style={{ color: accent }}>
-                              {item.completedCount} de {item.totalCount} completas
+                    const accent = getModuleAccent(item.name);
+                    return (
+                      <div
+                        key={item.name}
+                        className="rounded-xl border p-4"
+                        style={{
+                          backgroundColor: softSurface(accent),
+                          borderColor: softSurface(accent),
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                              {getModuleIcon(item.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-800">{item.name}</div>
+                              <div className="text-xs" style={{ color: accent }}>
+                                {item.completedCount} de {item.totalCount} completas
+                              </div>
                             </div>
                           </div>
+                          <div
+                            className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.7)' }}
+                          >
+                            {item.percent}%
+                          </div>
                         </div>
-                        <div
-                          className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
-                          style={{ backgroundColor: 'rgba(255,255,255,0.7)' }}
-                        >
-                          {item.percent}%
-                        </div>
+                        <Progress
+                          percent={item.percent}
+                          showInfo={false}
+                          strokeColor={accent}
+                          trailColor="rgba(148, 163, 184, 0.18)"
+                          size={{ height: 8 }}
+                          className="mt-4"
+                        />
                       </div>
-                      <Progress
-                        percent={item.percent}
-                        showInfo={false}
-                        strokeColor={accent}
-                        trailColor="rgba(148, 163, 184, 0.18)"
-                        size={{ height: 8 }}
-                        className="mt-4"
-                      />
-                    </div>
-                  );
+                    );
                   })}
                 </div>
               ) : (
