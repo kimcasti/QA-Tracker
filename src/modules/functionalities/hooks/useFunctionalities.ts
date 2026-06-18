@@ -86,11 +86,21 @@ export function useFunctionalities(projectId?: string) {
     },
   });
 
+  const saveManyWithSingleRefresh = async (functionalities: Functionality[]) => {
+    await Promise.all(functionalities.map(item => saveFunctionality(item)));
+    invalidateWorkspaceCache();
+    await queryClient.invalidateQueries({ queryKey });
+    await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+    await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+    await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
+  };
+
   return {
     ...query,
     save: saveMutation.mutateAsync,
     delete: deleteMutation.mutateAsync,
     bulkUpdate: bulkUpdateMutation.mutateAsync,
     bulkAdd: bulkAddMutation.mutateAsync,
+    saveManyWithSingleRefresh,
   };
 }

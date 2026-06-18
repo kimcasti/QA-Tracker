@@ -30,6 +30,8 @@ import {
   DownloadOutlined,
   InfoCircleOutlined,
   LinkOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -109,11 +111,14 @@ type FunctionalityColumnFilters = NonNullable<ColumnsType<Functionality>[number]
 
 type FunctionalityColumnsConfig = {
   isViewer: boolean;
+  isReordering: boolean;
   tableFilters: NativeTableFilterState;
   nativeModuleFilters: FunctionalityColumnFilters;
   nativeStatusFilters: FunctionalityColumnFilters;
+  orderedVisibleFunctionalities: Functionality[];
   onView: (record: Functionality) => void;
   onDelete: (id: string) => void;
+  onMove: (id: string, direction: 'up' | 'down') => void;
 };
 
 type ImportedFunctionalityRow = Record<string, unknown>;
@@ -813,6 +818,44 @@ function parseDateOnly(value?: string) {
   return parsed;
 }
 
+function getStableFunctionalitySortOrder(
+  functionality: Pick<Functionality, 'sortOrder'>,
+  fallback = 0,
+) {
+  return typeof functionality.sortOrder === 'number' && Number.isFinite(functionality.sortOrder)
+    ? functionality.sortOrder
+    : fallback;
+}
+
+function normalizeFunctionalityOrder(functionalities: Functionality[]) {
+  return functionalities.map((functionality, index) => ({
+    ...functionality,
+    sortOrder: index,
+  }));
+}
+
+function moveFunctionality(functionalities: Functionality[], fromIndex: number, toIndex: number) {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= functionalities.length ||
+    toIndex >= functionalities.length ||
+    fromIndex === toIndex
+  ) {
+    return functionalities;
+  }
+
+  const reordered = [...functionalities];
+  const [movedFunctionality] = reordered.splice(fromIndex, 1);
+
+  if (!movedFunctionality) {
+    return functionalities;
+  }
+
+  reordered.splice(toIndex, 0, movedFunctionality);
+  return normalizeFunctionalityOrder(reordered);
+}
+
 function formatRecentChangeBadge(value?: string) {
   const parsed = parseDateOnly(value);
   if (!parsed) return null;
@@ -1253,11 +1296,14 @@ function buildFunctionalityExportData(functionalities: Functionality[]) {
 
 function createFunctionalityColumns({
   isViewer,
+  isReordering,
   tableFilters,
   nativeModuleFilters,
   nativeStatusFilters,
+  orderedVisibleFunctionalities,
   onView,
   onDelete,
+  onMove,
 }: FunctionalityColumnsConfig): ColumnsType<Functionality> {
   return [
     {
@@ -1342,7 +1388,7 @@ function createFunctionalityColumns({
         </span>
       ),
       key: 'actions',
-      width: isViewer ? 112 : 104,
+      width: isViewer ? 112 : 168,
       render: (_: unknown, record: Functionality) => (
         <Space size={6} wrap>
           <Tooltip title="Ver detalle">
@@ -1355,6 +1401,31 @@ function createFunctionalityColumns({
           </Tooltip>
           {!isViewer ? (
             <>
+              <Tooltip title="Mover arriba">
+                <Button
+                  icon={<ArrowUpOutlined />}
+                  onClick={() => onMove(record.id, 'up')}
+                  size="small"
+                  disabled={
+                    isReordering ||
+                    orderedVisibleFunctionalities.findIndex(item => item.id === record.id) === 0
+                  }
+                  className="rounded-full"
+                />
+              </Tooltip>
+              <Tooltip title="Mover abajo">
+                <Button
+                  icon={<ArrowDownOutlined />}
+                  onClick={() => onMove(record.id, 'down')}
+                  size="small"
+                  disabled={
+                    isReordering ||
+                    orderedVisibleFunctionalities.findIndex(item => item.id === record.id) ===
+                      orderedVisibleFunctionalities.length - 1
+                  }
+                  className="rounded-full"
+                />
+              </Tooltip>
               <Button
                 icon={<DeleteOutlined />}
                 danger
@@ -1386,6 +1457,7 @@ export default function FunctionalityList({
     delete: deleteFunc,
     bulkUpdate,
     bulkAdd,
+    saveManyWithSingleRefresh,
   } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
@@ -1411,6 +1483,15 @@ export default function FunctionalityList({
 
     return !filter || (filter === 'regression' ? f.isRegression : f.isSmoke);
   });
+
+  const orderedFunctionalities = React.useMemo(
+    () =>
+      [...functionalities].sort(
+        (left, right) =>
+          getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right),
+      ),
+    [functionalities],
+  );
 
   const nativeModuleFilters = React.useMemo(
     () =>
@@ -1450,27 +1531,16 @@ export default function FunctionalityList({
 
   const filteredFunctionalities = React.useMemo(() => {
     const normalizedSearch = functionalitySearch.trim().toLowerCase();
-    const sortByModule = (items: Functionality[]) =>
-      [...items].sort((left, right) => {
-        const moduleCompare = String(left?.module || '').localeCompare(String(right?.module || ''));
-
-        if (moduleCompare !== 0) {
-          return moduleCompare;
-        }
-
-        return String(left?.id || '').localeCompare(String(right?.id || ''));
-      });
 
     if (!normalizedSearch) {
       const scopedItems = isQaPlanningMode
-        ? functionalities.filter(item => matchesQaPlanningPreset(item, qaPlanningPreset))
-        : functionalities;
+        ? orderedFunctionalities.filter(item => matchesQaPlanningPreset(item, qaPlanningPreset))
+        : orderedFunctionalities;
 
-      return sortByModule(scopedItems);
+      return scopedItems;
     }
 
-    return sortByModule(
-      functionalities.filter(item => {
+    return orderedFunctionalities.filter(item => {
         const matchesSearch =
           String(item?.name || '')
             .toLowerCase()
@@ -1487,9 +1557,8 @@ export default function FunctionalityList({
           : true;
 
         return matchesSearch && matchesPreset;
-      }),
-    );
-  }, [functionalities, functionalitySearch, isQaPlanningMode, qaPlanningPreset]);
+      });
+  }, [orderedFunctionalities, functionalitySearch, isQaPlanningMode, qaPlanningPreset]);
 
   const clearNativeTableFilters = () => {
     setTableFilters(INITIAL_NATIVE_TABLE_FILTERS);
@@ -1508,6 +1577,7 @@ export default function FunctionalityList({
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
   const [detailFunctionality, setDetailFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
   const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
@@ -1678,6 +1748,55 @@ export default function FunctionalityList({
     });
   };
 
+  const handlePersistReorder = async (reorderedFunctionalities: Functionality[]) => {
+    setIsReordering(true);
+    try {
+      await saveManyWithSingleRefresh(reorderedFunctionalities);
+      message.success('Orden de funcionalidades actualizado');
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos actualizar el orden de las funcionalidades.',
+      );
+    } finally {
+      setIsReordering(false);
+    }
+  };
+
+  const handleMoveFunctionality = async (functionalityId: string, direction: 'up' | 'down') => {
+    const currentIndex = filteredFunctionalities.findIndex(item => item.id === functionalityId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= filteredFunctionalities.length) {
+      return;
+    }
+
+    const reorderedVisibleFunctionalities = moveFunctionality(
+      filteredFunctionalities,
+      currentIndex,
+      targetIndex,
+    );
+    const reorderedVisibleIds = new Set(reorderedVisibleFunctionalities.map(item => item.id));
+    let visibleCursor = 0;
+
+    const mergedFunctionalities = orderedFunctionalities.map(item => {
+      if (!reorderedVisibleIds.has(item.id)) {
+        return item;
+      }
+
+      const nextVisibleItem = reorderedVisibleFunctionalities[visibleCursor];
+      visibleCursor += 1;
+      return nextVisibleItem ?? item;
+    });
+
+    await handlePersistReorder(normalizeFunctionalityOrder(mergedFunctionalities));
+  };
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -1700,6 +1819,7 @@ export default function FunctionalityList({
         isRegression: Boolean(values.isRegression),
         isSmoke: Boolean(values.isSmoke),
         projectId: projectId || '',
+        sortOrder: editingFunc?.sortOrder ?? allFunctionalities.length,
       };
       await save(payload);
       message.success(
@@ -1807,18 +1927,24 @@ export default function FunctionalityList({
     () =>
       createFunctionalityColumns({
         isViewer,
+        isReordering,
         tableFilters,
         nativeModuleFilters,
         nativeStatusFilters,
+        orderedVisibleFunctionalities: filteredFunctionalities,
         onView: handleView,
         onDelete: handleDelete,
+        onMove: handleMoveFunctionality,
       }),
     [
       isViewer,
+      isReordering,
       tableFilters,
       nativeModuleFilters,
       nativeStatusFilters,
+      filteredFunctionalities,
       handleDelete,
+      handleMoveFunctionality,
     ],
   );
 
@@ -1889,7 +2015,10 @@ export default function FunctionalityList({
             module: item.module,
           }));
         const normalizedFuncs = resolveImportedFunctionalityIds(
-          preparedImport.functionalities,
+          preparedImport.functionalities.map((item, index) => ({
+            ...item,
+            sortOrder: allFunctionalities.length + index,
+          })),
           reservedFunctionalities,
         );
 
@@ -2261,6 +2390,7 @@ export default function FunctionalityList({
           size="small"
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20 }}
+          loading={isReordering}
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>

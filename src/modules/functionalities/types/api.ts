@@ -17,6 +17,7 @@ export interface FunctionalityDto {
   probabilityLevel?: string;
   riskLevel?: string;
   storyLegacyId?: string;
+  sortOrder?: number;
   project?: {
     documentId: string;
     key: string;

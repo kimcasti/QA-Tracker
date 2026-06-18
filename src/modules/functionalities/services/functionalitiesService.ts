@@ -108,6 +108,7 @@ function mapFunctionality(document: FunctionalityDto): Functionality {
     deliveryUnitName: document.deliveryUnit?.periodLabel
       ? `${document.deliveryUnit.name} - ${document.deliveryUnit.periodLabel}`
       : document.deliveryUnit?.name,
+    sortOrder: typeof document.sortOrder === 'number' ? document.sortOrder : undefined,
   };
 }
 
@@ -121,9 +122,20 @@ export async function getFunctionalities(projectId?: string) {
     'populate[deliveryUnit][fields][1]': 'periodLabel',
     'populate[deliveryUnit][fields][2]': 'type',
     ...(projectId ? { 'filters[project][key][$eq]': projectId } : {}),
+    'sort[0]': 'sortOrder:asc',
+    'sort[1]': 'createdAt:asc',
   });
 
-  const mappedDocuments = documents.map(mapFunctionality);
+  const mappedDocuments = documents.map((document, index) => {
+    const mapped = mapFunctionality(document);
+    return {
+      ...mapped,
+      sortOrder:
+        typeof mapped.sortOrder === 'number' && Number.isFinite(mapped.sortOrder)
+          ? mapped.sortOrder
+          : index,
+    };
+  });
 
   if (!projectId) {
     return mappedDocuments;
@@ -180,6 +192,10 @@ export async function saveFunctionality(functionality: Functionality) {
       impactLevel: impactToApi(functionality.impactLevel),
       probabilityLevel: probabilityToApi(functionality.probabilityLevel),
       storyLegacyId: functionality.storyId || null,
+      sortOrder:
+        typeof functionality.sortOrder === 'number' && Number.isFinite(functionality.sortOrder)
+          ? functionality.sortOrder
+          : 0,
       organization: relation(context.organizationDocumentId),
       project: relation(context.documentId),
       module: relation(module?.id),

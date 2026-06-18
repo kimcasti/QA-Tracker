@@ -203,6 +203,7 @@ export interface Functionality {
   storyId?: string;
   deliveryUnitId?: string;
   deliveryUnitName?: string;
+  sortOrder?: number;
 }
 
 export interface TestCase {
