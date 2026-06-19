@@ -27,12 +27,15 @@ import {
   ArrowDownOutlined,
   HolderOutlined,
   RobotOutlined,
+  DownOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import {
   AutomationResultStatus,
   AutomationStatus,
   AutomationTool,
   AutomationType,
+  ACTIVE_AUTOMATION_TOOLS,
   Priority,
   TestCase,
   TestType,
@@ -60,7 +63,7 @@ const { Text } = Typography;
 const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
 const automationStatusOptions = Object.values(AutomationStatus);
 const automationTypeOptions = Object.values(AutomationType);
-const automationToolOptions = Object.values(AutomationTool);
+const automationToolOptions = [...ACTIVE_AUTOMATION_TOOLS];
 const automationResultStatusOptions = Object.values(AutomationResultStatus);
 const automationFilterOptions = [
   { label: 'Todos', value: 'all' },
@@ -96,6 +99,21 @@ function getAutomationResultColor(status?: AutomationResultStatus) {
     default:
       return 'default';
   }
+}
+
+function formatAutomationRunAt(value?: string) {
+  if (!value) return 'Sin ejecucion registrada';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return new Intl.DateTimeFormat('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed);
 }
 
 function BasicRichTextEditorField(props: React.ComponentProps<typeof BasicRichTextEditor>) {
@@ -218,6 +236,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     AutomationResultStatus | 'all'
   >('all');
   const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
+  const [isAutomationTraceExpanded, setIsAutomationTraceExpanded] = useState(false);
   const [form] = Form.useForm();
   const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
   const hasGeneratedCasesForCurrentFunctionality =
@@ -262,6 +281,38 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       [...toolCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
     const leadingResult =
       [...resultCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const trackedAutomationCases = visibleTestCases.filter(testCase => {
+      const status = deriveAutomationStatus(testCase);
+      return (
+        status === AutomationStatus.AUTOMATED ||
+        Boolean(testCase.automationTool) ||
+        Boolean(testCase.lastAutomationStatus) ||
+        Boolean(testCase.lastAutomationRunAt)
+      );
+    });
+    const latestRunByTool = automationToolOptions
+      .map(tool => {
+        const casesForTool = trackedAutomationCases.filter(testCase => testCase.automationTool === tool);
+        const latestCase = [...casesForTool]
+          .filter(testCase => testCase.lastAutomationRunAt)
+          .sort(
+            (left, right) =>
+              new Date(right.lastAutomationRunAt || 0).getTime() -
+              new Date(left.lastAutomationRunAt || 0).getTime(),
+          )[0];
+
+        return {
+          tool,
+          totalCases: casesForTool.length,
+          latestCase: latestCase || null,
+        };
+      })
+      .filter(item => item.totalCases > 0);
+    const historicalAutomationCases = [...trackedAutomationCases].sort((left, right) => {
+      const rightDate = new Date(right.lastAutomationRunAt || 0).getTime();
+      const leftDate = new Date(left.lastAutomationRunAt || 0).getTime();
+      return rightDate - leftDate || left.title.localeCompare(right.title);
+    });
 
     return {
       total,
@@ -271,6 +322,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       leadingTool,
       leadingResult,
       resultCounts,
+      latestRunByTool,
+      historicalAutomationCases,
       automatedCases: visibleTestCases.filter(testCase =>
         isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
       ),
@@ -946,6 +999,101 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             }
           </Tag>
         </div>
+      </Card>
+
+      <Card
+        size="small"
+        title={
+          <button
+            type="button"
+            onClick={() => setIsAutomationTraceExpanded(current => !current)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <span>Trazabilidad automatizada</span>
+            {isAutomationTraceExpanded ? <DownOutlined /> : <RightOutlined />}
+          </button>
+        }
+        className="mt-4 rounded-2xl border-slate-200 shadow-sm"
+      >
+        {isAutomationTraceExpanded ? (
+          automationSummary.latestRunByTool.length > 0 ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {automationSummary.latestRunByTool.map(item => (
+                <div
+                  key={item.tool}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-700">{item.tool}</span>
+                    <Tag color="blue">
+                      {item.totalCases} caso{item.totalCases === 1 ? '' : 's'}
+                    </Tag>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {item.latestCase ? (
+                      <>
+                        <div>
+                          Ultima ejecucion:{' '}
+                          {formatAutomationRunAt(item.latestCase.lastAutomationRunAt)}
+                        </div>
+                        <div className="mt-1">Caso: {item.latestCase.title}</div>
+                      </>
+                    ) : (
+                      <div>Sin ejecuciones importadas aun.</div>
+                    )}
+                  </div>
+                  {item.latestCase?.lastAutomationStatus ? (
+                    <div className="mt-2">
+                      <Tag color={getAutomationResultColor(item.latestCase.lastAutomationStatus)}>
+                        {item.latestCase.lastAutomationStatus}
+                      </Tag>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+              <div className="mb-3 text-sm font-semibold text-slate-700">
+                Historial resumido por caso automatizado
+              </div>
+              <div className="space-y-2">
+                {automationSummary.historicalAutomationCases.slice(0, 5).map(testCase => (
+                  <div
+                    key={testCase.id}
+                    className="flex flex-col gap-2 rounded-xl border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-700">{testCase.title}</div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span>{testCase.automationTool || 'Sin herramienta'}</span>
+                        <span>{testCase.automationReference || 'Sin referencia'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {testCase.lastAutomationStatus ? (
+                        <Tag color={getAutomationResultColor(testCase.lastAutomationStatus)}>
+                          {testCase.lastAutomationStatus}
+                        </Tag>
+                      ) : (
+                        <Tag>Sin resultado</Tag>
+                      )}
+                      <Tag color="default">
+                        {formatAutomationRunAt(testCase.lastAutomationRunAt)}
+                      </Tag>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-slate-500">
+            Aun no hay trazabilidad automatizada registrada para esta funcionalidad.
+          </div>
+          )
+        ) : null}
       </Card>
 
       <UpgradeModal

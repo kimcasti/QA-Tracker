@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -25,7 +24,7 @@ import {
   SafetyCertificateOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { PieChart, Pie, Cell } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -224,6 +223,22 @@ function summarizeRunResults(results: Array<{ result: TestResult }>) {
   };
 }
 
+function mapExecutionResultToAutomationResult(
+  result?: TestResult,
+): AutomationResultStatus | null {
+  switch (result) {
+    case TestResult.PASSED:
+      return AutomationResultStatus.PASSED;
+    case TestResult.FAILED:
+    case TestResult.BLOCKED:
+      return AutomationResultStatus.FAILED;
+    case TestResult.NOT_EXECUTED:
+      return AutomationResultStatus.UNKNOWN;
+    default:
+      return null;
+  }
+}
+
 export default function Dashboard({ projectId }: { projectId?: string }) {
   const [deliveryDateRange, setDeliveryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     null,
@@ -356,18 +371,18 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const obsoleteAutomationCount = testCases.filter(
     item => deriveAutomationStatus(item) === AutomationStatus.OBSOLETE,
   ).length;
-  const leadingAutomationTool =
-    [
-      ...testCases
-        .reduce<Map<string, number>>((acc, item) => {
-          if (item.automationTool) {
-            acc.set(item.automationTool, (acc.get(item.automationTool) || 0) + 1);
-          }
-          return acc;
-        }, new Map())
-        .entries(),
-    ].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
-  const latestAutomationResult =
+  const automatedTestCaseIds = new Set(
+    testCases
+      .filter(item => isAutomatedCoverageStatus(deriveAutomationStatus(item)))
+      .map(item => item.id),
+  );
+  const latestAutomatedExecution =
+    [...executions]
+      .filter(execution => execution.testCaseId && automatedTestCaseIds.has(execution.testCaseId))
+      .sort(
+        (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+      )[0] || null;
+  const latestAutomationMetadataCase =
     [
       ...testCases
         .filter(item => item.lastAutomationStatus)
@@ -376,7 +391,131 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             new Date(right.lastAutomationRunAt || 0).getTime() -
             new Date(left.lastAutomationRunAt || 0).getTime(),
         ),
-    ][0]?.lastAutomationStatus || null;
+    ][0] || null;
+  const latestAutomationResult =
+    mapExecutionResultToAutomationResult(latestAutomatedExecution?.result) ||
+    latestAutomationMetadataCase?.lastAutomationStatus ||
+    null;
+  const latestAutomationRunAt =
+    latestAutomatedExecution?.executionDate ||
+    latestAutomationMetadataCase?.lastAutomationRunAt ||
+    null;
+  const moduleAutomationCoverage = Array.from(
+    functionalities.reduce<
+      Map<
+        string,
+        {
+          name: string;
+          totalCases: number;
+          automatedCases: number;
+        }
+      >
+    >((acc, functionality) => {
+      const moduleName = functionality.module || 'Sin modulo';
+      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
+      if (relatedCases.length === 0) return acc;
+
+      const current = acc.get(moduleName) || {
+        name: moduleName,
+        totalCases: 0,
+        automatedCases: 0,
+      };
+
+      current.totalCases += relatedCases.length;
+      current.automatedCases += relatedCases.filter(testCase =>
+        isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+      ).length;
+
+      acc.set(moduleName, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      coverage: value.totalCases > 0 ? Math.round((value.automatedCases / value.totalCases) * 100) : 0,
+    }))
+    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases)
+    .slice(0, 3);
+  const functionalityAutomationCoverage = (() => {
+    const totalFunctionalitiesCount = functionalities.length;
+    const automatedFunctionalitiesCount = functionalities.filter(functionality =>
+      testCases.some(
+        testCase =>
+          testCase.functionalityId === functionality.id &&
+          isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+      ),
+    ).length;
+    const uncoveredFunctionalitiesCount = Math.max(
+      totalFunctionalitiesCount - automatedFunctionalitiesCount,
+      0,
+    );
+
+    return {
+      total: totalFunctionalitiesCount,
+      automated: automatedFunctionalitiesCount,
+      uncovered: uncoveredFunctionalitiesCount,
+      coverage:
+        totalFunctionalitiesCount > 0
+          ? Math.round((automatedFunctionalitiesCount / totalFunctionalitiesCount) * 100)
+          : 0,
+    };
+  })();
+  const automationSuccessByTool = Array.from(
+    testCases.reduce<
+      Map<
+        string,
+        {
+          tool: string;
+          total: number;
+          passed: number;
+        }
+      >
+    >((acc, testCase) => {
+      if (!testCase.automationTool || !testCase.lastAutomationStatus) return acc;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.UNKNOWN) return acc;
+
+      const current = acc.get(testCase.automationTool) || {
+        tool: testCase.automationTool,
+        total: 0,
+        passed: 0,
+      };
+
+      current.total += 1;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.PASSED) {
+        current.passed += 1;
+      }
+
+      acc.set(testCase.automationTool, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      successRate: value.total > 0 ? Math.round((value.passed / value.total) * 100) : 0,
+    }))
+    .sort((left, right) => right.successRate - left.successRate || right.total - left.total);
+  const moduleAutomationCoveragePieData = moduleAutomationCoverage.map(item => ({
+    name: item.name,
+    value: item.coverage,
+  }));
+  const functionalityAutomationCoveragePieData =
+    functionalityAutomationCoverage.total > 0
+      ? [
+          {
+            name: 'Con al menos 1 caso automatizado',
+            value: functionalityAutomationCoverage.coverage,
+          },
+          {
+            name: 'Sin cobertura automatizada',
+            value: Math.max(100 - functionalityAutomationCoverage.coverage, 0),
+          },
+        ].filter(item => item.value > 0)
+      : [];
+  const automationSuccessByToolPieData = automationSuccessByTool.map(item => ({
+    name: item.tool,
+    value: item.successRate,
+  }));
+  const automationPieColors = ['#2563eb', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444'];
   const coreFunctionalities = functionalities.filter(item => item.isCore).length;
   const regressionFunctionalities = functionalities.filter(item => item.isRegression).length;
   const smokeFunctionalities = functionalities.filter(item => item.isSmoke).length;
@@ -780,14 +919,6 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Text>
         </div>
 
-        <Alert
-          showIcon
-          type="info"
-          className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
-          message="Transición de modelo en progreso"
-          description="Durante esta etapa, el dashboard prioriza Test Execution para Smoke y Regresión cuando existe data oficial nueva, y usa historial legacy solo como respaldo temporal."
-        />
-
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
@@ -877,15 +1008,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           <Col xs={24} md={12} lg={6}>
             <div className="rounded-2xl border border-slate-200 p-4">
               <Text type="secondary" className="text-xs uppercase tracking-wide">
-                Herramienta líder
+                Obsoletas
               </Text>
-              <div className="mt-2 text-lg font-semibold text-slate-800">
-                {leadingAutomationTool || 'Sin definir'}
-              </div>
+              <div className="mt-2 text-2xl font-bold text-slate-800">{obsoleteAutomationCount}</div>
               <Text className="text-xs text-slate-500">
-                {obsoleteAutomationCount > 0
-                  ? `${obsoleteAutomationCount} marcadas como obsoletas`
-                  : 'Sin automatizaciones obsoletas registradas'}
+                Casos con automatizacion obsoleta
               </Text>
             </div>
           </Col>
@@ -900,8 +1027,151 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </Tag>
               </div>
               <Text className="text-xs text-slate-500">
-                Último estado reportado desde los casos
+                {latestAutomationRunAt
+                  ? `Actualizado ${dayjs(latestAutomationRunAt).format('DD/MM/YYYY')}`
+                  : 'Último estado reportado desde los casos'}
               </Text>
+            </div>
+          </Col>
+        </Row>
+
+        <Row gutter={[20, 20]} className="mt-2">
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Cobertura por modulo
+              </Text>
+              <div className="mt-3">
+                {moduleAutomationCoveragePieData.length > 0 ? (
+                  <>
+                    <div className="flex justify-center">
+                      <PieChart width={220} height={220}>
+                        <Pie
+                          data={moduleAutomationCoveragePieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={78}
+                          dataKey="value"
+                          labelLine={false}
+                          label={({ value }) => `${value}%`}
+                          isAnimationActive={false}
+                        >
+                          {moduleAutomationCoveragePieData.map((entry, index) => (
+                            <Cell
+                              key={entry.name}
+                              fill={automationPieColors[index % automationPieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, _name, item: any) => [
+                            `${value}% automatizado`,
+                            item?.payload?.name || 'Modulo',
+                          ]}
+                        />
+                      </PieChart>
+                    </div>
+                  </>
+                ) : (
+                  <Text className="text-xs text-slate-500">
+                    Sin datos de cobertura por modulo.
+                  </Text>
+                )}
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Cobertura por funcionalidad
+              </Text>
+              <div className="mt-3">
+                {functionalityAutomationCoveragePieData.length > 0 ? (
+                  <>
+                    <div className="flex justify-center">
+                      <PieChart width={220} height={220}>
+                        <Pie
+                          data={functionalityAutomationCoveragePieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={78}
+                          dataKey="value"
+                          labelLine={false}
+                          label={({ value }) => `${value}%`}
+                          isAnimationActive={false}
+                        >
+                          {functionalityAutomationCoveragePieData.map((entry, index) => (
+                            <Cell
+                              key={entry.name}
+                              fill={automationPieColors[index % automationPieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, _name, item: any) => [
+                            `${value}%`,
+                            item?.payload?.name || 'Cobertura funcional',
+                          ]}
+                        />
+                      </PieChart>
+                    </div>
+                    <div className="text-center text-sm text-slate-600">
+                      {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades
+                    </div>
+                  </>
+                ) : (
+                  <Text className="text-xs text-slate-500">
+                    Sin funcionalidades registradas.
+                  </Text>
+                )}
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Exito por herramienta
+              </Text>
+              <div className="mt-3">
+                {automationSuccessByToolPieData.length > 0 ? (
+                  <>
+                    <div className="flex justify-center">
+                      <PieChart width={220} height={220}>
+                        <Pie
+                          data={automationSuccessByToolPieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={78}
+                          dataKey="value"
+                          labelLine={false}
+                          label={({ value }) => `${value}%`}
+                          isAnimationActive={false}
+                        >
+                          {automationSuccessByToolPieData.map((entry, index) => (
+                            <Cell
+                              key={entry.name}
+                              fill={automationPieColors[index % automationPieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, _name, item: any) => [
+                            `${value}% de exito`,
+                            item?.payload?.name || 'Herramienta',
+                          ]}
+                        />
+                      </PieChart>
+                    </div>
+                  </>
+                ) : (
+                  <Text className="text-xs text-slate-500">
+                    Sin resultados automaticos por herramienta.
+                  </Text>
+                )}
+              </div>
             </div>
           </Col>
         </Row>

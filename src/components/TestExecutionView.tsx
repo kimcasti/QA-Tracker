@@ -1,6 +1,7 @@
 import {
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -20,6 +21,7 @@ import {
   Popconfirm,
   List,
   Tabs,
+  Upload,
 } from 'antd';
 import {
   PlusOutlined,
@@ -37,11 +39,13 @@ import {
   BarChartOutlined,
   ArrowDownOutlined,
   ThunderboltOutlined,
+  MoreOutlined,
   MinusOutlined,
   LinkOutlined,
   StopOutlined,
   CopyOutlined,
   InfoCircleOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
@@ -63,6 +67,10 @@ import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublic
 import { getPublicUatSessionStatus } from '../modules/test-runs/services/publicUatSessionsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
+  AutomationStatus,
+  AutomationResultStatus,
+  AutomationTool,
+  ACTIVE_AUTOMATION_TOOLS,
   Browser,
   DeviceType,
   TestExecution,
@@ -81,6 +89,8 @@ import {
   Functionality,
   OperatingSystem,
   PublicUatSessionSummary,
+  TestCase,
+  deriveAutomationStatus,
 } from '../types';
 import {
   labelEnvironment,
@@ -88,10 +98,12 @@ import {
   labelPriority,
   labelTestResult,
 } from '../i18n/labels';
+import { qaPalette } from '../theme/palette';
+import { softTagStyle } from '../theme/statusStyles';
 import { previewNextInternalBugId, syncBugReport } from '../services/bugTrackerService';
 import BugHistoryView from './BugHistoryView';
-import CoverageMatrix from './CoverageMatrix';
 import dayjs from 'dayjs';
+import type { MenuProps } from 'antd';
 import type { FilterValue } from 'antd/es/table/interface';
 import { isPayloadTooLargeError, showPayloadTooLargeMessage } from '../utils/uploadValidation';
 import {
@@ -135,6 +147,97 @@ const EXECUTION_EXIT_CRITERIA_OPTIONS = [
   { label: 'Aprobación del Product Owner', value: 'po-approval' },
 ];
 
+const executionRiskLabelByValue = new Map(
+  EXECUTION_RISK_OPTIONS.map(option => [option.value, option.label] as const),
+);
+const executionExitCriteriaLabelByValue = new Map(
+  EXECUTION_EXIT_CRITERIA_OPTIONS.map(option => [option.value, option.label] as const),
+);
+
+type ScopeAutomationFilter = 'all' | 'automated' | 'candidate' | 'obsolete' | 'manual';
+type AutomationImportTool = 'playwright' | 'cypress' | 'postman';
+
+type AutomationImportResult = {
+  title: string;
+  referenceCandidates: string[];
+  status: AutomationResultStatus;
+};
+
+type AutomationImportSummary = {
+  matchedExecutionCases: Array<{
+    testCaseId: string;
+    testCaseTitle: string;
+    reference: string;
+    status: AutomationResultStatus;
+  }>;
+  unmatchedExecutionCases: Array<{
+    testCaseId: string;
+    testCaseTitle: string;
+    reference: string;
+  }>;
+  unmatchedReportReferences: string[];
+  duplicateReportReferences: string[];
+  missingReferenceCases: Array<{
+    testCaseId: string;
+    testCaseTitle: string;
+  }>;
+};
+
+const scopeAutomationFilterOptions: Array<{ label: string; value: ScopeAutomationFilter }> = [
+  { label: 'Todos los casos', value: 'all' },
+  { label: 'Solo automatizados', value: 'automated' },
+];
+const executionAutomationToolFilterOptions = [
+  { label: 'Todas las herramientas', value: 'all' },
+  ...ACTIVE_AUTOMATION_TOOLS.map(tool => ({
+    label: tool,
+    value: tool,
+  })),
+];
+const automationImportToolOptions: Array<{ label: string; value: AutomationImportTool }> = [
+  { label: 'Playwright', value: 'playwright' },
+  { label: 'Cypress', value: 'cypress' },
+  { label: 'Postman', value: 'postman' },
+];
+
+function labelAutomationImportTool(tool: AutomationImportTool) {
+  switch (tool) {
+    case 'cypress':
+      return 'Cypress';
+    case 'postman':
+      return 'Postman';
+    case 'playwright':
+    default:
+      return 'Playwright';
+  }
+}
+
+function labelAutomationImportToolPlural(tool: AutomationImportTool) {
+  switch (tool) {
+    case 'cypress':
+      return 'Cypress';
+    case 'postman':
+      return 'Postman';
+    case 'playwright':
+    default:
+      return 'Playwright';
+  }
+}
+
+function getAutomationStatusTagColor(status: AutomationStatus) {
+  switch (status) {
+    case AutomationStatus.AUTOMATED:
+      return 'green';
+    case AutomationStatus.CANDIDATE:
+      return 'gold';
+    case AutomationStatus.OBSOLETE:
+      return 'red';
+    case AutomationStatus.NOT_AUTOMATED:
+    default:
+      return 'default';
+  }
+}
+
 const TEST_TYPE_DEFAULTS: Partial<
   Record<
     TestType,
@@ -150,19 +253,19 @@ const TEST_TYPE_DEFAULTS: Partial<
     environment: Environment.TEST,
     identifiedRisks: ['ui-ux-changes'],
     exitCriteria: ['all-executed', 'no-critical-bugs'],
-    helperText: 'Pensada para validar flujos funcionales y comportamiento esperado por mÃ³dulo.',
+    helperText: 'Pensada para validar flujos funcionales y comportamiento esperado por módulo.',
   },
   [TestType.INTEGRATION]: {
     environment: Environment.TEST,
     identifiedRisks: ['api-changes', 'external-integrations', 'database-changes'],
     exitCriteria: ['all-executed', 'no-critical-bugs', 'no-active-blockers'],
-    helperText: 'Prioriza dependencias entre componentes, servicios y flujos de integraciÃ³n.',
+    helperText: 'Prioriza dependencias entre componentes, servicios y flujos de integración.',
   },
   [TestType.SANITY]: {
     environment: Environment.TEST,
     identifiedRisks: ['high-regression-risk'],
     exitCriteria: ['all-executed', 'no-critical-bugs'],
-    helperText: 'Ideal para una validaciÃ³n rÃ¡pida despuÃ©s de cambios sensibles o despliegues.',
+    helperText: 'Ideal para una validación rápida después de cambios sensibles o despliegues.',
   },
   [TestType.REGRESSION]: {
     environment: Environment.TEST,
@@ -176,21 +279,75 @@ const TEST_TYPE_DEFAULTS: Partial<
     identifiedRisks: ['high-regression-risk', 'external-integrations'],
     exitCriteria: ['all-executed', 'no-critical-bugs'],
     helperText:
-      'Enfocada en una validacion rapida de funcionalidades clave antes de avanzar con mas detalle.',
+      'Enfocada en una validación rápida de funcionalidades clave antes de avanzar con más detalle.',
   },
   [TestType.EXPLORATORY]: {
     environment: Environment.TEST,
     identifiedRisks: ['ui-ux-changes', 'other'],
     exitCriteria: ['no-critical-bugs'],
-    helperText: 'Ãštil para descubrir comportamientos no previstos y explorar riesgo residual.',
+    helperText: 'Útil para descubrir comportamientos no previstos y explorar riesgo residual.',
   },
   [TestType.UAT]: {
     environment: Environment.PRODUCTION,
     identifiedRisks: ['external-integrations', 'ui-ux-changes'],
     exitCriteria: ['no-critical-bugs', 'po-approval'],
-    helperText: 'Enfocada en validaciÃ³n de negocio y aprobaciÃ³n final con participantes externos.',
+    helperText: 'Enfocada en validación de negocio y aprobación final con participantes externos.',
   },
 };
+
+const TEST_TYPE_COLORS: Record<TestType, string> = {
+  [TestType.INTEGRATION]: '#5B6CFA',
+  [TestType.FUNCTIONAL]: '#12B3A6',
+  [TestType.SANITY]: '#E56B8A',
+  [TestType.REGRESSION]: '#7C4DFF',
+  [TestType.SMOKE]: '#F59E0B',
+  [TestType.EXPLORATORY]: '#FB7185',
+  [TestType.UAT]: '#2563EB',
+};
+
+function getTestTypeTagStyle(type?: string | null) {
+  const color = type ? TEST_TYPE_COLORS[type as TestType] : undefined;
+
+  if (!color) {
+    return {
+      color: '#475569',
+      backgroundColor: '#F1F5F9',
+      borderColor: '#CBD5E1',
+    };
+  }
+
+  return softTagStyle(color);
+}
+
+function renderTestTypeTag(
+  type?: string | null,
+  automationMeta?: { automatedCount: number; tools: string[] },
+) {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <Tag className="m-0 text-[10px] font-semibold uppercase" style={getTestTypeTagStyle(type)}>
+        {type || 'Sin tipo'}
+      </Tag>
+      {automationMeta && automationMeta.automatedCount > 0 ? (
+        <Tooltip
+          title={
+            automationMeta.tools.length > 0
+              ? `${automationMeta.automatedCount} caso(s) automatizado(s) - ${automationMeta.tools.join(', ')}`
+              : `${automationMeta.automatedCount} caso(s) automatizado(s)`
+          }
+        >
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+            <ThunderboltOutlined className="text-[11px]" />
+          </span>
+        </Tooltip>
+      ) : null}
+    </div>
+  );
+}
+
+function compactMenuLabel(label: string) {
+  return <span className="text-sm">{label}</span>;
+}
 
 function EvidenceRichEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
@@ -327,26 +484,255 @@ function matchesFunctionalityToExecutionType(
     case TestType.SMOKE:
       return Boolean(functionality.isSmoke);
     case TestType.SANITY:
-      return Boolean(functionality.isCore);
     case TestType.UAT:
-      return Boolean(
-        functionality.isCore ||
-          functionality.priority === Priority.HIGH ||
-          functionality.priority === Priority.CRITICAL,
-      );
-    case TestType.EXPLORATORY: {
-      const hasHighPriority =
-        functionality.priority === Priority.HIGH || functionality.priority === Priority.CRITICAL;
-      const hasHighRisk = functionality.riskLevel === RiskLevel.HIGH;
-      return Boolean(
-        functionality.lastFunctionalChangeAt || hasHighPriority || hasHighRisk,
-      );
-    }
+    case TestType.EXPLORATORY:
     case TestType.INTEGRATION:
     case TestType.FUNCTIONAL:
     default:
       return true;
   }
+}
+
+function matchesAutomationScopeFilter(status: AutomationStatus, filter: ScopeAutomationFilter) {
+  switch (filter) {
+    case 'automated':
+      return status === AutomationStatus.AUTOMATED;
+    case 'candidate':
+      return status === AutomationStatus.CANDIDATE;
+    case 'obsolete':
+      return status === AutomationStatus.OBSOLETE;
+    case 'manual':
+      return status === AutomationStatus.NOT_AUTOMATED;
+    case 'all':
+    default:
+      return true;
+  }
+}
+
+function matchesAutomationToolFilter(
+  tool: AutomationTool | undefined,
+  filter: AutomationTool | 'all',
+) {
+  if (filter === 'all') return true;
+  return tool === filter;
+}
+
+function normalizeAutomationMatchValue(value?: string | null) {
+  return (value || '').trim().toLowerCase();
+}
+
+function mapPlaywrightStatusToAutomationResult(status?: string): AutomationResultStatus {
+  switch ((status || '').toLowerCase()) {
+    case 'passed':
+      return AutomationResultStatus.PASSED;
+    case 'failed':
+    case 'timedout':
+    case 'interrupted':
+      return AutomationResultStatus.FAILED;
+    case 'skipped':
+      return AutomationResultStatus.SKIPPED;
+    default:
+      return AutomationResultStatus.UNKNOWN;
+  }
+}
+
+function mapAutomationResultToExecutionResult(status: AutomationResultStatus): TestResult {
+  switch (status) {
+    case AutomationResultStatus.PASSED:
+      return TestResult.PASSED;
+    case AutomationResultStatus.FAILED:
+      return TestResult.FAILED;
+    case AutomationResultStatus.SKIPPED:
+      return TestResult.BLOCKED;
+    case AutomationResultStatus.UNKNOWN:
+    default:
+      return TestResult.NOT_EXECUTED;
+  }
+}
+
+function extractPlaywrightStatusFromSpec(spec: any): string | undefined {
+  const testResults = Array.isArray(spec?.tests)
+    ? spec.tests.flatMap((test: any) => (Array.isArray(test?.results) ? test.results : []))
+    : [];
+
+  const latestNestedStatus = testResults.at(-1)?.status;
+  if (typeof latestNestedStatus === 'string') {
+    return latestNestedStatus;
+  }
+
+  if (typeof spec?.status === 'string') {
+    return spec.status;
+  }
+
+  return undefined;
+}
+
+function extractPlaywrightResults(payload: unknown): AutomationImportResult[] {
+  const collected: AutomationImportResult[] = [];
+
+  const visitSuite = (suite: any, parentTitles: string[] = []) => {
+    const suiteTitle = typeof suite?.title === 'string' ? suite.title.trim() : '';
+    const nextParents = suiteTitle ? [...parentTitles, suiteTitle] : parentTitles;
+
+    if (Array.isArray(suite?.specs)) {
+      suite.specs.forEach((spec: any) => {
+        const specTitle = typeof spec?.title === 'string' ? spec.title.trim() : '';
+        const file = typeof spec?.file === 'string' ? spec.file.trim() : '';
+        const latestStatus = extractPlaywrightStatusFromSpec(spec);
+
+        if (!specTitle || !latestStatus) return;
+
+        const fullTitle = [...nextParents, specTitle].filter(Boolean).join(' > ');
+        const references = [
+          specTitle,
+          fullTitle,
+          file,
+          file && specTitle ? `${file}::${specTitle}` : '',
+        ].filter(Boolean);
+
+        collected.push({
+          title: specTitle,
+          referenceCandidates: references,
+          status: mapPlaywrightStatusToAutomationResult(latestStatus),
+        });
+      });
+    }
+
+    if (Array.isArray(suite?.suites)) {
+      suite.suites.forEach((child: any) => visitSuite(child, nextParents));
+    }
+  };
+
+  const suites = Array.isArray((payload as any)?.suites)
+    ? (payload as any).suites
+    : Array.isArray((payload as any)?.results?.suites)
+      ? (payload as any).results.suites
+      : Array.isArray(payload)
+        ? payload
+        : [];
+  suites.forEach((suite: any) => visitSuite(suite, []));
+
+  return collected;
+}
+
+function extractCypressResults(payload: unknown): AutomationImportResult[] {
+  const collected: AutomationImportResult[] = [];
+
+  const visitSuite = (suite: any, file?: string) => {
+    if (Array.isArray(suite?.tests)) {
+      suite.tests.forEach((test: any) => {
+        const titleParts = Array.isArray(test?.title)
+          ? test.title.filter(Boolean)
+          : typeof test?.title === 'string'
+            ? [test.title]
+            : [];
+        const fullTitle = titleParts.join(' > ').trim();
+        const leafTitle = (titleParts.at(-1) || '').trim();
+        const state =
+          typeof test?.state === 'string'
+            ? test.state
+            : typeof test?.displayError === 'string' && test.displayError
+              ? 'failed'
+              : undefined;
+
+        if (!leafTitle || !state) return;
+
+        collected.push({
+          title: leafTitle,
+          referenceCandidates: [
+            leafTitle,
+            fullTitle,
+            file || '',
+            file && leafTitle ? `${file}::${leafTitle}` : '',
+          ].filter(Boolean),
+          status: mapPlaywrightStatusToAutomationResult(state),
+        });
+      });
+    }
+
+    if (Array.isArray(suite?.suites)) {
+      suite.suites.forEach((child: any) => visitSuite(child, file));
+    }
+  };
+
+  if (Array.isArray((payload as any)?.results)) {
+    (payload as any).results.forEach((result: any) => {
+      const file = typeof result?.file === 'string' ? result.file.trim() : '';
+
+      if (Array.isArray(result?.suites)) {
+        result.suites.forEach((suite: any) => visitSuite(suite, file));
+      }
+
+      if (Array.isArray(result?.tests)) {
+        visitSuite({ tests: result.tests }, file);
+      }
+    });
+  }
+
+  if (Array.isArray((payload as any)?.tests)) {
+    visitSuite({ tests: (payload as any).tests }, '');
+  }
+
+  return collected;
+}
+
+function extractPostmanResults(payload: unknown): AutomationImportResult[] {
+  const collected: AutomationImportResult[] = [];
+
+  const executions = Array.isArray((payload as any)?.run?.executions)
+    ? (payload as any).run.executions
+    : Array.isArray((payload as any)?.executions)
+      ? (payload as any).executions
+      : [];
+
+  executions.forEach((execution: any) => {
+    const itemName =
+      typeof execution?.item?.name === 'string'
+        ? execution.item.name.trim()
+        : typeof execution?.name === 'string'
+          ? execution.name.trim()
+          : '';
+    const itemId =
+      typeof execution?.item?.id === 'string'
+        ? execution.item.id.trim()
+        : typeof execution?.id === 'string'
+          ? execution.id.trim()
+          : '';
+    const requestRaw =
+      typeof execution?.request?.url?.raw === 'string'
+        ? execution.request.url.raw.trim()
+        : typeof execution?.request?.url === 'string'
+          ? execution.request.url.trim()
+          : '';
+    const cursorRef =
+      typeof execution?.cursor?.ref === 'string' ? execution.cursor.ref.trim() : '';
+    const assertions = Array.isArray(execution?.assertions) ? execution.assertions : [];
+
+    const hasFailedAssertion = assertions.some(
+      (assertion: any) =>
+        assertion?.error ||
+        assertion?.skipped === false ||
+        String(assertion?.status || '').toLowerCase() === 'failed',
+    );
+    const hasAssertions = assertions.length > 0;
+    const explicitStatus =
+      typeof execution?.response?.code === 'number' || typeof execution?.response === 'object'
+        ? hasFailedAssertion
+          ? 'failed'
+          : 'passed'
+        : undefined;
+    const status = explicitStatus || (hasAssertions ? (hasFailedAssertion ? 'failed' : 'passed') : undefined);
+
+    if (!itemName || !status) return;
+
+    collected.push({
+      title: itemName,
+      referenceCandidates: [itemName, itemId, cursorRef, requestRaw].filter(Boolean),
+      status: mapPlaywrightStatusToAutomationResult(status),
+    });
+  });
+
+  return collected;
 }
 
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
@@ -370,7 +756,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     isActivating: isActivatingPublicUatSession,
     isRevoking: isRevokingPublicUatSession,
   } = usePublicUatSessionActions(projectId);
-  const { data: allTestCases } = useTestCases(projectId);
+  const { data: allTestCases, saveManyWithSingleRefresh } = useTestCases(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
 
@@ -443,6 +829,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isEditingRunInfo, setIsEditingRunInfo] = useState(false);
+  const [isSubmittingTestRun, setIsSubmittingTestRun] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
     useParticipantDirectoryMembers(isModalOpen);
@@ -461,9 +848,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedFuncIds, setSelectedFuncIds] = useState<string[]>([]);
-  const [selectedExecutionType, setSelectedExecutionType] = useState<TestType>(
-    TestType.FUNCTIONAL,
-  );
+  const [scopeAutomationFilter, setScopeAutomationFilter] = useState<ScopeAutomationFilter>('all');
+  const [scopeAutomationToolFilter, setScopeAutomationToolFilter] = useState<
+    AutomationTool | 'all'
+  >('all');
+  const [selectedExecutionType, setSelectedExecutionType] = useState<TestType>(TestType.FUNCTIONAL);
   const [aiSuggestions, setAiSuggestions] = useState<AiExecutionSuggestion[]>([]);
   const [isSuggestingAi, setIsSuggestingAi] = useState(false);
   const [aiSuggestionMode, setAiSuggestionMode] = useState<'ai' | 'rules' | null>(null);
@@ -472,6 +861,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [executionResults, setExecutionResults] = useState<TestRunResult[]>([]);
   const [executionSearchText, setExecutionSearchText] = useState('');
   const [filterOnlyFailed, setFilterOnlyFailed] = useState(false);
+  const [isPlaywrightImportModalOpen, setIsPlaywrightImportModalOpen] = useState(false);
+  const [playwrightImportJson, setPlaywrightImportJson] = useState('');
+  const [isImportingPlaywright, setIsImportingPlaywright] = useState(false);
+  const [automationImportTool, setAutomationImportTool] =
+    useState<AutomationImportTool>('playwright');
+  const [playwrightImportSummary, setPlaywrightImportSummary] =
+    useState<AutomationImportSummary | null>(null);
+  const [dismissedReferenceAlertRunIds, setDismissedReferenceAlertRunIds] = useState<string[]>([]);
 
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [currentEvidenceTestCaseId, setCurrentEvidenceTestCaseId] = useState<string | null>(null);
@@ -688,7 +1085,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const watchedPriority = Form.useWatch('priority', form) as Priority | undefined;
   const watchedTester = Form.useWatch('tester', form) as string | undefined;
   const watchedEnvironment = Form.useWatch('environment', form) as Environment | undefined;
-  const watchedIdentifiedRisks = (Form.useWatch('identifiedRisks', form) as string[] | undefined) || [];
+  const watchedIdentifiedRisks =
+    (Form.useWatch('identifiedRisks', form) as string[] | undefined) || [];
   const watchedExitCriteria = (Form.useWatch('exitCriteria', form) as string[] | undefined) || [];
 
   const testCaseCountByFunctionality = useMemo(() => {
@@ -698,6 +1096,30 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     });
     return counts;
   }, [testCases]);
+
+  const filteredTestCasesByFunctionality = useMemo(() => {
+    const grouped = new Map<string, typeof testCases>();
+
+    testCases.forEach(testCase => {
+      const automationStatus = deriveAutomationStatus(testCase);
+      if (!matchesAutomationScopeFilter(automationStatus, scopeAutomationFilter)) {
+        return;
+      }
+
+      if (
+        scopeAutomationFilter === 'automated' &&
+        !matchesAutomationToolFilter(testCase.automationTool, scopeAutomationToolFilter)
+      ) {
+        return;
+      }
+
+      const currentGroup = grouped.get(testCase.functionalityId) || [];
+      currentGroup.push(testCase);
+      grouped.set(testCase.functionalityId, currentGroup);
+    });
+
+    return grouped;
+  }, [scopeAutomationFilter, scopeAutomationToolFilter, testCases]);
 
   const testCaseById = useMemo(() => {
     return new Map(testCases.map(testCase => [testCase.id, testCase]));
@@ -837,22 +1259,45 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return groups;
   }, [availableFunctionalities]);
 
-  const selectableFunctionalityIds = useMemo(() => {
-    return new Set(completedFunctionalitiesWithTestCases.map(func => func.id));
-  }, [completedFunctionalitiesWithTestCases]);
+  const executableFunctionalityIds = useMemo(() => {
+    return new Set(
+      completedFunctionalitiesWithTestCases
+        .filter(func => (filteredTestCasesByFunctionality.get(func.id) || []).length > 0)
+        .map(func => func.id),
+    );
+  }, [completedFunctionalitiesWithTestCases, filteredTestCasesByFunctionality]);
 
   const selectedTestCaseCount = useMemo(
     () =>
       selectedFuncIds.reduce(
-        (total, functionalityId) => total + (testCaseCountByFunctionality.get(functionalityId) || 0),
+        (total, functionalityId) =>
+          total + (filteredTestCasesByFunctionality.get(functionalityId)?.length || 0),
         0,
       ),
-    [selectedFuncIds, testCaseCountByFunctionality],
+    [filteredTestCasesByFunctionality, selectedFuncIds],
   );
 
   const availableExecutableFunctionalities = useMemo(() => {
-    return availableFunctionalities.filter(func => selectableFunctionalityIds.has(func.id));
-  }, [availableFunctionalities, selectableFunctionalityIds]);
+    return availableFunctionalities.filter(func => executableFunctionalityIds.has(func.id));
+  }, [availableFunctionalities, executableFunctionalityIds]);
+
+  const executionAutomationMix = useMemo(() => {
+    return executionResults.reduce(
+      (acc, result) => {
+        const testCase = testCaseById.get(result.testCaseId);
+        const automationStatus = deriveAutomationStatus(testCase);
+
+        if (automationStatus === AutomationStatus.AUTOMATED) {
+          acc.automated += 1;
+        } else {
+          acc.manual += 1;
+        }
+
+        return acc;
+      },
+      { automated: 0, manual: 0 },
+    );
+  }, [executionResults, testCaseById]);
 
   const unavailableFunctionalitiesCount =
     availableFunctionalities.length - availableExecutableFunctionalities.length;
@@ -866,11 +1311,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const executionPlanningSteps = useMemo(() => {
     const generalComplete = Boolean(
       watchedTitle?.trim() &&
-        selectedTestType &&
-        watchedSprint &&
-        watchedPriority &&
-        watchedTester &&
-        watchedEnvironment,
+      selectedTestType &&
+      watchedSprint &&
+      watchedPriority &&
+      watchedTester &&
+      watchedEnvironment,
     );
     const scopeComplete = Boolean(
       selectedModules.length > 0 && (isEditingRunInfo || selectedFuncIds.length > 0),
@@ -913,7 +1358,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   ]);
 
   const executionTestTypeOptions = useMemo(
-    () => Object.values(TestType).map(type => ({ label: type, value: type })),
+    () =>
+      Object.values(TestType).map(type => ({
+        label: renderTestTypeTag(type),
+        value: type,
+      })),
     [],
   );
 
@@ -924,10 +1373,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   useEffect(() => {
     // Auto-select all functionalities when modules change
     const newIds = availableFunctionalities
-      .filter(f => selectableFunctionalityIds.has(f.id))
+      .filter(f => executableFunctionalityIds.has(f.id))
       .map(f => f.id);
     setSelectedFuncIds(newIds);
-  }, [availableFunctionalities, selectableFunctionalityIds]);
+  }, [availableFunctionalities, executableFunctionalityIds]);
 
   useEffect(() => {
     setSelectedModules(prev =>
@@ -1062,6 +1511,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const resetTestRunModal = () => {
+    if (isSubmittingTestRun) return;
     setIsModalOpen(false);
     setIsEditingRunInfo(false);
     form.resetFields();
@@ -1191,9 +1641,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     } catch (error) {
       console.error('Error revoking public UAT session:', error);
       message.error(
-        error instanceof Error
-          ? error.message
-          : 'No fue posible cerrar la sesión pública UAT.',
+        error instanceof Error ? error.message : 'No fue posible cerrar la sesión pública UAT.',
       );
     }
   };
@@ -1201,6 +1649,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const openCreateTestRunModal = () => {
     setIsEditingRunInfo(false);
     form.resetFields();
+    setScopeAutomationFilter('all');
     setSelectedExecutionType(TestType.FUNCTIONAL);
     form.setFieldsValue({
       executionDate: dayjs(),
@@ -1219,6 +1668,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     if (!activeTestRun) return;
 
     setIsEditingRunInfo(true);
+    setScopeAutomationFilter('all');
     setSelectedExecutionType(activeTestRun.testType);
     form.setFieldsValue({
       title: activeTestRun.title,
@@ -1236,8 +1686,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       browserVersion: activeTestRun.browserVersion || '',
       osVersion: activeTestRun.osVersion || '',
       resolution: activeTestRun.resolution || '',
-      identifiedRisks: [],
-      exitCriteria: [],
+      identifiedRisks: activeTestRun.identifiedRisks || [],
+      exitCriteria: activeTestRun.exitCriteria || [],
     });
     setSelectedModules(activeTestRun.selectedModules || []);
     setSelectedFuncIds(activeTestRun.selectedFunctionalities || []);
@@ -1246,9 +1696,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const handleCreateTestRun = async () => {
     try {
+      setIsSubmittingTestRun(true);
       const values = await form.validateFields();
       if (selectedFuncIds.length === 0 || selectedTestCaseCount === 0) {
-        message.error('Selecciona al menos una funcionalidad con casos de prueba registrados.');
+        message.error(
+          'Selecciona al menos una funcionalidad con casos compatibles con el filtro actual.',
+        );
         return;
       }
 
@@ -1271,6 +1724,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         browserVersion: values.browserVersion,
         osVersion: values.osVersion,
         resolution: values.resolution,
+        identifiedRisks: values.identifiedRisks || [],
+        exitCriteria: values.exitCriteria || [],
         selectedModules,
         selectedFunctionalities: selectedFuncIds,
         results: [],
@@ -1279,7 +1734,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       // Prepare initial results based on test cases
       const initialResults: TestRunResult[] = [];
       selectedFuncIds.forEach(fId => {
-        const funcCases = testCases.filter(tc => tc.functionalityId === fId);
+        const funcCases = filteredTestCasesByFunctionality.get(fId) || [];
         funcCases.forEach(tc => {
           initialResults.push({
             id: `${newRun.id}-${tc.id}`,
@@ -1302,6 +1757,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       message.success('Ejecución de pruebas creada. Iniciando fase de ejecución...');
     } catch (error) {
       console.error('Validation failed:', error);
+    } finally {
+      setIsSubmittingTestRun(false);
     }
   };
 
@@ -1309,6 +1766,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     if (!activeTestRun) return;
 
     try {
+      setIsSubmittingTestRun(true);
       const values = await form.validateFields();
       const updatedRun: TestRun = {
         ...activeTestRun,
@@ -1327,6 +1785,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         browserVersion: values.browserVersion,
         osVersion: values.osVersion,
         resolution: values.resolution,
+        identifiedRisks: values.identifiedRisks || [],
+        exitCriteria: values.exitCriteria || [],
         selectedModules: activeTestRun.selectedModules,
         selectedFunctionalities: activeTestRun.selectedFunctionalities,
         results: executionResults,
@@ -1339,6 +1799,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       message.success('Información de la ejecución actualizada');
     } catch (error) {
       console.error('Update failed:', error);
+    } finally {
+      setIsSubmittingTestRun(false);
     }
   };
 
@@ -1346,6 +1808,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     if (!activeTestRun) return;
 
     if (status === ExecutionStatus.FINAL) {
+      const notExecutedResults = executionResults.filter(
+        result => result.result === TestResult.NOT_EXECUTED,
+      );
+
+      if (notExecutedResults.length > 0) {
+        message.error(
+          `No puedes finalizar la ejecución mientras existan casos sin ejecutar (${notExecutedResults.length} pendiente${notExecutedResults.length === 1 ? '' : 's'}).`,
+        );
+        return;
+      }
+
       const incompleteFailedRecord = executionResults.find(
         result =>
           result.result === TestResult.FAILED &&
@@ -1385,6 +1858,320 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
     );
     message.success('Todos los casos pendientes marcados como Aprobados');
+  };
+
+  const handleImportPlaywrightFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      setPlaywrightImportJson(text);
+      message.success('Archivo Playwright cargado.');
+    } catch (importError) {
+      console.error('Error reading Playwright report:', importError);
+      message.error('No pudimos leer el archivo JSON.');
+    }
+
+    return false;
+  };
+
+  const handleApplyPlaywrightImport = async () => {
+    if (!activeTestRun) {
+      message.warning('Primero abre una ejecución activa.');
+      return;
+    }
+
+    try {
+      setIsImportingPlaywright(true);
+      const trimmedJson = playwrightImportJson.trim();
+      if (!trimmedJson) {
+        message.warning(
+          `Pega o carga primero un JSON de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+        );
+        return;
+      }
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(trimmedJson);
+      } catch (parseError) {
+        console.error(
+          `Invalid ${labelAutomationImportToolPlural(automationImportTool)} JSON:`,
+          parseError,
+        );
+        message.error('El archivo no es un JSON válido.');
+        return;
+      }
+      const reportResults =
+        automationImportTool === 'cypress'
+          ? extractCypressResults(payload)
+          : extractPlaywrightResults(payload);
+
+      if (reportResults.length === 0) {
+        message.warning(
+          `No encontramos resultados válidos en el JSON de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+        );
+        return;
+      }
+
+      const duplicateReportReferences = Array.from(
+        reportResults.reduce<Map<string, number>>((acc, reportResult) => {
+          Array.from(
+            new Set(
+              reportResult.referenceCandidates.map(candidate =>
+                normalizeAutomationMatchValue(candidate),
+              ),
+            ),
+          )
+            .filter(Boolean)
+            .forEach(candidate => {
+              acc.set(candidate, (acc.get(candidate) || 0) + 1);
+            });
+          return acc;
+        }, new Map<string, number>()),
+      )
+        .filter(([, count]) => count > 1)
+        .map(([reference]) => reference);
+
+      const now = new Date().toISOString();
+      const matchedCaseIds = new Set<string>();
+      const metadataUpdatesById = new Map<string, TestCase>();
+
+      const nextResults = executionResults.map(result => {
+        const testCase = testCaseById.get(result.testCaseId);
+        if (!testCase) return result;
+
+        const normalizedReference = normalizeAutomationMatchValue(testCase.automationReference);
+        const normalizedTitle = normalizeAutomationMatchValue(testCase.title);
+        const matchedReport = reportResults.find(reportResult => {
+          const referenceMatch =
+            normalizedReference &&
+            reportResult.referenceCandidates.some(
+              candidate => normalizeAutomationMatchValue(candidate) === normalizedReference,
+            );
+          const titleMatch = normalizeAutomationMatchValue(reportResult.title) === normalizedTitle;
+          return referenceMatch || titleMatch;
+        });
+
+        if (!matchedReport) return result;
+
+        matchedCaseIds.add(testCase.id);
+        metadataUpdatesById.set(testCase.id, {
+          ...testCase,
+          automationTool:
+            testCase.automationTool ||
+            (automationImportTool === 'cypress'
+              ? AutomationTool.CYPRESS
+              : AutomationTool.PLAYWRIGHT),
+          lastAutomationStatus: matchedReport.status,
+          lastAutomationRunAt: now,
+        });
+
+        return {
+          ...result,
+          result: mapAutomationResultToExecutionResult(matchedReport.status),
+        };
+      });
+
+      if (matchedCaseIds.size === 0) {
+        message.warning(
+          'No hubo coincidencias entre el reporte de Playwright y los casos de esta ejecución.',
+        );
+        return;
+      }
+
+      const savedRun = await saveTestRun({
+        ...activeTestRun,
+        results: nextResults,
+      });
+
+      if (metadataUpdatesById.size > 0) {
+        await saveManyWithSingleRefresh(Array.from(metadataUpdatesById.values()));
+      }
+
+      setActiveTestRun(savedRun);
+      setExecutionResults(savedRun.results);
+      setIsPlaywrightImportModalOpen(false);
+      setPlaywrightImportJson('');
+      message.success(`Importación completada. ${matchedCaseIds.size} caso(s) actualizados.`);
+    } catch (importError) {
+      console.error('Error importing Playwright results into execution:', importError);
+      message.error('No pudimos importar el reporte de Playwright.');
+    } finally {
+      setIsImportingPlaywright(false);
+    }
+  };
+
+  const handleApplyPlaywrightImportStrict = async () => {
+    if (!activeTestRun) {
+      message.warning('Primero abre una ejecución activa.');
+      return;
+    }
+
+    try {
+      setIsImportingPlaywright(true);
+      const trimmedJson = playwrightImportJson.trim();
+      if (!trimmedJson) {
+        message.warning('Pega o carga primero un JSON de Playwright.');
+        return;
+      }
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(trimmedJson);
+      } catch (parseError) {
+        console.error('Invalid Playwright JSON:', parseError);
+        message.error('El archivo no es un JSON válido.');
+        return;
+      }
+      const reportResults =
+        automationImportTool === 'cypress'
+          ? extractCypressResults(payload)
+          : automationImportTool === 'postman'
+            ? extractPostmanResults(payload)
+            : extractPlaywrightResults(payload);
+
+      if (reportResults.length === 0) {
+        message.warning('No encontramos resultados válidos en el JSON de Playwright.');
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const matchedReferences = new Set<string>();
+      const metadataUpdatesById = new Map<string, TestCase>();
+      const matchedExecutionCases: AutomationImportSummary['matchedExecutionCases'] = [];
+      const unmatchedExecutionCases: AutomationImportSummary['unmatchedExecutionCases'] = [];
+      const missingReferenceCases: AutomationImportSummary['missingReferenceCases'] = [];
+
+      const nextResults = executionResults.map(result => {
+        const testCase = testCaseById.get(result.testCaseId);
+        if (!testCase) return result;
+
+        if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) {
+          return result;
+        }
+
+        const normalizedReference = normalizeAutomationMatchValue(testCase.automationReference);
+        if (!normalizedReference) {
+          missingReferenceCases.push({
+            testCaseId: testCase.id,
+            testCaseTitle: testCase.title,
+          });
+          return result;
+        }
+
+        const matchedReport = reportResults.find(reportResult =>
+          reportResult.referenceCandidates.some(
+            candidate => normalizeAutomationMatchValue(candidate) === normalizedReference,
+          ),
+        );
+
+        if (!matchedReport) {
+          unmatchedExecutionCases.push({
+            testCaseId: testCase.id,
+            testCaseTitle: testCase.title,
+            reference: testCase.automationReference || '',
+          });
+          return result;
+        }
+
+        matchedReferences.add(normalizedReference);
+        matchedExecutionCases.push({
+          testCaseId: testCase.id,
+          testCaseTitle: testCase.title,
+          reference: testCase.automationReference || '',
+          status: matchedReport.status,
+        });
+        metadataUpdatesById.set(testCase.id, {
+          ...testCase,
+          automationTool:
+            testCase.automationTool ||
+            (automationImportTool === 'cypress'
+              ? AutomationTool.CYPRESS
+              : automationImportTool === 'postman'
+                ? AutomationTool.POSTMAN
+                : AutomationTool.PLAYWRIGHT),
+          lastAutomationStatus: matchedReport.status,
+          lastAutomationRunAt: now,
+        });
+
+        return {
+          ...result,
+          result: mapAutomationResultToExecutionResult(matchedReport.status),
+        };
+      });
+
+      const duplicateReportReferences = Array.from(
+        reportResults.reduce<Map<string, number>>((acc, reportResult) => {
+          Array.from(
+            new Set(
+              reportResult.referenceCandidates.map(candidate =>
+                normalizeAutomationMatchValue(candidate),
+              ),
+            ),
+          )
+            .filter(Boolean)
+            .forEach(candidate => {
+              acc.set(candidate, (acc.get(candidate) || 0) + 1);
+            });
+          return acc;
+        }, new Map<string, number>()),
+      )
+        .filter(([, count]) => count > 1)
+        .map(([reference]) => reference);
+
+      const unmatchedReportReferences = reportResults
+        .filter(reportResult => {
+          const normalizedCandidates = reportResult.referenceCandidates.map(candidate =>
+            normalizeAutomationMatchValue(candidate),
+          );
+          return !normalizedCandidates.some(candidate => matchedReferences.has(candidate));
+        })
+        .map(reportResult => reportResult.referenceCandidates[0] || reportResult.title)
+        .filter(Boolean);
+
+      setPlaywrightImportSummary({
+        matchedExecutionCases,
+        unmatchedExecutionCases,
+        unmatchedReportReferences,
+        duplicateReportReferences,
+        missingReferenceCases,
+      });
+
+      if (matchedExecutionCases.length === 0) {
+        message.warning(
+          `No hubo coincidencias por Referencia entre ${labelAutomationImportToolPlural(automationImportTool)} y esta ejecución.`,
+        );
+        return;
+      }
+
+      const savedRun = await saveTestRun({
+        ...activeTestRun,
+        results: nextResults,
+      });
+
+      if (metadataUpdatesById.size > 0) {
+        await saveManyWithSingleRefresh(Array.from(metadataUpdatesById.values()));
+      }
+
+      setActiveTestRun(savedRun);
+      setExecutionResults(savedRun.results);
+      setIsPlaywrightImportModalOpen(false);
+      setPlaywrightImportJson('');
+      message.success(
+        `Importación completada. ${matchedExecutionCases.length} caso(s) actualizados.`,
+      );
+    } catch (importError) {
+      console.error(
+        `Error importing ${labelAutomationImportToolPlural(automationImportTool)} results into execution:`,
+        importError,
+      );
+      message.error(
+        importError instanceof Error
+          ? `No pudimos importar el reporte de ${labelAutomationImportToolPlural(automationImportTool)}: ${importError.message}`
+          : `No pudimos importar el reporte de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+      );
+    } finally {
+      setIsImportingPlaywright(false);
+    }
   };
 
   const handleExportReport = async () => {
@@ -1428,9 +2215,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       message.success('PDF exportado correctamente');
     } catch (error) {
       const exportErrorMessage =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Error al exportar el PDF';
+        error instanceof Error && error.message ? error.message : 'Error al exportar el PDF';
       message.error(exportErrorMessage);
     }
   };
@@ -1771,10 +2556,37 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             />
           </Form.Item>
 
+          <Form.Item label="Cobertura de automatización">
+            <Select
+              value={scopeAutomationFilter}
+              onChange={value => {
+                setScopeAutomationFilter(value);
+                if (value !== 'automated') {
+                  setScopeAutomationToolFilter('all');
+                }
+              }}
+              options={scopeAutomationFilterOptions}
+              className="w-full rounded-lg"
+              disabled={isEditingRunInfo}
+            />
+          </Form.Item>
+
+          {scopeAutomationFilter === 'automated' ? (
+            <Form.Item label="Herramienta de automatizacion">
+              <Select
+                value={scopeAutomationToolFilter}
+                onChange={value => setScopeAutomationToolFilter(value)}
+                options={executionAutomationToolFilterOptions}
+                className="w-full rounded-lg"
+                disabled={isEditingRunInfo}
+              />
+            </Form.Item>
+          ) : null}
+
           {isEditingRunInfo ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              En modo edición solo se actualiza la información general. Los módulos,
-              funcionalidades y resultados actuales se conservan.
+              En modo edición solo se actualiza la información general. Los módulos, funcionalidades
+              y resultados actuales se conservan.
             </div>
           ) : selectedModules.length > 0 ? (
             <div className="mt-4">
@@ -1846,21 +2658,38 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <div className="font-semibold">Cobertura parcial del alcance seleccionado</div>
                   <div className="mt-1 text-amber-800">
-                    {availableExecutableFunctionalities.length} funcionalidades ya tienen casos de
-                    prueba y {unavailableFunctionalitiesCount} aún no.
+                    {availableExecutableFunctionalities.length} funcionalidades ya tienen casos
+                    compatibles con el filtro actual y {unavailableFunctionalitiesCount} aún no.
                   </div>
                   <div className="mt-1 text-xs text-amber-700">
-                    Las funcionalidades sin casos siguen visibles como referencia, pero no se pueden
-                    seleccionar hasta que tengan casos de prueba registrados.
+                    Las funcionalidades sin casos compatibles siguen visibles como referencia, pero
+                    no se pueden seleccionar hasta que exista cobertura alineada con este filtro.
                   </div>
                 </div>
               ) : null}
+
+              <div className="mb-4 flex flex-wrap gap-2">
+                <Tag color="blue">Casos visibles: {selectedTestCaseCount}</Tag>
+                <Tag color="green">
+                  Funcionalidades ejecutables: {availableExecutableFunctionalities.length}
+                </Tag>
+                <Tag color="default">
+                  Filtro activo:{' '}
+                  {scopeAutomationFilterOptions.find(
+                    option => option.value === scopeAutomationFilter,
+                  )?.label || 'Todos los casos'}
+                </Tag>
+                {scopeAutomationFilter === 'automated' &&
+                scopeAutomationToolFilter !== 'all' ? (
+                  <Tag color="cyan">Herramienta: {scopeAutomationToolFilter}</Tag>
+                ) : null}
+              </div>
 
               <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2 custom-scrollbar">
                 {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
                   const moduleFuncIds = funcs.map(f => f.id);
                   const executableFuncIds = funcs
-                    .filter(item => selectableFunctionalityIds.has(item.id))
+                    .filter(item => executableFunctionalityIds.has(item.id))
                     .map(item => item.id);
                   const selectedInModule = selectedFuncIds.filter(id => moduleFuncIds.includes(id));
                   const selectedExecutableInModule = selectedFuncIds.filter(id =>
@@ -1898,7 +2727,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                           />
                           <span className="text-sm font-bold text-slate-700">{moduleName}</span>
                           <Tag className="m-0 rounded-full border-none bg-slate-100 text-[10px] text-slate-500">
-                            {selectedExecutableInModule.length} / {executableFuncIds.length} ejecutables
+                            {selectedExecutableInModule.length} / {executableFuncIds.length}{' '}
+                            ejecutables
                           </Tag>
                         </Space>
                       </div>
@@ -1918,8 +2748,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                         >
                           <Row gutter={[12, 12]}>
                             {funcs.map(item => {
-                              const isExecutable = selectableFunctionalityIds.has(item.id);
-                              const testCaseCount = testCaseCountByFunctionality.get(item.id) || 0;
+                              const isExecutable = executableFunctionalityIds.has(item.id);
+                              const testCaseCount =
+                                filteredTestCasesByFunctionality.get(item.id)?.length || 0;
 
                               return (
                                 <Col span={12} key={item.id}>
@@ -1932,7 +2763,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                                           : 'border-slate-200 bg-slate-100'
                                     }`}
                                   >
-                                    <Checkbox value={item.id} className="w-full" disabled={!isExecutable}>
+                                    <Checkbox
+                                      value={item.id}
+                                      className="w-full"
+                                      disabled={!isExecutable}
+                                    >
                                       <div className="ml-1 flex flex-col">
                                         <span className="text-xs font-bold leading-tight text-slate-800">
                                           {item.id}
@@ -1946,7 +2781,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                                         <span className="text-[10px] text-slate-400">
                                           {isExecutable
                                             ? `${testCaseCount} caso${testCaseCount === 1 ? '' : 's'} disponible${testCaseCount === 1 ? '' : 's'}`
-                                            : 'Sin casos de prueba registrados'}
+                                            : 'Sin casos compatibles con el filtro actual'}
                                         </span>
                                       </div>
                                     </Checkbox>
@@ -1962,7 +2797,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 })}
                 {Object.keys(groupedFunctionalities).length === 0 && (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    No hay funcionalidades compatibles con el tipo de prueba en los módulos seleccionados.
+                    No hay funcionalidades compatibles con el tipo de prueba en los módulos
+                    seleccionados.
                   </div>
                 )}
               </div>
@@ -1976,7 +2812,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     <div>
                       <div className="flex items-center gap-2">
                         <ThunderboltOutlined className="text-cyan-600" />
-                        <span className="font-semibold text-slate-800">Funcionalidades sugeridas</span>
+                        <span className="font-semibold text-slate-800">
+                          Funcionalidades sugeridas
+                        </span>
                         <Tag
                           className="m-0 rounded-full border-none"
                           color={aiSuggestionMode === 'ai' ? 'blue' : 'gold'}
@@ -2132,7 +2970,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           subtitle="Opcional por ahora. Define cuándo esta ejecución puede considerarse cerrada."
         >
           <Form.Item name="exitCriteria" label="Checklist de cierre">
-            <Checkbox.Group className="grid grid-cols-1 gap-3 md:grid-cols-2" options={EXECUTION_EXIT_CRITERIA_OPTIONS} />
+            <Checkbox.Group
+              className="grid grid-cols-1 gap-3 md:grid-cols-2"
+              options={EXECUTION_EXIT_CRITERIA_OPTIONS}
+            />
           </Form.Item>
         </PlanningSectionCard>
       </div>
@@ -2182,11 +3023,25 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       filters: nativeTestTypeFilters,
       filteredValue: tableFilters.testType,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.testType === String(value),
-      render: (type: string) => (
-        <Tag className="m-0 text-[10px] font-semibold uppercase bg-slate-100 border-slate-200 text-slate-600">
-          {type}
-        </Tag>
-      ),
+      render: (type: string, record: TestRun) => {
+        const automatedCases = testCases.filter(
+          testCase =>
+            record.selectedFunctionalities.includes(testCase.functionalityId) &&
+            deriveAutomationStatus(testCase) === AutomationStatus.AUTOMATED,
+        );
+        const tools = Array.from(
+          new Set(
+            automatedCases
+              .map(testCase => testCase.automationTool)
+              .filter((tool): tool is string => Boolean(tool)),
+          ),
+        );
+
+        return renderTestTypeTag(type, {
+          automatedCount: automatedCases.length,
+          tools,
+        });
+      },
     },
     {
       title: (
@@ -2284,87 +3139,137 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'actions',
-      render: (_: any, record: TestRun) => (
-        <Space size="small" className="flex-nowrap items-center">
-          <Button
-            icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
-            size="small"
-            loading={openingRunId === record.id}
-            onClick={() => openTestRunDetail(record)}
-            className={record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'}
-          >
-            {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
-          </Button>
-          {record.testType === TestType.UAT ? (
-            <Tooltip
-              title={
-                record.publicUatSession?.status === 'active' ||
-                record.publicUatSession?.status === 'completed'
-                  ? 'Copiar enlace público'
-                  : 'Generar enlace público'
-              }
-            >
-              <Button
-                icon={
-                  record.publicUatSession?.status === 'active' ||
-                  record.publicUatSession?.status === 'completed' ? (
-                    <CopyOutlined />
-                  ) : (
-                    <LinkOutlined />
-                  )
-                }
-                size="small"
-                onClick={() => void handlePrimaryPublicUatAction(record)}
-              />
-            </Tooltip>
-          ) : null}
-          {record.testType === TestType.UAT ? (
-            <Tooltip title="Ver estado de sesión">
-              <Button
-                icon={<EyeOutlined />}
-                size="small"
-                disabled={
-                  record.publicUatSession?.status !== 'active' &&
-                  record.publicUatSession?.status !== 'completed'
-                }
-                onClick={() => void openPublicUatStatusModal(record)}
-              />
-            </Tooltip>
-          ) : null}
-          {record.testType === TestType.UAT && record.publicUatSession?.status === 'active' ? (
-            <Tooltip title="Cerrar sesión pública">
-              <Button
-                icon={<StopOutlined />}
-                size="small"
-                danger
-                loading={isRevokingPublicUatSession}
-                onClick={() => void handleClosePublicUatSession(record)}
-              />
-            </Tooltip>
-          ) : null}
-          {record.testType === TestType.UAT ? (
-            <Tooltip title="Descargar PDF">
-              <Button
-                icon={<ExportOutlined />}
-                size="small"
-                disabled={
-                  record.publicUatSession?.status !== 'active' &&
-                  record.publicUatSession?.status !== 'completed'
-                }
-                onClick={() => void handleExportPdfForRun(record)}
-              />
-            </Tooltip>
-          ) : null}
-          {canDeleteTestRuns && (
+      render: (_: any, record: TestRun) => {
+        const hasCompletedOrActivePublicSession =
+          record.publicUatSession?.status === 'active' ||
+          record.publicUatSession?.status === 'completed';
+        const extraActions: MenuProps['items'] = [];
+
+        if (record.testType === TestType.UAT) {
+          extraActions.push({
+            key: 'public-uat-link',
+            icon: hasCompletedOrActivePublicSession ? <CopyOutlined /> : <LinkOutlined />,
+            label: compactMenuLabel(
+              hasCompletedOrActivePublicSession ? 'Copiar enlace público' : 'Generar enlace público',
+            ),
+            onClick: () => void handlePrimaryPublicUatAction(record),
+          });
+
+          extraActions.push({
+            key: 'public-uat-status',
+            icon: <EyeOutlined />,
+            label: compactMenuLabel('Ver estado de sesión'),
+            disabled: !hasCompletedOrActivePublicSession,
+            onClick: () => void openPublicUatStatusModal(record),
+          });
+
+          if (record.publicUatSession?.status === 'active') {
+            extraActions.push({
+              key: 'public-uat-close',
+              icon: <StopOutlined />,
+              label: compactMenuLabel('Cerrar sesión pública'),
+              danger: true,
+              onClick: () => void handleClosePublicUatSession(record),
+            });
+          }
+
+          extraActions.push({
+            key: 'export-pdf',
+            icon: <ExportOutlined />,
+            label: compactMenuLabel('Descargar PDF'),
+            disabled: !hasCompletedOrActivePublicSession,
+            onClick: () => void handleExportPdfForRun(record),
+          });
+        }
+
+        if (canDeleteTestRuns) {
+          extraActions.push({
+            key: 'delete',
+            icon: <DeleteOutlined />,
+            label: compactMenuLabel('Eliminar'),
+            danger: true,
+            onClick: () => void deleteTestRun(record.id),
+          });
+        }
+
+        const shouldCollapseActions = extraActions.length > 1;
+
+        return (
+          <Space size="small" className="flex-nowrap items-center">
             <Button
-              icon={<DeleteOutlined />}
+              icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
               size="small"
-              danger
-              onClick={() => void deleteTestRun(record.id)}
-            />
-          )}
-        </Space>
-      ),
+              loading={openingRunId === record.id}
+              onClick={() => openTestRunDetail(record)}
+              className={record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'}
+            >
+              {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
+            </Button>
+            {shouldCollapseActions ? (
+              <Dropdown trigger={['click']} menu={{ items: extraActions }} placement="bottomRight">
+                <Button icon={<MoreOutlined />} size="small" aria-label="Más acciones" />
+              </Dropdown>
+            ) : (
+              <>
+                {record.testType === TestType.UAT ? (
+                  <Tooltip
+                    title={
+                      hasCompletedOrActivePublicSession
+                        ? 'Copiar enlace público'
+                        : 'Generar enlace público'
+                    }
+                  >
+                    <Button
+                      icon={hasCompletedOrActivePublicSession ? <CopyOutlined /> : <LinkOutlined />}
+                      size="small"
+                      onClick={() => void handlePrimaryPublicUatAction(record)}
+                    />
+                  </Tooltip>
+                ) : null}
+                {record.testType === TestType.UAT ? (
+                  <Tooltip title="Ver estado de sesión">
+                    <Button
+                      icon={<EyeOutlined />}
+                      size="small"
+                      disabled={!hasCompletedOrActivePublicSession}
+                      onClick={() => void openPublicUatStatusModal(record)}
+                    />
+                  </Tooltip>
+                ) : null}
+                {record.testType === TestType.UAT && record.publicUatSession?.status === 'active' ? (
+                  <Tooltip title="Cerrar sesión pública">
+                    <Button
+                      icon={<StopOutlined />}
+                      size="small"
+                      danger
+                      loading={isRevokingPublicUatSession}
+                      onClick={() => void handleClosePublicUatSession(record)}
+                    />
+                  </Tooltip>
+                ) : null}
+                {record.testType === TestType.UAT ? (
+                  <Tooltip title="Descargar PDF">
+                    <Button
+                      icon={<ExportOutlined />}
+                      size="small"
+                      disabled={!hasCompletedOrActivePublicSession}
+                      onClick={() => void handleExportPdfForRun(record)}
+                    />
+                  </Tooltip>
+                ) : null}
+                {canDeleteTestRuns && (
+                  <Button
+                    icon={<DeleteOutlined />}
+                    size="small"
+                    danger
+                    onClick={() => void deleteTestRun(record.id)}
+                  />
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -2381,6 +3286,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     const hasActivePublicUatSession = activeTestRun.publicUatSession?.status === 'active';
     const isReadOnly =
       activeTestRun.status === ExecutionStatus.FINAL || isViewer || hasActivePublicUatSession;
+    const notExecutedCount = executionResults.filter(
+      result => result.result === TestResult.NOT_EXECUTED,
+    ).length;
+    const isReferenceAlertDismissed = dismissedReferenceAlertRunIds.includes(activeTestRun.id);
+    const automatedCasesWithoutReference = executionResults
+      .map(result => testCaseById.get(result.testCaseId))
+      .filter((testCase): testCase is TestCase =>
+        Boolean(
+          testCase &&
+          deriveAutomationStatus(testCase) === AutomationStatus.AUTOMATED &&
+          !normalizeAutomationMatchValue(testCase.automationReference),
+        ),
+      );
 
     const filteredExecutionResults = executionResults.filter(r => {
       const tc = testCases.find(t => t.id === r.testCaseId);
@@ -2454,6 +3372,69 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   )}
                 </div>
               )}
+              {((activeTestRun.identifiedRisks && activeTestRun.identifiedRisks.length > 0) ||
+                (activeTestRun.exitCriteria && activeTestRun.exitCriteria.length > 0)) && (
+                <div className="mt-3 space-y-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3 shadow-sm">
+                  {activeTestRun.identifiedRisks && activeTestRun.identifiedRisks.length > 0 && (
+                    <div className="grid gap-2 md:grid-cols-[110px_minmax(0,1fr)] md:items-start">
+                      <span className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Riesgos
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {activeTestRun.identifiedRisks.map(risk => (
+                          <Tag
+                            key={risk}
+                            className="m-0 rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
+                          >
+                            {executionRiskLabelByValue.get(risk) || risk}
+                          </Tag>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {activeTestRun.exitCriteria && activeTestRun.exitCriteria.length > 0 && (
+                    <div className="grid gap-2 md:grid-cols-[110px_minmax(0,1fr)] md:items-start">
+                      <span className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Criterios
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {activeTestRun.exitCriteria.map(criteria => (
+                          <Tag
+                            key={criteria}
+                            className="m-0 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
+                          >
+                            {executionExitCriteriaLabelByValue.get(criteria) || criteria}
+                          </Tag>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {automatedCasesWithoutReference.length > 0 && !isReferenceAlertDismissed && (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+                  <div className="mb-1 flex justify-end">
+                    <button
+                      type="button"
+                      aria-label="Ocultar alerta de referencias"
+                      className="rounded-full p-1 text-amber-500 transition hover:bg-amber-100 hover:text-amber-700"
+                      onClick={() =>
+                        setDismissedReferenceAlertRunIds(prev =>
+                          prev.includes(activeTestRun.id) ? prev : [...prev, activeTestRun.id],
+                        )
+                      }
+                    >
+                      <CloseCircleOutlined className="text-base" />
+                    </button>
+                  </div>
+                  <div className="font-semibold">Faltan referencias de automatización</div>
+                  <div className="mt-1 text-amber-800">
+                    {automatedCasesWithoutReference.length} caso(s) automatizado(s) de esta
+                    ejecución no tienen `Referencia`, así que Playwright no podrá hacer match con
+                    ellos.
+                  </div>
+                </div>
+              )}
             </div>
           </Space>
           <Space>
@@ -2465,6 +3446,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <Button icon={<ExportOutlined />} onClick={handleExportReport} className="rounded-lg">
               Descargar PDF
             </Button>
+            {!isReadOnly && !isViewer && (
+              <Button
+                icon={<UploadOutlined />}
+                className="rounded-lg"
+                onClick={() => setIsPlaywrightImportModalOpen(true)}
+              >
+                Importar Playwright
+              </Button>
+            )}
             {!isReadOnly && !isViewer && (
               <Button
                 type="primary"
@@ -2480,7 +3470,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
         {/* Metrics Row */}
         <Row gutter={20}>
-          <Col span={6}>
+          <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2">
               <div className="flex items-center justify-center gap-3 mb-1">
                 <BarChartOutlined className="text-slate-400 text-lg" />
@@ -2491,7 +3481,33 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <div className="text-2xl font-black text-slate-800">{executionResults.length}</div>
             </Card>
           </Col>
-          <Col span={6}>
+          <Col span={4}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-sky-50/30">
+              <div className="flex items-center justify-center gap-3 mb-1">
+                <CheckCircleOutlined className="text-sky-500 text-lg" />
+                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                  Automatizados
+                </Text>
+              </div>
+              <div className="text-2xl font-black text-sky-700">
+                {executionAutomationMix.automated}
+              </div>
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-slate-50">
+              <div className="flex items-center justify-center gap-3 mb-1">
+                <ClockCircleOutlined className="text-slate-500 text-lg" />
+                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                  Manuales
+                </Text>
+              </div>
+              <div className="text-2xl font-black text-slate-700">
+                {executionAutomationMix.manual}
+              </div>
+            </Card>
+          </Col>
+          <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-emerald-50/30">
               <div className="flex items-center justify-center gap-3 mb-1">
                 <CheckCircleOutlined className="text-emerald-500 text-lg" />
@@ -2517,7 +3533,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </div>
             </Card>
           </Col>
-          <Col span={6}>
+          <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-rose-50/30">
               <div className="flex items-center justify-center gap-3 mb-1">
                 <CloseCircleOutlined className="text-rose-500 text-lg" />
@@ -2530,7 +3546,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </div>
             </Card>
           </Col>
-          <Col span={6}>
+          <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-amber-50/30">
               <div className="flex items-center justify-center gap-3 mb-1">
                 <ClockCircleOutlined className="text-amber-500 text-lg" />
@@ -2618,11 +3634,40 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               {
                 title: (
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    AUTOMATIZACIÓN
+                  </span>
+                ),
+                key: 'automation',
+                width: '16%',
+                render: (_, record) => {
+                  const tc = testCaseById.get(record.testCaseId);
+                  const automationStatus = deriveAutomationStatus(tc);
+
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <Tag
+                        color={getAutomationStatusTagColor(automationStatus)}
+                        className="m-0 w-fit"
+                      >
+                        {automationStatus}
+                      </Tag>
+                      {tc?.automationTool ? (
+                        <span className="text-[11px] text-slate-500">{tc.automationTool}</span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">Sin herramienta</span>
+                      )}
+                    </div>
+                  );
+                },
+              },
+              {
+                title: (
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                     EJECUTADO
                   </span>
                 ),
                 key: 'executed',
-                width: '10%',
+                width: '9%',
                 align: 'center',
                 render: (_, record) => {
                   const executed = record.result !== TestResult.NOT_EXECUTED;
@@ -2658,7 +3703,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </span>
                 ),
                 key: 'date',
-                width: '12%',
+                width: '10%',
                 render: () => (
                   <div className="flex flex-col text-[11px] text-slate-500 leading-tight">
                     <span>{dayjs().format('DD MMM,')}</span>
@@ -2673,7 +3718,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </span>
                 ),
                 key: 'result',
-                width: '18%',
+                width: '16%',
                 render: (_, record) => (
                   <div className="flex flex-col gap-1.5">
                     <Select
@@ -2739,7 +3784,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </span>
                 ),
                 key: 'evidence',
-                width: '11%',
+                width: '10%',
                 align: 'center',
                 render: (_, record) => (
                   <Button
@@ -2846,25 +3891,39 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             >
               Guardar Borrador
             </Button>
-            <Button
-              type="primary"
-              icon={<CheckCircleOutlined />}
-              onClick={() => void handleSaveExecution(ExecutionStatus.FINAL)}
-              className="rounded-lg h-10 px-8 bg-blue-600"
+            <Tooltip
+              title={
+                notExecutedCount > 0
+                  ? `Debes ejecutar todos los casos antes de finalizar. Quedan ${notExecutedCount} pendiente${notExecutedCount === 1 ? '' : 's'}.`
+                  : undefined
+              }
             >
-              Finalizar Ejecución
-            </Button>
+              <span>
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => void handleSaveExecution(ExecutionStatus.FINAL)}
+                  disabled={notExecutedCount > 0}
+                  className="rounded-lg h-10 px-8 bg-blue-600"
+                >
+                  Finalizar Ejecución
+                </Button>
+              </span>
+            </Tooltip>
           </div>
         )}
 
         <Modal
           title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
           open={isModalOpen}
-          onCancel={resetTestRunModal}
+          onCancel={isSubmittingTestRun ? undefined : resetTestRunModal}
+          closable={!isSubmittingTestRun}
+          maskClosable={!isSubmittingTestRun}
+          keyboard={!isSubmittingTestRun}
           width={920}
           centered
           footer={[
-            <Button key="cancel" onClick={resetTestRunModal}>
+            <Button key="cancel" onClick={resetTestRunModal} disabled={isSubmittingTestRun}>
               Cancelar
             </Button>,
             ...(!isViewer
@@ -2873,8 +3932,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     key="create"
                     type="primary"
                     onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
+                    loading={isSubmittingTestRun}
+                    disabled={isSubmittingTestRun}
                   >
-                    {testRunModalPrimaryLabel}
+                    {isSubmittingTestRun
+                      ? isEditingRunInfo
+                        ? 'Guardando informaciÃ³n...'
+                        : 'Creando ejecuciÃ³n...'
+                      : testRunModalPrimaryLabel}
                   </Button>,
                 ]
               : []),
@@ -2992,6 +4057,195 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </div>
           )}
         </Modal>
+
+        <Modal
+          title={`Importar resultados de ${labelAutomationImportTool(automationImportTool)}`}
+          open={isPlaywrightImportModalOpen}
+          onCancel={() => {
+            if (isImportingPlaywright) return;
+            setIsPlaywrightImportModalOpen(false);
+          }}
+          onOk={() => void handleApplyPlaywrightImportStrict()}
+          okText="Aplicar resultados"
+          cancelText="Cancelar"
+          confirmLoading={isImportingPlaywright}
+          destroyOnHidden
+        >
+          <div className="space-y-4">
+            <div>
+              <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+                Herramienta
+              </Text>
+              <Select
+                className="w-full"
+                value={automationImportTool}
+                options={automationImportToolOptions}
+                onChange={value => setAutomationImportTool(value)}
+              />
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
+              QA Tracker hará match solo por `automationReference` para evitar falsos positivos.
+            </div>
+            <Upload accept=".json" beforeUpload={handleImportPlaywrightFile} showUploadList={false}>
+              <Button icon={<UploadOutlined />}>Cargar JSON</Button>
+            </Upload>
+            <Input.TextArea
+              rows={10}
+              value={playwrightImportJson}
+              onChange={event => setPlaywrightImportJson(event.target.value)}
+              placeholder={`Pega aquí el JSON del reporter de ${
+                labelAutomationImportTool(automationImportTool)
+              }`}
+            />
+          </div>
+        </Modal>
+
+        <Modal
+          title={`Resumen de importación ${labelAutomationImportTool(automationImportTool)}`}
+          open={Boolean(playwrightImportSummary)}
+          onCancel={() => setPlaywrightImportSummary(null)}
+          footer={[
+            <Button key="close" type="primary" onClick={() => setPlaywrightImportSummary(null)}>
+              Cerrar
+            </Button>,
+          ]}
+          width={760}
+          destroyOnHidden
+        >
+          {playwrightImportSummary && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                    Match
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-emerald-800">
+                    {playwrightImportSummary.matchedExecutionCases.length}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                    Sin referencia
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-amber-800">
+                    {playwrightImportSummary.missingReferenceCases.length}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">
+                    Casos sin match
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-rose-800">
+                    {playwrightImportSummary.unmatchedExecutionCases.length}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    Referencias extra
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-slate-800">
+                    {playwrightImportSummary.unmatchedReportReferences.length}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+                    Duplicadas
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-violet-800">
+                    {playwrightImportSummary.duplicateReportReferences.length}
+                  </div>
+                </div>
+              </div>
+
+              {playwrightImportSummary.matchedExecutionCases.length > 0 && (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Casos actualizados
+                  </div>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={playwrightImportSummary.matchedExecutionCases}
+                    renderItem={item => (
+                      <List.Item>
+                        <div className="flex w-full flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                          <span className="text-sm text-slate-700">
+                            {item.testCaseTitle}
+                            <span className="ml-2 text-xs text-slate-400">{item.reference}</span>
+                          </span>
+                          <Tag color="green" className="m-0 w-fit">
+                            {item.status}
+                          </Tag>
+                        </div>
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              )}
+
+              {playwrightImportSummary.missingReferenceCases.length > 0 && (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Casos automatizados sin referencia
+                  </div>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={playwrightImportSummary.missingReferenceCases}
+                    renderItem={item => <List.Item>{item.testCaseTitle}</List.Item>}
+                  />
+                </div>
+              )}
+
+              {playwrightImportSummary.unmatchedExecutionCases.length > 0 && (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Casos de la ejecución sin match en Playwright
+                  </div>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={playwrightImportSummary.unmatchedExecutionCases}
+                    renderItem={item => (
+                      <List.Item>
+                        {item.testCaseTitle}
+                        <span className="ml-2 text-xs text-slate-400">{item.reference}</span>
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              )}
+
+              {playwrightImportSummary.unmatchedReportReferences.length > 0 && (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Referencias del JSON sin caso asociado
+                  </div>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={playwrightImportSummary.unmatchedReportReferences}
+                    renderItem={item => <List.Item>{item}</List.Item>}
+                  />
+                </div>
+              )}
+
+              {playwrightImportSummary.duplicateReportReferences.length > 0 && (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Referencias duplicadas dentro del JSON
+                  </div>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={playwrightImportSummary.duplicateReportReferences}
+                    renderItem={item => <List.Item>{item}</List.Item>}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
       </div>
     );
   }
@@ -3040,8 +4294,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               funcionalidades.
             </div>
             <div className="mt-1 text-sm text-slate-500">
-              Antes de crear una ejecución, asegúrate de que la funcionalidad tenga casos
-              asociados. QA Tracker usa esos casos para definir el alcance inicial de la sesión.
+              Antes de crear una ejecución, asegúrate de que la funcionalidad tenga casos asociados.
+              QA Tracker usa esos casos para definir el alcance inicial de la sesión.
             </div>
           </div>
         </div>
@@ -3089,11 +4343,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             ),
           },
           {
-            key: 'coverage',
-            label: 'Cobertura de Casos',
-            children: <CoverageMatrix projectId={projectId} embedded />,
-          },
-          {
             key: 'bugs',
             label: 'Historial de Bugs',
             children: <BugHistoryView projectId={projectId} />,
@@ -3115,7 +4364,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             {selectedPublicUatRun?.title || 'Ejecución UAT'}
           </p>
           <p className="m-0 mt-1">
-            Al activar esta sesión, la ejecución se compartirá mediante un enlace público y la edición interna de resultados quedará bloqueada mientras la sesión esté activa.
+            Al activar esta sesión, la ejecución se compartirá mediante un enlace público y la
+            edición interna de resultados quedará bloqueada mientras la sesión esté activa.
           </p>
         </div>
 
@@ -3151,7 +4401,50 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       </Modal>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">Estado de sesión pública UAT</span>}
+        title={`Importar resultados de ${labelAutomationImportTool(automationImportTool)}`}
+        open={isPlaywrightImportModalOpen}
+        onCancel={() => {
+          if (isImportingPlaywright) return;
+          setIsPlaywrightImportModalOpen(false);
+        }}
+        onOk={() => void handleApplyPlaywrightImportStrict()}
+        okText="Aplicar resultados"
+        cancelText="Cancelar"
+        confirmLoading={isImportingPlaywright}
+        destroyOnHidden
+      >
+        <div className="space-y-4">
+          <div>
+            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+              Herramienta
+            </Text>
+            <Select
+              className="w-full"
+              value={automationImportTool}
+              options={automationImportToolOptions}
+              onChange={value => setAutomationImportTool(value)}
+            />
+          </div>
+          <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
+            QA Tracker hará match contra los casos de esta ejecución usando `automationReference` y,
+            si no coincide, el título del caso.
+          </div>
+          <Upload accept=".json" beforeUpload={handleImportPlaywrightFile} showUploadList={false}>
+            <Button icon={<UploadOutlined />}>Cargar JSON</Button>
+          </Upload>
+          <Input.TextArea
+            rows={10}
+            value={playwrightImportJson}
+            onChange={event => setPlaywrightImportJson(event.target.value)}
+            placeholder="Pega aquí el JSON del reporter de Playwright"
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        title={
+          <span className="text-lg font-bold text-slate-800">Estado de sesión pública UAT</span>
+        }
         open={Boolean(publicUatStatusModalRun)}
         onCancel={closePublicUatStatusModal}
         footer={[
@@ -3225,11 +4518,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       <Modal
         title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
         open={isModalOpen}
-        onCancel={resetTestRunModal}
+        onCancel={isSubmittingTestRun ? undefined : resetTestRunModal}
+        closable={!isSubmittingTestRun}
+        maskClosable={!isSubmittingTestRun}
+        keyboard={!isSubmittingTestRun}
         width={920}
         centered
         footer={[
-          <Button key="cancel" onClick={resetTestRunModal}>
+          <Button key="cancel" onClick={resetTestRunModal} disabled={isSubmittingTestRun}>
             Cancelar
           </Button>,
           ...(!isViewer
@@ -3238,8 +4534,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   key="create"
                   type="primary"
                   onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
+                  loading={isSubmittingTestRun}
+                  disabled={isSubmittingTestRun}
                 >
-                  {testRunModalPrimaryLabel}
+                  {isSubmittingTestRun
+                    ? isEditingRunInfo
+                      ? 'Guardando informaciÃ³n...'
+                      : 'Creando ejecuciÃ³n...'
+                    : testRunModalPrimaryLabel}
                 </Button>,
               ]
             : []),

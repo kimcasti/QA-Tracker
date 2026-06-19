@@ -82,11 +82,14 @@ import {
 } from '../services/geminiService';
 import { exportDeliveryUnitProgressToDocx } from '../utils/reportUtils';
 import {
+  AutomationResultStatus,
+  AutomationTool,
   BugStatus,
   DeliveryUnit,
   DeliveryUnitType,
   ExecutionMode,
   ExecutionStatus,
+  Functionality,
   RiskLevel,
   TestCase,
   TestRun,
@@ -233,21 +236,153 @@ const getTestRunSummary = (testRun?: TestRun | null) => {
 
 const getTestRunAutomationMetrics = (
   testRun: TestRun | null,
-  testCaseMap: Map<string, Pick<TestCase, 'isAutomated' | 'automationStatus'>>,
+  testCaseMap: Map<
+    string,
+    Pick<
+      TestCase,
+      | 'isAutomated'
+      | 'automationStatus'
+      | 'automationTool'
+      | 'lastAutomationStatus'
+      | 'lastAutomationRunAt'
+    >
+  >,
 ) => {
   const totalTests = testRun?.results.length || 0;
-  const automatedCount =
-    testRun?.results.filter(result => {
-      const testCase = testCaseMap.get(result.testCaseId);
-      return testCase
-        ? isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated)
-        : false;
-    }).length || 0;
+  const relatedTestCases =
+    testRun?.results
+      .map(result => testCaseMap.get(result.testCaseId))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item)) || [];
+  const automatedCount = relatedTestCases.filter(
+    testCase =>
+      isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
+  ).length;
+  const leadingAutomationTool =
+    [
+      ...relatedTestCases
+        .reduce<Map<AutomationTool, number>>((acc, testCase) => {
+          if (testCase.automationTool) {
+            acc.set(testCase.automationTool, (acc.get(testCase.automationTool) || 0) + 1);
+          }
+          return acc;
+        }, new Map())
+        .entries(),
+    ].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+  const latestAutomationResult =
+    [...relatedTestCases]
+      .filter(testCase => testCase.lastAutomationStatus)
+      .sort(
+        (left, right) =>
+          new Date(right.lastAutomationRunAt || 0).getTime() -
+          new Date(left.lastAutomationRunAt || 0).getTime(),
+      )[0]?.lastAutomationStatus || null;
 
   return {
     automatedCount,
     manualCount: Math.max(totalTests - automatedCount, 0),
     automationRate: getPercent(automatedCount, totalTests),
+    leadingAutomationTool,
+    latestAutomationResult,
+  };
+};
+
+const getAutomationPortfolioMetrics = (
+  functionalities: Functionality[],
+  testCases: TestCase[],
+) => {
+  const moduleCoverage = Array.from(
+    functionalities.reduce<
+      Map<
+        string,
+        {
+          name: string;
+          totalCases: number;
+          automatedCases: number;
+        }
+      >
+    >((acc, functionality) => {
+      const moduleName = functionality.module || 'Sin modulo';
+      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
+      if (relatedCases.length === 0) return acc;
+
+      const current = acc.get(moduleName) || {
+        name: moduleName,
+        totalCases: 0,
+        automatedCases: 0,
+      };
+
+      current.totalCases += relatedCases.length;
+      current.automatedCases += relatedCases.filter(testCase =>
+        isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
+      ).length;
+
+      acc.set(moduleName, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      coverage: getPercent(value.automatedCases, value.totalCases),
+    }))
+    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases);
+
+  const functionalityCoverage = functionalities
+    .map(functionality => {
+      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
+      const automatedCases = relatedCases.filter(testCase =>
+        isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
+      ).length;
+
+      return {
+        id: functionality.id,
+        name: functionality.name,
+        totalCases: relatedCases.length,
+        automatedCases,
+        coverage: getPercent(automatedCases, relatedCases.length),
+      };
+    })
+    .filter(item => item.totalCases > 0)
+    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases);
+
+  const successByTool = Array.from(
+    testCases.reduce<
+      Map<
+        string,
+        {
+          tool: string;
+          total: number;
+          passed: number;
+        }
+      >
+    >((acc, testCase) => {
+      if (!testCase.automationTool || !testCase.lastAutomationStatus) return acc;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.UNKNOWN) return acc;
+
+      const current = acc.get(testCase.automationTool) || {
+        tool: testCase.automationTool,
+        total: 0,
+        passed: 0,
+      };
+
+      current.total += 1;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.PASSED) {
+        current.passed += 1;
+      }
+
+      acc.set(testCase.automationTool, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      successRate: getPercent(value.passed, value.total),
+    }))
+    .sort((left, right) => right.successRate - left.successRate || right.total - left.total);
+
+  return {
+    moduleCoverage,
+    functionalityCoverage,
+    successByTool,
   };
 };
 
@@ -999,7 +1134,7 @@ const QAStatusSummary: React.FC<{
     [testRunBugs],
   );
 
-  const { automatedCount, manualCount, automationRate } = useMemo(
+  const { automatedCount, manualCount, automationRate, leadingAutomationTool, latestAutomationResult } = useMemo(
     () => getTestRunAutomationMetrics(testRun, testCaseMap),
     [testCaseMap, testRun],
   );
@@ -1039,6 +1174,14 @@ const QAStatusSummary: React.FC<{
         </Text>
       ),
     },
+    {
+      label: 'Herramienta principal',
+      value: <Text strong>{leadingAutomationTool || 'Sin definir'}</Text>,
+    },
+    {
+      label: 'Último estado automático',
+      value: <Text strong>{latestAutomationResult || 'Sin datos'}</Text>,
+    },
   ];
 
   const technicalAnalysisInput = useMemo<TechnicalReportAnalysisInput | null>(
@@ -1077,6 +1220,8 @@ const QAStatusSummary: React.FC<{
           automatedCount,
           manualCount,
           automationRate,
+          leadingAutomationTool: leadingAutomationTool || 'Sin definir',
+          latestAutomationResult: latestAutomationResult || 'Sin datos',
           failed: summary.failed,
           blocked: summary.blocked,
           pending: summary.pending,
@@ -1128,6 +1273,8 @@ const QAStatusSummary: React.FC<{
       activeTestRunBugs.length,
       automatedCount,
       automationRate,
+      leadingAutomationTool,
+      latestAutomationResult,
       functionalityMap,
       manualCount,
       riskTone.label,
@@ -1168,7 +1315,7 @@ const QAStatusSummary: React.FC<{
     {
       title: 'Automatizacion',
       value: `${automationRate}% automatizada`,
-      helper: `${automatedCount} automatizadas y ${manualCount} manuales`,
+      helper: `${automatedCount} automatizadas, ${manualCount} manuales y ${leadingAutomationTool || 'sin herramienta líder'}`,
     },
   ];
 
@@ -1865,6 +2012,10 @@ const ProjectStatusReport: React.FC<{
     const regression = filteredFunctionalities.filter(item => item.isRegression).length;
     const smoke = filteredFunctionalities.filter(item => item.isSmoke).length;
     const riskTone = getProjectRiskTone(activeBugs.length, highRisk, averagePassRate);
+    const automationPortfolio = getAutomationPortfolioMetrics(
+      filteredFunctionalities,
+      filteredTestCases,
+    );
 
     return {
       total: filteredFunctionalities.length,
@@ -1884,6 +2035,7 @@ const ProjectStatusReport: React.FC<{
       core,
       regression,
       smoke,
+      automationPortfolio,
     };
   }, [bugs, filteredFunctionalities, filteredRuns, filteredTestCaseMap, filteredTestCases, functionalityIds, selectedSprintKey, sprint]);
 
@@ -2150,6 +2302,71 @@ const ProjectStatusReport: React.FC<{
             </Text>
           </div>
         </div>
+      </Card>
+
+      <Card title="Metricas de automatizacion" className="rounded-2xl border-slate-100">
+        <Row gutter={[20, 20]}>
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
+              <Text strong>Cobertura por modulo</Text>
+              <div className="mt-4 space-y-3">
+                {stats.automationPortfolio.moduleCoverage.slice(0, 5).length > 0 ? (
+                  stats.automationPortfolio.moduleCoverage.slice(0, 5).map(item => (
+                    <div key={item.name}>
+                      <div className="flex justify-between gap-3 text-sm">
+                        <Text>{item.name}</Text>
+                        <Text strong>{item.coverage}%</Text>
+                      </div>
+                      <Progress percent={item.coverage} showInfo={false} strokeColor="#2563eb" />
+                    </div>
+                  ))
+                ) : (
+                  <Text type="secondary">Sin cobertura automatizada registrada por modulo.</Text>
+                )}
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
+              <Text strong>Cobertura por funcionalidad</Text>
+              <div className="mt-4 space-y-3">
+                {stats.automationPortfolio.functionalityCoverage.slice(0, 5).length > 0 ? (
+                  stats.automationPortfolio.functionalityCoverage.slice(0, 5).map(item => (
+                    <div key={item.id}>
+                      <div className="flex justify-between gap-3 text-sm">
+                        <Text>{item.name}</Text>
+                        <Text strong>{item.coverage}%</Text>
+                      </div>
+                      <Progress percent={item.coverage} showInfo={false} strokeColor="#14b8a6" />
+                    </div>
+                  ))
+                ) : (
+                  <Text type="secondary">Sin funcionalidades con casos dentro del alcance.</Text>
+                )}
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} lg={8}>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
+              <Text strong>Tasa de exito por herramienta</Text>
+              <div className="mt-4 space-y-3">
+                {stats.automationPortfolio.successByTool.length > 0 ? (
+                  stats.automationPortfolio.successByTool.map(item => (
+                    <div key={item.tool}>
+                      <div className="flex justify-between gap-3 text-sm">
+                        <Text>{item.tool}</Text>
+                        <Text strong>{item.successRate}%</Text>
+                      </div>
+                      <Progress percent={item.successRate} showInfo={false} strokeColor="#10b981" />
+                    </div>
+                  ))
+                ) : (
+                  <Text type="secondary">Sin resultados automaticos suficientes por herramienta.</Text>
+                )}
+              </div>
+            </div>
+          </Col>
+        </Row>
       </Card>
 
       <div className="pt-3">

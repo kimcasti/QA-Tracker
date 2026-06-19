@@ -2923,14 +2923,25 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                       : 'Sin roles'}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                <div className="min-w-0 rounded-2xl border border-slate-100 px-3 py-3">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Jira
                   </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.jiraIssueKey ||
-                      selectedFunctionality.jiraTaskUrl ||
-                      'Sin vínculo'}
+                  <div className="mt-1 min-w-0 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.jiraTaskUrl ? (
+                      <a
+                        href={selectedFunctionality.jiraTaskUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block break-all text-blue-600 hover:text-blue-700"
+                      >
+                        {selectedFunctionality.jiraTaskUrl}
+                      </a>
+                    ) : (
+                      <span className="break-words">
+                        {selectedFunctionality.jiraIssueKey || 'Sin vínculo'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-100 px-3 py-3">

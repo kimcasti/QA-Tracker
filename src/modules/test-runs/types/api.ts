@@ -42,6 +42,8 @@ export interface TestRunDto {
   browserVersion?: string;
   osVersion?: string;
   resolution?: string;
+  identifiedRisks?: string[];
+  exitCriteria?: string[];
   selectedModules?: string[];
   selectedFunctionalities?: string[];
   project?: {

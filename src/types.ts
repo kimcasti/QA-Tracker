@@ -60,6 +60,12 @@ export enum AutomationTool {
   OTHER = 'Otra',
 }
 
+export const ACTIVE_AUTOMATION_TOOLS = [
+  AutomationTool.PLAYWRIGHT,
+  AutomationTool.CYPRESS,
+  AutomationTool.POSTMAN,
+] as const;
+
 export enum AutomationResultStatus {
   PASSED = 'Aprobada',
   FAILED = 'Fallida',
@@ -483,6 +489,8 @@ export interface TestRun {
   browserVersion?: string;
   osVersion?: string;
   resolution?: string;
+  identifiedRisks?: string[];
+  exitCriteria?: string[];
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];

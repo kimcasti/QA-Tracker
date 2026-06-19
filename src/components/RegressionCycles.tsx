@@ -2201,8 +2201,16 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 Control de Regresión
               </Title>
               <Paragraph type="secondary">
-                Gestión y seguimiento de ejecuciones históricas de calidad.
+                Consulta histórica de ciclos de regresión ya ejecutados.
               </Paragraph>
+              <Space size={[8, 8]} wrap className="mb-2">
+                <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                  Legacy
+                </Tag>
+                <Tag color="blue" className="rounded-full px-3 py-1 font-semibold">
+                  Solo consulta
+                </Tag>
+              </Space>
               {isViewer && (
                 <Space size={[8, 8]} wrap>
                   <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
@@ -2229,10 +2237,10 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             type="info"
             className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
             message="Historial y compatibilidad"
-            description="Este flujo se conserva para consultar ciclos anteriores y apoyar la transición al nuevo modelo de ejecuciones. Para nuevas corridas, recomendamos usar Ejecución de Pruebas."
+            description="Esta vista queda disponible solo para consultar ciclos anteriores. Las nuevas corridas de regresión deben crearse desde Ejecución de Pruebas."
             action={
               <Button size="small" className="rounded-lg" onClick={goToTestExecution}>
-                Crear ejecución desde el flujo nuevo
+                Crear ejecución nueva
               </Button>
             }
           />
