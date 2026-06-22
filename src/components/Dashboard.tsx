@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Empty,
   Progress,
   Row,
   Statistic,
@@ -515,6 +516,14 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
     name: item.tool,
     value: item.successRate,
   }));
+  const hasAutomationData =
+    automatedTests > 0 ||
+    automationCandidatesCount > 0 ||
+    obsoleteAutomationCount > 0 ||
+    Boolean(latestAutomationResult) ||
+    automationSuccessByTool.length > 0;
+  const hasModuleAutomationCoverage = moduleAutomationCoverage.some(item => item.automatedCases > 0);
+  const hasFunctionalityAutomationCoverage = functionalityAutomationCoverage.automated > 0;
   const automationPieColors = ['#2563eb', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444'];
   const coreFunctionalities = functionalities.filter(item => item.isCore).length;
   const regressionFunctionalities = functionalities.filter(item => item.isRegression).length;
@@ -1035,15 +1044,45 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Col>
         </Row>
 
-        <Row gutter={[20, 20]} className="mt-2">
-          <Col xs={24} lg={8}>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <Text type="secondary" className="text-xs uppercase tracking-wide">
-                Cobertura por modulo
-              </Text>
-              <div className="mt-3">
-                {moduleAutomationCoveragePieData.length > 0 ? (
-                  <>
+        {!hasAutomationData ? (
+          <div className="mt-5 rounded-3xl border border-dashed border-sky-200 bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.45),_transparent_60%),linear-gradient(180deg,_rgba(240,249,255,0.9),_rgba(248,250,252,0.95))] px-6 py-8">
+            <Empty
+              image={
+                <div className="flex justify-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-sky-200 bg-white shadow-sm">
+                    <ThunderboltOutlined
+                      style={{
+                        fontSize: 28,
+                        color: qaPalette.functionalityStatus.postMvp,
+                      }}
+                    />
+                  </div>
+                </div>
+              }
+              description={
+                <div className="space-y-2 text-center">
+                  <Text strong className="block text-base text-slate-800">
+                    Aún no hay automatización registrada en este proyecto
+                  </Text>
+                  <Text className="mx-auto block max-w-xl text-sm text-slate-600">
+                    Cuando un caso de prueba tenga estado de automatización, herramienta o último
+                    resultado reportado, este radar mostrará cobertura, éxito y salud general.
+                  </Text>
+                </div>
+              }
+            />
+          </div>
+        ) : null}
+
+        {hasAutomationData ? (
+          <Row gutter={[20, 20]} className="mt-2">
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Cobertura por modulo
+                </Text>
+                <div className="mt-3">
+                  {hasModuleAutomationCoverage ? (
                     <div className="flex justify-center">
                       <PieChart width={220} height={220}>
                         <Pie
@@ -1072,71 +1111,75 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                         />
                       </PieChart>
                     </div>
-                  </>
-                ) : (
-                  <Text className="text-xs text-slate-500">
-                    Sin datos de cobertura por modulo.
-                  </Text>
-                )}
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Aun no hay modulos con cobertura automatizada."
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          </Col>
-          <Col xs={24} lg={8}>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <Text type="secondary" className="text-xs uppercase tracking-wide">
-                Cobertura por funcionalidad
-              </Text>
-              <div className="mt-3">
-                {functionalityAutomationCoveragePieData.length > 0 ? (
-                  <>
-                    <div className="flex justify-center">
-                      <PieChart width={220} height={220}>
-                        <Pie
-                          data={functionalityAutomationCoveragePieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={48}
-                          outerRadius={78}
-                          dataKey="value"
-                          labelLine={false}
-                          label={({ value }) => `${value}%`}
-                          isAnimationActive={false}
-                        >
-                          {functionalityAutomationCoveragePieData.map((entry, index) => (
-                            <Cell
-                              key={entry.name}
-                              fill={automationPieColors[index % automationPieColors.length]}
-                            />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip
-                          formatter={(value, _name, item: any) => [
-                            `${value}%`,
-                            item?.payload?.name || 'Cobertura funcional',
-                          ]}
-                        />
-                      </PieChart>
-                    </div>
-                    <div className="text-center text-sm text-slate-600">
-                      {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades
-                    </div>
-                  </>
-                ) : (
-                  <Text className="text-xs text-slate-500">
-                    Sin funcionalidades registradas.
-                  </Text>
-                )}
+            </Col>
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Cobertura por funcionalidad
+                </Text>
+                <div className="mt-3">
+                  {hasFunctionalityAutomationCoverage ? (
+                    <>
+                      <div className="flex justify-center">
+                        <PieChart width={220} height={220}>
+                          <Pie
+                            data={functionalityAutomationCoveragePieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={48}
+                            outerRadius={78}
+                            dataKey="value"
+                            labelLine={false}
+                            label={({ value }) => `${value}%`}
+                            isAnimationActive={false}
+                          >
+                            {functionalityAutomationCoveragePieData.map((entry, index) => (
+                              <Cell
+                                key={entry.name}
+                                fill={automationPieColors[index % automationPieColors.length]}
+                              />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip
+                            formatter={(value, _name, item: any) => [
+                              `${value}%`,
+                              item?.payload?.name || 'Cobertura funcional',
+                            ]}
+                          />
+                        </PieChart>
+                      </div>
+                      <div className="text-center text-sm text-slate-600">
+                        {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades
+                      </div>
+                    </>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={
+                        functionalityAutomationCoverage.total > 0
+                          ? 'Las funcionalidades existen, pero ninguna tiene casos automatizados todavia.'
+                          : 'Sin funcionalidades registradas.'
+                      }
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          </Col>
-          <Col xs={24} lg={8}>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <Text type="secondary" className="text-xs uppercase tracking-wide">
-                Exito por herramienta
-              </Text>
-              <div className="mt-3">
-                {automationSuccessByToolPieData.length > 0 ? (
-                  <>
+            </Col>
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Exito por herramienta
+                </Text>
+                <div className="mt-3">
+                  {automationSuccessByToolPieData.length > 0 ? (
                     <div className="flex justify-center">
                       <PieChart width={220} height={220}>
                         <Pie
@@ -1165,16 +1208,17 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                         />
                       </PieChart>
                     </div>
-                  </>
-                ) : (
-                  <Text className="text-xs text-slate-500">
-                    Sin resultados automaticos por herramienta.
-                  </Text>
-                )}
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Sin resultados automaticos suficientes por herramienta."
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          </Col>
-        </Row>
+            </Col>
+          </Row>
+        ) : null}
       </Card>
 
       <div className="mt-8 space-y-4">

@@ -1301,13 +1301,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <RobotOutlined className="text-slate-500" />
-                  <Text strong>Automatizacion</Text>
+                  <Text strong>Automatización</Text>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <Form.Item
                     name="automationStatus"
                     label="Estado"
-                    rules={[{ required: true, message: 'Selecciona el estado de automatizacion' }]}
+                    rules={[{ required: true, message: 'Selecciona el estado de automatización' }]}
                   >
                     <Select
                       options={automationStatusOptions.map(option => ({
@@ -1317,7 +1317,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     />
                   </Form.Item>
 
-                  <Form.Item name="automationType" label="Tipo de automatizacion">
+                  <Form.Item name="automationType" label="Tipo de automatización">
                     <Select
                       allowClear
                       options={automationTypeOptions.map(option => ({
@@ -1337,8 +1337,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     />
                   </Form.Item>
 
-                  <Form.Item name="automationOwner" label="Owner">
-                    <Input placeholder="Ej: QA Automation Team" />
+                  <Form.Item name="automationOwner" label="Responsable">
+                    <Input placeholder="Ej: Equipo de automatización QA" />
                   </Form.Item>
 
                   <Form.Item name="automationReference" label="Referencia" className="col-span-2">
@@ -1347,9 +1347,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
                   {selectedAutomationStatus === AutomationStatus.AUTOMATED ? (
                     <>
-                      <Form.Item name="lastAutomationStatus" label="Ultimo resultado">
+                      <Form.Item name="lastAutomationStatus" label="Último resultado">
                         <Select
                           allowClear
+                          disabled
                           options={automationResultStatusOptions.map(option => ({
                             label: option,
                             value: option,
@@ -1357,8 +1358,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                         />
                       </Form.Item>
 
-                      <Form.Item name="lastAutomationRunAt" label="Ultima ejecucion">
-                        <Input placeholder="Ej: 2026-06-17T15:00:00.000Z" />
+                      <Form.Item name="lastAutomationRunAt" label="Última ejecución">
+                        <Input
+                          readOnly
+                          disabled
+                          placeholder="Se actualiza desde la ejecución automatizada"
+                        />
                       </Form.Item>
                     </>
                   ) : null}

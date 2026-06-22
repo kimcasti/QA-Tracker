@@ -64,6 +64,7 @@ export const ACTIVE_AUTOMATION_TOOLS = [
   AutomationTool.PLAYWRIGHT,
   AutomationTool.CYPRESS,
   AutomationTool.POSTMAN,
+  AutomationTool.K6,
 ] as const;
 
 export enum AutomationResultStatus {
@@ -468,6 +469,26 @@ export interface PublicUatSessionSummary {
   completionLocked?: boolean;
   publicUrl?: string | null;
   participant?: PublicUatParticipantSnapshot | null;
+}
+
+export interface AutomationImportHistoryMatch {
+  testCaseId: string;
+  testCaseTitle: string;
+  reference: string;
+  status: AutomationResultStatus;
+  bugId?: string;
+}
+
+export interface AutomationImportHistoryEntry {
+  id: string;
+  tool: AutomationTool;
+  importedAt: string;
+  matchedCount: number;
+  missingReferenceCount: number;
+  unmatchedExecutionCount: number;
+  unmatchedReportReferenceCount: number;
+  duplicateReferenceCount: number;
+  matchedCases: AutomationImportHistoryMatch[];
 }
 
 export interface TestRun {

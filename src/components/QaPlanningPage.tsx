@@ -17,7 +17,12 @@ import {
   Typography,
   message,
 } from 'antd';
-import { FileSearchOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  FileSearchOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import {
   Building2,
   Check,
@@ -121,7 +126,9 @@ type RecommendationKey =
   | 'high_risk_without_cases'
   | 'high_priority_without_regression'
   | 'without_coverage'
-  | 'recent_changes';
+  | 'recent_changes'
+  | 'automation_candidates'
+  | 'with_automated_cases';
 
 type RecommendationCardProps = {
   active: boolean;
@@ -551,7 +558,13 @@ function getPlanningMetrics(functionalities: Functionality[]) {
   };
 }
 
-function matchesCoverageFilter(record: Functionality, value: string) {
+function matchesCoverageFilter(
+  record: Functionality,
+  value: string,
+  automatedCaseCountByFunctionality?: Map<string, number>,
+) {
+  const automatedCount = automatedCaseCountByFunctionality?.get(record.id) || 0;
+
   switch (value) {
     case 'core':
       return Boolean(record.isCore);
@@ -559,6 +572,10 @@ function matchesCoverageFilter(record: Functionality, value: string) {
       return Boolean(record.isRegression);
     case 'smoke':
       return Boolean(record.isSmoke);
+    case 'with-automation':
+      return automatedCount > 0;
+    case 'without-automation':
+      return automatedCount === 0;
     case 'without-coverage':
       return !record.isCore && !record.isRegression && !record.isSmoke;
     default:
@@ -566,14 +583,20 @@ function matchesCoverageFilter(record: Functionality, value: string) {
   }
 }
 
-function matchesTableFilters(record: Functionality, filters: PlanningTableFilters) {
+function matchesTableFilters(
+  record: Functionality,
+  filters: PlanningTableFilters,
+  automatedCaseCountByFunctionality?: Map<string, number>,
+) {
   if (filters.module?.length && !filters.module.some(value => record.module === String(value))) {
     return false;
   }
 
   if (
     filters.coverage?.length &&
-    !filters.coverage.some(value => matchesCoverageFilter(record, String(value)))
+    !filters.coverage.some(value =>
+      matchesCoverageFilter(record, String(value), automatedCaseCountByFunctionality),
+    )
   ) {
     return false;
   }
@@ -791,6 +814,26 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     }, new Map<string, number>());
   }, [testCases]);
 
+  const automatedCaseCountByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) return acc;
+
+      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+  }, [testCases]);
+
+  const candidateCaseCountByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      if (deriveAutomationStatus(testCase) !== AutomationStatus.CANDIDATE) return acc;
+
+      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+  }, [testCases]);
+
   const openTestCaseModal = React.useCallback((record: Functionality) => {
     setSelectedFunctionality(record);
     setIsTestCaseModalOpen(true);
@@ -901,6 +944,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       item => !item.isCore && !item.isRegression && !item.isSmoke,
     );
     const recentChanges = filteredFunctionalities.filter(item => isRecentlyChanged(item));
+    const automationCandidates = filteredFunctionalities.filter(
+      item => (candidateCaseCountByFunctionality.get(item.id) || 0) > 0,
+    );
+    const withAutomatedCases = filteredFunctionalities.filter(
+      item => (automatedCaseCountByFunctionality.get(item.id) || 0) > 0,
+    );
 
     return {
       critical_outside_smoke: criticalOutsideSmoke,
@@ -908,8 +957,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       high_priority_without_regression: highPriorityWithoutRegression,
       without_coverage: withoutCoverage,
       recent_changes: recentChanges,
+      automation_candidates: automationCandidates,
+      with_automated_cases: withAutomatedCases,
     } satisfies Record<RecommendationKey, Functionality[]>;
-  }, [filteredFunctionalities, testCaseCountByFunctionality]);
+  }, [
+    filteredFunctionalities,
+    testCaseCountByFunctionality,
+    candidateCaseCountByFunctionality,
+    automatedCaseCountByFunctionality,
+  ]);
 
   const recommendationCards = React.useMemo(
     () => [
@@ -953,6 +1009,22 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         outlineClassName: 'border-emerald-200 bg-emerald-50 text-emerald-600',
         toneClassName: 'bg-sky-50 text-sky-700',
       },
+      {
+        key: 'automation_candidates' as RecommendationKey,
+        label: 'Candidatas a automatización',
+        description: 'Funcionalidades con al menos un caso marcado como candidata.',
+        icon: <Info size={12} className="text-amber-500" />,
+        outlineClassName: 'border-amber-200 bg-amber-50 text-amber-700',
+        toneClassName: 'bg-amber-50 text-amber-700',
+      },
+      {
+        key: 'with_automated_cases' as RecommendationKey,
+        label: 'Con casos automatizados',
+        description: 'Funcionalidades con al menos un caso automatizado registrado.',
+        icon: <Check size={12} className="text-emerald-500" />,
+        outlineClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        toneClassName: 'bg-emerald-50 text-emerald-700',
+      },
     ],
     [],
   );
@@ -965,9 +1037,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const visibleFunctionalities = React.useMemo(
     () =>
       recommendationFilteredFunctionalities.filter(record =>
-        matchesTableFilters(record, tableFilters),
+        matchesTableFilters(record, tableFilters, automatedCaseCountByFunctionality),
       ),
-    [recommendationFilteredFunctionalities, tableFilters],
+    [recommendationFilteredFunctionalities, tableFilters, automatedCaseCountByFunctionality],
   );
 
   const analytics = React.useMemo(() => {
@@ -1457,6 +1529,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       { text: 'Core business', value: 'core' },
       { text: 'Regresión', value: 'regression' },
       { text: 'Smoke', value: 'smoke' },
+      { text: 'Con automatizacion', value: 'with-automation' },
+      { text: 'Sin automatizacion', value: 'without-automation' },
       { text: 'Sin cobertura', value: 'without-coverage' },
     ],
     [],
@@ -1688,14 +1762,24 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         width: 320,
         render: (value: string, record: Functionality) => {
           const recentChangeLabel = formatRecentChangeBadge(record.lastFunctionalChangeAt);
+          const automatedCount = automatedCaseCountByFunctionality.get(record.id) || 0;
 
           return (
             <div className="flex min-w-0 max-w-[360px] flex-col gap-1">
-              <Tooltip title={value}>
-                <span className="block truncate text-sm font-medium leading-5 text-slate-700">
-                  {value}
-                </span>
-              </Tooltip>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Tooltip title={value}>
+                  <span className="block truncate text-sm font-medium leading-5 text-slate-700">
+                    {value}
+                  </span>
+                </Tooltip>
+                {automatedCount > 0 ? (
+                  <Tooltip title={`${automatedCount} caso(s) automatizado(s)`}>
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                      <ThunderboltOutlined className="text-[11px]" />
+                    </span>
+                  </Tooltip>
+                ) : null}
+              </div>
               {recentChangeLabel ? (
                 <Tooltip title={`Último cambio funcional: ${record.lastFunctionalChangeAt}`}>
                   <span className="inline-flex w-fit max-w-full items-center gap-1 rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">

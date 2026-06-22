@@ -53,24 +53,15 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
     await expect(regressionCoverageCard).toContainText('2');
     await expect(smokeCoverageCard).toContainText('2');
 
-    await page.goto(`/projects/${seed.projectKey}/testing`);
-    await expect(page.getByRole('heading', { name: 'Ejecución de Pruebas' })).toBeVisible();
-    const coverageTab = page.getByRole('tab', { name: 'Cobertura de Casos' });
-    await coverageTab.click();
-    await expect(coverageTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByText('Total Funcionalidades')).toBeVisible();
-    const coverageSummaryCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'Cobertura de Casos' })
-      .first();
-    await expect(coverageSummaryCard).toBeVisible();
-    await expect(page.getByText('Bugs Activos')).toBeVisible();
-
-    for (const code of seed.functionalityCodes) {
-      const row = page.locator('tr', { hasText: code });
-      await expect(row).toContainText('2');
-      await expect(row).toContainText('50%');
-    }
+    await page.goto(`/projects/${seed.projectKey}/qa-planning`);
+    await expect(page.getByRole('heading', { name: 'Estrategia QA' })).toBeVisible();
+    await expect(page.locator('main')).toContainText('Cobertura visible: 100% sobre 2 funcionalidades');
+    await expect(page.locator('main')).toContainText('Cobertura por tipo');
+    await expect(page.locator('main')).toContainText('Regresión');
+    await expect(page.locator('main')).toContainText('Smoke');
+    await expect(page.locator('main')).toContainText('Pacientes');
+    await expect(page.locator('main')).toContainText('Usuarios');
+    await expect(page.locator('main')).toContainText('100% (1/1)');
   });
 
   test('shows seeded functionalities and summary cards', async ({ page }) => {

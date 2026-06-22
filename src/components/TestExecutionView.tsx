@@ -63,6 +63,8 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRunSummaries } from '../modules/test-runs/hooks/useTestRunSummaries';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { getTestRunById } from '../modules/test-runs/services/testRunsService';
+import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
+import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
 import { getPublicUatSessionStatus } from '../modules/test-runs/services/publicUatSessionsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
@@ -89,6 +91,7 @@ import {
   Functionality,
   OperatingSystem,
   PublicUatSessionSummary,
+  QABug,
   TestCase,
   deriveAutomationStatus,
 } from '../types';
@@ -155,7 +158,7 @@ const executionExitCriteriaLabelByValue = new Map(
 );
 
 type ScopeAutomationFilter = 'all' | 'automated' | 'candidate' | 'obsolete' | 'manual';
-type AutomationImportTool = 'playwright' | 'cypress' | 'postman';
+type AutomationImportTool = 'playwright' | 'cypress' | 'postman' | 'k6';
 
 type AutomationImportResult = {
   title: string;
@@ -169,6 +172,7 @@ type AutomationImportSummary = {
     testCaseTitle: string;
     reference: string;
     status: AutomationResultStatus;
+    bugId?: string;
   }>;
   unmatchedExecutionCases: Array<{
     testCaseId: string;
@@ -181,6 +185,22 @@ type AutomationImportSummary = {
     testCaseId: string;
     testCaseTitle: string;
   }>;
+};
+
+type AutomationHistoryRow = {
+  key: string;
+  runId: string;
+  runTitle: string;
+  runStatus: ExecutionStatus;
+  runType: TestType;
+  importedAt: string;
+  tool: AutomationTool;
+  matchedCount: number;
+  missingReferenceCount: number;
+  unmatchedExecutionCount: number;
+  unmatchedReportReferenceCount: number;
+  duplicateReferenceCount: number;
+  matchedCases: AutomationImportSummary['matchedExecutionCases'];
 };
 
 const scopeAutomationFilterOptions: Array<{ label: string; value: ScopeAutomationFilter }> = [
@@ -198,12 +218,132 @@ const automationImportToolOptions: Array<{ label: string; value: AutomationImpor
   { label: 'Playwright', value: 'playwright' },
   { label: 'Cypress', value: 'cypress' },
   { label: 'Postman', value: 'postman' },
+  { label: 'k6', value: 'k6' },
 ];
+
+const AUTOMATION_IMPORT_GUIDES: Record<
+  AutomationImportTool,
+  {
+    matchRule: string;
+    supportedStatuses: string;
+    placeholder: string;
+    example: string;
+  }
+> = {
+  playwright: {
+    matchRule: 'QA Tracker hace match por automationReference. Recomendado: guardar la ruta del spec o el identificador exacto del caso.',
+    supportedStatuses: 'passed, failed, skipped',
+    placeholder: 'Pega aquí el JSON del reporter de Playwright',
+    example: `{
+  "suites": [
+    {
+      "title": "Smoke automatizado",
+      "specs": [
+        {
+          "title": "caso 1",
+          "file": "tests/modulo-1/caso-1.spec.ts",
+          "tests": [
+            {
+              "results": [
+                { "status": "passed" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`,
+  },
+  cypress: {
+    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar el título del test o la ruta/nombre estable del spec.',
+    supportedStatuses: 'passed, failed, skipped',
+    placeholder: 'Pega aquí el JSON exportado de Cypress',
+    example: `{
+  "results": [
+    {
+      "file": "cypress/e2e/modulo-1/caso-1.cy.ts",
+      "tests": [
+        {
+          "title": ["Smoke login", "caso 1"],
+          "state": "passed"
+        },
+        {
+          "title": ["Smoke login", "caso 2"],
+          "state": "failed"
+        }
+      ]
+    }
+  ]
+}`,
+  },
+  postman: {
+    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar item.id, item.name o cursor.ref según tu colección.',
+    supportedStatuses: 'response code 2xx = aprobada, error/assertion = fallida',
+    placeholder: 'Pega aquí el JSON exportado de Postman/Newman',
+    example: `{
+  "run": {
+    "executions": [
+      {
+        "item": {
+          "name": "caso 1",
+          "id": "POSTMAN-CASO-1"
+        },
+        "cursor": {
+          "ref": "caso 1"
+        },
+        "response": {
+          "code": 200
+        },
+        "assertions": [
+          {
+            "assertion": "status code is 200"
+          }
+        ]
+      }
+    ]
+  }
+}`,
+  },
+  k6: {
+    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar tags.name, automationReference o group en el script de k6 para identificar cada caso.',
+    supportedStatuses:
+      'http_req_failed > 0 = fallida, checks = 0 = fallida, status 2xx/3xx = aprobada',
+    placeholder: 'Pega aquÃ­ el JSON o JSON Lines exportado de k6',
+    example: `[
+  {
+    "type": "Point",
+    "metric": "http_req_failed",
+    "data": {
+      "value": 0,
+      "tags": {
+        "name": "caso 1",
+        "url": "https://api.miapp.com/login",
+        "scenario": "smoke-api"
+      }
+    }
+  },
+  {
+    "type": "Point",
+    "metric": "checks",
+    "data": {
+      "value": 0,
+      "tags": {
+        "name": "caso 2",
+        "check": "status is 200"
+      }
+    }
+  }
+]`,
+  },
+};
 
 function labelAutomationImportTool(tool: AutomationImportTool) {
   switch (tool) {
     case 'cypress':
       return 'Cypress';
+    case 'k6':
+      return 'k6';
     case 'postman':
       return 'Postman';
     case 'playwright':
@@ -216,12 +356,52 @@ function labelAutomationImportToolPlural(tool: AutomationImportTool) {
   switch (tool) {
     case 'cypress':
       return 'Cypress';
+    case 'k6':
+      return 'k6';
     case 'postman':
       return 'Postman';
     case 'playwright':
     default:
       return 'Playwright';
   }
+}
+
+function getAutomationImportGuide(tool: AutomationImportTool) {
+  return AUTOMATION_IMPORT_GUIDES[tool];
+}
+
+function mapAutomationImportToolToAutomationTool(tool: AutomationImportTool): AutomationTool {
+  switch (tool) {
+    case 'cypress':
+      return AutomationTool.CYPRESS;
+    case 'k6':
+      return AutomationTool.K6;
+    case 'postman':
+      return AutomationTool.POSTMAN;
+    case 'playwright':
+    default:
+      return AutomationTool.PLAYWRIGHT;
+  }
+}
+
+function inferAutomationHistoryTool(
+  savedTool: AutomationTool,
+  matchedCases: AutomationImportSummary['matchedExecutionCases'],
+  testCaseById: Map<string, TestCase>,
+) {
+  if (savedTool !== AutomationTool.PLAYWRIGHT || matchedCases.length === 0) {
+    return savedTool;
+  }
+
+  const matchedTools = Array.from(
+    new Set(
+      matchedCases
+        .map(match => testCaseById.get(match.testCaseId)?.automationTool)
+        .filter((tool): tool is AutomationTool => Boolean(tool)),
+    ),
+  );
+
+  return matchedTools.length === 1 ? matchedTools[0] : savedTool;
 }
 
 function getAutomationStatusTagColor(status: AutomationStatus) {
@@ -550,6 +730,196 @@ function mapAutomationResultToExecutionResult(status: AutomationResultStatus): T
   }
 }
 
+function buildAutomationImportStatusTotals(
+  matchedCases: AutomationImportSummary['matchedExecutionCases'],
+) {
+  return matchedCases.reduce(
+    (acc, item) => {
+      switch (item.status) {
+        case AutomationResultStatus.PASSED:
+          acc.passed += 1;
+          break;
+        case AutomationResultStatus.FAILED:
+          acc.failed += 1;
+          break;
+        case AutomationResultStatus.SKIPPED:
+          acc.skipped += 1;
+          break;
+        case AutomationResultStatus.UNKNOWN:
+        default:
+          acc.unknown += 1;
+          break;
+      }
+
+      return acc;
+    },
+    { passed: 0, failed: 0, skipped: 0, unknown: 0 },
+  );
+}
+
+function pluralizeAutomationSummaryLabel(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+type AutomationSummaryMetric = {
+  toneClassName: string;
+  text: string;
+};
+
+function renderAutomationSummaryMetrics(metrics: AutomationSummaryMetric[]) {
+  if (metrics.length === 0) {
+    return <span className="text-sm text-slate-400">Sin novedades</span>;
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-sm leading-5">
+      {metrics.map((metric, index) => (
+        <React.Fragment key={`${metric.text}-${metric.toneClassName}`}>
+          {index > 0 ? <span className="text-slate-300">·</span> : null}
+          <span className={`inline-flex items-center gap-1 ${metric.toneClassName}`}>
+            <span className="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
+            <span>{metric.text}</span>
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function buildAutomationImportSummaryMetrics(record: AutomationHistoryRow): AutomationSummaryMetric[] {
+  return [
+    record.matchedCount > 0
+      ? {
+          toneClassName: 'text-emerald-600',
+          text: pluralizeAutomationSummaryLabel(record.matchedCount, 'vinculado'),
+        }
+      : null,
+    record.unmatchedReportReferenceCount > 0
+      ? {
+          toneClassName: 'text-sky-600',
+          text: pluralizeAutomationSummaryLabel(record.unmatchedReportReferenceCount, 'extra'),
+        }
+      : null,
+    record.duplicateReferenceCount > 0
+      ? {
+          toneClassName: 'text-violet-600',
+          text: pluralizeAutomationSummaryLabel(
+            record.duplicateReferenceCount,
+            'duplicada',
+            'duplicadas',
+          ),
+        }
+      : null,
+  ].filter((metric): metric is AutomationSummaryMetric => metric !== null);
+}
+
+function buildAutomationResultSummaryMetrics(
+  matchedCases: AutomationImportSummary['matchedExecutionCases'],
+) {
+  const totals = buildAutomationImportStatusTotals(matchedCases);
+
+  return [
+    totals.passed > 0
+      ? {
+          toneClassName: 'text-emerald-600',
+          text: pluralizeAutomationSummaryLabel(totals.passed, 'aprobada'),
+        }
+      : null,
+    totals.failed > 0
+      ? {
+          toneClassName: 'text-rose-600',
+          text: pluralizeAutomationSummaryLabel(totals.failed, 'fallida'),
+        }
+      : null,
+  ].filter((metric): metric is AutomationSummaryMetric => metric !== null);
+}
+
+function renderAutomationHistorySummary(record: AutomationHistoryRow) {
+  const importMetrics = buildAutomationImportSummaryMetrics(record);
+  const resultMetrics = buildAutomationResultSummaryMetrics(record.matchedCases);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 py-1">
+      <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Importaci&oacute;n
+        </div>
+        {renderAutomationSummaryMetrics(importMetrics)}
+      </div>
+      <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Resultados
+        </div>
+        {renderAutomationSummaryMetrics(resultMetrics)}
+      </div>
+    </div>
+  );
+}
+
+function mergeAutomationHistoryBugIds(
+  matchedCases: AutomationImportSummary['matchedExecutionCases'],
+  latestResults: TestRunResult[],
+) {
+  if (latestResults.length === 0) {
+    return matchedCases;
+  }
+
+  const latestBugIdByTestCaseId = new Map(
+    latestResults.map(result => [
+      result.testCaseId,
+      (result.bugId || result.linkedBugId || '').trim(),
+    ]),
+  );
+
+  return matchedCases.map(item => {
+    const latestBugId = latestBugIdByTestCaseId.get(item.testCaseId);
+
+    return latestBugId
+      ? {
+          ...item,
+          bugId: latestBugId,
+        }
+      : item;
+  });
+}
+
+function attachAutomationHistoryBugIdsFromCatalog(
+  runId: string,
+  matchedCases: AutomationImportSummary['matchedExecutionCases'],
+  bugs: QABug[],
+) {
+  if (matchedCases.length === 0 || bugs.length === 0) {
+    return matchedCases;
+  }
+
+  const bugIdByRunAndCase = new Map(
+    bugs
+      .filter(
+        bug =>
+          bug.origin === BugOrigin.GENERAL_EXECUTION &&
+          bug.testRunId?.trim() &&
+          bug.testCaseId?.trim() &&
+          bug.internalBugId?.trim(),
+      )
+      .map(bug => [`${bug.testRunId}::${bug.testCaseId}`, bug.internalBugId]),
+  );
+
+  return matchedCases.map(item => {
+    const catalogBugId = bugIdByRunAndCase.get(`${runId}::${item.testCaseId}`);
+
+    return catalogBugId
+      ? {
+          ...item,
+          bugId: catalogBugId,
+        }
+      : item;
+  });
+}
+
 function extractPlaywrightStatusFromSpec(spec: any): string | undefined {
   const testResults = Array.isArray(spec?.tests)
     ? spec.tests.flatMap((test: any) => (Array.isArray(test?.results) ? test.results : []))
@@ -735,6 +1105,183 @@ function extractPostmanResults(payload: unknown): AutomationImportResult[] {
   return collected;
 }
 
+function getHigherPriorityAutomationResultStatus(
+  current: AutomationResultStatus,
+  incoming: AutomationResultStatus,
+) {
+  const priorities: Record<AutomationResultStatus, number> = {
+    [AutomationResultStatus.FAILED]: 4,
+    [AutomationResultStatus.PASSED]: 3,
+    [AutomationResultStatus.SKIPPED]: 2,
+    [AutomationResultStatus.UNKNOWN]: 1,
+  };
+
+  return priorities[incoming] > priorities[current] ? incoming : current;
+}
+
+function parseK6Payload(rawInput: string) {
+  try {
+    return JSON.parse(rawInput);
+  } catch {
+    const lines = rawInput
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    const records = lines.map(line => JSON.parse(line));
+    return records;
+  }
+}
+
+function extractK6StatusFromPoint(point: any): AutomationResultStatus | null {
+  const metric = typeof point?.metric === 'string' ? point.metric.trim() : '';
+  const numericValue =
+    typeof point?.data?.value === 'number'
+      ? point.data.value
+      : Number.isFinite(Number(point?.data?.value))
+        ? Number(point.data.value)
+        : null;
+  const tags = point?.data?.tags || {};
+  const expectedResponse = String(tags?.expected_response || '').toLowerCase();
+  const statusCode = Number(tags?.status);
+
+  switch (metric) {
+    case 'http_req_failed':
+      return numericValue && numericValue > 0
+        ? AutomationResultStatus.FAILED
+        : AutomationResultStatus.PASSED;
+    case 'checks':
+      return numericValue === 0 ? AutomationResultStatus.FAILED : AutomationResultStatus.PASSED;
+    case 'http_req_duration':
+    case 'http_req_waiting':
+    case 'http_req_blocked':
+      if (expectedResponse === 'false') {
+        return AutomationResultStatus.FAILED;
+      }
+      if (expectedResponse === 'true') {
+        return AutomationResultStatus.PASSED;
+      }
+      if (Number.isFinite(statusCode)) {
+        return statusCode >= 400
+          ? AutomationResultStatus.FAILED
+          : AutomationResultStatus.PASSED;
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+function extractK6Results(rawInput: string): AutomationImportResult[] {
+  const payload = parseK6Payload(rawInput);
+  const records = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as any)?.results)
+      ? (payload as any).results
+      : [payload];
+
+  const collected = new Map<
+    string,
+    {
+      title: string;
+      status: AutomationResultStatus;
+      referenceCandidates: Set<string>;
+    }
+  >();
+
+  records.forEach((record: any) => {
+    if (record?.type !== 'Point') {
+      return;
+    }
+
+    const status = extractK6StatusFromPoint(record);
+    if (!status) {
+      return;
+    }
+
+    const tags = record?.data?.tags || {};
+    const groupPath = typeof tags?.group === 'string' ? tags.group.trim() : '';
+    const normalizedGroupPath = groupPath
+      .split('::')
+      .map((segment: string) => segment.trim())
+      .filter(Boolean)
+      .join(' > ');
+    const groupLeaf = normalizedGroupPath.split(' > ').at(-1) || '';
+    const scenario = typeof tags?.scenario === 'string' ? tags.scenario.trim() : '';
+    const automationReference =
+      typeof tags?.automationReference === 'string' ? tags.automationReference.trim() : '';
+    const nameCandidates = [
+      automationReference,
+      tags?.name,
+      tags?.test_case,
+      tags?.testCase,
+      tags?.case,
+      tags?.transaction,
+      groupLeaf,
+      tags?.check,
+      tags?.url,
+      scenario,
+    ]
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean);
+    const title = automationReference || nameCandidates[0] || '';
+
+    if (!title) {
+      return;
+    }
+
+    const referenceCandidates = [
+      ...nameCandidates,
+      normalizedGroupPath,
+      typeof tags?.url === 'string' ? tags.url.trim() : '',
+      typeof tags?.check === 'string' ? tags.check.trim() : '',
+      scenario,
+    ].filter(Boolean);
+    const stableKey = automationReference || title;
+    const key = normalizeAutomationMatchValue(stableKey);
+    const current = collected.get(key);
+
+    if (!current) {
+      collected.set(key, {
+        title,
+        status,
+        referenceCandidates: new Set(referenceCandidates),
+      });
+      return;
+    }
+
+    referenceCandidates.forEach(candidate => current.referenceCandidates.add(candidate));
+    current.status = getHigherPriorityAutomationResultStatus(current.status, status);
+  });
+
+  return Array.from(collected.values()).map(item => ({
+    title: item.title,
+    status: item.status,
+    referenceCandidates: Array.from(item.referenceCandidates),
+  }));
+}
+
+function extractAutomationImportResults(
+  tool: AutomationImportTool,
+  rawInput: string,
+): AutomationImportResult[] {
+  if (tool === 'k6') {
+    return extractK6Results(rawInput);
+  }
+
+  const payload = JSON.parse(rawInput);
+
+  switch (tool) {
+    case 'cypress':
+      return extractCypressResults(payload);
+    case 'postman':
+      return extractPostmanResults(payload);
+    case 'playwright':
+    default:
+      return extractPlaywrightResults(payload);
+  }
+}
+
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -751,6 +1298,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     enabled: false,
   });
   const {
+    data: automationImportHistoryData,
+    save: saveAutomationImportHistory,
+  } = useAutomationImportHistories(projectId);
+  const { data: bugsData = [] } = useBugs(projectId);
+  const {
     activate: activatePublicUatSession,
     revoke: revokePublicUatSession,
     isActivating: isActivatingPublicUatSession,
@@ -762,6 +1314,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testRuns = Array.isArray(testRunSummariesData) ? testRunSummariesData : [];
+  const automationImportHistory = Array.isArray(automationImportHistoryData)
+    ? automationImportHistoryData
+    : [];
+  const bugs = Array.isArray(bugsData) ? bugsData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
   const canDeleteTestRuns = isOwner || activeMembership?.role?.code === 'owner';
   const activeOrganizationPlan = normalizeOrganizationPlan(
@@ -1864,9 +2420,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     try {
       const text = await file.text();
       setPlaywrightImportJson(text);
-      message.success('Archivo Playwright cargado.');
+      message.success(`Archivo ${labelAutomationImportTool(automationImportTool)} cargado.`);
     } catch (importError) {
-      console.error('Error reading Playwright report:', importError);
+      console.error(`Error reading ${labelAutomationImportTool(automationImportTool)} report:`, importError);
       message.error('No pudimos leer el archivo JSON.');
     }
 
@@ -1889,9 +2445,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         return;
       }
 
-      let payload: unknown;
+      let reportResults: AutomationImportResult[] = [];
       try {
-        payload = JSON.parse(trimmedJson);
+        reportResults = extractAutomationImportResults(automationImportTool, trimmedJson);
       } catch (parseError) {
         console.error(
           `Invalid ${labelAutomationImportToolPlural(automationImportTool)} JSON:`,
@@ -1900,10 +2456,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         message.error('El archivo no es un JSON válido.');
         return;
       }
-      const reportResults =
-        automationImportTool === 'cypress'
-          ? extractCypressResults(payload)
-          : extractPlaywrightResults(payload);
 
       if (reportResults.length === 0) {
         message.warning(
@@ -1956,11 +2508,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         matchedCaseIds.add(testCase.id);
         metadataUpdatesById.set(testCase.id, {
           ...testCase,
-          automationTool:
-            testCase.automationTool ||
-            (automationImportTool === 'cypress'
-              ? AutomationTool.CYPRESS
-              : AutomationTool.PLAYWRIGHT),
+          automationTool: testCase.automationTool || mapAutomationImportToolToAutomationTool(automationImportTool),
           lastAutomationStatus: matchedReport.status,
           lastAutomationRunAt: now,
         });
@@ -1973,7 +2521,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       if (matchedCaseIds.size === 0) {
         message.warning(
-          'No hubo coincidencias entre el reporte de Playwright y los casos de esta ejecución.',
+          `No hubo coincidencias entre el reporte de ${labelAutomationImportToolPlural(automationImportTool)} y los casos de esta ejecución.`,
         );
         return;
       }
@@ -1993,8 +2541,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       setPlaywrightImportJson('');
       message.success(`Importación completada. ${matchedCaseIds.size} caso(s) actualizados.`);
     } catch (importError) {
-      console.error('Error importing Playwright results into execution:', importError);
-      message.error('No pudimos importar el reporte de Playwright.');
+      console.error(
+        `Error importing ${labelAutomationImportToolPlural(automationImportTool)} results into execution:`,
+        importError,
+      );
+      message.error(
+        `No pudimos importar el reporte de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+      );
     } finally {
       setIsImportingPlaywright(false);
     }
@@ -2010,27 +2563,28 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       setIsImportingPlaywright(true);
       const trimmedJson = playwrightImportJson.trim();
       if (!trimmedJson) {
-        message.warning('Pega o carga primero un JSON de Playwright.');
+        message.warning(
+          `Pega o carga primero un JSON de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+        );
         return;
       }
 
-      let payload: unknown;
+      let reportResults: AutomationImportResult[] = [];
       try {
-        payload = JSON.parse(trimmedJson);
+        reportResults = extractAutomationImportResults(automationImportTool, trimmedJson);
       } catch (parseError) {
-        console.error('Invalid Playwright JSON:', parseError);
+        console.error(
+          `Invalid ${labelAutomationImportToolPlural(automationImportTool)} JSON:`,
+          parseError,
+        );
         message.error('El archivo no es un JSON válido.');
         return;
       }
-      const reportResults =
-        automationImportTool === 'cypress'
-          ? extractCypressResults(payload)
-          : automationImportTool === 'postman'
-            ? extractPostmanResults(payload)
-            : extractPlaywrightResults(payload);
 
       if (reportResults.length === 0) {
-        message.warning('No encontramos resultados válidos en el JSON de Playwright.');
+        message.warning(
+          `No encontramos resultados válidos en el JSON de ${labelAutomationImportToolPlural(automationImportTool)}.`,
+        );
         return;
       }
 
@@ -2079,16 +2633,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           testCaseTitle: testCase.title,
           reference: testCase.automationReference || '',
           status: matchedReport.status,
+          bugId: result.bugId || result.linkedBugId,
         });
         metadataUpdatesById.set(testCase.id, {
           ...testCase,
-          automationTool:
-            testCase.automationTool ||
-            (automationImportTool === 'cypress'
-              ? AutomationTool.CYPRESS
-              : automationImportTool === 'postman'
-                ? AutomationTool.POSTMAN
-                : AutomationTool.PLAYWRIGHT),
+          automationTool: testCase.automationTool || mapAutomationImportToolToAutomationTool(automationImportTool),
           lastAutomationStatus: matchedReport.status,
           lastAutomationRunAt: now,
         });
@@ -2146,6 +2695,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       const savedRun = await saveTestRun({
         ...activeTestRun,
         results: nextResults,
+      });
+
+      await saveAutomationImportHistory({
+        projectId: savedRun.projectId || activeTestRun.projectId,
+        testRunId: savedRun.id,
+        tool: mapAutomationImportToolToAutomationTool(automationImportTool),
+        importedAt: now,
+        matchedCount: matchedExecutionCases.length,
+        missingReferenceCount: missingReferenceCases.length,
+        unmatchedExecutionCount: unmatchedExecutionCases.length,
+        unmatchedReportReferenceCount: unmatchedReportReferences.length,
+        duplicateReferenceCount: duplicateReportReferences.length,
+        matchedCases: matchedExecutionCases,
       });
 
       if (metadataUpdatesById.size > 0) {
@@ -2336,6 +2898,42 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       environment: null,
     });
   };
+
+  const automationHistoryRows = useMemo<AutomationHistoryRow[]>(
+    () =>
+      automationImportHistory
+        .map(entry => {
+          const matchedCasesWithCatalogBugIds = attachAutomationHistoryBugIdsFromCatalog(
+            entry.testRunId,
+            entry.matchedCases,
+            bugs,
+          );
+
+          return {
+            key: entry.documentId,
+            runId: entry.testRunId,
+            runTitle: entry.testRunTitle,
+            runStatus: entry.testRunStatus,
+            runType: entry.testRunType,
+            importedAt: entry.importedAt,
+            tool: inferAutomationHistoryTool(entry.tool, entry.matchedCases, testCaseById),
+            matchedCount: entry.matchedCount,
+            missingReferenceCount: entry.missingReferenceCount,
+            unmatchedExecutionCount: entry.unmatchedExecutionCount,
+            unmatchedReportReferenceCount: entry.unmatchedReportReferenceCount,
+            duplicateReferenceCount: entry.duplicateReferenceCount,
+            matchedCases:
+              activeTestRun?.id === entry.testRunId
+                ? mergeAutomationHistoryBugIds(matchedCasesWithCatalogBugIds, executionResults)
+                : matchedCasesWithCatalogBugIds,
+          };
+        })
+        .sort(
+          (left, right) =>
+            dayjs(right.importedAt).valueOf() - dayjs(left.importedAt).valueOf(),
+        ),
+    [activeTestRun?.id, automationImportHistory, bugs, executionResults, testCaseById],
+  );
 
   const testRunModalTitle = isEditingRunInfo
     ? 'Editar planificación de la ejecución'
@@ -3031,9 +3629,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         );
         const tools = Array.from(
           new Set(
-            automatedCases
-              .map(testCase => testCase.automationTool)
-              .filter((tool): tool is string => Boolean(tool)),
+            automatedCases.flatMap(testCase =>
+              testCase.automationTool ? [testCase.automationTool] : [],
+            ),
           ),
         );
 
@@ -3290,15 +3888,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       result => result.result === TestResult.NOT_EXECUTED,
     ).length;
     const isReferenceAlertDismissed = dismissedReferenceAlertRunIds.includes(activeTestRun.id);
-    const automatedCasesWithoutReference = executionResults
-      .map(result => testCaseById.get(result.testCaseId))
-      .filter((testCase): testCase is TestCase =>
-        Boolean(
-          testCase &&
-          deriveAutomationStatus(testCase) === AutomationStatus.AUTOMATED &&
-          !normalizeAutomationMatchValue(testCase.automationReference),
-        ),
-      );
+    const automatedCasesWithoutReference = executionResults.flatMap(result => {
+      const testCase = testCaseById.get(result.testCaseId);
+
+      if (
+        !testCase ||
+        deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED ||
+        normalizeAutomationMatchValue(testCase.automationReference)
+      ) {
+        return [];
+      }
+
+      return [testCase];
+    });
 
     const filteredExecutionResults = executionResults.filter(r => {
       const tc = testCases.find(t => t.id === r.testCaseId);
@@ -3430,8 +4032,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   <div className="font-semibold">Faltan referencias de automatización</div>
                   <div className="mt-1 text-amber-800">
                     {automatedCasesWithoutReference.length} caso(s) automatizado(s) de esta
-                    ejecución no tienen `Referencia`, así que Playwright no podrá hacer match con
-                    ellos.
+                    ejecución no tienen `Referencia`, así que la herramienta seleccionada no podrá
+                    hacer match con ellos.
                   </div>
                 </div>
               )}
@@ -3452,7 +4054,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 className="rounded-lg"
                 onClick={() => setIsPlaywrightImportModalOpen(true)}
               >
-                Importar Playwright
+                Importar automatización
               </Button>
             )}
             {!isReadOnly && !isViewer && (
@@ -4071,6 +4673,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           confirmLoading={isImportingPlaywright}
           destroyOnHidden
         >
+          {(() => {
+            const importGuide = getAutomationImportGuide(automationImportTool);
+
+            return (
           <div className="space-y-4">
             <div>
               <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
@@ -4086,6 +4692,36 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
               QA Tracker hará match solo por `automationReference` para evitar falsos positivos.
             </div>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              {importGuide.matchRule}
+            </div>
+            <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+                Ver estructura esperada del JSON
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Estados interpretados:</span>{' '}
+                  {importGuide.supportedStatuses}
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(importGuide.example).then(() => {
+                        message.success('Ejemplo copiado.');
+                      });
+                    }}
+                  >
+                    Copiar ejemplo
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto rounded-xl bg-slate-900/95 p-3 text-xs text-slate-100">
+                  <code>{importGuide.example}</code>
+                </pre>
+              </div>
+            </details>
             <Upload accept=".json" beforeUpload={handleImportPlaywrightFile} showUploadList={false}>
               <Button icon={<UploadOutlined />}>Cargar JSON</Button>
             </Upload>
@@ -4093,11 +4729,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               rows={10}
               value={playwrightImportJson}
               onChange={event => setPlaywrightImportJson(event.target.value)}
-              placeholder={`Pega aquí el JSON del reporter de ${
-                labelAutomationImportTool(automationImportTool)
-              }`}
+              placeholder={importGuide.placeholder}
             />
           </div>
+            );
+          })()}
         </Modal>
 
         <Modal
@@ -4200,7 +4836,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               {playwrightImportSummary.unmatchedExecutionCases.length > 0 && (
                 <div>
                   <div className="mb-2 text-sm font-semibold text-slate-800">
-                    Casos de la ejecución sin match en Playwright
+                    Casos de la ejecución sin match en {labelAutomationImportTool(automationImportTool)}
                   </div>
                   <List
                     size="small"
@@ -4343,6 +4979,145 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             ),
           },
           {
+            key: 'automation-history',
+            label: 'Historial de Automatización',
+            children: (
+              <div className="space-y-6">
+                <Card
+                  className="rounded-2xl shadow-sm border-slate-100"
+                  title={
+                    <div className="flex flex-col gap-1">
+                      <span className="text-slate-800 font-bold">
+                        Historial de Automatización
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        Registro de importaciones automáticas por ejecución, herramienta y match
+                        aplicado.
+                      </span>
+                    </div>
+                  }
+                >
+                  <Table
+                    rowKey="key"
+                    className="executive-table"
+                    dataSource={automationHistoryRows}
+                    locale={{
+                      emptyText:
+                        'Aún no hay importaciones automáticas registradas en este proyecto.',
+                    }}
+                    columns={[
+                      {
+                        title: 'Ejecución',
+                        key: 'runTitle',
+                        render: (_, record: AutomationHistoryRow) => (
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium text-slate-700">{record.runTitle}</span>
+                            <div className="flex flex-wrap gap-2">
+                              {renderTestTypeTag(record.runType)}
+                              <Tag color="default">{labelExecutionStatus(record.runStatus, t)}</Tag>
+                            </div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Herramienta',
+                        dataIndex: 'tool',
+                        key: 'tool',
+                        width: 140,
+                        render: (tool: AutomationTool) => <Tag color="blue">{tool}</Tag>,
+                      },
+                      {
+                        title: 'Importado',
+                        dataIndex: 'importedAt',
+                        key: 'importedAt',
+                        width: 170,
+                        render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm'),
+                      },
+                      {
+                        title: 'Resumen',
+                        key: 'summary',
+                        render: (_, record: AutomationHistoryRow) =>
+                          renderAutomationHistorySummary(record),
+                      },
+                      {
+                        title: 'Acción',
+                        key: 'action',
+                        width: 120,
+                        render: (_, record: AutomationHistoryRow) => {
+                          const relatedRun = testRuns.find(run => run.id === record.runId);
+                          return (
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              disabled={!relatedRun}
+                              loading={openingRunId === record.runId}
+                              onClick={() => {
+                                if (relatedRun) {
+                                  void openTestRunDetail(relatedRun);
+                                }
+                              }}
+                            >
+                              Ver
+                            </Button>
+                          );
+                        },
+                      },
+                    ]}
+                    expandable={{
+                      rowExpandable: record => record.matchedCases.length > 0,
+                      expandedRowRender: record => (
+                        <div className="space-y-3 rounded-xl bg-slate-50 p-4">
+                          {renderAutomationHistorySummary(record)}
+                          <div className="text-sm font-semibold text-slate-700">
+                            Casos actualizados en esta importación
+                          </div>
+                          <List
+                            size="small"
+                            bordered
+                            dataSource={record.matchedCases}
+                            renderItem={item => (
+                              <List.Item>
+                                <div className="flex w-full flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                  <div className="flex flex-col gap-2">
+                                    <span className="text-sm font-medium text-slate-700">
+                                      {item.testCaseTitle}
+                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Tag color="default">{item.reference}</Tag>
+                                      {item.bugId ? (
+                                        <Tag color="red">Bug: {item.bugId}</Tag>
+                                      ) : item.status === AutomationResultStatus.FAILED ? (
+                                        <Tag color="warning">Bug sin registrar</Tag>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <Tag
+                                    color={
+                                      item.status === AutomationResultStatus.PASSED
+                                        ? 'green'
+                                        : item.status === AutomationResultStatus.FAILED
+                                          ? 'red'
+                                          : item.status === AutomationResultStatus.SKIPPED
+                                            ? 'orange'
+                                            : 'default'
+                                    }
+                                    className="m-0 w-fit"
+                                  >
+                                    {item.status}
+                                  </Tag>
+                                </div>
+                              </List.Item>
+                            )}
+                          />
+                        </div>
+                      ),
+                    }}
+                  />
+                </Card>
+              </div>
+            ),
+          },
+          {
             key: 'bugs',
             label: 'Historial de Bugs',
             children: <BugHistoryView projectId={projectId} />,
@@ -4426,8 +5201,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             />
           </div>
           <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
-            QA Tracker hará match contra los casos de esta ejecución usando `automationReference` y,
-            si no coincide, el título del caso.
+            QA Tracker hará match solo por `automationReference` para evitar falsos positivos.
           </div>
           <Upload accept=".json" beforeUpload={handleImportPlaywrightFile} showUploadList={false}>
             <Button icon={<UploadOutlined />}>Cargar JSON</Button>
@@ -4436,7 +5210,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             rows={10}
             value={playwrightImportJson}
             onChange={event => setPlaywrightImportJson(event.target.value)}
-            placeholder="Pega aquí el JSON del reporter de Playwright"
+            placeholder={getAutomationImportGuide(automationImportTool).placeholder}
           />
         </div>
       </Modal>

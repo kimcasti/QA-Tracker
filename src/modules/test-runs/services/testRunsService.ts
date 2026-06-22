@@ -179,7 +179,8 @@ export async function getTestRuns(projectId?: string) {
         'results.testCase',
         'results.bug',
       ]),
-      sort: 'executionDate:desc',
+      'sort[0]': 'executionDate:desc',
+      'sort[1]': 'createdAt:desc',
       ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     }),
     getResultsByRun(projectId),
@@ -191,7 +192,8 @@ export async function getTestRuns(projectId?: string) {
 export async function getTestRunSummaries(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestRunDto>('/api/test-runs/list-summary', {
-    sort: 'executionDate:desc',
+    'sort[0]': 'executionDate:desc',
+    'sort[1]': 'createdAt:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
