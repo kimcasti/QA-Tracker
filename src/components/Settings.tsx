@@ -40,6 +40,9 @@ import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
+  AutomationStatus,
+  AutomationTool,
+  AutomationType,
   DeliveryUnitStatus,
   DeliveryUnitType,
   Module,
@@ -48,6 +51,8 @@ import {
   Sprint,
   TestCaseTemplate,
   TestType,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
   type DeliveryActivityTemplate,
   type DeliveryUnit,
 } from '../types';
@@ -65,6 +70,9 @@ type SettingsItem = Sprint | Role | Module | TestCaseTemplate | null;
 
 const templateTypeOptions = Object.values(TestType);
 const templatePriorityOptions = Object.values(Priority);
+const templateAutomationStatusOptions = Object.values(AutomationStatus);
+const templateAutomationTypeOptions = Object.values(AutomationType);
+const templateAutomationToolOptions = Object.values(AutomationTool);
 const deliveryUnitTypeOptions = Object.values(DeliveryUnitType);
 const deliveryUnitStatusOptions = Object.values(DeliveryUnitStatus);
 
@@ -196,6 +204,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         const template = item as TestCaseTemplate;
         form.setFieldsValue({
           ...template,
+          automationStatus: deriveAutomationStatus(template),
           isAutomated: Boolean(template.isAutomated),
         });
       } else {
@@ -210,6 +219,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         form.setFieldsValue({
           testType: TestType.FUNCTIONAL,
           priority: Priority.MEDIUM,
+          automationStatus: AutomationStatus.NOT_AUTOMATED,
           isAutomated: false,
         });
       }
@@ -270,6 +280,11 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       payload.startDate = values.period[0].format('YYYY-MM-DD');
       payload.endDate = values.period[1].format('YYYY-MM-DD');
       delete payload.period;
+    }
+
+    if (activeTab === 'templates') {
+      payload.automationStatus = values.automationStatus || AutomationStatus.NOT_AUTOMATED;
+      payload.isAutomated = isAutomatedCoverageStatus(payload.automationStatus);
     }
 
     try {
@@ -982,7 +997,22 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true, message: 'Campo requerido' }]}>
                 <Select options={templatePriorityOptions.map(priority => ({ label: priority, value: priority }))} />
               </Form.Item>
-              <Form.Item name="isAutomated" label="Automatizado" valuePropName="checked">
+              <Form.Item name="automationStatus" label="Estado de automatizacion" rules={[{ required: true, message: 'Campo requerido' }]}>
+                <Select options={templateAutomationStatusOptions.map(status => ({ label: status, value: status }))} />
+              </Form.Item>
+              <Form.Item name="automationType" label="Tipo de automatizacion">
+                <Select allowClear options={templateAutomationTypeOptions.map(type => ({ label: type, value: type }))} />
+              </Form.Item>
+              <Form.Item name="automationTool" label="Herramienta">
+                <Select allowClear options={templateAutomationToolOptions.map(tool => ({ label: tool, value: tool }))} />
+              </Form.Item>
+              <Form.Item name="automationOwner" label="Owner">
+                <Input placeholder="Ej: QA Automation Team" />
+              </Form.Item>
+              <Form.Item name="automationReference" label="Referencia" className="col-span-2">
+                <Input placeholder="Ej: suite/login o tests/auth/login.spec.ts" />
+              </Form.Item>
+              <Form.Item name="isAutomated" hidden valuePropName="checked">
                 <Switch checkedChildren="Si" unCheckedChildren="No" />
               </Form.Item>
             </div>

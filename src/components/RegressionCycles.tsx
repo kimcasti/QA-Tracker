@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Empty,
   Form,
   Input,
   Modal,
@@ -40,6 +41,7 @@ import {
 import { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import type { ColumnsType, FilterDropdownProps, FilterValue } from 'antd/es/table/interface';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
@@ -264,6 +266,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   };
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const testCyclesQueryKey = ['test-cycles', 'regression', projectId] as const;
   const { t } = useTranslation();
   const { data: cyclesData, save, isSaving } = useRegressionCycles(projectId);
@@ -276,6 +279,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
   const cycles = Array.isArray(cyclesData) ? cyclesData : [];
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(allTestCases) ? allTestCases : [];
+  const hasHistoricalCycles = cycles.length > 0;
   const latestCycle = Array.isArray(cycles) && cycles.length > 0 ? cycles[0] : null;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
@@ -540,6 +544,11 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
     setModuleAssignmentSelections({});
     setSuggestionModuleFilter(undefined);
     form.resetFields();
+  };
+
+  const goToTestExecution = () => {
+    if (!projectId) return;
+    navigate(`/projects/${encodeURIComponent(projectId)}/testing`);
   };
 
   const handleOpenModal = () => {
@@ -2192,8 +2201,16 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 Control de Regresión
               </Title>
               <Paragraph type="secondary">
-                Gestión y seguimiento de ejecuciones históricas de calidad.
+                Consulta histórica de ciclos de regresión ya ejecutados.
               </Paragraph>
+              <Space size={[8, 8]} wrap className="mb-2">
+                <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
+                  Legacy
+                </Tag>
+                <Tag color="blue" className="rounded-full px-3 py-1 font-semibold">
+                  Solo consulta
+                </Tag>
+              </Space>
               {isViewer && (
                 <Space size={[8, 8]} wrap>
                   <Tag color="default" className="rounded-full px-3 py-1 font-semibold">
@@ -2205,18 +2222,28 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                 </Space>
               )}
             </div>
-            {!isViewer && (
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                size="large"
-                className="rounded-xl h-12 px-6 shadow-lg shadow-blue-200"
-                onClick={handleOpenModal}
-              >
-                Nuevo Ciclo de Regresión
-              </Button>
-            )}
+            <Button
+              icon={<RollbackOutlined />}
+              size="large"
+              className="rounded-xl h-12 px-6"
+              onClick={goToTestExecution}
+            >
+              Ir a Ejecución de Pruebas
+            </Button>
           </div>
+
+          <Alert
+            showIcon
+            type="info"
+            className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+            message="Historial y compatibilidad"
+            description="Esta vista queda disponible solo para consultar ciclos anteriores. Las nuevas corridas de regresión deben crearse desde Ejecución de Pruebas."
+            action={
+              <Button size="small" className="rounded-lg" onClick={goToTestExecution}>
+                Crear ejecución nueva
+              </Button>
+            }
+          />
 
           <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
             <div className="flex items-start gap-4">
@@ -2237,7 +2264,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
             </div>
           </Card>
 
-          {latestCycle && (
+          {hasHistoricalCycles ? (
+            <>
+            {latestCycle && (
             <div className="space-y-4 mt-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -2413,6 +2442,27 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               onChange={(_, filters) => handleNativeTableChange(filters)}
             />
           </Card>
+            </>
+          ) : (
+            <Card className="rounded-2xl border-slate-100 shadow-sm">
+              <div className="py-6">
+                <Empty description="No hay ciclos históricos de regresión para este proyecto." />
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="primary"
+                    className="rounded-xl h-11 px-6 shadow-lg shadow-blue-200"
+                    onClick={goToTestExecution}
+                  >
+                    Crear ejecución desde Ejecución de Pruebas
+                  </Button>
+                </div>
+                <div className="mt-4 text-center text-sm text-slate-500">
+                  Cuando este proyecto tenga ciclos legacy, se mostrarán aquí para consulta y
+                  compatibilidad histórica.
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 

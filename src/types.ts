@@ -37,6 +37,43 @@ export enum ExecutionMode {
   AUTOMATED = 'Automatizada',
 }
 
+export enum AutomationStatus {
+  NOT_AUTOMATED = 'No automatizado',
+  CANDIDATE = 'Candidata',
+  AUTOMATED = 'Automatizada',
+  OBSOLETE = 'Obsoleta',
+}
+
+export enum AutomationType {
+  UI = 'UI',
+  API = 'API',
+  INTEGRATION = 'Integracion',
+  PERFORMANCE = 'Performance',
+}
+
+export enum AutomationTool {
+  PLAYWRIGHT = 'Playwright',
+  CYPRESS = 'Cypress',
+  POSTMAN = 'Postman',
+  K6 = 'k6',
+  WEBDRIVER_IO = 'WebdriverIO',
+  OTHER = 'Otra',
+}
+
+export const ACTIVE_AUTOMATION_TOOLS = [
+  AutomationTool.PLAYWRIGHT,
+  AutomationTool.CYPRESS,
+  AutomationTool.POSTMAN,
+  AutomationTool.K6,
+] as const;
+
+export enum AutomationResultStatus {
+  PASSED = 'Aprobada',
+  FAILED = 'Fallida',
+  SKIPPED = 'Omitida',
+  UNKNOWN = 'Sin datos',
+}
+
 export enum ProjectStatus {
   ACTIVE = 'Active',
   PAUSED = 'Paused',
@@ -219,6 +256,13 @@ export interface TestCase {
   testType: TestType;
   priority: Priority;
   isAutomated?: boolean;
+  automationStatus?: AutomationStatus;
+  automationType?: AutomationType;
+  automationTool?: AutomationTool;
+  automationReference?: string;
+  automationOwner?: string;
+  lastAutomationStatus?: AutomationResultStatus;
+  lastAutomationRunAt?: string;
   sortOrder?: number;
 }
 
@@ -235,6 +279,11 @@ export interface TestCaseTemplate {
   testType: TestType;
   priority: Priority;
   isAutomated?: boolean;
+  automationStatus?: AutomationStatus;
+  automationType?: AutomationType;
+  automationTool?: AutomationTool;
+  automationReference?: string;
+  automationOwner?: string;
 }
 
 export enum ExecutionStatus {
@@ -423,6 +472,26 @@ export interface PublicUatSessionSummary {
   participant?: PublicUatParticipantSnapshot | null;
 }
 
+export interface AutomationImportHistoryMatch {
+  testCaseId: string;
+  testCaseTitle: string;
+  reference: string;
+  status: AutomationResultStatus;
+  bugId?: string;
+}
+
+export interface AutomationImportHistoryEntry {
+  id: string;
+  tool: AutomationTool;
+  importedAt: string;
+  matchedCount: number;
+  missingReferenceCount: number;
+  unmatchedExecutionCount: number;
+  unmatchedReportReferenceCount: number;
+  duplicateReferenceCount: number;
+  matchedCases: AutomationImportHistoryMatch[];
+}
+
 export interface TestRun {
   id: string;
   projectId: string;
@@ -442,6 +511,8 @@ export interface TestRun {
   browserVersion?: string;
   osVersion?: string;
   resolution?: string;
+  identifiedRisks?: string[];
+  exitCriteria?: string[];
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];
@@ -546,6 +617,21 @@ export interface MeetingNote {
   aiDecisions?: string;
   aiActions?: string;
   aiNextSteps?: string;
+}
+
+export function isAutomatedCoverageStatus(status?: AutomationStatus | null) {
+  return status === AutomationStatus.AUTOMATED;
+}
+
+export function deriveAutomationStatus(input?: {
+  automationStatus?: AutomationStatus | null;
+  isAutomated?: boolean | null;
+}) {
+  if (input?.automationStatus) {
+    return input.automationStatus;
+  }
+
+  return input?.isAutomated ? AutomationStatus.AUTOMATED : AutomationStatus.NOT_AUTOMATED;
 }
 
 export interface PersonalNote {

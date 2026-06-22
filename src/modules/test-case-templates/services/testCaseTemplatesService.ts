@@ -1,4 +1,11 @@
-import type { TestCaseTemplate } from '../../../types';
+import {
+  AutomationStatus,
+  AutomationTool,
+  AutomationType,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
+  type TestCaseTemplate,
+} from '../../../types';
 import {
   priorityToApi,
   priorityFromApi,
@@ -15,7 +22,106 @@ import { getModules } from '../../settings/services/settingsService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseTemplateDto } from '../types/api';
 
+function automationStatusFromApi(value?: string) {
+  switch (value) {
+    case 'candidate':
+      return AutomationStatus.CANDIDATE;
+    case 'automated':
+      return AutomationStatus.AUTOMATED;
+    case 'obsolete':
+      return AutomationStatus.OBSOLETE;
+    case 'not_automated':
+    default:
+      return AutomationStatus.NOT_AUTOMATED;
+  }
+}
+
+function automationStatusToApi(value?: AutomationStatus) {
+  switch (value) {
+    case AutomationStatus.CANDIDATE:
+      return 'candidate';
+    case AutomationStatus.AUTOMATED:
+      return 'automated';
+    case AutomationStatus.OBSOLETE:
+      return 'obsolete';
+    case AutomationStatus.NOT_AUTOMATED:
+    default:
+      return 'not_automated';
+  }
+}
+
+function automationTypeFromApi(value?: string) {
+  switch (value) {
+    case 'api':
+      return AutomationType.API;
+    case 'integration':
+      return AutomationType.INTEGRATION;
+    case 'performance':
+      return AutomationType.PERFORMANCE;
+    case 'ui':
+    default:
+      return value ? AutomationType.UI : undefined;
+  }
+}
+
+function automationTypeToApi(value?: AutomationType) {
+  switch (value) {
+    case AutomationType.API:
+      return 'api';
+    case AutomationType.INTEGRATION:
+      return 'integration';
+    case AutomationType.PERFORMANCE:
+      return 'performance';
+    case AutomationType.UI:
+      return 'ui';
+    default:
+      return null;
+  }
+}
+
+function automationToolFromApi(value?: string) {
+  switch (value) {
+    case 'cypress':
+      return AutomationTool.CYPRESS;
+    case 'postman':
+      return AutomationTool.POSTMAN;
+    case 'k6':
+      return AutomationTool.K6;
+    case 'webdriverio':
+      return AutomationTool.WEBDRIVER_IO;
+    case 'other':
+      return AutomationTool.OTHER;
+    case 'playwright':
+    default:
+      return value ? AutomationTool.PLAYWRIGHT : undefined;
+  }
+}
+
+function automationToolToApi(value?: AutomationTool) {
+  switch (value) {
+    case AutomationTool.CYPRESS:
+      return 'cypress';
+    case AutomationTool.POSTMAN:
+      return 'postman';
+    case AutomationTool.K6:
+      return 'k6';
+    case AutomationTool.WEBDRIVER_IO:
+      return 'webdriverio';
+    case AutomationTool.OTHER:
+      return 'other';
+    case AutomationTool.PLAYWRIGHT:
+      return 'playwright';
+    default:
+      return null;
+  }
+}
+
 function mapTemplate(document: TestCaseTemplateDto): TestCaseTemplate {
+  const automationStatus = deriveAutomationStatus({
+    automationStatus: automationStatusFromApi(document.automationStatus),
+    isAutomated: document.isAutomated,
+  });
+
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
@@ -28,7 +134,12 @@ function mapTemplate(document: TestCaseTemplateDto): TestCaseTemplate {
     expectedResult: document.expectedResult || '',
     testType: testTypeFromApi(document.testType),
     priority: priorityFromApi(document.priority),
-    isAutomated: Boolean(document.isAutomated),
+    isAutomated: isAutomatedCoverageStatus(automationStatus),
+    automationStatus,
+    automationType: automationTypeFromApi(document.automationType),
+    automationTool: automationToolFromApi(document.automationTool),
+    automationReference: document.automationReference || '',
+    automationOwner: document.automationOwner || '',
   };
 }
 
@@ -89,7 +200,12 @@ export async function saveTestCaseTemplate(template: TestCaseTemplate) {
     expectedResult: template.expectedResult,
     testType: testTypeToApi(template.testType),
     priority: priorityToApi(template.priority),
-    isAutomated: Boolean(template.isAutomated),
+    isAutomated: isAutomatedCoverageStatus(deriveAutomationStatus(template)),
+    automationStatus: automationStatusToApi(deriveAutomationStatus(template)),
+    automationType: automationTypeToApi(template.automationType),
+    automationTool: automationToolToApi(template.automationTool),
+    automationReference: template.automationReference?.trim() || null,
+    automationOwner: template.automationOwner?.trim() || null,
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
     module: relation(template.moduleId),

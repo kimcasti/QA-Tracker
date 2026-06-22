@@ -34,7 +34,14 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
-import { BugStatus, TestResult, RiskLevel, TestStatus } from '../types';
+import {
+  BugStatus,
+  RiskLevel,
+  TestResult,
+  TestStatus,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
+} from '../types';
 import {
   BarChart,
   Bar,
@@ -364,7 +371,11 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
                   <span className="text-sm font-bold text-slate-900">
                     {testCases.length > 0
                       ? Math.round(
-                          (testCases.filter(tc => tc.isAutomated).length / testCases.length) *
+                          (testCases.filter(tc =>
+                            isAutomatedCoverageStatus(deriveAutomationStatus(tc)),
+                          )
+                            .length /
+                            testCases.length) *
                             100,
                         )
                       : 0}
@@ -375,7 +386,11 @@ export default function ProjectProgressReport({ projectId }: ProjectProgressRepo
                   percent={
                     testCases.length > 0
                       ? Math.round(
-                          (testCases.filter(tc => tc.isAutomated).length / testCases.length) *
+                          (testCases.filter(tc =>
+                            isAutomatedCoverageStatus(deriveAutomationStatus(tc)),
+                          )
+                            .length /
+                            testCases.length) *
                             100,
                         )
                       : 0

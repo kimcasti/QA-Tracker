@@ -1,4 +1,12 @@
-import type { TestCase } from '../../../types';
+import {
+  AutomationResultStatus,
+  AutomationStatus,
+  AutomationTool,
+  AutomationType,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
+  type TestCase,
+} from '../../../types';
 import {
   priorityFromApi,
   priorityToApi,
@@ -15,7 +23,134 @@ import { getFunctionalities } from '../../functionalities/services/functionaliti
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseDto } from '../types/api';
 
+function automationStatusFromApi(value?: string) {
+  switch (value) {
+    case 'candidate':
+      return AutomationStatus.CANDIDATE;
+    case 'automated':
+      return AutomationStatus.AUTOMATED;
+    case 'obsolete':
+      return AutomationStatus.OBSOLETE;
+    case 'not_automated':
+    default:
+      return AutomationStatus.NOT_AUTOMATED;
+  }
+}
+
+function automationStatusToApi(value?: AutomationStatus) {
+  switch (value) {
+    case AutomationStatus.CANDIDATE:
+      return 'candidate';
+    case AutomationStatus.AUTOMATED:
+      return 'automated';
+    case AutomationStatus.OBSOLETE:
+      return 'obsolete';
+    case AutomationStatus.NOT_AUTOMATED:
+    default:
+      return 'not_automated';
+  }
+}
+
+function automationTypeFromApi(value?: string) {
+  switch (value) {
+    case 'api':
+      return AutomationType.API;
+    case 'integration':
+      return AutomationType.INTEGRATION;
+    case 'performance':
+      return AutomationType.PERFORMANCE;
+    case 'ui':
+    default:
+      return value ? AutomationType.UI : undefined;
+  }
+}
+
+function automationTypeToApi(value?: AutomationType) {
+  switch (value) {
+    case AutomationType.API:
+      return 'api';
+    case AutomationType.INTEGRATION:
+      return 'integration';
+    case AutomationType.PERFORMANCE:
+      return 'performance';
+    case AutomationType.UI:
+      return 'ui';
+    default:
+      return null;
+  }
+}
+
+function automationToolFromApi(value?: string) {
+  switch (value) {
+    case 'cypress':
+      return AutomationTool.CYPRESS;
+    case 'postman':
+      return AutomationTool.POSTMAN;
+    case 'k6':
+      return AutomationTool.K6;
+    case 'webdriverio':
+      return AutomationTool.WEBDRIVER_IO;
+    case 'other':
+      return AutomationTool.OTHER;
+    case 'playwright':
+    default:
+      return value ? AutomationTool.PLAYWRIGHT : undefined;
+  }
+}
+
+function automationToolToApi(value?: AutomationTool) {
+  switch (value) {
+    case AutomationTool.CYPRESS:
+      return 'cypress';
+    case AutomationTool.POSTMAN:
+      return 'postman';
+    case AutomationTool.K6:
+      return 'k6';
+    case AutomationTool.WEBDRIVER_IO:
+      return 'webdriverio';
+    case AutomationTool.OTHER:
+      return 'other';
+    case AutomationTool.PLAYWRIGHT:
+      return 'playwright';
+    default:
+      return null;
+  }
+}
+
+function automationResultStatusFromApi(value?: string) {
+  switch (value) {
+    case 'passed':
+      return AutomationResultStatus.PASSED;
+    case 'failed':
+      return AutomationResultStatus.FAILED;
+    case 'skipped':
+      return AutomationResultStatus.SKIPPED;
+    case 'unknown':
+    default:
+      return value ? AutomationResultStatus.UNKNOWN : undefined;
+  }
+}
+
+function automationResultStatusToApi(value?: AutomationResultStatus) {
+  switch (value) {
+    case AutomationResultStatus.PASSED:
+      return 'passed';
+    case AutomationResultStatus.FAILED:
+      return 'failed';
+    case AutomationResultStatus.SKIPPED:
+      return 'skipped';
+    case AutomationResultStatus.UNKNOWN:
+    default:
+      return 'unknown';
+  }
+}
+
 function mapTestCase(document: TestCaseDto): TestCase {
+  const automationStatus = deriveAutomationStatus({
+    automationStatus: automationStatusFromApi(document.automationStatus),
+    isAutomated: document.isAutomated,
+  });
+
   return {
     documentId: document.documentId,
     id: document.documentId,
@@ -28,7 +163,14 @@ function mapTestCase(document: TestCaseDto): TestCase {
     expectedResult: document.expectedResult || '',
     testType: testTypeFromApi(document.testType),
     priority: priorityFromApi(document.priority),
-    isAutomated: Boolean(document.isAutomated),
+    isAutomated: isAutomatedCoverageStatus(automationStatus),
+    automationStatus,
+    automationType: automationTypeFromApi(document.automationType),
+    automationTool: automationToolFromApi(document.automationTool),
+    automationReference: document.automationReference || '',
+    automationOwner: document.automationOwner || '',
+    lastAutomationStatus: automationResultStatusFromApi(document.lastAutomationStatus),
+    lastAutomationRunAt: document.lastAutomationRunAt,
     sortOrder: typeof document.sortOrder === 'number' ? document.sortOrder : undefined,
   };
 }
@@ -75,7 +217,14 @@ export async function saveTestCase(testCase: TestCase) {
     expectedResult: testCase.expectedResult,
     testType: testTypeToApi(testCase.testType),
     priority: priorityToApi(testCase.priority),
-    isAutomated: Boolean(testCase.isAutomated),
+    isAutomated: isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+    automationStatus: automationStatusToApi(deriveAutomationStatus(testCase)),
+    automationType: automationTypeToApi(testCase.automationType),
+    automationTool: automationToolToApi(testCase.automationTool),
+    automationReference: testCase.automationReference?.trim() || null,
+    automationOwner: testCase.automationOwner?.trim() || null,
+    lastAutomationStatus: automationResultStatusToApi(testCase.lastAutomationStatus),
+    lastAutomationRunAt: testCase.lastAutomationRunAt || null,
     sortOrder:
       typeof testCase.sortOrder === 'number' && Number.isFinite(testCase.sortOrder)
         ? testCase.sortOrder

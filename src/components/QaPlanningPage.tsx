@@ -17,7 +17,12 @@ import {
   Typography,
   message,
 } from 'antd';
-import { FileSearchOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  FileSearchOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import {
   Building2,
   Check,
@@ -53,6 +58,9 @@ import { useFunctionalities } from '../modules/functionalities/hooks/useFunction
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
+  AutomationResultStatus,
+  AutomationStatus,
+  AutomationTool,
   Functionality,
   FUNCTIONALITY_DEVELOPMENT_STATUSES,
   ImpactLevel,
@@ -61,6 +69,8 @@ import {
   RiskLevel,
   TestCase,
   TestStatus,
+  deriveAutomationStatus,
+  isAutomatedCoverageStatus,
 } from '../types';
 import {
   labelImpact,
@@ -116,7 +126,9 @@ type RecommendationKey =
   | 'high_risk_without_cases'
   | 'high_priority_without_regression'
   | 'without_coverage'
-  | 'recent_changes';
+  | 'recent_changes'
+  | 'automation_candidates'
+  | 'with_automated_cases';
 
 type RecommendationCardProps = {
   active: boolean;
@@ -223,6 +235,34 @@ const PRIORITY_BADGE_CLASSNAMES: Record<Priority, string> = {
   [Priority.MEDIUM]: 'border-sky-200 bg-sky-50 text-sky-700',
   [Priority.LOW]: 'border-slate-200 bg-slate-50 text-slate-600',
 };
+
+function getAutomationStatusBadgeClassName(status: AutomationStatus) {
+  switch (status) {
+    case AutomationStatus.AUTOMATED:
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case AutomationStatus.CANDIDATE:
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case AutomationStatus.OBSOLETE:
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case AutomationStatus.NOT_AUTOMATED:
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600';
+  }
+}
+
+function getAutomationResultBadgeClassName(status?: AutomationResultStatus) {
+  switch (status) {
+    case AutomationResultStatus.PASSED:
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case AutomationResultStatus.FAILED:
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case AutomationResultStatus.SKIPPED:
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case AutomationResultStatus.UNKNOWN:
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600';
+  }
+}
 
 const PRIORITY_TEXT_CLASSNAMES: Record<Priority, string> = {
   [Priority.CRITICAL]: 'text-red-700',
@@ -518,7 +558,13 @@ function getPlanningMetrics(functionalities: Functionality[]) {
   };
 }
 
-function matchesCoverageFilter(record: Functionality, value: string) {
+function matchesCoverageFilter(
+  record: Functionality,
+  value: string,
+  automatedCaseCountByFunctionality?: Map<string, number>,
+) {
+  const automatedCount = automatedCaseCountByFunctionality?.get(record.id) || 0;
+
   switch (value) {
     case 'core':
       return Boolean(record.isCore);
@@ -526,6 +572,10 @@ function matchesCoverageFilter(record: Functionality, value: string) {
       return Boolean(record.isRegression);
     case 'smoke':
       return Boolean(record.isSmoke);
+    case 'with-automation':
+      return automatedCount > 0;
+    case 'without-automation':
+      return automatedCount === 0;
     case 'without-coverage':
       return !record.isCore && !record.isRegression && !record.isSmoke;
     default:
@@ -533,14 +583,20 @@ function matchesCoverageFilter(record: Functionality, value: string) {
   }
 }
 
-function matchesTableFilters(record: Functionality, filters: PlanningTableFilters) {
+function matchesTableFilters(
+  record: Functionality,
+  filters: PlanningTableFilters,
+  automatedCaseCountByFunctionality?: Map<string, number>,
+) {
   if (filters.module?.length && !filters.module.some(value => record.module === String(value))) {
     return false;
   }
 
   if (
     filters.coverage?.length &&
-    !filters.coverage.some(value => matchesCoverageFilter(record, String(value)))
+    !filters.coverage.some(value =>
+      matchesCoverageFilter(record, String(value), automatedCaseCountByFunctionality),
+    )
   ) {
     return false;
   }
@@ -758,6 +814,26 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     }, new Map<string, number>());
   }, [testCases]);
 
+  const automatedCaseCountByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) return acc;
+
+      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+  }, [testCases]);
+
+  const candidateCaseCountByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      if (deriveAutomationStatus(testCase) !== AutomationStatus.CANDIDATE) return acc;
+
+      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+  }, [testCases]);
+
   const openTestCaseModal = React.useCallback((record: Functionality) => {
     setSelectedFunctionality(record);
     setIsTestCaseModalOpen(true);
@@ -868,6 +944,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       item => !item.isCore && !item.isRegression && !item.isSmoke,
     );
     const recentChanges = filteredFunctionalities.filter(item => isRecentlyChanged(item));
+    const automationCandidates = filteredFunctionalities.filter(
+      item => (candidateCaseCountByFunctionality.get(item.id) || 0) > 0,
+    );
+    const withAutomatedCases = filteredFunctionalities.filter(
+      item => (automatedCaseCountByFunctionality.get(item.id) || 0) > 0,
+    );
 
     return {
       critical_outside_smoke: criticalOutsideSmoke,
@@ -875,8 +957,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       high_priority_without_regression: highPriorityWithoutRegression,
       without_coverage: withoutCoverage,
       recent_changes: recentChanges,
+      automation_candidates: automationCandidates,
+      with_automated_cases: withAutomatedCases,
     } satisfies Record<RecommendationKey, Functionality[]>;
-  }, [filteredFunctionalities, testCaseCountByFunctionality]);
+  }, [
+    filteredFunctionalities,
+    testCaseCountByFunctionality,
+    candidateCaseCountByFunctionality,
+    automatedCaseCountByFunctionality,
+  ]);
 
   const recommendationCards = React.useMemo(
     () => [
@@ -920,6 +1009,22 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         outlineClassName: 'border-emerald-200 bg-emerald-50 text-emerald-600',
         toneClassName: 'bg-sky-50 text-sky-700',
       },
+      {
+        key: 'automation_candidates' as RecommendationKey,
+        label: 'Candidatas a automatización',
+        description: 'Funcionalidades con al menos un caso marcado como candidata.',
+        icon: <Info size={12} className="text-amber-500" />,
+        outlineClassName: 'border-amber-200 bg-amber-50 text-amber-700',
+        toneClassName: 'bg-amber-50 text-amber-700',
+      },
+      {
+        key: 'with_automated_cases' as RecommendationKey,
+        label: 'Con casos automatizados',
+        description: 'Funcionalidades con al menos un caso automatizado registrado.',
+        icon: <Check size={12} className="text-emerald-500" />,
+        outlineClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        toneClassName: 'bg-emerald-50 text-emerald-700',
+      },
     ],
     [],
   );
@@ -932,9 +1037,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const visibleFunctionalities = React.useMemo(
     () =>
       recommendationFilteredFunctionalities.filter(record =>
-        matchesTableFilters(record, tableFilters),
+        matchesTableFilters(record, tableFilters, automatedCaseCountByFunctionality),
       ),
-    [recommendationFilteredFunctionalities, tableFilters],
+    [recommendationFilteredFunctionalities, tableFilters, automatedCaseCountByFunctionality],
   );
 
   const analytics = React.useMemo(() => {
@@ -1134,6 +1239,67 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       selectedFunctionality ? testCaseCountByFunctionality.get(selectedFunctionality.id) || 0 : 0,
     [selectedFunctionality, testCaseCountByFunctionality],
   );
+
+  const selectedFunctionalityAutomationSummary = React.useMemo(() => {
+    if (!selectedFunctionality) {
+      return null;
+    }
+
+    const functionalityCases = testCases.filter(
+      testCase => testCase.functionalityId === selectedFunctionality.id,
+    );
+    const byStatus = {
+      automated: 0,
+      candidate: 0,
+      obsolete: 0,
+      manual: 0,
+    };
+    const toolCounts = new Map<string, number>();
+    const resultCounts = new Map<string, number>();
+
+    for (const testCase of functionalityCases) {
+      const status = deriveAutomationStatus(testCase);
+      if (status === AutomationStatus.AUTOMATED) byStatus.automated += 1;
+      else if (status === AutomationStatus.CANDIDATE) byStatus.candidate += 1;
+      else if (status === AutomationStatus.OBSOLETE) byStatus.obsolete += 1;
+      else byStatus.manual += 1;
+
+      if (testCase.automationTool) {
+        toolCounts.set(testCase.automationTool, (toolCounts.get(testCase.automationTool) || 0) + 1);
+      }
+
+      if (testCase.lastAutomationStatus) {
+        resultCounts.set(
+          testCase.lastAutomationStatus,
+          (resultCounts.get(testCase.lastAutomationStatus) || 0) + 1,
+        );
+      }
+    }
+
+    const automatedCoverage =
+      functionalityCases.length > 0
+        ? Math.round((byStatus.automated / functionalityCases.length) * 100)
+        : 0;
+    const leadingTool =
+      [...toolCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const leadingResult =
+      [...resultCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const highlightedCases = functionalityCases
+      .filter(testCase => {
+        const status = deriveAutomationStatus(testCase);
+        return status !== AutomationStatus.NOT_AUTOMATED || Boolean(testCase.lastAutomationStatus);
+      })
+      .slice(0, 3);
+
+    return {
+      total: functionalityCases.length,
+      automatedCoverage,
+      byStatus,
+      leadingTool,
+      leadingResult,
+      highlightedCases,
+    };
+  }, [selectedFunctionality, testCases]);
 
   const selectedFunctionalityGuidance = React.useMemo(() => {
     if (!selectedFunctionality) {
@@ -1363,6 +1529,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       { text: 'Core business', value: 'core' },
       { text: 'Regresión', value: 'regression' },
       { text: 'Smoke', value: 'smoke' },
+      { text: 'Con automatizacion', value: 'with-automation' },
+      { text: 'Sin automatizacion', value: 'without-automation' },
       { text: 'Sin cobertura', value: 'without-coverage' },
     ],
     [],
@@ -1594,14 +1762,24 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         width: 320,
         render: (value: string, record: Functionality) => {
           const recentChangeLabel = formatRecentChangeBadge(record.lastFunctionalChangeAt);
+          const automatedCount = automatedCaseCountByFunctionality.get(record.id) || 0;
 
           return (
             <div className="flex min-w-0 max-w-[360px] flex-col gap-1">
-              <Tooltip title={value}>
-                <span className="block truncate text-sm font-medium leading-5 text-slate-700">
-                  {value}
-                </span>
-              </Tooltip>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Tooltip title={value}>
+                  <span className="block truncate text-sm font-medium leading-5 text-slate-700">
+                    {value}
+                  </span>
+                </Tooltip>
+                {automatedCount > 0 ? (
+                  <Tooltip title={`${automatedCount} caso(s) automatizado(s)`}>
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                      <ThunderboltOutlined className="text-[11px]" />
+                    </span>
+                  </Tooltip>
+                ) : null}
+              </div>
               {recentChangeLabel ? (
                 <Tooltip title={`Último cambio funcional: ${record.lastFunctionalChangeAt}`}>
                   <span className="inline-flex w-fit max-w-full items-center gap-1 rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
@@ -2323,6 +2501,136 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               </div>
             </div>
           </div>
+
+          {selectedFunctionalityAutomationSummary ? (
+            <div className="mt-4 rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">Automatización</div>
+                  <div className="text-xs text-slate-500">
+                    Resumen operativo de automatización para esta funcionalidad.
+                  </div>
+                </div>
+                <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {selectedFunctionalityAutomationSummary.automatedCoverage}% automatizada
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Automatizadas
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-800">
+                    {selectedFunctionalityAutomationSummary.byStatus.automated}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Candidatas
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-800">
+                    {selectedFunctionalityAutomationSummary.byStatus.candidate}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Herramienta líder
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-700">
+                    {selectedFunctionalityAutomationSummary.leadingTool || 'Sin definir'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Último estado
+                  </div>
+                  <div className="mt-1">
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationResultBadgeClassName(
+                        selectedFunctionalityAutomationSummary.leadingResult as
+                          | AutomationResultStatus
+                          | undefined,
+                      )}`}
+                    >
+                      {selectedFunctionalityAutomationSummary.leadingResult || 'Sin datos'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span
+                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                    AutomationStatus.AUTOMATED,
+                  )}`}
+                >
+                  Automatizadas: {selectedFunctionalityAutomationSummary.byStatus.automated}
+                </span>
+                <span
+                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                    AutomationStatus.CANDIDATE,
+                  )}`}
+                >
+                  Candidatas: {selectedFunctionalityAutomationSummary.byStatus.candidate}
+                </span>
+                <span
+                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                    AutomationStatus.OBSOLETE,
+                  )}`}
+                >
+                  Obsoletas: {selectedFunctionalityAutomationSummary.byStatus.obsolete}
+                </span>
+                <span
+                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                    AutomationStatus.NOT_AUTOMATED,
+                  )}`}
+                >
+                  Manuales: {selectedFunctionalityAutomationSummary.byStatus.manual}
+                </span>
+              </div>
+
+              {selectedFunctionalityAutomationSummary.highlightedCases.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {selectedFunctionalityAutomationSummary.highlightedCases.map(testCase => (
+                    <div key={testCase.id} className="rounded-2xl border border-slate-100 px-3 py-3">
+                      <div className="text-sm font-medium text-slate-700">{testCase.title}</div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationStatusBadgeClassName(
+                            deriveAutomationStatus(testCase),
+                          )}`}
+                        >
+                          {deriveAutomationStatus(testCase)}
+                        </span>
+                        {testCase.automationTool ? (
+                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-600">
+                            {testCase.automationTool}
+                          </span>
+                        ) : null}
+                        {testCase.lastAutomationStatus ? (
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationResultBadgeClassName(
+                              testCase.lastAutomationStatus,
+                            )}`}
+                          >
+                            {testCase.lastAutomationStatus}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {testCase.automationReference || 'Sin referencia registrada'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 text-sm text-slate-500">
+                  Aún no hay metadata de automatización destacada en los casos de esta funcionalidad.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
@@ -2699,14 +3007,25 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                       : 'Sin roles'}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                <div className="min-w-0 rounded-2xl border border-slate-100 px-3 py-3">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Jira
                   </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.jiraIssueKey ||
-                      selectedFunctionality.jiraTaskUrl ||
-                      'Sin vínculo'}
+                  <div className="mt-1 min-w-0 text-sm font-medium text-slate-700">
+                    {selectedFunctionality.jiraTaskUrl ? (
+                      <a
+                        href={selectedFunctionality.jiraTaskUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block break-all text-blue-600 hover:text-blue-700"
+                      >
+                        {selectedFunctionality.jiraTaskUrl}
+                      </a>
+                    ) : (
+                      <span className="break-words">
+                        {selectedFunctionality.jiraIssueKey || 'Sin vínculo'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-100 px-3 py-3">

@@ -37,6 +37,16 @@ function formatOriginLabel(record: QABug) {
   return showCycleId ? `${record.origin} - ${record.cycleId}` : record.origin;
 }
 
+function renderTraceabilityTag(label: string, value?: string) {
+  if (!value?.trim()) return null;
+
+  return (
+    <Tag className="m-0 rounded-md border-slate-200 bg-white text-[10px] text-slate-600">
+      {label}: {value}
+    </Tag>
+  );
+}
+
 export default function BugHistoryView({ projectId }: { projectId?: string }) {
   const { data: bugsData = [], save: saveBug } = useBugs(projectId);
   const { isViewer } = useWorkspaceAccess();
@@ -197,6 +207,16 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
           expandable={{
             expandedRowRender: (record: QABug) => (
               <div className="rounded-xl bg-slate-50 p-5">
+                <div className="mb-4">
+                  <Text strong>Trazabilidad técnica:</Text>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {renderTraceabilityTag('Test Run', record.testRunId)}
+                    {renderTraceabilityTag('Execution', record.executionId)}
+                    {renderTraceabilityTag('Test Case', record.testCaseId)}
+                    {renderTraceabilityTag('Caso', record.testCaseTitle)}
+                    {renderTraceabilityTag('Cycle', record.cycleId)}
+                  </div>
+                </div>
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <Text strong>Descripción:</Text>
@@ -317,6 +337,28 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
                   <div className="font-semibold text-slate-700">{record.functionalityName}</div>
                   <div className="text-xs text-slate-500">
                     {record.functionalityId} • {record.module}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {record.testRunId ? (
+                      <Tag className="m-0 rounded-md border-sky-200 bg-sky-50 text-[10px] text-sky-700">
+                        Test Run
+                      </Tag>
+                    ) : null}
+                    {record.executionId ? (
+                      <Tag className="m-0 rounded-md border-cyan-200 bg-cyan-50 text-[10px] text-cyan-700">
+                        Execution
+                      </Tag>
+                    ) : null}
+                    {record.testCaseId ? (
+                      <Tag className="m-0 rounded-md border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+                        Test Case
+                      </Tag>
+                    ) : null}
+                    {!record.testRunId && record.cycleId ? (
+                      <Tag className="m-0 rounded-md border-slate-200 bg-slate-100 text-[10px] text-slate-600">
+                        Legacy Cycle
+                      </Tag>
+                    ) : null}
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
                     {record.sprint || 'Sin sprint'}

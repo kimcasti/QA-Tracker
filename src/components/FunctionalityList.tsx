@@ -704,6 +704,8 @@ function QaPlanningFilterBar({
               { label: 'Sin cobertura', value: 'without-coverage' },
               { label: 'Regresión', value: 'regression' },
               { label: 'Smoke', value: 'smoke' },
+              { label: 'Con automatizacion', value: 'with-automation' },
+              { label: 'Sin automatizacion', value: 'without-automation' },
               { label: 'Cambio reciente', value: 'recent-change' },
             ]}
           />
@@ -789,9 +791,9 @@ function QaPlanningBulkActions({
 
 function FunctionalityDetailValue({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="mt-1 text-sm text-slate-700">{value || 'N/A'}</div>
+      <div className="mt-1 min-w-0 text-sm text-slate-700">{value || 'N/A'}</div>
     </div>
   );
 }
@@ -1537,6 +1539,8 @@ export default function FunctionalityList({
       { text: 'Sin cobertura', value: 'without-coverage' },
       { text: 'Regresión', value: 'regression' },
       { text: 'Smoke', value: 'smoke' },
+      { text: 'Con automatizacion', value: 'with-automation' },
+      { text: 'Sin automatizacion', value: 'without-automation' },
       { text: 'Cambio reciente', value: 'recent-change' },
     ],
     [],
@@ -1549,11 +1553,33 @@ export default function FunctionalityList({
 
   const filteredFunctionalities = React.useMemo(() => {
     const normalizedSearch = functionalitySearch.trim().toLowerCase();
+    const qaCoverageFilter = String(tableFilters.qaCoverage?.[0] || '');
+
+    const matchesQaCoverageFilter = (item: Functionality) => {
+      if (!qaCoverageFilter) return true;
+
+      switch (qaCoverageFilter) {
+        case 'core':
+          return Boolean(item.isCore);
+        case 'without-coverage':
+          return !item.isSmoke && !item.isRegression;
+        case 'regression':
+          return Boolean(item.isRegression);
+        case 'smoke':
+          return Boolean(item.isSmoke);
+        case 'recent-change':
+          return Boolean(item.lastFunctionalChangeAt);
+        default:
+          return true;
+      }
+    };
 
     if (!normalizedSearch) {
       const scopedItems = isQaPlanningMode
-        ? orderedFunctionalities.filter(item => matchesQaPlanningPreset(item, qaPlanningPreset))
-        : orderedFunctionalities;
+        ? orderedFunctionalities.filter(
+            item => matchesQaPlanningPreset(item, qaPlanningPreset) && matchesQaCoverageFilter(item),
+          )
+        : orderedFunctionalities.filter(matchesQaCoverageFilter);
 
       return scopedItems;
     }
@@ -1574,9 +1600,15 @@ export default function FunctionalityList({
           ? matchesQaPlanningPreset(item, qaPlanningPreset)
           : true;
 
-        return matchesSearch && matchesPreset;
+        return matchesSearch && matchesPreset && matchesQaCoverageFilter(item);
       });
-  }, [orderedFunctionalities, functionalitySearch, isQaPlanningMode, qaPlanningPreset]);
+  }, [
+    orderedFunctionalities,
+    functionalitySearch,
+    isQaPlanningMode,
+    qaPlanningPreset,
+    tableFilters.qaCoverage,
+  ]);
 
   const clearNativeTableFilters = () => {
     setTableFilters(INITIAL_NATIVE_TABLE_FILTERS);
@@ -2534,7 +2566,7 @@ export default function FunctionalityList({
                           href={detailFunctionality.jiraTaskUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-600 hover:text-blue-700"
+                          className="block break-all text-blue-600 hover:text-blue-700"
                         >
                           {detailFunctionality.jiraTaskUrl}
                         </a>

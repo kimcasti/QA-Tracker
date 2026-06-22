@@ -29,6 +29,7 @@ export interface TestCycleExecutionDto {
     documentId: string;
     title: string;
     isAutomated?: boolean;
+    automationStatus?: string;
   };
 }
 

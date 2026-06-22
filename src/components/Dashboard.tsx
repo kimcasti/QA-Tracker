@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Empty,
   Progress,
   Row,
   Statistic,
@@ -24,7 +25,7 @@ import {
   SafetyCertificateOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { PieChart, Pie, Cell } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -41,8 +42,21 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useRegressionCycleSummaries } from '../modules/test-cycles/hooks/useRegressionCycleSummaries';
 import { useSmokeCycleSummaries } from '../modules/test-cycles/hooks/useSmokeCycleSummaries';
 import { useExecutions } from '../modules/test-runs/hooks/useExecutions';
+import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { BugStatus, ExecutionStatus, Severity, TestResult, TestStatus, TestType } from '../types';
+import {
+  AutomationResultStatus,
+  AutomationStatus,
+  AutomationTool,
+  BugStatus,
+  ExecutionStatus,
+  Severity,
+  TestResult,
+  TestStatus,
+  TestType,
+  isAutomatedCoverageStatus,
+  deriveAutomationStatus,
+} from '../types';
 import { qaPalette, softSurface } from '../theme/palette';
 import { functionalityStatusColors, softTagStyle } from '../theme/statusStyles';
 
@@ -175,6 +189,57 @@ function MetricCard({
   );
 }
 
+function getAutomationTagColor(status?: string | null) {
+  if (status === AutomationStatus.AUTOMATED || status === AutomationResultStatus.PASSED) {
+    return 'green';
+  }
+
+  if (status === AutomationStatus.CANDIDATE || status === AutomationResultStatus.SKIPPED) {
+    return 'gold';
+  }
+
+  if (status === AutomationStatus.OBSOLETE || status === AutomationResultStatus.FAILED) {
+    return 'red';
+  }
+
+  return 'default';
+}
+
+function summarizeRunResults(results: Array<{ result: TestResult }>) {
+  const passed = results.filter(item => item.result === TestResult.PASSED).length;
+  const failed = results.filter(item => item.result === TestResult.FAILED).length;
+  const blocked = results.filter(item => item.result === TestResult.BLOCKED).length;
+  const pending = results.filter(item => item.result === TestResult.NOT_EXECUTED).length;
+  const total = results.length;
+  const executed = total - pending;
+
+  return {
+    passed,
+    failed,
+    blocked,
+    pending,
+    total,
+    executed,
+    passRate: executed > 0 ? Math.round((passed / executed) * 100) : 0,
+  };
+}
+
+function mapExecutionResultToAutomationResult(
+  result?: TestResult,
+): AutomationResultStatus | null {
+  switch (result) {
+    case TestResult.PASSED:
+      return AutomationResultStatus.PASSED;
+    case TestResult.FAILED:
+    case TestResult.BLOCKED:
+      return AutomationResultStatus.FAILED;
+    case TestResult.NOT_EXECUTED:
+      return AutomationResultStatus.UNKNOWN;
+    default:
+      return null;
+  }
+}
+
 export default function Dashboard({ projectId }: { projectId?: string }) {
   const [deliveryDateRange, setDeliveryDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
     null,
@@ -185,6 +250,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const { data: regressionCyclesData } = useRegressionCycleSummaries(projectId);
   const { data: smokeCyclesData } = useSmokeCycleSummaries(projectId);
   const { data: testCasesData } = useTestCases(projectId);
+  const { data: testRunsData = [] } = useTestRuns(projectId);
   const { data: sprintsData = [] } = useSprints(projectId);
   const { data: bugsData = [] } = useBugs(projectId);
 
@@ -195,6 +261,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const regressionCycles = Array.isArray(regressionCyclesData) ? regressionCyclesData : [];
   const smokeCycles = Array.isArray(smokeCyclesData) ? smokeCyclesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
+  const testRuns = Array.isArray(testRunsData) ? testRunsData : [];
   const sprints = Array.isArray(sprintsData) ? sprintsData : [];
   const bugs = Array.isArray(bugsData) ? bugsData : [];
   const activeOrganizationPlan = normalizeOrganizationPlan(
@@ -259,32 +326,214 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const testCaseCoverage =
     totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
 
-  const regressionPassedExecutions = regressionCycles.reduce(
-    (sum, cycle) => sum + (cycle.passed || 0),
-    0,
+  const finalizedRegressionRuns = testRuns.filter(
+    testRun => testRun.status === ExecutionStatus.FINAL && testRun.testType === TestType.REGRESSION,
   );
-  const regressionExecutedCount = regressionCycles.reduce((sum, cycle) => {
-    const executedCount = Math.max(
-      (cycle.totalTests || 0) - (cycle.pending || 0) - (cycle.blocked || 0),
-      0,
-    );
-    return sum + executedCount;
-  }, 0);
-  const regressionStability =
-    regressionExecutedCount > 0
-      ? (regressionPassedExecutions / regressionExecutedCount) * 100
-      : 0;
+  const finalizedSmokeRuns = testRuns.filter(
+    testRun => testRun.status === ExecutionStatus.FINAL && testRun.testType === TestType.SMOKE,
+  );
 
-  const automatedTests = testCases.filter(item => item.isAutomated).length;
+  const regressionRunAggregate = finalizedRegressionRuns.reduce(
+    (acc, testRun) => {
+      const summary = summarizeRunResults(testRun.results || []);
+      acc.passed += summary.passed;
+      acc.executed += summary.executed;
+      return acc;
+    },
+    { passed: 0, executed: 0 },
+  );
+  const legacyRegressionAggregate = regressionCycles.reduce(
+    (acc, cycle) => {
+      const executed = Math.max((cycle.totalTests || 0) - (cycle.pending || 0) - (cycle.blocked || 0), 0);
+      acc.passed += cycle.passed || 0;
+      acc.executed += executed;
+      return acc;
+    },
+    { passed: 0, executed: 0 },
+  );
+  const regressionStabilitySource = finalizedRegressionRuns.length > 0 ? 'execution' : 'legacy';
+  const regressionStability =
+    regressionStabilitySource === 'execution'
+      ? regressionRunAggregate.executed > 0
+        ? (regressionRunAggregate.passed / regressionRunAggregate.executed) * 100
+        : 0
+      : legacyRegressionAggregate.executed > 0
+        ? (legacyRegressionAggregate.passed / legacyRegressionAggregate.executed) * 100
+        : 0;
+
+  const automatedTests = testCases.filter(item =>
+    isAutomatedCoverageStatus(deriveAutomationStatus(item)),
+  ).length;
   const automationCoverage =
     testCases.length > 0 ? Math.round((automatedTests / testCases.length) * 100) : 0;
+  const automationCandidatesCount = testCases.filter(
+    item => deriveAutomationStatus(item) === AutomationStatus.CANDIDATE,
+  ).length;
+  const obsoleteAutomationCount = testCases.filter(
+    item => deriveAutomationStatus(item) === AutomationStatus.OBSOLETE,
+  ).length;
+  const automatedTestCaseIds = new Set(
+    testCases
+      .filter(item => isAutomatedCoverageStatus(deriveAutomationStatus(item)))
+      .map(item => item.id),
+  );
+  const latestAutomatedExecution =
+    [...executions]
+      .filter(execution => execution.testCaseId && automatedTestCaseIds.has(execution.testCaseId))
+      .sort(
+        (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+      )[0] || null;
+  const latestAutomationMetadataCase =
+    [
+      ...testCases
+        .filter(item => item.lastAutomationStatus)
+        .sort(
+          (left, right) =>
+            new Date(right.lastAutomationRunAt || 0).getTime() -
+            new Date(left.lastAutomationRunAt || 0).getTime(),
+        ),
+    ][0] || null;
+  const latestAutomationResult =
+    mapExecutionResultToAutomationResult(latestAutomatedExecution?.result) ||
+    latestAutomationMetadataCase?.lastAutomationStatus ||
+    null;
+  const latestAutomationRunAt =
+    latestAutomatedExecution?.executionDate ||
+    latestAutomationMetadataCase?.lastAutomationRunAt ||
+    null;
+  const moduleAutomationCoverage = Array.from(
+    functionalities.reduce<
+      Map<
+        string,
+        {
+          name: string;
+          totalCases: number;
+          automatedCases: number;
+        }
+      >
+    >((acc, functionality) => {
+      const moduleName = functionality.module || 'Sin modulo';
+      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
+      if (relatedCases.length === 0) return acc;
+
+      const current = acc.get(moduleName) || {
+        name: moduleName,
+        totalCases: 0,
+        automatedCases: 0,
+      };
+
+      current.totalCases += relatedCases.length;
+      current.automatedCases += relatedCases.filter(testCase =>
+        isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+      ).length;
+
+      acc.set(moduleName, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      coverage: value.totalCases > 0 ? Math.round((value.automatedCases / value.totalCases) * 100) : 0,
+    }))
+    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases)
+    .slice(0, 3);
+  const functionalityAutomationCoverage = (() => {
+    const totalFunctionalitiesCount = functionalities.length;
+    const automatedFunctionalitiesCount = functionalities.filter(functionality =>
+      testCases.some(
+        testCase =>
+          testCase.functionalityId === functionality.id &&
+          isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
+      ),
+    ).length;
+    const uncoveredFunctionalitiesCount = Math.max(
+      totalFunctionalitiesCount - automatedFunctionalitiesCount,
+      0,
+    );
+
+    return {
+      total: totalFunctionalitiesCount,
+      automated: automatedFunctionalitiesCount,
+      uncovered: uncoveredFunctionalitiesCount,
+      coverage:
+        totalFunctionalitiesCount > 0
+          ? Math.round((automatedFunctionalitiesCount / totalFunctionalitiesCount) * 100)
+          : 0,
+    };
+  })();
+  const automationSuccessByTool = Array.from(
+    testCases.reduce<
+      Map<
+        string,
+        {
+          tool: string;
+          total: number;
+          passed: number;
+        }
+      >
+    >((acc, testCase) => {
+      if (!testCase.automationTool || !testCase.lastAutomationStatus) return acc;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.UNKNOWN) return acc;
+
+      const current = acc.get(testCase.automationTool) || {
+        tool: testCase.automationTool,
+        total: 0,
+        passed: 0,
+      };
+
+      current.total += 1;
+      if (testCase.lastAutomationStatus === AutomationResultStatus.PASSED) {
+        current.passed += 1;
+      }
+
+      acc.set(testCase.automationTool, current);
+      return acc;
+    }, new Map()),
+  )
+    .map(([, value]) => ({
+      ...value,
+      successRate: value.total > 0 ? Math.round((value.passed / value.total) * 100) : 0,
+    }))
+    .sort((left, right) => right.successRate - left.successRate || right.total - left.total);
+  const moduleAutomationCoveragePieData = moduleAutomationCoverage.map(item => ({
+    name: item.name,
+    value: item.coverage,
+  }));
+  const functionalityAutomationCoveragePieData =
+    functionalityAutomationCoverage.total > 0
+      ? [
+          {
+            name: 'Con al menos 1 caso automatizado',
+            value: functionalityAutomationCoverage.coverage,
+          },
+          {
+            name: 'Sin cobertura automatizada',
+            value: Math.max(100 - functionalityAutomationCoverage.coverage, 0),
+          },
+        ].filter(item => item.value > 0)
+      : [];
+  const automationSuccessByToolPieData = automationSuccessByTool.map(item => ({
+    name: item.tool,
+    value: item.successRate,
+  }));
+  const hasAutomationData =
+    automatedTests > 0 ||
+    automationCandidatesCount > 0 ||
+    obsoleteAutomationCount > 0 ||
+    Boolean(latestAutomationResult) ||
+    automationSuccessByTool.length > 0;
+  const hasModuleAutomationCoverage = moduleAutomationCoverage.some(item => item.automatedCases > 0);
+  const hasFunctionalityAutomationCoverage = functionalityAutomationCoverage.automated > 0;
+  const automationPieColors = ['#2563eb', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444'];
   const coreFunctionalities = functionalities.filter(item => item.isCore).length;
   const regressionFunctionalities = functionalities.filter(item => item.isRegression).length;
   const smokeFunctionalities = functionalities.filter(item => item.isSmoke).length;
 
   const latestExecutionByTestCase = executions
     .filter(execution => execution.testCaseId)
-    .sort((left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf())
+    .sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )
     .reduce<Record<string, (typeof executions)[number]>>((acc, execution) => {
       const testCaseId = execution.testCaseId;
       if (!testCaseId || acc[testCaseId]) return acc;
@@ -308,32 +557,77 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   ).length;
   const passFailTotal = passedTestCasesCount + failedTestCasesCount;
   const passFailChartData = [
-    { name: 'Aprobados', value: passedTestCasesCount, color: qaPalette.functionalityStatus.completed },
+    {
+      name: 'Aprobados',
+      value: passedTestCasesCount,
+      color: qaPalette.functionalityStatus.completed,
+    },
     { name: 'Fallidos', value: failedTestCasesCount, color: qaPalette.functionalityStatus.failed },
   ].filter(item => item.value > 0);
-  const passedPercent = passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
-  const failedPercent = passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
+  const passedPercent =
+    passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
+  const failedPercent =
+    passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
 
   const latestFinalRegressionCycle = regressionCycles.find(cycle => cycle.status === 'FINALIZADA');
   const latestFinalSmokeCycle = smokeCycles.find(cycle => cycle.status === 'FINALIZADA');
 
-  const regressionPassed = latestFinalRegressionCycle?.passed || 0;
-  const regressionFailed = latestFinalRegressionCycle?.failed || 0;
-  const regressionRemaining =
-    latestFinalRegressionCycle?.blocked || latestFinalRegressionCycle?.pending || 0;
-  const regressionTotal =
-    latestFinalRegressionCycle?.totalTests ||
-    regressionPassed + regressionFailed + regressionRemaining;
-  const regressionPercent =
-    regressionTotal > 0 ? Math.round((regressionPassed / regressionTotal) * 100) : 0;
+  const latestFinalRegressionRun =
+    [...finalizedRegressionRuns].sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )[0] || null;
+  const latestFinalSmokeRun =
+    [...finalizedSmokeRuns].sort(
+      (left, right) => dayjs(right.executionDate).valueOf() - dayjs(left.executionDate).valueOf(),
+    )[0] || null;
 
-  const smokePassed = latestFinalSmokeCycle?.passed || 0;
-  const smokeFailed = latestFinalSmokeCycle?.failed || 0;
+  const regressionRunSummary = summarizeRunResults(latestFinalRegressionRun?.results || []);
+  const smokeRunSummary = summarizeRunResults(latestFinalSmokeRun?.results || []);
+
+  const regressionSource = latestFinalRegressionRun
+    ? 'execution'
+    : latestFinalRegressionCycle
+      ? 'legacy'
+      : 'empty';
+  const smokeSource = latestFinalSmokeRun ? 'execution' : latestFinalSmokeCycle ? 'legacy' : 'empty';
+
+  const regressionPassed =
+    regressionSource === 'execution' ? regressionRunSummary.passed : latestFinalRegressionCycle?.passed || 0;
+  const regressionFailed =
+    regressionSource === 'execution' ? regressionRunSummary.failed : latestFinalRegressionCycle?.failed || 0;
+  const regressionRemaining =
+    regressionSource === 'execution'
+      ? regressionRunSummary.blocked + regressionRunSummary.pending
+      : (latestFinalRegressionCycle?.blocked || 0) + (latestFinalRegressionCycle?.pending || 0);
+  const regressionTotal =
+    regressionSource === 'execution'
+      ? regressionRunSummary.total
+      : latestFinalRegressionCycle?.totalTests || regressionPassed + regressionFailed + regressionRemaining;
+  const regressionPercent =
+    regressionSource === 'execution'
+      ? regressionRunSummary.passRate
+      : regressionTotal > 0
+        ? Math.round((regressionPassed / regressionTotal) * 100)
+        : 0;
+
+  const smokePassed =
+    smokeSource === 'execution' ? smokeRunSummary.passed : latestFinalSmokeCycle?.passed || 0;
+  const smokeFailed =
+    smokeSource === 'execution' ? smokeRunSummary.failed : latestFinalSmokeCycle?.failed || 0;
   const smokeRemaining =
-    latestFinalSmokeCycle?.blocked || latestFinalSmokeCycle?.pending || 0;
+    smokeSource === 'execution'
+      ? smokeRunSummary.blocked + smokeRunSummary.pending
+      : (latestFinalSmokeCycle?.blocked || 0) + (latestFinalSmokeCycle?.pending || 0);
   const smokeTotal =
-    latestFinalSmokeCycle?.totalTests || smokePassed + smokeFailed + smokeRemaining;
-  const smokePercent = smokeTotal > 0 ? Math.round((smokePassed / smokeTotal) * 100) : 0;
+    smokeSource === 'execution'
+      ? smokeRunSummary.total
+      : latestFinalSmokeCycle?.totalTests || smokePassed + smokeFailed + smokeRemaining;
+  const smokePercent =
+    smokeSource === 'execution'
+      ? smokeRunSummary.passRate
+      : smokeTotal > 0
+        ? Math.round((smokePassed / smokeTotal) * 100)
+        : 0;
 
   const regressionPieData = [
     { name: 'Aprobados', value: regressionPassed, color: CHART_COLORS.passed },
@@ -418,7 +712,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
   const totalCompletedByModules = moduleData.reduce((sum, item) => sum + item.completedCount, 0);
   const globalModuleProgress =
-    totalFunctionalities > 0 ? Math.round((totalCompletedByModules / totalFunctionalities) * 100) : 0;
+    totalFunctionalities > 0
+      ? Math.round((totalCompletedByModules / totalFunctionalities) * 100)
+      : 0;
 
   const getModuleAccent = (name: string) => {
     const lower = name.toLowerCase();
@@ -485,16 +781,15 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const tableData = useMemo(() => {
     const [startDate, endDate] = deliveryDateRange || [];
 
-    return normalizedBaseTableData
-      .filter(item => {
-        if (!startDate && !endDate) return true;
+    return normalizedBaseTableData.filter(item => {
+      if (!startDate && !endDate) return true;
 
-        const deliveryDate = dayjs(item.deliveryDate).startOf('day').valueOf();
-        const startsAt = startDate ? startDate.startOf('day').valueOf() : Number.NEGATIVE_INFINITY;
-        const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
+      const deliveryDate = dayjs(item.deliveryDate).startOf('day').valueOf();
+      const startsAt = startDate ? startDate.startOf('day').valueOf() : Number.NEGATIVE_INFINITY;
+      const endsAt = endDate ? endDate.endOf('day').valueOf() : Number.POSITIVE_INFINITY;
 
-        return deliveryDate >= startsAt && deliveryDate <= endsAt;
-      });
+      return deliveryDate >= startsAt && deliveryDate <= endsAt;
+    });
   }, [deliveryDateRange, normalizedBaseTableData]);
 
   const tableColumns = [
@@ -575,9 +870,10 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           const XLSX = await import('xlsx');
           const worksheet = XLSX.utils.json_to_sheet(exportRows);
           const [startDate, endDate] = deliveryDateRange || [];
-          const rangeLabel = startDate || endDate
-            ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
-            : 'Todas';
+          const rangeLabel =
+            startDate || endDate
+              ? `${startDate?.format('YYYYMMDD') || 'Inicio'}_${endDate?.format('YYYYMMDD') || 'Hoy'}`
+              : 'Todas';
           const fileName = `Funcionalidades_FechaEntrega_${rangeLabel}_${dayjs().format('YYYYMMDD')}`;
           const csv = XLSX.utils.sheet_to_csv(worksheet);
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -639,9 +935,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={`${executionCoveragePercent}%`}
               hint={`${executedTestCasesCount} de ${testCases.length} ejecutados`}
               accent={qaPalette.primary}
-              icon={
-                <FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />
-              }
+              icon={<FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -689,14 +983,253 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         </Row>
       </div>
 
-      <div className="space-y-4">
+      <Card
+        variant="borderless"
+        className="rounded-2xl qa-surface-card"
+        title={
+          <div className="flex items-center gap-2 text-slate-800">
+            <ThunderboltOutlined style={{ color: qaPalette.functionalityStatus.postMvp }} />
+            <span>Radar de automatización</span>
+          </div>
+        }
+      >
+        <Row gutter={[20, 20]}>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Automatizadas
+              </Text>
+              <div className="mt-2 text-2xl font-bold text-slate-800">{automatedTests}</div>
+              <Text className="text-xs text-slate-500">{automationCoverage}% del total</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Candidatas
+              </Text>
+              <div className="mt-2 text-2xl font-bold text-slate-800">
+                {automationCandidatesCount}
+              </div>
+              <Text className="text-xs text-slate-500">Backlog sugerido de automatización</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Obsoletas
+              </Text>
+              <div className="mt-2 text-2xl font-bold text-slate-800">{obsoleteAutomationCount}</div>
+              <Text className="text-xs text-slate-500">
+                Casos con automatizacion obsoleta
+              </Text>
+            </div>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <Text type="secondary" className="text-xs uppercase tracking-wide">
+                Ultimo resultado
+              </Text>
+              <div className="mt-2">
+                <Tag color={getAutomationTagColor(latestAutomationResult)}>
+                  {latestAutomationResult || 'Sin datos'}
+                </Tag>
+              </div>
+              <Text className="text-xs text-slate-500">
+                {latestAutomationRunAt
+                  ? `Actualizado ${dayjs(latestAutomationRunAt).format('DD/MM/YYYY')}`
+                  : 'Último estado reportado desde los casos'}
+              </Text>
+            </div>
+          </Col>
+        </Row>
+
+        {!hasAutomationData ? (
+          <div className="mt-5 rounded-3xl border border-dashed border-sky-200 bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.45),_transparent_60%),linear-gradient(180deg,_rgba(240,249,255,0.9),_rgba(248,250,252,0.95))] px-6 py-8">
+            <Empty
+              image={
+                <div className="flex justify-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-sky-200 bg-white shadow-sm">
+                    <ThunderboltOutlined
+                      style={{
+                        fontSize: 28,
+                        color: qaPalette.functionalityStatus.postMvp,
+                      }}
+                    />
+                  </div>
+                </div>
+              }
+              description={
+                <div className="space-y-2 text-center">
+                  <Text strong className="block text-base text-slate-800">
+                    Aún no hay automatización registrada en este proyecto
+                  </Text>
+                  <Text className="mx-auto block max-w-xl text-sm text-slate-600">
+                    Cuando un caso de prueba tenga estado de automatización, herramienta o último
+                    resultado reportado, este radar mostrará cobertura, éxito y salud general.
+                  </Text>
+                </div>
+              }
+            />
+          </div>
+        ) : null}
+
+        {hasAutomationData ? (
+          <Row gutter={[20, 20]} className="mt-2">
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Cobertura por modulo
+                </Text>
+                <div className="mt-3">
+                  {hasModuleAutomationCoverage ? (
+                    <div className="flex justify-center">
+                      <PieChart width={220} height={220}>
+                        <Pie
+                          data={moduleAutomationCoveragePieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={78}
+                          dataKey="value"
+                          labelLine={false}
+                          label={({ value }) => `${value}%`}
+                          isAnimationActive={false}
+                        >
+                          {moduleAutomationCoveragePieData.map((entry, index) => (
+                            <Cell
+                              key={entry.name}
+                              fill={automationPieColors[index % automationPieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, _name, item: any) => [
+                            `${value}% automatizado`,
+                            item?.payload?.name || 'Modulo',
+                          ]}
+                        />
+                      </PieChart>
+                    </div>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Aun no hay modulos con cobertura automatizada."
+                    />
+                  )}
+                </div>
+              </div>
+            </Col>
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Cobertura por funcionalidad
+                </Text>
+                <div className="mt-3">
+                  {hasFunctionalityAutomationCoverage ? (
+                    <>
+                      <div className="flex justify-center">
+                        <PieChart width={220} height={220}>
+                          <Pie
+                            data={functionalityAutomationCoveragePieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={48}
+                            outerRadius={78}
+                            dataKey="value"
+                            labelLine={false}
+                            label={({ value }) => `${value}%`}
+                            isAnimationActive={false}
+                          >
+                            {functionalityAutomationCoveragePieData.map((entry, index) => (
+                              <Cell
+                                key={entry.name}
+                                fill={automationPieColors[index % automationPieColors.length]}
+                              />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip
+                            formatter={(value, _name, item: any) => [
+                              `${value}%`,
+                              item?.payload?.name || 'Cobertura funcional',
+                            ]}
+                          />
+                        </PieChart>
+                      </div>
+                      <div className="text-center text-sm text-slate-600">
+                        {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades
+                      </div>
+                    </>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={
+                        functionalityAutomationCoverage.total > 0
+                          ? 'Las funcionalidades existen, pero ninguna tiene casos automatizados todavia.'
+                          : 'Sin funcionalidades registradas.'
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            </Col>
+            <Col xs={24} lg={8}>
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <Text type="secondary" className="text-xs uppercase tracking-wide">
+                  Exito por herramienta
+                </Text>
+                <div className="mt-3">
+                  {automationSuccessByToolPieData.length > 0 ? (
+                    <div className="flex justify-center">
+                      <PieChart width={220} height={220}>
+                        <Pie
+                          data={automationSuccessByToolPieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={78}
+                          dataKey="value"
+                          labelLine={false}
+                          label={({ value }) => `${value}%`}
+                          isAnimationActive={false}
+                        >
+                          {automationSuccessByToolPieData.map((entry, index) => (
+                            <Cell
+                              key={entry.name}
+                              fill={automationPieColors[index % automationPieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, _name, item: any) => [
+                            `${value}% de exito`,
+                            item?.payload?.name || 'Herramienta',
+                          ]}
+                        />
+                      </PieChart>
+                    </div>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Sin resultados automaticos suficientes por herramienta."
+                    />
+                  )}
+                </div>
+              </div>
+            </Col>
+          </Row>
+        ) : null}
+      </Card>
+
+      <div className="mt-8 space-y-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <HistoryOutlined style={{ color: qaPalette.primary }} />
             <span>Validación por funcionalidad</span>
           </div>
           <Text type="secondary" className="text-slate-500">
-            Métricas calculadas a partir de funcionalidades y ciclos de regresión o smoke.
+            Métricas calculadas a partir de funcionalidades y de la mejor fuente disponible entre
+            ejecuciones oficiales e historial legacy.
           </Text>
         </div>
 
@@ -705,7 +1238,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <KpiCard
               title="Estabilidad regresión funcional"
               value={`${regressionStability.toFixed(1)}%`}
-              hint="Tasa de exito en ciclos"
+              hint={
+                regressionStabilitySource === 'execution'
+                  ? 'Tasa de exito en ejecuciones oficiales'
+                  : 'Tasa de exito en ciclos legacy'
+              }
               accent={qaPalette.primary}
               icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
             />
@@ -819,6 +1356,22 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <HistoryOutlined style={{ color: qaPalette.primary }} />
               <span>Regresión funcional</span>
+              <Tag
+                color={
+                  regressionSource === 'execution'
+                    ? 'blue'
+                    : regressionSource === 'legacy'
+                      ? 'default'
+                      : 'gold'
+                }
+                className="ml-2 rounded-full px-3 py-1"
+              >
+                {regressionSource === 'execution'
+                  ? 'Test Execution'
+                  : regressionSource === 'legacy'
+                    ? 'Histórico legacy'
+                    : 'Sin datos'}
+              </Tag>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -828,6 +1381,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </div>
               </div>
               <div className="space-y-3">
+                <div className="text-xs text-slate-400">
+                  {regressionSource === 'execution'
+                    ? latestFinalRegressionRun?.title || 'Ejecución oficial más reciente'
+                    : regressionSource === 'legacy'
+                      ? latestFinalRegressionCycle?.cycleId || 'Sin ciclos finalizados'
+                      : 'Aún no hay ejecuciones ni histórico legacy'}
+                </div>
                 {regressionPieData.map(item => (
                   <div key={item.name} className="flex items-center gap-3">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -846,6 +1406,22 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-6 flex items-center gap-2 font-semibold text-slate-800">
               <ThunderboltOutlined style={{ color: qaPalette.functionalityStatus.inProgress }} />
               <span>Smoke funcional</span>
+              <Tag
+                color={
+                  smokeSource === 'execution'
+                    ? 'blue'
+                    : smokeSource === 'legacy'
+                      ? 'default'
+                      : 'gold'
+                }
+                className="ml-2 rounded-full px-3 py-1"
+              >
+                {smokeSource === 'execution'
+                  ? 'Test Execution'
+                  : smokeSource === 'legacy'
+                    ? 'Histórico legacy'
+                    : 'Sin datos'}
+              </Tag>
             </div>
             <div className="flex flex-col items-center justify-between gap-6 py-4 sm:flex-row">
               <div className="relative flex h-40 w-40 items-center justify-center">
@@ -855,6 +1431,13 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </div>
               </div>
               <div className="space-y-3">
+                <div className="text-xs text-slate-400">
+                  {smokeSource === 'execution'
+                    ? latestFinalSmokeRun?.title || 'Ejecución oficial más reciente'
+                    : smokeSource === 'legacy'
+                      ? latestFinalSmokeCycle?.cycleId || 'Sin ciclos finalizados'
+                      : 'Aún no hay ejecuciones ni histórico legacy'}
+                </div>
                 {smokePieData.map(item => (
                   <div key={item.name} className="flex items-center gap-3">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -875,11 +1458,11 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <div className="mb-4 font-semibold text-slate-800">Ejecución de casos</div>
             <div className="relative flex h-48 items-center justify-center">
               <FixedPie data={executionMixData} innerRadius={50} outerRadius={70} />
-                <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
-                </div>
+              <div className="absolute inset-0 flex items-center justify-center flex-col">
+                <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
+                <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
               </div>
+            </div>
           </Card>
         </Col>
 
@@ -1034,45 +1617,45 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               {moduleData.length > 0 ? (
                 <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
                   {moduleData.map(item => {
-                  const accent = getModuleAccent(item.name);
-                  return (
-                    <div
-                      key={item.name}
-                      className="rounded-xl border p-4"
-                      style={{
-                        backgroundColor: softSurface(accent),
-                        borderColor: softSurface(accent),
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
-                            {getModuleIcon(item.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-800">{item.name}</div>
-                            <div className="text-xs" style={{ color: accent }}>
-                              {item.completedCount} de {item.totalCount} completas
+                    const accent = getModuleAccent(item.name);
+                    return (
+                      <div
+                        key={item.name}
+                        className="rounded-xl border p-4"
+                        style={{
+                          backgroundColor: softSurface(accent),
+                          borderColor: softSurface(accent),
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                              {getModuleIcon(item.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-800">{item.name}</div>
+                              <div className="text-xs" style={{ color: accent }}>
+                                {item.completedCount} de {item.totalCount} completas
+                              </div>
                             </div>
                           </div>
+                          <div
+                            className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.7)' }}
+                          >
+                            {item.percent}%
+                          </div>
                         </div>
-                        <div
-                          className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold text-slate-800"
-                          style={{ backgroundColor: 'rgba(255,255,255,0.7)' }}
-                        >
-                          {item.percent}%
-                        </div>
+                        <Progress
+                          percent={item.percent}
+                          showInfo={false}
+                          strokeColor={accent}
+                          trailColor="rgba(148, 163, 184, 0.18)"
+                          size={{ height: 8 }}
+                          className="mt-4"
+                        />
                       </div>
-                      <Progress
-                        percent={item.percent}
-                        showInfo={false}
-                        strokeColor={accent}
-                        trailColor="rgba(148, 163, 184, 0.18)"
-                        size={{ height: 8 }}
-                        className="mt-4"
-                      />
-                    </div>
-                  );
+                    );
                   })}
                 </div>
               ) : (

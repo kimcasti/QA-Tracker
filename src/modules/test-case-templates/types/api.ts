@@ -8,6 +8,11 @@ export interface TestCaseTemplateDto {
   testType?: string;
   priority?: string;
   isAutomated?: boolean;
+  automationStatus?: string;
+  automationType?: string;
+  automationTool?: string;
+  automationReference?: string;
+  automationOwner?: string;
   project?: {
     documentId: string;
     key: string;

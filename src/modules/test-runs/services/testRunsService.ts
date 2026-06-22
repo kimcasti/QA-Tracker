@@ -89,6 +89,8 @@ function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): Te
     browserVersion: document.browserVersion,
     osVersion: document.osVersion,
     resolution: document.resolution,
+    identifiedRisks: document.identifiedRisks || [],
+    exitCriteria: document.exitCriteria || [],
     selectedModules: document.selectedModules || [],
     selectedFunctionalities: document.selectedFunctionalities || [],
     results: resultsOverride || (document.results || []).map(mapTestRunResult),
@@ -177,7 +179,8 @@ export async function getTestRuns(projectId?: string) {
         'results.testCase',
         'results.bug',
       ]),
-      sort: 'executionDate:desc',
+      'sort[0]': 'executionDate:desc',
+      'sort[1]': 'createdAt:desc',
       ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     }),
     getResultsByRun(projectId),
@@ -189,7 +192,8 @@ export async function getTestRuns(projectId?: string) {
 export async function getTestRunSummaries(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestRunDto>('/api/test-runs/list-summary', {
-    sort: 'executionDate:desc',
+    'sort[0]': 'executionDate:desc',
+    'sort[1]': 'createdAt:desc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
   });
 
@@ -238,6 +242,8 @@ export async function saveTestRun(testRun: TestRun) {
     browserVersion: testRun.browserVersion || null,
     osVersion: testRun.osVersion || null,
     resolution: testRun.resolution || null,
+    identifiedRisks: testRun.identifiedRisks || [],
+    exitCriteria: testRun.exitCriteria || [],
     selectedModules: testRun.selectedModules || [],
     selectedFunctionalities: testRun.selectedFunctionalities || [],
     organization: relation(context.organizationDocumentId),
