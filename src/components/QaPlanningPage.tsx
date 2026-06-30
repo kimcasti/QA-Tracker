@@ -12,13 +12,16 @@ import {
   Popover,
   Row,
   Select,
+  Spin,
   Table,
   Tooltip,
   Typography,
   message,
 } from 'antd';
 import {
+  DownloadOutlined,
   FileSearchOutlined,
+  InfoCircleOutlined,
   MinusOutlined,
   PlusOutlined,
   ThunderboltOutlined,
@@ -60,7 +63,6 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import {
   AutomationResultStatus,
   AutomationStatus,
-  AutomationTool,
   Functionality,
   FUNCTIONALITY_DEVELOPMENT_STATUSES,
   ImpactLevel,
@@ -72,6 +74,14 @@ import {
   deriveAutomationStatus,
   isAutomatedCoverageStatus,
 } from '../types';
+import type {
+  QaStrategyCandidateAnalysisResult,
+  QaStrategyCandidateCategory,
+  QaStrategyCandidateInput,
+  QaStrategyCandidatePriority,
+  QaStrategyCandidateRecommendation,
+  QaStrategyCandidateTool,
+} from '../services/geminiService';
 import {
   labelImpact,
   labelPriority,
@@ -80,6 +90,7 @@ import {
   labelTestStatus,
 } from '../i18n/labels';
 import { calculateRiskLevel } from '../modules/functionalities/utils/riskMatrix';
+import { runTrackedExport } from '../modules/plans/services/planAccessService';
 
 const { Title, Text, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
@@ -187,6 +198,8 @@ type DetailEditDraft = {
 };
 
 type BulkCoverageValue = boolean | undefined;
+type AiRecommendationFilter = 'all' | QaStrategyCandidateCategory;
+type AiMetricFilter = 'all' | 'actionable' | 'high_priority' | 'covered' | 'coverage_suggested';
 
 const INITIAL_TABLE_FILTERS: PlanningTableFilters = {
   module: null,
@@ -262,6 +275,85 @@ function getAutomationResultBadgeClassName(status?: AutomationResultStatus) {
     default:
       return 'border-slate-200 bg-slate-50 text-slate-600';
   }
+}
+
+function getQaStrategyRecommendationLabel(category: QaStrategyCandidateCategory) {
+  switch (category) {
+    case 'ui_automation':
+      return 'UI';
+    case 'api_postman':
+      return 'Postman';
+    case 'performance_k6':
+      return 'k6';
+    case 'already_covered':
+      return 'Ya cubierta';
+    case 'not_recommended':
+    default:
+      return 'No prioritaria';
+  }
+}
+
+function getQaStrategyRecommendationBadgeClassName(category: QaStrategyCandidateCategory) {
+  switch (category) {
+    case 'ui_automation':
+      return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'api_postman':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'performance_k6':
+      return 'border-violet-200 bg-violet-50 text-violet-700';
+    case 'already_covered':
+      return 'border-slate-200 bg-slate-100 text-slate-700';
+    case 'not_recommended':
+    default:
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+}
+
+function getQaStrategyPriorityBadgeClassName(priority: QaStrategyCandidatePriority) {
+  switch (priority) {
+    case 'high':
+      return 'border-red-200 bg-red-50 text-red-700';
+    case 'medium':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'low':
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600';
+  }
+}
+
+function getQaStrategyPriorityLabel(priority: QaStrategyCandidatePriority) {
+  switch (priority) {
+    case 'high':
+      return 'Alta';
+    case 'medium':
+      return 'Media';
+    case 'low':
+    default:
+      return 'Baja';
+  }
+}
+
+function getQaStrategyToolLabel(tool: QaStrategyCandidateTool) {
+  switch (tool) {
+    case 'playwright':
+      return 'Playwright';
+    case 'postman':
+      return 'Postman';
+    case 'k6':
+      return 'k6';
+    case 'none':
+    default:
+      return 'Cobertura existente';
+  }
+}
+
+function truncateText(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 1)}...`;
 }
 
 const PRIORITY_TEXT_CLASSNAMES: Record<Priority, string> = {
@@ -802,9 +894,28 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const [isBulkDrawerOpen, setIsBulkDrawerOpen] = React.useState(false);
   const [detailEditDraft, setDetailEditDraft] = React.useState<DetailEditDraft | null>(null);
   const [bulkEditDraft, setBulkEditDraft] = React.useState<BulkEditDraft>(INITIAL_BULK_EDIT_DRAFT);
+  const [isAiAnalysisModalOpen, setIsAiAnalysisModalOpen] = React.useState(false);
+  const [isAiAnalysisLoading, setIsAiAnalysisLoading] = React.useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] =
+    React.useState<QaStrategyCandidateAnalysisResult | null>(null);
+  const [aiRecommendationFilter, setAiRecommendationFilter] =
+    React.useState<AiRecommendationFilter>('all');
+  const [aiMetricFilter, setAiMetricFilter] = React.useState<AiMetricFilter>('all');
+  const [aiModuleFilter, setAiModuleFilter] = React.useState<string>('all');
+  const [aiSearchTerm, setAiSearchTerm] = React.useState('');
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
+
+  const testCasesByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      const current = acc.get(testCase.functionalityId) || [];
+      current.push(testCase);
+      acc.set(testCase.functionalityId, current);
+      return acc;
+    }, new Map<string, TestCase[]>());
+  }, [testCases]);
 
   const testCaseCountByFunctionality = React.useMemo(() => {
     return testCases.reduce((acc, testCase: TestCase) => {
@@ -822,6 +933,21 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
       return acc;
     }, new Map<string, number>());
+  }, [testCases]);
+
+  const automatedToolsByFunctionality = React.useMemo(() => {
+    return testCases.reduce((acc, testCase: TestCase) => {
+      if (!testCase.functionalityId) return acc;
+      if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) return acc;
+
+      const currentTools = acc.get(testCase.functionalityId) || new Set<string>();
+      if (testCase.automationTool) {
+        currentTools.add(testCase.automationTool);
+      }
+
+      acc.set(testCase.functionalityId, currentTools);
+      return acc;
+    }, new Map<string, Set<string>>());
   }, [testCases]);
 
   const candidateCaseCountByFunctionality = React.useMemo(() => {
@@ -1224,6 +1350,274 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       totalVisible,
     };
   }, [testCaseCountByFunctionality, visibleFunctionalities]);
+
+  const qaStrategyAiInput = React.useMemo<QaStrategyCandidateInput[]>(() => {
+    return visibleFunctionalities.map(functionality => {
+      const relatedTestCases = testCasesByFunctionality.get(functionality.id) || [];
+      const totalCases = relatedTestCases.length;
+      const automatedCases = automatedCaseCountByFunctionality.get(functionality.id) || 0;
+      const candidateCases = candidateCaseCountByFunctionality.get(functionality.id) || 0;
+
+      return {
+        id: functionality.id,
+        name: functionality.name,
+        module: functionality.module || 'Sin modulo',
+        priority: functionality.priority,
+        riskLevel: functionality.riskLevel,
+        status: functionality.status,
+        isCore: Boolean(functionality.isCore),
+        isRegression: Boolean(functionality.isRegression),
+        isSmoke: Boolean(functionality.isSmoke),
+        lastFunctionalChangeAt: functionality.lastFunctionalChangeAt,
+        coverage: {
+          totalCases,
+          automatedCases,
+          candidateCases,
+          manualCases: Math.max(totalCases - automatedCases, 0),
+        },
+        testCases: relatedTestCases.slice(0, 12).map(testCase => ({
+          id: testCase.id,
+          title: testCase.title,
+          testType: testCase.testType,
+          priority: testCase.priority,
+          automationStatus: deriveAutomationStatus(testCase),
+          automationType: testCase.automationType || null,
+          automationTool: testCase.automationTool || null,
+          summary: truncateText(
+            [testCase.description, testCase.preconditions, testCase.testSteps, testCase.expectedResult]
+              .filter(Boolean)
+              .join(' '),
+            280,
+          ),
+        })),
+      };
+    });
+  }, [
+    visibleFunctionalities,
+    testCasesByFunctionality,
+    automatedCaseCountByFunctionality,
+    candidateCaseCountByFunctionality,
+  ]);
+
+  const aiRecommendationRows = React.useMemo(() => {
+    if (!aiAnalysisResult) return [];
+
+    const normalizedSearch = aiSearchTerm.trim().toLowerCase();
+
+    const priorityWeight: Record<QaStrategyCandidatePriority, number> = {
+      high: 3,
+      medium: 2,
+      low: 1,
+    };
+
+    const categoryWeight: Record<QaStrategyCandidateCategory, number> = {
+      ui_automation: 5,
+      api_postman: 4,
+      performance_k6: 3,
+      not_recommended: 2,
+      already_covered: 1,
+    };
+
+    return aiAnalysisResult.recommendations
+      .filter(recommendation => {
+        if (aiMetricFilter === 'actionable') {
+          const isActionable =
+            recommendation.recommendedCategory === 'ui_automation' ||
+            recommendation.recommendedCategory === 'api_postman' ||
+            recommendation.recommendedCategory === 'performance_k6';
+          if (!isActionable) return false;
+        }
+
+        if (aiMetricFilter === 'high_priority' && recommendation.priority !== 'high') {
+          return false;
+        }
+
+        if (
+          aiMetricFilter === 'covered' &&
+          recommendation.recommendedCategory !== 'already_covered'
+        ) {
+          return false;
+        }
+
+        if (aiMetricFilter === 'coverage_suggested') {
+          const needsAutomation =
+            recommendation.recommendedCategory === 'ui_automation' ||
+            recommendation.recommendedCategory === 'api_postman' ||
+            recommendation.recommendedCategory === 'performance_k6';
+          if (!needsAutomation) return false;
+        }
+
+        if (
+          aiRecommendationFilter !== 'all' &&
+          recommendation.recommendedCategory !== aiRecommendationFilter
+        ) {
+          return false;
+        }
+
+        if (aiModuleFilter !== 'all' && recommendation.module !== aiModuleFilter) {
+          return false;
+        }
+
+        if (!normalizedSearch) {
+          return true;
+        }
+
+        return (
+          recommendation.functionalityName.toLowerCase().includes(normalizedSearch) ||
+          recommendation.module.toLowerCase().includes(normalizedSearch) ||
+          recommendation.reasons.some(reason => reason.toLowerCase().includes(normalizedSearch))
+        );
+      })
+      .sort((left, right) => {
+        const categoryDifference =
+          categoryWeight[right.recommendedCategory] - categoryWeight[left.recommendedCategory];
+        if (categoryDifference !== 0) return categoryDifference;
+
+        const priorityDifference = priorityWeight[right.priority] - priorityWeight[left.priority];
+        if (priorityDifference !== 0) return priorityDifference;
+
+        if (right.score !== left.score) return right.score - left.score;
+
+        return left.functionalityName.localeCompare(right.functionalityName);
+      });
+  }, [aiAnalysisResult, aiMetricFilter, aiRecommendationFilter, aiModuleFilter, aiSearchTerm]);
+
+  const aiRecommendationModuleOptions = React.useMemo(() => {
+    if (!aiAnalysisResult) return [];
+
+    return Array.from(new Set(aiAnalysisResult.recommendations.map(item => item.module)))
+      .sort((left, right) => left.localeCompare(right))
+      .map(module => ({
+        label: module,
+        value: module,
+      }));
+  }, [aiAnalysisResult]);
+
+  const aiRecommendationMetrics = React.useMemo(() => {
+    const recommendations = aiAnalysisResult?.recommendations || [];
+    const actionable = recommendations.filter(
+      item =>
+        item.recommendedCategory === 'ui_automation' ||
+        item.recommendedCategory === 'api_postman' ||
+        item.recommendedCategory === 'performance_k6',
+    );
+    const highPriority = actionable.filter(item => item.priority === 'high');
+    const covered = recommendations.filter(item => item.recommendedCategory === 'already_covered');
+    const notRecommended = recommendations.filter(
+      item => item.recommendedCategory === 'not_recommended',
+    );
+    const uiCount = actionable.filter(item => item.recommendedCategory === 'ui_automation').length;
+    const postmanCount = actionable.filter(
+      item => item.recommendedCategory === 'api_postman',
+    ).length;
+    const k6Count = actionable.filter(
+      item => item.recommendedCategory === 'performance_k6',
+    ).length;
+    const suggestedCoveragePercent =
+      recommendations.length > 0 ? Math.round((actionable.length / recommendations.length) * 100) : 0;
+
+    return {
+      actionableCount: actionable.length,
+      highPriorityCount: highPriority.length,
+      coveredCount: covered.length,
+      notRecommendedCount: notRecommended.length,
+      uiCount,
+      postmanCount,
+      k6Count,
+      suggestedCoveragePercent,
+      total: recommendations.length,
+    };
+  }, [aiAnalysisResult]);
+
+  const runQaStrategyAiAnalysis = React.useCallback(async () => {
+    if (!projectId) {
+      message.error('Selecciona un proyecto antes de ejecutar el análisis IA.');
+      return;
+    }
+
+    if (qaStrategyAiInput.length === 0) {
+      message.info('No hay funcionalidades visibles para analizar con los filtros actuales.');
+      return;
+    }
+
+    setIsAiAnalysisModalOpen(true);
+    setIsAiAnalysisLoading(true);
+
+    try {
+      const { analyzeQaStrategyCandidatesWithAI, hasAiProviderConfigured } = await import(
+        '../services/geminiService'
+      );
+
+      const isConfigured = await hasAiProviderConfigured();
+      if (!isConfigured) {
+        throw new Error('Configura Gemini o Groq para usar este análisis.');
+      }
+
+      const result = await analyzeQaStrategyCandidatesWithAI({
+        projectId,
+        functionalities: qaStrategyAiInput,
+      });
+
+      setAiMetricFilter('all');
+      setAiRecommendationFilter('all');
+      setAiModuleFilter('all');
+      setAiSearchTerm('');
+      setAiAnalysisResult(result);
+    } catch (error) {
+      const nextMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : 'No pudimos completar el análisis IA en este momento.';
+      message.error(nextMessage);
+    } finally {
+      setIsAiAnalysisLoading(false);
+    }
+  }, [message, projectId, qaStrategyAiInput]);
+
+  const handleExportAiAnalysisPdf = React.useCallback(async () => {
+    if (!projectId) {
+      message.warning('No se encontró el proyecto activo para exportar.');
+      return;
+    }
+
+    if (!aiAnalysisResult) {
+      message.info('Genera primero el análisis IA antes de exportarlo.');
+      return;
+    }
+
+    try {
+      const { exportQaStrategyCandidatesToPdf } = await import('../utils/reportUtils');
+
+      await runTrackedExport({
+        projectId,
+        action: () =>
+          exportQaStrategyCandidatesToPdf({
+            projectName: 'QA Strategy Candidates',
+            generatedAt: aiAnalysisResult.generatedAt,
+            summary: aiRecommendationMetrics,
+            recommendations: aiRecommendationRows.map(item => ({
+              functionalityName: item.functionalityName,
+              module: item.module,
+              currentCoverage: item.currentCoverage,
+              recommendedCategory: getQaStrategyRecommendationLabel(item.recommendedCategory),
+              recommendedTool: getQaStrategyToolLabel(item.recommendedTool),
+              priority: getQaStrategyPriorityLabel(item.priority),
+              score: item.score,
+              reasons: item.reasons,
+              relatedTestCases: item.relatedTestCases,
+            })),
+          }),
+      });
+
+      message.success('PDF exportado correctamente');
+    } catch (error) {
+      const exportErrorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : 'No fue posible exportar el PDF del análisis.';
+      message.error(exportErrorMessage);
+    }
+  }, [aiAnalysisResult, aiRecommendationMetrics, aiRecommendationRows, message, projectId]);
 
   const visibleModuleCoverage = React.useMemo(() => {
     if (moduleCoverageFilter.length === 0) {
@@ -1763,6 +2157,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         render: (value: string, record: Functionality) => {
           const recentChangeLabel = formatRecentChangeBadge(record.lastFunctionalChangeAt);
           const automatedCount = automatedCaseCountByFunctionality.get(record.id) || 0;
+          const automationTools = Array.from(automatedToolsByFunctionality.get(record.id) || []);
 
           return (
             <div className="flex min-w-0 max-w-[360px] flex-col gap-1">
@@ -1773,8 +2168,14 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                   </span>
                 </Tooltip>
                 {automatedCount > 0 ? (
-                  <Tooltip title={`${automatedCount} caso(s) automatizado(s)`}>
-                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                  <Tooltip
+                    title={
+                      automationTools.length > 0
+                        ? `${automatedCount} caso(s) automatizado(s) - ${automationTools.join(', ')}`
+                        : `${automatedCount} caso(s) automatizado(s)`
+                    }
+                  >
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 ring-1 ring-sky-200">
                       <ThunderboltOutlined className="text-[11px]" />
                     </span>
                   </Tooltip>
@@ -2029,6 +2430,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     [
       coverageFilters,
       impactOptions,
+      automatedCaseCountByFunctionality,
+      automatedToolsByFunctionality,
       isRowSaving,
       isViewer,
       moduleFilters,
@@ -3084,6 +3487,92 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       </div>
     );
 
+  const aiRecommendationColumns = React.useMemo<ColumnsType<QaStrategyCandidateRecommendation>>(
+    () => [
+      {
+        title: 'Funcionalidad',
+        key: 'functionality',
+        render: (_, record) => (
+          <div className="min-w-[240px]">
+            <div className="font-semibold text-slate-800">{record.functionalityName}</div>
+            <div className="text-xs text-slate-500">{record.module}</div>
+          </div>
+        ),
+      },
+      {
+        title: 'Cobertura actual',
+        key: 'coverage',
+        width: 180,
+        render: (_, record) => (
+          <div className="text-sm text-slate-700">
+            <div>{record.currentCoverage.totalCases} casos</div>
+            <div className="text-xs text-slate-500">
+              {record.currentCoverage.automatedCases} auto · {record.currentCoverage.candidateCases}{' '}
+              candidatas
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: 'Recomendación',
+        key: 'recommendation',
+        width: 170,
+        render: (_, record) => (
+          <div className="flex flex-col gap-2">
+            <span
+              className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${getQaStrategyRecommendationBadgeClassName(
+                record.recommendedCategory,
+              )}`}
+            >
+              {getQaStrategyRecommendationLabel(record.recommendedCategory)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        title: 'Herramienta',
+        key: 'tool',
+        width: 140,
+        render: (_, record) => (
+          <span className="text-sm font-medium text-slate-700">
+            {getQaStrategyToolLabel(record.recommendedTool)}
+          </span>
+        ),
+      },
+      {
+        title: 'Prioridad',
+        key: 'priority',
+        width: 120,
+        render: (_, record) => (
+          <span
+            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getQaStrategyPriorityBadgeClassName(
+              record.priority,
+            )}`}
+          >
+            {getQaStrategyPriorityLabel(record.priority)}
+          </span>
+        ),
+      },
+      {
+        title: (
+          <span className="inline-flex items-center gap-1">
+            Score
+            <Tooltip
+              title="Score IA de 0 a 100 que estima qué tan fuerte es la recomendación según riesgo, cobertura y contexto funcional."
+            >
+              <InfoCircleOutlined className="text-slate-400" />
+            </Tooltip>
+          </span>
+        ),
+        dataIndex: 'score',
+        key: 'score',
+        width: 90,
+        render: value => <span className="font-semibold text-slate-800">{value}</span>,
+      },
+    ],
+    [],
+  );
+
   return (
     <div className="mx-auto max-w-[1520px] space-y-6 pb-12">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -3094,6 +3583,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           <Text type="secondary">
             Clasifica cobertura, riesgo y prioridad para organizar el alcance de smoke y regresión.
           </Text>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            loading={isAiAnalysisLoading}
+            onClick={() => void runQaStrategyAiAnalysis()}
+          >
+            Analizar candidatos con IA
+          </Button>
         </div>
       </div>
 
@@ -3724,6 +4223,254 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           </Button>
         </div>
       ) : null}
+
+      <Modal
+        title={null}
+        open={isAiAnalysisModalOpen}
+        onCancel={() => setIsAiAnalysisModalOpen(false)}
+        footer={null}
+        width={1180}
+        centered
+        destroyOnHidden={false}
+      >
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="mb-2 inline-flex rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+                IA aplicada a estrategia QA
+              </div>
+              <Title level={4} className="!mb-1 !mt-0 text-slate-800">
+                Análisis de candidatos
+              </Title>
+              <Text type="secondary">
+                Basado en funcionalidades, cobertura QA y casos de prueba visibles en la estrategia
+                actual.
+              </Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setIsAiAnalysisModalOpen(false)}>Cerrar</Button>
+              <Button
+                icon={<DownloadOutlined />}
+                disabled={!aiAnalysisResult || isAiAnalysisLoading}
+                onClick={() => void handleExportAiAnalysisPdf()}
+              >
+                Exportar PDF
+              </Button>
+              <Button
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                loading={isAiAnalysisLoading}
+                onClick={() => void runQaStrategyAiAnalysis()}
+              >
+                Reanalizar
+              </Button>
+            </div>
+          </div>
+
+          {isAiAnalysisLoading ? (
+            <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-3xl border border-slate-100 bg-slate-50">
+              <Spin size="large" />
+              <div className="text-sm font-medium text-slate-700">
+                Analizando funcionalidades candidatas...
+              </div>
+              <div className="max-w-[420px] text-center text-sm text-slate-500">
+                La IA está revisando la cobertura actual para sugerir qué conviene llevar a UI,
+                Postman o k6.
+              </div>
+            </div>
+          ) : aiAnalysisResult ? (
+            <>
+              <Row gutter={[16, 16]}>
+                {[
+                  {
+                    key: 'actionable' as AiMetricFilter,
+                    label: 'Candidatas accionables',
+                    value: aiRecommendationMetrics.actionableCount,
+                    badge: 'border-sky-200 bg-sky-50 text-sky-700',
+                    helper: `${aiRecommendationMetrics.uiCount} UI · ${aiRecommendationMetrics.postmanCount} Postman · ${aiRecommendationMetrics.k6Count} k6`,
+                  },
+                  {
+                    key: 'high_priority' as AiMetricFilter,
+                    label: 'Alta prioridad',
+                    value: aiRecommendationMetrics.highPriorityCount,
+                    badge: 'border-red-200 bg-red-50 text-red-700',
+                    helper: 'requieren atención temprana',
+                  },
+                  {
+                    key: 'covered' as AiMetricFilter,
+                    label: 'Ya cubiertas',
+                    value: aiRecommendationMetrics.coveredCount,
+                    badge: 'border-slate-200 bg-slate-100 text-slate-700',
+                    helper: 'sin acción inmediata',
+                  },
+                  {
+                    key: 'coverage_suggested' as AiMetricFilter,
+                    label: 'Cobertura sugerida',
+                    value: `${aiRecommendationMetrics.suggestedCoveragePercent}%`,
+                    badge: 'border-amber-200 bg-amber-50 text-amber-700',
+                    helper: `${aiRecommendationMetrics.actionableCount} de ${aiRecommendationMetrics.total} requieren automatización`,
+                  },
+                ].map(item => (
+                  <Col xs={24} sm={12} lg={12} xl={6} key={item.label}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAiMetricFilter(current => (current === item.key ? 'all' : item.key))
+                      }
+                      className={`w-full rounded-2xl border bg-white p-4 text-left shadow-sm transition ${
+                        aiMetricFilter === item.key
+                          ? 'border-sky-300 ring-2 ring-sky-100'
+                          : 'border-slate-100 hover:border-slate-200'
+                      }`}
+                    >
+                      <div
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${item.badge}`}
+                      >
+                        {item.label}
+                      </div>
+                      <div className="mt-3 text-2xl font-bold text-slate-800">{item.value}</div>
+                      <div className="mt-2 text-xs text-slate-500">{item.helper}</div>
+                    </button>
+                  </Col>
+                ))}
+              </Row>
+
+              {aiMetricFilter !== 'all' ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setAiMetricFilter('all')}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300"
+                  >
+                    Mostrar todo
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-3">
+                <Input
+                  placeholder="Buscar funcionalidad o motivo"
+                  value={aiSearchTerm}
+                  onChange={event => setAiSearchTerm(event.target.value)}
+                  className="min-w-[240px] flex-1"
+                />
+                <Select<AiRecommendationFilter>
+                  value={aiRecommendationFilter}
+                  onChange={value => setAiRecommendationFilter(value)}
+                  className="min-w-[220px]"
+                  options={[
+                    { label: 'Todas las recomendaciones', value: 'all' },
+                    { label: 'UI', value: 'ui_automation' },
+                    { label: 'Postman', value: 'api_postman' },
+                    { label: 'k6', value: 'performance_k6' },
+                    { label: 'Ya cubiertas', value: 'already_covered' },
+                    { label: 'No prioritarias', value: 'not_recommended' },
+                  ]}
+                />
+                <Select
+                  value={aiModuleFilter}
+                  onChange={value => setAiModuleFilter(value)}
+                  className="min-w-[220px]"
+                  options={[
+                    { label: 'Todos los módulos', value: 'all' },
+                    ...aiRecommendationModuleOptions,
+                  ]}
+                />
+              </div>
+
+              <div className="rounded-2xl border border-slate-100">
+                <Table<QaStrategyCandidateRecommendation>
+                  rowKey={record => record.functionalityId}
+                  columns={aiRecommendationColumns}
+                  dataSource={aiRecommendationRows}
+                  pagination={{ pageSize: 8, showSizeChanger: true }}
+                  rowClassName={record =>
+                    record.recommendedCategory === 'already_covered'
+                      ? ''
+                      : record.recommendedCategory === 'not_recommended'
+                        ? ''
+                        : 'bg-sky-50/50'
+                  }
+                  expandable={{
+                    expandIcon: ({ expanded, onExpand, record }) => (
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-sky-300 hover:text-sky-600"
+                        onClick={event => onExpand(record, event)}
+                        aria-label={expanded ? 'Ocultar detalle' : 'Ver detalle'}
+                      >
+                        {expanded ? <MinusOutlined /> : <PlusOutlined />}
+                      </button>
+                    ),
+                    expandedRowRender: record => (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-800">
+                            Razones de la recomendación
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            {record.reasons.length > 0 ? (
+                              record.reasons.map(reason => (
+                                <div
+                                  key={reason}
+                                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                                >
+                                  {reason}
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                Sin explicación adicional.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-800">
+                          Casos relacionados
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {record.relatedTestCases.length > 0 ? (
+                            record.relatedTestCases.map(testCase => (
+                              <span
+                                key={testCase.id}
+                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                              >
+                                <span className="font-semibold text-slate-700">{testCase.title}</span>
+                                {testCase.automationStatus
+                                  ? ` · ${testCase.automationStatus}`
+                                  : ''}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-slate-400">
+                              No se asociaron casos específicos en esta recomendación.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  }}
+                  locale={{
+                    emptyText:
+                      'No hay resultados para los filtros actuales del análisis IA.',
+                  }}
+                  scroll={{ x: 980 }}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center">
+              <div className="text-base font-semibold text-slate-700">
+                Aún no hay resultados de IA para mostrar.
+              </div>
+              <div className="mt-2 text-sm text-slate-500">
+                Ejecuta el análisis para clasificar funcionalidades candidatas a UI, Postman o
+                k6 según la cobertura actual.
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         title={null}

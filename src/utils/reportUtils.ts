@@ -62,6 +62,41 @@ export interface DeliveryUnitProgressDocxData {
   }>;
 }
 
+export interface QaStrategyCandidatesPdfData {
+  projectName?: string;
+  generatedAt?: string;
+  summary: {
+    actionableCount: number;
+    highPriorityCount: number;
+    coveredCount: number;
+    suggestedCoveragePercent: number;
+    uiCount: number;
+    postmanCount: number;
+    k6Count: number;
+    total: number;
+  };
+  recommendations: Array<{
+    functionalityName: string;
+    module: string;
+    currentCoverage: {
+      totalCases: number;
+      automatedCases: number;
+      candidateCases: number;
+      manualCases: number;
+    };
+    recommendedCategory: string;
+    recommendedTool: string;
+    priority: string;
+    score: number;
+    reasons: string[];
+    relatedTestCases: Array<{
+      id: string;
+      title: string;
+      automationStatus?: string | null;
+    }>;
+  }>;
+}
+
 /**
  * Generates an Excel report for a specific cycle
  */
@@ -681,4 +716,119 @@ export const exportTestRunToPdf = async ({
 
   const safeName = (testRun.title || 'Reporte_UAT').replace(/[\\/:*?"<>|]+/g, '_').trim();
   pdf.save(`${safeName || 'Reporte_UAT'}_${dayjs().format('YYYYMMDD')}.pdf`);
+};
+
+export const exportQaStrategyCandidatesToPdf = async ({
+  projectName,
+  generatedAt,
+  summary,
+  recommendations,
+}: QaStrategyCandidatesPdfData) => {
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+  let cursorY = 18;
+
+  const ensureSpace = (requiredHeight: number) => {
+    if (cursorY + requiredHeight <= pageHeight - margin) return;
+    pdf.addPage();
+    cursorY = 18;
+  };
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(18);
+  pdf.text('Analisis de candidatos QA', margin, cursorY);
+  cursorY += 9;
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+  cursorY = pdfText(
+    pdf,
+    `Proyecto: ${projectName || 'Proyecto QA Tracker'} | Generado: ${generatedAt || dayjs().format('YYYY-MM-DD HH:mm')}`,
+    margin,
+    cursorY,
+    contentWidth,
+  );
+
+  cursorY += 4;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(13);
+  pdf.text('Resumen', margin, cursorY);
+  cursorY += 7;
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+  cursorY = pdfText(
+    pdf,
+    `Accionables: ${summary.actionableCount} | Alta prioridad: ${summary.highPriorityCount} | Ya cubiertas: ${summary.coveredCount} | Cobertura sugerida: ${summary.suggestedCoveragePercent}%`,
+    margin,
+    cursorY,
+    contentWidth,
+  );
+  cursorY = pdfText(
+    pdf,
+    `Distribucion: UI ${summary.uiCount} | Postman ${summary.postmanCount} | k6 ${summary.k6Count} | Total analizado ${summary.total}`,
+    margin,
+    cursorY + 2,
+    contentWidth,
+  );
+
+  for (const [index, item] of recommendations.entries()) {
+    ensureSpace(48);
+    cursorY += 6;
+
+    pdf.setDrawColor(226, 232, 240);
+    pdf.roundedRect(margin, cursorY, contentWidth, 28, 3, 3);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(`${index + 1}. ${item.functionalityName}`, margin + 4, cursorY + 7);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    cursorY = pdfText(
+      pdf,
+      `Modulo: ${item.module} | Recomendacion: ${item.recommendedCategory} | Herramienta: ${item.recommendedTool} | Prioridad: ${item.priority} | Score: ${item.score}`,
+      margin + 4,
+      cursorY + 13,
+      contentWidth - 8,
+    );
+
+    cursorY = pdfText(
+      pdf,
+      `Cobertura actual: ${item.currentCoverage.totalCases} casos, ${item.currentCoverage.automatedCases} automatizados, ${item.currentCoverage.candidateCases} candidatas.`,
+      margin + 4,
+      cursorY + 1,
+      contentWidth - 8,
+    );
+
+    if (item.reasons.length > 0) {
+      cursorY += 3;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Razones:', margin, cursorY);
+      pdf.setFont('helvetica', 'normal');
+      cursorY = pdfText(pdf, item.reasons.join(' | '), margin + 2, cursorY + 5, contentWidth - 2);
+    }
+
+    if (item.relatedTestCases.length > 0) {
+      cursorY += 2;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Casos relacionados:', margin, cursorY);
+      pdf.setFont('helvetica', 'normal');
+      cursorY = pdfText(
+        pdf,
+        item.relatedTestCases
+          .map(testCase => `${testCase.title}${testCase.automationStatus ? ` (${testCase.automationStatus})` : ''}`)
+          .join(' | '),
+        margin + 2,
+        cursorY + 5,
+        contentWidth - 2,
+      );
+    }
+  }
+
+  const safeName = (projectName || 'Analisis_Candidatos_QA').replace(/[\\/:*?"<>|]+/g, '_').trim();
+  pdf.save(`${safeName || 'Analisis_Candidatos_QA'}_${dayjs().format('YYYYMMDD')}.pdf`);
 };

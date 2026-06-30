@@ -21,6 +21,88 @@ export type ExecutionRecommendation = {
   reason: string;
 };
 
+export type QaStrategyCandidateCategory =
+  | 'ui_automation'
+  | 'api_postman'
+  | 'performance_k6'
+  | 'already_covered'
+  | 'not_recommended';
+
+export type QaStrategyCandidatePriority = 'high' | 'medium' | 'low';
+
+export type QaStrategyCandidateTool = 'playwright' | 'postman' | 'k6' | 'none';
+
+export type QaStrategyCandidateAutomationType =
+  | 'ui'
+  | 'api'
+  | 'integration'
+  | 'performance'
+  | 'none';
+
+export type QaStrategyCandidateInput = {
+  id: string;
+  name: string;
+  module: string;
+  priority: string;
+  riskLevel: string;
+  status: string;
+  isCore: boolean;
+  isRegression: boolean;
+  isSmoke: boolean;
+  lastFunctionalChangeAt?: string;
+  coverage: {
+    totalCases: number;
+    automatedCases: number;
+    candidateCases: number;
+    manualCases: number;
+  };
+  testCases: Array<{
+    id: string;
+    title: string;
+    testType: string;
+    priority: string;
+    automationStatus: string;
+    automationType?: string | null;
+    automationTool?: string | null;
+    summary?: string;
+  }>;
+};
+
+export type QaStrategyCandidateRecommendation = {
+  functionalityId: string;
+  functionalityName: string;
+  module: string;
+  recommendedCategory: QaStrategyCandidateCategory;
+  suggestedAutomationType: QaStrategyCandidateAutomationType;
+  recommendedTool: QaStrategyCandidateTool;
+  score: number;
+  priority: QaStrategyCandidatePriority;
+  reasons: string[];
+  currentCoverage: {
+    totalCases: number;
+    automatedCases: number;
+    candidateCases: number;
+    manualCases: number;
+  };
+  relatedTestCases: Array<{
+    id: string;
+    title: string;
+    automationStatus?: string | null;
+  }>;
+};
+
+export type QaStrategyCandidateAnalysisResult = {
+  summary: {
+    uiAutomation: number;
+    apiPostman: number;
+    performanceK6: number;
+    alreadyCovered: number;
+    notRecommended: number;
+  };
+  recommendations: QaStrategyCandidateRecommendation[];
+  generatedAt: string;
+};
+
 type ProjectInsightInput = {
   name: string;
   description?: string;
@@ -167,6 +249,13 @@ export async function recommendExecutionFunctionalitiesWithAI(input: {
   maxSuggestions?: number;
 }) {
   return postAi<ExecutionRecommendation[]>('/api/ai/execution-functionalities/recommend', input);
+}
+
+export async function analyzeQaStrategyCandidatesWithAI(input: {
+  projectId?: string;
+  functionalities: QaStrategyCandidateInput[];
+}) {
+  return postAi<QaStrategyCandidateAnalysisResult>('/api/ai/qa-strategy/candidates/analyze', input);
 }
 
 export async function analyzeProjectWithAI(input: ProjectInsightInput, projectId?: string) {
