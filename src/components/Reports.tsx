@@ -219,7 +219,7 @@ const getTestRunSummary = (testRun?: TestRun | null) => {
   const blocked = results.filter(result => result.result === TestResult.BLOCKED).length;
   const pending = results.filter(result => result.result === TestResult.NOT_EXECUTED).length;
   const executed = totalTests - pending;
-  const passRate = getPercent(passed, totalTests);
+  const passRate = getPercent(passed, executed);
   const executionCoverage = getPercent(executed, totalTests);
 
   return {
@@ -2237,7 +2237,7 @@ const ProjectStatusReport: React.FC<{
                   <Text strong>{stats.activeBugsCount}</Text>
                 </div>
                 <div className="flex justify-between">
-                  <Text type="secondary">Promedio de ejecuciones:</Text>
+                  <Text type="secondary">Promedio de aprobacion:</Text>
                   <Text strong>{stats.averagePassRate}%</Text>
                 </div>
                 <div className="flex justify-between">
@@ -2341,14 +2341,14 @@ const ProjectStatusReport: React.FC<{
                     </div>
                   ))
                 ) : (
-                  <Text type="secondary">Sin funcionalidades con casos dentro del alcance.</Text>
+                  <Text type="secondary">Sin funcionalidades con al menos un caso dentro del alcance.</Text>
                 )}
               </div>
             </div>
           </Col>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Tasa de exito por herramienta</Text>
+              <Text strong>Tasa de aprobacion por herramienta</Text>
               <div className="mt-4 space-y-3">
                 {stats.automationPortfolio.successByTool.length > 0 ? (
                   stats.automationPortfolio.successByTool.map(item => (

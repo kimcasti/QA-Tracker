@@ -322,9 +322,17 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const activeBugs = bugs.filter(item => item.status !== BugStatus.RESOLVED);
   const totalBugs = activeBugs.length;
   const criticalBugs = activeBugs.filter(item => item.severity === Severity.CRITICAL).length;
-  const funcsWithTestCases = new Set(testCases.map(item => item.functionalityId)).size;
+  const functionalityIds = new Set(functionalities.map(item => item.id));
+  const funcsWithTestCases = new Set(
+    testCases
+      .map(item => item.functionalityId)
+      .filter((functionalityId): functionalityId is string => Boolean(functionalityId))
+      .filter(functionalityId => functionalityIds.has(functionalityId)),
+  ).size;
   const testCaseCoverage =
-    totalFunctionalities > 0 ? (funcsWithTestCases / totalFunctionalities) * 100 : 0;
+    totalFunctionalities > 0
+      ? Math.min((funcsWithTestCases / totalFunctionalities) * 100, 100)
+      : 0;
 
   const finalizedRegressionRuns = testRuns.filter(
     testRun => testRun.status === ExecutionStatus.FINAL && testRun.testType === TestType.REGRESSION,
@@ -393,14 +401,23 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             new Date(left.lastAutomationRunAt || 0).getTime(),
         ),
     ][0] || null;
-  const latestAutomationResult =
-    mapExecutionResultToAutomationResult(latestAutomatedExecution?.result) ||
-    latestAutomationMetadataCase?.lastAutomationStatus ||
-    null;
-  const latestAutomationRunAt =
-    latestAutomatedExecution?.executionDate ||
-    latestAutomationMetadataCase?.lastAutomationRunAt ||
-    null;
+  const latestAutomatedExecutionAt = latestAutomatedExecution?.executionDate
+    ? new Date(latestAutomatedExecution.executionDate).getTime()
+    : Number.NEGATIVE_INFINITY;
+  const latestAutomationMetadataAt = latestAutomationMetadataCase?.lastAutomationRunAt
+    ? new Date(latestAutomationMetadataCase.lastAutomationRunAt).getTime()
+    : Number.NEGATIVE_INFINITY;
+  const latestAutomationFromExecution = latestAutomatedExecutionAt >= latestAutomationMetadataAt;
+  const latestAutomationResult = latestAutomationFromExecution
+    ? mapExecutionResultToAutomationResult(latestAutomatedExecution?.result) ||
+      latestAutomationMetadataCase?.lastAutomationStatus ||
+      null
+    : latestAutomationMetadataCase?.lastAutomationStatus ||
+      mapExecutionResultToAutomationResult(latestAutomatedExecution?.result) ||
+      null;
+  const latestAutomationRunAt = latestAutomationFromExecution
+    ? latestAutomatedExecution?.executionDate || latestAutomationMetadataCase?.lastAutomationRunAt || null
+    : latestAutomationMetadataCase?.lastAutomationRunAt || latestAutomatedExecution?.executionDate || null;
   const moduleAutomationCoverage = Array.from(
     functionalities.reduce<
       Map<
@@ -555,19 +572,30 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const failedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
     execution => execution.result === TestResult.FAILED,
   ).length;
-  const passFailTotal = passedTestCasesCount + failedTestCasesCount;
-  const passFailChartData = [
+  const blockedTestCasesCount = Object.values(latestExecutionByTestCase).filter(
+    execution => execution.result === TestResult.BLOCKED,
+  ).length;
+  const executionOutcomeTotal =
+    passedTestCasesCount + failedTestCasesCount + blockedTestCasesCount;
+  const executionOutcomeChartData = [
     {
       name: 'Aprobados',
       value: passedTestCasesCount,
       color: qaPalette.functionalityStatus.completed,
     },
     { name: 'Fallidos', value: failedTestCasesCount, color: qaPalette.functionalityStatus.failed },
+    {
+      name: 'Bloqueados',
+      value: blockedTestCasesCount,
+      color: qaPalette.functionalityStatus.inProgress,
+    },
   ].filter(item => item.value > 0);
   const passedPercent =
-    passFailTotal > 0 ? Math.round((passedTestCasesCount / passFailTotal) * 100) : 0;
+    executionOutcomeTotal > 0 ? Math.round((passedTestCasesCount / executionOutcomeTotal) * 100) : 0;
   const failedPercent =
-    passFailTotal > 0 ? Math.round((failedTestCasesCount / passFailTotal) * 100) : 0;
+    executionOutcomeTotal > 0 ? Math.round((failedTestCasesCount / executionOutcomeTotal) * 100) : 0;
+  const blockedPercent =
+    executionOutcomeTotal > 0 ? Math.round((blockedTestCasesCount / executionOutcomeTotal) * 100) : 0;
 
   const latestFinalRegressionCycle = regressionCycles.find(cycle => cycle.status === 'FINALIZADA');
   const latestFinalSmokeCycle = smokeCycles.find(cycle => cycle.status === 'FINALIZADA');
@@ -606,8 +634,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const regressionPercent =
     regressionSource === 'execution'
       ? regressionRunSummary.passRate
-      : regressionTotal > 0
-        ? Math.round((regressionPassed / regressionTotal) * 100)
+      : regressionPassed + regressionFailed > 0
+        ? Math.round((regressionPassed / (regressionPassed + regressionFailed)) * 100)
         : 0;
 
   const smokePassed =
@@ -625,8 +653,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
   const smokePercent =
     smokeSource === 'execution'
       ? smokeRunSummary.passRate
-      : smokeTotal > 0
-        ? Math.round((smokePassed / smokeTotal) * 100)
+      : smokePassed + smokeFailed > 0
+        ? Math.round((smokePassed / (smokePassed + smokeFailed)) * 100)
         : 0;
 
   const regressionPieData = [
@@ -768,7 +796,23 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             period,
             name: item.name,
             status: item.status,
-            quality: 100,
+            quality: (() => {
+              const relatedCases = testCases.filter(testCase => testCase.functionalityId === item.id);
+              if (!relatedCases.length) return null;
+
+              const latestResults = relatedCases
+                .map(testCase => latestExecutionByTestCase[testCase.id]?.result)
+                .filter((result): result is TestResult => Boolean(result));
+              const executedResults = latestResults.filter(
+                result => result !== TestResult.NOT_EXECUTED,
+              );
+              if (!executedResults.length) return null;
+
+              const passedResults = executedResults.filter(
+                result => result === TestResult.PASSED,
+              ).length;
+              return Math.round((passedResults / executedResults.length) * 100);
+            })(),
           };
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -832,14 +876,18 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         </span>
       ),
       key: 'quality',
-      render: (_: unknown, record: { status: TestStatus; quality: number }) => (
+      render: (_: unknown, record: { status: TestStatus; quality: number | null }) => (
         <div className="flex items-center gap-2">
-          {record.status === TestStatus.COMPLETED ? (
+          {record.quality !== null && record.status === TestStatus.COMPLETED ? (
             <CheckCircleFilled style={{ color: qaPalette.functionalityStatus.completed }} />
-          ) : (
+          ) : record.quality !== null ? (
             <ThunderboltOutlined style={{ color: qaPalette.primary }} />
+          ) : (
+            <HistoryOutlined style={{ color: qaPalette.border }} />
           )}
-          <span className="font-medium">{record.quality}%</span>
+          <span className="font-medium">
+            {record.quality !== null ? `${record.quality}%` : 'Sin datos'}
+          </span>
         </div>
       ),
     },
@@ -860,7 +908,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       'Fecha / Periodo': item.period,
       Funcionalidad: item.name,
       Estado: item.status,
-      Calidad: `${item.quality}%`,
+      Calidad: item.quality !== null ? `${item.quality}%` : 'Sin datos',
     }));
 
     try {
@@ -912,7 +960,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           Dashboard
         </Title>
         <Text type="secondary" className="text-slate-500">
-          Monitoreo del estado de calidad, cobertura y ciclos del proyecto.
+          Monitoreo del estado funcional, cobertura de pruebas y ciclos del proyecto.
         </Text>
       </div>
 
@@ -920,29 +968,29 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <SafetyCertificateOutlined style={{ color: qaPalette.functionalityStatus.completed }} />
-            <span>Calidad por caso de prueba</span>
+            <span>Salud de casos de prueba</span>
           </div>
           <Text type="secondary" className="text-slate-500">
-            Métricas calculadas a partir de casos de prueba, ejecuciones generales y bugs del
-            proyecto.
+            Métricas calculadas a partir de casos, últimas ejecuciones registradas y bugs activos
+            del proyecto.
           </Text>
         </div>
 
         <Row gutter={[20, 20]}>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Ejecución de casos"
+              title="Casos con ejecución"
               value={`${executionCoveragePercent}%`}
-              hint={`${executedTestCasesCount} de ${testCases.length} ejecutados`}
+              hint={`${executedTestCasesCount} de ${testCases.length} con resultado final registrado`}
               accent={qaPalette.primary}
               icon={<FileSearchOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Cobertura de casos"
+              title="Funcionalidades con casos"
               value={`${testCaseCoverage.toFixed(1)}%`}
-              hint={`${funcsWithTestCases} de ${totalFunctionalities} funcionalidades`}
+              hint={`${funcsWithTestCases} de ${totalFunctionalities} funcionalidades con al menos 1 caso`}
               accent={qaPalette.functionalityStatus.completed}
               icon={
                 <FileSearchOutlined
@@ -970,7 +1018,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
             <KpiCard
               title="Automatizacion"
               value={`${automationCoverage}%`}
-              hint={`${automatedTests} de ${testCases.length} casos`}
+              hint={`${automatedTests} de ${testCases.length} casos automatizados`}
               accent={qaPalette.functionalityStatus.postMvp}
               icon={
                 <ThunderboltOutlined
@@ -1028,7 +1076,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           <Col xs={24} md={12} lg={6}>
             <div className="rounded-2xl border border-slate-200 p-4">
               <Text type="secondary" className="text-xs uppercase tracking-wide">
-                Ultimo resultado
+                Ultimo resultado real
               </Text>
               <div className="mt-2">
                 <Tag color={getAutomationTagColor(latestAutomationResult)}>
@@ -1157,7 +1205,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                         </PieChart>
                       </div>
                       <div className="text-center text-sm text-slate-600">
-                        {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades
+                        {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades con al menos 1 caso automatizado
                       </div>
                     </>
                   ) : (
@@ -1225,10 +1273,10 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <HistoryOutlined style={{ color: qaPalette.primary }} />
-            <span>Validación por funcionalidad</span>
+            <span>Lectura funcional</span>
           </div>
           <Text type="secondary" className="text-slate-500">
-            Métricas calculadas a partir de funcionalidades y de la mejor fuente disponible entre
+            Métricas calculadas por alcance funcional usando la mejor fuente disponible entre
             ejecuciones oficiales e historial legacy.
           </Text>
         </div>
@@ -1240,8 +1288,8 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
               value={`${regressionStability.toFixed(1)}%`}
               hint={
                 regressionStabilitySource === 'execution'
-                  ? 'Tasa de exito en ejecuciones oficiales'
-                  : 'Tasa de exito en ciclos legacy'
+                  ? 'Tasa de exito sobre casos ejecutados en ejecuciones oficiales'
+                  : 'Tasa de exito sobre casos ejecutados en ciclos legacy'
               }
               accent={qaPalette.primary}
               icon={<HistoryOutlined className="text-lg" style={{ color: qaPalette.primary }} />}
@@ -1249,7 +1297,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Cobertura regression"
+              title="Alcance regresion"
               value={regressionFunctionalities}
               hint="Funcionalidades marcadas para regresión"
               accent={qaPalette.primary}
@@ -1258,7 +1306,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <KpiCard
-              title="Cobertura smoke"
+              title="Alcance smoke"
               value={smokeFunctionalities}
               hint="Funcionalidades marcadas para smoke"
               accent={qaPalette.functionalityStatus.inProgress}
@@ -1455,12 +1503,12 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
       <Row gutter={[24, 24]}>
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
-            <div className="mb-4 font-semibold text-slate-800">Ejecución de casos</div>
+            <div className="mb-4 font-semibold text-slate-800">Casos con ejecución final</div>
             <div className="relative flex h-48 items-center justify-center">
               <FixedPie data={executionMixData} innerRadius={50} outerRadius={70} />
               <div className="absolute inset-0 flex items-center justify-center flex-col">
                 <span className="text-2xl font-bold">{executionCoveragePercent}%</span>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Ejecucion</span>
+                <span className="text-[10px] font-bold uppercase text-slate-400">Cobertura</span>
               </div>
             </div>
           </Card>
@@ -1468,20 +1516,20 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
 
         <Col xs={24} md={8}>
           <Card variant="borderless" className="h-full rounded-2xl qa-surface-card text-center">
-            <div className="mb-4 font-semibold text-slate-800">Aprobados vs fallidos</div>
-            {passFailTotal > 0 ? (
+            <div className="mb-4 font-semibold text-slate-800">Resultados finales por caso</div>
+            {executionOutcomeTotal > 0 ? (
               <div className="space-y-4">
                 <div className="relative flex h-48 items-center justify-center">
-                  <FixedPie data={passFailChartData} innerRadius={52} outerRadius={72} />
+                  <FixedPie data={executionOutcomeChartData} innerRadius={52} outerRadius={72} />
                   <div className="absolute inset-0 flex items-center justify-center flex-col">
-                    <span className="text-2xl font-bold text-slate-800">{passFailTotal}</span>
+                    <span className="text-2xl font-bold text-slate-800">{executionOutcomeTotal}</span>
                     <span className="text-[10px] font-bold uppercase text-slate-400">
-                      Ejecutadas
+                      Con resultado
                     </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-left">
+                <div className="grid grid-cols-1 gap-3 text-left sm:grid-cols-3">
                   <div className="rounded-xl border border-slate-100 px-4 py-3">
                     <div className="mb-2 flex items-center gap-2">
                       <div
@@ -1508,6 +1556,20 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                     </div>
                     <div className="text-xl font-bold text-slate-800">{failedTestCasesCount}</div>
                     <div className="text-xs text-slate-500">{failedPercent}% del total</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 px-4 py-3">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: qaPalette.functionalityStatus.inProgress }}
+                      />
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Bloqueados
+                      </span>
+                    </div>
+                    <div className="text-xl font-bold text-slate-800">{blockedTestCasesCount}</div>
+                    <div className="text-xs text-slate-500">{blockedPercent}% del total</div>
                   </div>
                 </div>
               </div>
