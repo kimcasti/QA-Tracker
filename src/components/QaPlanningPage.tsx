@@ -1908,11 +1908,22 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         })),
     [functionalities],
   );
+  const hasActiveTableFilters = React.useMemo(
+    () =>
+      Boolean(searchTerm.trim()) ||
+      Object.values(tableFilters).some(value => Array.isArray(value) && value.length > 0),
+    [searchTerm, tableFilters],
+  );
+
+  const handleClearTableFilters = React.useCallback(() => {
+    setSearchTerm('');
+    setTableFilters(INITIAL_TABLE_FILTERS);
+  }, []);
 
   const statusFilters = React.useMemo(
     () =>
       FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
-        text: labelTestStatus(status, t),
+          text: labelTestStatus(status, t),
         value: status,
       })),
     [t],
@@ -3854,6 +3865,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                   onChange={event => setSearchTerm(event.target.value)}
                   className="w-full sm:flex-1"
                 />
+                <Button
+                  onClick={handleClearTableFilters}
+                  disabled={!hasActiveTableFilters}
+                  className="inline-flex h-10 items-center justify-center rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:!border-rose-300 hover:!text-rose-700 sm:w-auto"
+                >
+                  Limpiar filtros
+                </Button>
               </div>
               <Popover
                 trigger="click"

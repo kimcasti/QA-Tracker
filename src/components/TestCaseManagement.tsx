@@ -58,7 +58,6 @@ import {
   normalizeOrganizationPlan,
 } from '../modules/projects/utils/projectUpgrade';
 
-const { TextArea } = Input;
 const { Text } = Typography;
 const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
 const automationStatusOptions = Object.values(AutomationStatus);
@@ -1209,7 +1208,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </div>
               <div className="mb-4">
                 <Text strong>Precondiciones:</Text>
-                <p className="mt-1">{record.preconditions}</p>
+                {renderRichTextContent(record.preconditions)}
               </div>
               <div className="mb-4">
                 <Text strong>Pasos de Prueba:</Text>
@@ -1371,7 +1370,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </div>
 
               <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
-                <TextArea rows={2} placeholder="Estado inicial requerido" />
+                <BasicRichTextEditor
+                  placeholder="Estado inicial requerido"
+                  minHeightClassName="min-h-[96px]"
+                />
               </Form.Item>
 
               <Form.Item
