@@ -74,5 +74,11 @@ export interface TestRunDto {
       email?: string | null;
       role?: string;
     } | null;
+    externalParticipant?: {
+      documentId?: string | null;
+      name: string;
+      email?: string | null;
+      role?: string;
+    } | null;
   } | null;
 }

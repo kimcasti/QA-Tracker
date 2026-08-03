@@ -30,11 +30,14 @@ import {
 } from '../../shared/services/strapi';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestRunDto, TestRunResultDto } from '../types/api';
+import { Http } from '../../../config/http';
 
 function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicUatSessionSummary | null {
   if (!document?.documentId) {
     return null;
   }
+
+  const participant = document.participant || document.externalParticipant || null;
 
   return {
     documentId: document.documentId,
@@ -49,7 +52,7 @@ function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicU
     allowCommentEditing: document.allowCommentEditing ?? true,
     completionLocked: document.completionLocked ?? false,
     publicUrl: document.publicUrl || null,
-    participant: document.participant || null,
+    participant,
   };
 }
 
@@ -127,44 +130,33 @@ async function syncResults(
   organizationDocumentId?: string,
   projectDocumentId?: string,
 ) {
-  const existingResults = await listDocuments<TestRunResultDto>('/api/test-run-results', {
-    'filters[testRun][documentId][$eq]': testRunDocumentId,
-    ...populateParams(['functionality', 'testCase', 'bug']),
+  const response = await Http.post<{ data: TestRunDto }>('/api/test-run-results/batch-sync', {
+    data: {
+      testRun: testRunDocumentId,
+      project: projectDocumentId,
+      organization: organizationDocumentId,
+      items: testRun.results.map(result => ({
+        documentId: result.id.startsWith('TR-') ? null : result.id,
+        data: {
+          result: testResultToApi(result.result),
+          notes: result.notes || null,
+          evidenceImage: result.evidenceImage || null,
+          bugTitle: result.bugTitle || null,
+          bugLink: result.bugLink || null,
+          severity: severityToApi(result.severity),
+          linkedBugId: result.linkedBugId || null,
+          organization: relation(organizationDocumentId),
+          project: relation(projectDocumentId),
+          testRun: relation(testRunDocumentId),
+          functionality: relation(result.functionalityId),
+          testCase: relation(result.testCaseId),
+          bug: relation(result.linkedBugId || result.bugId),
+        },
+      })),
+    },
   });
 
-  const savedResults: TestRunResultDto[] = [];
-  for (const result of testRun.results) {
-    const documentId = existingResults.some(item => item.documentId === result.id) ? result.id : null;
-
-    const saved = await upsertDocument<TestRunResultDto>(
-      '/api/test-run-results',
-      documentId,
-      {
-        result: testResultToApi(result.result),
-        notes: result.notes || null,
-        evidenceImage: result.evidenceImage || null,
-        bugTitle: result.bugTitle || null,
-        bugLink: result.bugLink || null,
-        severity: severityToApi(result.severity),
-        linkedBugId: result.linkedBugId || null,
-        organization: organizationDocumentId,
-        project: projectDocumentId,
-        testRun: testRunDocumentId,
-        functionality: result.functionalityId || null,
-        testCase: result.testCaseId || null,
-        bug: result.linkedBugId || result.bugId || null,
-      },
-    );
-
-    savedResults.push(saved);
-  }
-
-  const savedIds = new Set(savedResults.map(result => result.documentId));
-  await Promise.all(
-    existingResults
-      .filter(result => !savedIds.has(result.documentId))
-      .map(result => deleteDocument('/api/test-run-results', result.documentId)),
-  );
+  return response.data.data;
 }
 
 export async function getTestRuns(projectId?: string) {
@@ -251,14 +243,14 @@ export async function saveTestRun(testRun: TestRun) {
     sprint: testRun.sprint || null,
   });
 
-  await syncResults(
+  const syncedRun = await syncResults(
     saved.documentId,
     testRun,
     context.organizationDocumentId,
     context.documentId,
   );
 
-  return getTestRunById(saved.documentId);
+  return mapTestRun(syncedRun);
 }
 
 export async function removeTestRun(id: string) {

@@ -677,6 +677,16 @@ function matchesFunctionalityToExecutionType(
   }
 }
 
+function matchesTestCaseToExecutionType(testCase: TestCase, selectedTestType?: TestType) {
+  if (!selectedTestType) return true;
+
+  if (selectedTestType === TestType.UAT) {
+    return testCase.testType === TestType.UAT;
+  }
+
+  return true;
+}
+
 function matchesAutomationScopeFilter(status: AutomationStatus, filter: ScopeAutomationFilter) {
   switch (filter) {
     case 'automated':
@@ -1384,6 +1394,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isEditingRunInfo, setIsEditingRunInfo] = useState(false);
   const [isSubmittingTestRun, setIsSubmittingTestRun] = useState(false);
+  const [isFinalizingExecution, setIsFinalizingExecution] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
     useParticipantDirectoryMembers(isModalOpen);
@@ -1655,6 +1666,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     const grouped = new Map<string, typeof testCases>();
 
     testCases.forEach(testCase => {
+      if (!matchesTestCaseToExecutionType(testCase, selectedTestType)) {
+        return;
+      }
+
       const automationStatus = deriveAutomationStatus(testCase);
       if (!matchesAutomationScopeFilter(automationStatus, scopeAutomationFilter)) {
         return;
@@ -1673,14 +1688,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     });
 
     return grouped;
-  }, [scopeAutomationFilter, scopeAutomationToolFilter, testCases]);
+  }, [scopeAutomationFilter, scopeAutomationToolFilter, selectedTestType, testCases]);
 
   const testCaseById = useMemo(() => {
     return new Map(testCases.map(testCase => [testCase.id, testCase]));
   }, [testCases]);
 
   const functionalityById = useMemo(() => {
-    return new Map(functionalities.map(func => [func.id, func]));
+    return new Map<string, Functionality>(functionalities.map(func => [func.id, func]));
   }, [functionalities]);
 
   const selectedFunctionalityModels = useMemo(() => {
@@ -2249,10 +2264,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const handleCreateTestRun = async () => {
+    const loadingMessageKey = 'create-test-run';
     try {
       setIsSubmittingTestRun(true);
+      message.loading({
+        key: loadingMessageKey,
+        content: 'Se esta creando la ejecucion de prueba, por favor espere.',
+        duration: 0,
+      });
       const values = await form.validateFields();
       if (selectedFuncIds.length === 0 || selectedTestCaseCount === 0) {
+        message.destroy(loadingMessageKey);
         message.error(
           'Selecciona al menos una funcionalidad con casos compatibles con el filtro actual.',
         );
@@ -2311,7 +2333,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       message.success('Ejecución de pruebas creada. Iniciando fase de ejecución...');
     } catch (error) {
       console.error('Validation failed:', error);
+      message.error(
+        error instanceof Error && error.message
+          ? error.message
+          : 'No fue posible crear la ejecucion de pruebas.',
+      );
     } finally {
+      message.destroy(loadingMessageKey);
       setIsSubmittingTestRun(false);
     }
   };
@@ -2360,8 +2388,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const handleSaveExecution = async (status: ExecutionStatus) => {
     if (!activeTestRun) return;
+    const isFinalStatus = status === ExecutionStatus.FINAL;
+    const loadingMessageKey = isFinalStatus ? 'finalize-test-run' : 'save-test-run';
 
-    if (status === ExecutionStatus.FINAL) {
+    if (isFinalStatus) {
       const notExecutedResults = executionResults.filter(
         result => result.result === TestResult.NOT_EXECUTED,
       );
@@ -2388,7 +2418,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       }
     }
 
-    const updatedRun: TestRun = {
+    try {
+      if (isFinalStatus) {
+        setIsFinalizingExecution(true);
+        message.loading({
+          key: loadingMessageKey,
+          content: 'Se esta finalizando la ejecucion, por favor espere.',
+          duration: 0,
+        });
+      }
+
+      const updatedRun: TestRun = {
       ...activeTestRun,
       status,
       results: executionResults,
@@ -2396,13 +2436,28 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     const savedRun = await saveTestRun(updatedRun);
     message.success(`Ejecución guardada como ${status}`);
-    if (status === ExecutionStatus.FINAL) {
+    if (isFinalStatus) {
       setActiveTestRun(null);
       setExecutionResults([]);
       return;
     }
     setActiveTestRun(savedRun);
     setExecutionResults(savedRun.results);
+    } catch (error) {
+      console.error('Failed to save execution:', error);
+      message.error(
+        error instanceof Error && error.message
+          ? error.message
+          : isFinalStatus
+            ? 'No fue posible finalizar la ejecucion.'
+            : 'No fue posible guardar la ejecucion.',
+      );
+    } finally {
+      if (isFinalStatus) {
+        message.destroy(loadingMessageKey);
+        setIsFinalizingExecution(false);
+      }
+    }
   };
 
   const handleExecuteAll = () => {
@@ -3270,6 +3325,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </div>
               ) : null}
 
+              {selectedTestType === TestType.UAT ? (
+                <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  <div className="font-semibold">Ejecución UAT con alcance exclusivo</div>
+                  <div className="mt-1 text-blue-800">
+                    Esta ejecución solo incluirá casos de prueba marcados como <strong>UAT</strong>.
+                  </div>
+                  <div className="mt-1 text-xs text-blue-700">
+                    Si una funcionalidad no tiene casos UAT, seguirá visible como referencia pero no
+                    podrá seleccionarse para la ejecución.
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mb-4 flex flex-wrap gap-2">
                 <Tag color="blue">Casos visibles: {selectedTestCaseCount}</Tag>
                 <Tag color="green">
@@ -3589,9 +3657,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'title',
+      width: 240,
       render: (_: any, record: TestRun) => (
         <div className="flex flex-col gap-1">
-          <Text strong className="block text-slate-700">
+          <Text strong className="block max-w-[220px] truncate text-slate-700" title={record.title}>
             {record.title}
           </Text>
           {record.testType === TestType.UAT ? (
@@ -3611,6 +3680,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'executionDate',
       key: 'executionDate',
+      width: 120,
       render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
     },
     {
@@ -3621,6 +3691,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'testType',
       key: 'testType',
+      width: 150,
       filters: nativeTestTypeFilters,
       filteredValue: tableFilters.testType,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.testType === String(value),
@@ -3652,6 +3723,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'sprint',
       key: 'sprint',
+      width: 90,
       filters: nativeSprintFilters,
       filteredValue: tableFilters.sprint,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.sprint === String(value),
@@ -3664,7 +3736,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'tester',
       key: 'tester',
-      render: (tester: string | undefined) => tester || '—',
+      width: 140,
+      render: (tester: string | undefined) => (
+        <span className="block max-w-[120px] truncate" title={tester || undefined}>
+          {tester || '—'}
+        </span>
+      ),
     },
     {
       title: (
@@ -3674,6 +3751,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'environment',
       key: 'environment',
+      width: 140,
       filters: nativeEnvironmentFilters,
       filteredValue: tableFilters.environment,
       onFilter: (value: boolean | React.Key, record: TestRun) =>
@@ -3695,6 +3773,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       ),
       dataIndex: 'status',
       key: 'status',
+      width: 130,
       filters: nativeStatusFilters,
       filteredValue: tableFilters.status,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.status === String(value),
@@ -3714,6 +3793,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'progress',
+      width: 160,
       render: (_: any, record: TestRun) => {
         const total = record.results.length;
         const executed = record.results.filter(r => r.result !== TestResult.NOT_EXECUTED).length;
@@ -3740,6 +3820,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </span>
       ),
       key: 'actions',
+      width: 180,
       render: (_: any, record: TestRun) => {
         const hasCompletedOrActivePublicSession =
           record.publicUatSession?.status === 'active' ||
@@ -4513,7 +4594,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   onClick={() => void handleSaveExecution(ExecutionStatus.FINAL)}
-                  disabled={notExecutedCount > 0}
+                  disabled={notExecutedCount > 0 || isFinalizingExecution}
+                  loading={isFinalizingExecution}
                   className="rounded-lg h-10 px-8 bg-blue-600"
                 >
                   Finalizar Ejecución
@@ -4555,7 +4637,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               : []),
           ]}
         >
-          {testRunPlanningFormContent}
+          <div className="space-y-4">
+            {isSubmittingTestRun && !isEditingRunInfo && (
+              <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+                <Spin size="small" />
+                <span className="text-sm font-medium">
+                  Se est&aacute; creando la ejecuci&oacute;n de prueba, por favor espere.
+                </span>
+              </div>
+            )}
+            {testRunPlanningFormContent}
+          </div>
         </Modal>
 
         {/* Evidence Modal */}
@@ -4984,7 +5076,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     dataSource={testRuns}
                     rowKey="id"
                     className="executive-table"
-                    tableLayout="auto"
+                    tableLayout="fixed"
+                    scroll={{ x: 1350 }}
                     onChange={(_, filters) => handleNativeTableChange(filters)}
                   />
                 </Card>
@@ -5332,7 +5425,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             : []),
         ]}
       >
-        {testRunPlanningFormContent}
+        <div className="space-y-4">
+          {isSubmittingTestRun && !isEditingRunInfo && (
+            <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+              <Spin size="small" />
+              <span className="text-sm font-medium">
+                Se est&aacute; creando la ejecuci&oacute;n de prueba, por favor espere.
+              </span>
+            </div>
+          )}
+          {testRunPlanningFormContent}
+        </div>
       </Modal>
     </div>
   );

@@ -569,6 +569,137 @@ function pdfText(pdf: jsPDF, text: string, x: number, y: number, maxWidth: numbe
   return y + lines.length * 6;
 }
 
+function normalizePdfEvidenceText(notes?: string | null) {
+  return stripHtmlToText(notes || '')
+    .replace(/âœ…|✅/g, '[Verificado]')
+    .replace(/âš ï¸|⚠️|⚠/g, '[Advertencia]')
+    .replace(/âŒ|❌/g, '[Error]')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+type PdfEvidenceIconKind = 'verified' | 'warning' | 'error';
+
+function parsePdfEvidenceNotesWithIcon(notes?: string | null) {
+  const normalized = stripHtmlToText(notes || '').replace(/\s+/g, ' ').trim();
+
+  const iconMatchers: Array<{ icon: PdfEvidenceIconKind; pattern: RegExp }> = [
+    { icon: 'verified', pattern: /^(?:Ã¢Å“â€¦|âœ…|✅)\s*/ },
+    { icon: 'warning', pattern: /^(?:Ã¢Å¡Â Ã¯Â¸Â|âš ï¸|âš |⚠️|⚠)\s*/ },
+    { icon: 'error', pattern: /^(?:Ã¢ÂÅ’|âŒ|❌)\s*/ },
+  ];
+
+  for (const matcher of iconMatchers) {
+    if (matcher.pattern.test(normalized)) {
+      return {
+        icon: matcher.icon,
+        text: normalized.replace(matcher.pattern, '').trim(),
+      };
+    }
+  }
+
+  return {
+    icon: null as PdfEvidenceIconKind | null,
+    text: normalized,
+  };
+}
+
+function buildPdfEvidenceIconDataUrl(icon: PdfEvidenceIconKind) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    throw new Error('PDF_ICON_CONTEXT_MISSING');
+  }
+
+  if (icon === 'verified') {
+    context.fillStyle = '#dcfce7';
+    context.strokeStyle = '#86efac';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.roundRect(3, 3, 26, 26, 6);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = '#16a34a';
+    context.lineWidth = 3;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.beginPath();
+    context.moveTo(9, 16);
+    context.lineTo(14, 21);
+    context.lineTo(23, 10);
+    context.stroke();
+  }
+
+  if (icon === 'warning') {
+    context.fillStyle = '#fef3c7';
+    context.strokeStyle = '#f59e0b';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(16, 4);
+    context.lineTo(28, 27);
+    context.lineTo(4, 27);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = '#92400e';
+    context.fillRect(14.5, 11, 3, 8);
+    context.beginPath();
+    context.arc(16, 23, 1.8, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  if (icon === 'error') {
+    context.fillStyle = '#fee2e2';
+    context.strokeStyle = '#fca5a5';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(16, 16, 12, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = '#dc2626';
+    context.lineWidth = 3;
+    context.lineCap = 'round';
+    context.beginPath();
+    context.moveTo(11, 11);
+    context.lineTo(21, 21);
+    context.moveTo(21, 11);
+    context.lineTo(11, 21);
+    context.stroke();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
+function parsePdfEvidenceNotesForExport(notes?: string | null) {
+  const normalized = stripHtmlToText(notes || '').replace(/\s+/g, ' ').trim();
+
+  const iconMatchers: Array<{ icon: PdfEvidenceIconKind; pattern: RegExp }> = [
+    { icon: 'verified', pattern: /^(?:\u2705|✅|âœ…)\s*/u },
+    { icon: 'warning', pattern: /^(?:\u26A0\uFE0F|\u26A0|⚠️|⚠|âš ï¸|âš )\s*/u },
+    { icon: 'error', pattern: /^(?:\u274C|❌|âŒ)\s*/u },
+  ];
+
+  for (const matcher of iconMatchers) {
+    if (matcher.pattern.test(normalized)) {
+      return {
+        icon: matcher.icon,
+        text: normalized.replace(matcher.pattern, '').trim(),
+      };
+    }
+  }
+
+  return {
+    icon: null as PdfEvidenceIconKind | null,
+    text: normalized,
+  };
+}
+
 export const exportTestRunToPdf = async ({
   testRun,
   results,
@@ -654,43 +785,82 @@ export const exportTestRunToPdf = async ({
     const testCase =
       safeTestCases.find(item => item.id === result.testCaseId) ||
       safeTestCases.find(item => item.documentId === result.testCaseId);
-
-    ensureSpace(55);
-    cursorY += 6;
-
-    pdf.setDrawColor(226, 232, 240);
-    pdf.roundedRect(margin, cursorY, contentWidth, 28, 3, 3);
+    const titleText = `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`;
+    const metaText = `Modulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
+    const expectedResultText = `Resultado esperado: ${stripHtmlToText(result.expectedResult || testCase?.expectedResult || '') || 'N/A'}`;
+    const innerWidth = contentWidth - 8;
 
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(12);
-    pdf.text(`${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`, margin + 4, cursorY + 7);
+    const titleLines = pdf.splitTextToSize(titleText, innerWidth);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    const metaLines = pdf.splitTextToSize(metaText, innerWidth);
+    const expectedLines = pdf.splitTextToSize(expectedResultText, innerWidth);
+
+    const cardHeight =
+      6 +
+      titleLines.length * 6 +
+      2 +
+      metaLines.length * 5 +
+      2 +
+      expectedLines.length * 5 +
+      4;
+
+    ensureSpace(cardHeight + 12);
+    cursorY += 6;
+
+    const cardTopY = cursorY;
+    pdf.setDrawColor(226, 232, 240);
+    pdf.roundedRect(margin, cardTopY, contentWidth, cardHeight, 3, 3);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(titleLines, margin + 4, cardTopY + 7);
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
-    cursorY = pdfText(
-      pdf,
-      `Modulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`,
+    pdf.text(metaLines, margin + 4, cardTopY + 7 + titleLines.length * 6 + 2);
+    pdf.text(
+      expectedLines,
       margin + 4,
-      cursorY + 13,
-      contentWidth - 8,
+      cardTopY + 7 + titleLines.length * 6 + 2 + metaLines.length * 5 + 2,
     );
 
-    cursorY = pdfText(
-      pdf,
-      `Resultado esperado: ${stripHtmlToText(result.expectedResult || testCase?.expectedResult || '') || 'N/A'}`,
-      margin + 4,
-      cursorY + 1,
-      contentWidth - 8,
-    );
+    cursorY = cardTopY + cardHeight;
 
-    const notes = stripHtmlToText(result.notes || '');
-    if (notes) {
+    const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
+    if (parsedNotes.icon || parsedNotes.text) {
       cursorY += 3;
       ensureSpace(14);
       pdf.setFont('helvetica', 'bold');
       pdf.text('Notas / evidencia registrada:', margin, cursorY);
       pdf.setFont('helvetica', 'normal');
-      cursorY = pdfText(pdf, notes, margin, cursorY + 5, contentWidth);
+      const notesStartY = cursorY + 5;
+
+      if (parsedNotes.icon) {
+        const iconSize = 4.5;
+        try {
+          const iconDataUrl = buildPdfEvidenceIconDataUrl(parsedNotes.icon);
+          pdf.addImage(iconDataUrl, 'PNG', margin, notesStartY - 3.6, iconSize, iconSize);
+          cursorY = parsedNotes.text
+            ? pdfText(
+                pdf,
+                parsedNotes.text,
+                margin + iconSize + 1.5,
+                notesStartY,
+                contentWidth - iconSize - 1.5,
+              )
+            : notesStartY + 2;
+        } catch (error) {
+          console.warn('Falling back to text-only PDF evidence icon.', error);
+          cursorY = parsedNotes.text
+            ? pdfText(pdf, parsedNotes.text, margin, notesStartY, contentWidth)
+            : notesStartY + 2;
+        }
+      } else {
+        cursorY = pdfText(pdf, parsedNotes.text, margin, notesStartY, contentWidth);
+      }
     }
 
     if (result.evidenceImage) {
