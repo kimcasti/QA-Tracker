@@ -231,7 +231,8 @@ const AUTOMATION_IMPORT_GUIDES: Record<
   }
 > = {
   playwright: {
-    matchRule: 'QA Tracker hace match por automationReference. Recomendado: guardar la ruta del spec o el identificador exacto del caso.',
+    matchRule:
+      'QA Tracker hace match por automationReference. Recomendado: guardar la ruta del spec o el identificador exacto del caso.',
     supportedStatuses: 'passed, failed, skipped',
     placeholder: 'Pega aquí el JSON del reporter de Playwright',
     example: `{
@@ -256,7 +257,8 @@ const AUTOMATION_IMPORT_GUIDES: Record<
 }`,
   },
   cypress: {
-    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar el título del test o la ruta/nombre estable del spec.',
+    matchRule:
+      'QA Tracker hace match por automationReference. Recomendado: usar el título del test o la ruta/nombre estable del spec.',
     supportedStatuses: 'passed, failed, skipped',
     placeholder: 'Pega aquí el JSON exportado de Cypress',
     example: `{
@@ -278,7 +280,8 @@ const AUTOMATION_IMPORT_GUIDES: Record<
 }`,
   },
   postman: {
-    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar item.id, item.name o cursor.ref según tu colección.',
+    matchRule:
+      'QA Tracker hace match por automationReference. Recomendado: usar item.id, item.name o cursor.ref según tu colección.',
     supportedStatuses: 'response code 2xx = aprobada, error/assertion = fallida',
     placeholder: 'Pega aquí el JSON exportado de Postman/Newman',
     example: `{
@@ -306,7 +309,8 @@ const AUTOMATION_IMPORT_GUIDES: Record<
 }`,
   },
   k6: {
-    matchRule: 'QA Tracker hace match por automationReference. Recomendado: usar tags.name, automationReference o group en el script de k6 para identificar cada caso.',
+    matchRule:
+      'QA Tracker hace match por automationReference. Recomendado: usar tags.name, automationReference o group en el script de k6 para identificar cada caso.',
     supportedStatuses:
       'http_req_failed > 0 = fallida, checks = 0 = fallida, status 2xx/3xx = aprobada',
     placeholder: 'Pega aquÃ­ el JSON o JSON Lines exportado de k6',
@@ -757,11 +761,7 @@ function buildAutomationImportStatusTotals(
   );
 }
 
-function pluralizeAutomationSummaryLabel(
-  count: number,
-  singular: string,
-  plural = `${singular}s`,
-) {
+function pluralizeAutomationSummaryLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
@@ -790,7 +790,9 @@ function renderAutomationSummaryMetrics(metrics: AutomationSummaryMetric[]) {
   );
 }
 
-function buildAutomationImportSummaryMetrics(record: AutomationHistoryRow): AutomationSummaryMetric[] {
+function buildAutomationImportSummaryMetrics(
+  record: AutomationHistoryRow,
+): AutomationSummaryMetric[] {
   return [
     record.matchedCount > 0
       ? {
@@ -1074,8 +1076,7 @@ function extractPostmanResults(payload: unknown): AutomationImportResult[] {
         : typeof execution?.request?.url === 'string'
           ? execution.request.url.trim()
           : '';
-    const cursorRef =
-      typeof execution?.cursor?.ref === 'string' ? execution.cursor.ref.trim() : '';
+    const cursorRef = typeof execution?.cursor?.ref === 'string' ? execution.cursor.ref.trim() : '';
     const assertions = Array.isArray(execution?.assertions) ? execution.assertions : [];
 
     const hasFailedAssertion = assertions.some(
@@ -1091,7 +1092,8 @@ function extractPostmanResults(payload: unknown): AutomationImportResult[] {
           ? 'failed'
           : 'passed'
         : undefined;
-    const status = explicitStatus || (hasAssertions ? (hasFailedAssertion ? 'failed' : 'passed') : undefined);
+    const status =
+      explicitStatus || (hasAssertions ? (hasFailedAssertion ? 'failed' : 'passed') : undefined);
 
     if (!itemName || !status) return;
 
@@ -1162,9 +1164,7 @@ function extractK6StatusFromPoint(point: any): AutomationResultStatus | null {
         return AutomationResultStatus.PASSED;
       }
       if (Number.isFinite(statusCode)) {
-        return statusCode >= 400
-          ? AutomationResultStatus.FAILED
-          : AutomationResultStatus.PASSED;
+        return statusCode >= 400 ? AutomationResultStatus.FAILED : AutomationResultStatus.PASSED;
       }
       return null;
     default:
@@ -1297,10 +1297,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const { save: saveTestRun, delete: deleteTestRun } = useTestRuns(projectId, {
     enabled: false,
   });
-  const {
-    data: automationImportHistoryData,
-    save: saveAutomationImportHistory,
-  } = useAutomationImportHistories(projectId);
+  const { data: automationImportHistoryData, save: saveAutomationImportHistory } =
+    useAutomationImportHistories(projectId);
   const { data: bugsData = [] } = useBugs(projectId);
   const {
     activate: activatePublicUatSession,
@@ -2422,7 +2420,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       setPlaywrightImportJson(text);
       message.success(`Archivo ${labelAutomationImportTool(automationImportTool)} cargado.`);
     } catch (importError) {
-      console.error(`Error reading ${labelAutomationImportTool(automationImportTool)} report:`, importError);
+      console.error(
+        `Error reading ${labelAutomationImportTool(automationImportTool)} report:`,
+        importError,
+      );
       message.error('No pudimos leer el archivo JSON.');
     }
 
@@ -2508,7 +2509,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         matchedCaseIds.add(testCase.id);
         metadataUpdatesById.set(testCase.id, {
           ...testCase,
-          automationTool: testCase.automationTool || mapAutomationImportToolToAutomationTool(automationImportTool),
+          automationTool:
+            testCase.automationTool ||
+            mapAutomationImportToolToAutomationTool(automationImportTool),
           lastAutomationStatus: matchedReport.status,
           lastAutomationRunAt: now,
         });
@@ -2637,7 +2640,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         });
         metadataUpdatesById.set(testCase.id, {
           ...testCase,
-          automationTool: testCase.automationTool || mapAutomationImportToolToAutomationTool(automationImportTool),
+          automationTool:
+            testCase.automationTool ||
+            mapAutomationImportToolToAutomationTool(automationImportTool),
           lastAutomationStatus: matchedReport.status,
           lastAutomationRunAt: now,
         });
@@ -2929,8 +2934,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           };
         })
         .sort(
-          (left, right) =>
-            dayjs(right.importedAt).valueOf() - dayjs(left.importedAt).valueOf(),
+          (left, right) => dayjs(right.importedAt).valueOf() - dayjs(left.importedAt).valueOf(),
         ),
     [activeTestRun?.id, automationImportHistory, bugs, executionResults, testCaseById],
   );
@@ -3277,8 +3281,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     option => option.value === scopeAutomationFilter,
                   )?.label || 'Todos los casos'}
                 </Tag>
-                {scopeAutomationFilter === 'automated' &&
-                scopeAutomationToolFilter !== 'all' ? (
+                {scopeAutomationFilter === 'automated' && scopeAutomationToolFilter !== 'all' ? (
                   <Tag color="cyan">Herramienta: {scopeAutomationToolFilter}</Tag>
                 ) : null}
               </div>
@@ -3748,7 +3751,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             key: 'public-uat-link',
             icon: hasCompletedOrActivePublicSession ? <CopyOutlined /> : <LinkOutlined />,
             label: compactMenuLabel(
-              hasCompletedOrActivePublicSession ? 'Copiar enlace público' : 'Generar enlace público',
+              hasCompletedOrActivePublicSession
+                ? 'Copiar enlace público'
+                : 'Generar enlace público',
             ),
             onClick: () => void handlePrimaryPublicUatAction(record),
           });
@@ -3799,7 +3804,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               size="small"
               loading={openingRunId === record.id}
               onClick={() => openTestRunDetail(record)}
-              className={record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'}
+              className={
+                record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'
+              }
             >
               {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
             </Button>
@@ -3834,7 +3841,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     />
                   </Tooltip>
                 ) : null}
-                {record.testType === TestType.UAT && record.publicUatSession?.status === 'active' ? (
+                {record.testType === TestType.UAT &&
+                record.publicUatSession?.status === 'active' ? (
                   <Tooltip title="Cerrar sesión pública">
                     <Button
                       icon={<StopOutlined />}
@@ -3921,16 +3929,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
     return (
       <div className="space-y-6 pb-10">
-        <div className="flex justify-between items-center">
-          <Space size="middle">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
             <Button
               icon={<ArrowLeftOutlined />}
               onClick={() => setActiveTestRun(null)}
-              className="rounded-lg"
+              className="w-fit rounded-lg"
             >
               Volver
             </Button>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 {isReadOnly && (
                   <Tag
@@ -4038,8 +4046,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </div>
               )}
             </div>
-          </Space>
-          <Space>
+          </div>
+          <Space wrap size="middle" className="w-full xl:w-auto xl:justify-end">
             {!isReadOnly && !isViewer && (
               <Button icon={<EditOutlined />} className="rounded-lg" onClick={openEditTestRunModal}>
                 Editar Info
@@ -4539,8 +4547,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   >
                     {isSubmittingTestRun
                       ? isEditingRunInfo
-                        ? 'Guardando informaciÃ³n...'
-                        : 'Creando ejecuciÃ³n...'
+                        ? 'Guardando información...'
+                        : 'Creando ejecución...'
                       : testRunModalPrimaryLabel}
                   </Button>,
                 ]
@@ -4677,61 +4685,65 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             const importGuide = getAutomationImportGuide(automationImportTool);
 
             return (
-          <div className="space-y-4">
-            <div>
-              <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
-                Herramienta
-              </Text>
-              <Select
-                className="w-full"
-                value={automationImportTool}
-                options={automationImportToolOptions}
-                onChange={value => setAutomationImportTool(value)}
-              />
-            </div>
-            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
-              QA Tracker hará match solo por `automationReference` para evitar falsos positivos.
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-              {importGuide.matchRule}
-            </div>
-            <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
-                Ver estructura esperada del JSON
-              </summary>
-              <div className="mt-3 space-y-3">
-                <div className="text-xs text-slate-500">
-                  <span className="font-semibold text-slate-700">Estados interpretados:</span>{' '}
-                  {importGuide.supportedStatuses}
+              <div className="space-y-4">
+                <div>
+                  <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
+                    Herramienta
+                  </Text>
+                  <Select
+                    className="w-full"
+                    value={automationImportTool}
+                    options={automationImportToolOptions}
+                    onChange={value => setAutomationImportTool(value)}
+                  />
                 </div>
-                <div className="flex justify-end">
-                  <Button
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={() => {
-                      void navigator.clipboard.writeText(importGuide.example).then(() => {
-                        message.success('Ejemplo copiado.');
-                      });
-                    }}
-                  >
-                    Copiar ejemplo
-                  </Button>
+                <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-slate-600">
+                  QA Tracker hará match solo por `automationReference` para evitar falsos positivos.
                 </div>
-                <pre className="overflow-x-auto rounded-xl bg-slate-900/95 p-3 text-xs text-slate-100">
-                  <code>{importGuide.example}</code>
-                </pre>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                  {importGuide.matchRule}
+                </div>
+                <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+                    Ver estructura esperada del JSON
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="text-xs text-slate-500">
+                      <span className="font-semibold text-slate-700">Estados interpretados:</span>{' '}
+                      {importGuide.supportedStatuses}
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => {
+                          void navigator.clipboard.writeText(importGuide.example).then(() => {
+                            message.success('Ejemplo copiado.');
+                          });
+                        }}
+                      >
+                        Copiar ejemplo
+                      </Button>
+                    </div>
+                    <pre className="overflow-x-auto rounded-xl bg-slate-900/95 p-3 text-xs text-slate-100">
+                      <code>{importGuide.example}</code>
+                    </pre>
+                  </div>
+                </details>
+                <Upload
+                  accept=".json"
+                  beforeUpload={handleImportPlaywrightFile}
+                  showUploadList={false}
+                >
+                  <Button icon={<UploadOutlined />}>Cargar JSON</Button>
+                </Upload>
+                <Input.TextArea
+                  rows={10}
+                  value={playwrightImportJson}
+                  onChange={event => setPlaywrightImportJson(event.target.value)}
+                  placeholder={importGuide.placeholder}
+                />
               </div>
-            </details>
-            <Upload accept=".json" beforeUpload={handleImportPlaywrightFile} showUploadList={false}>
-              <Button icon={<UploadOutlined />}>Cargar JSON</Button>
-            </Upload>
-            <Input.TextArea
-              rows={10}
-              value={playwrightImportJson}
-              onChange={event => setPlaywrightImportJson(event.target.value)}
-              placeholder={importGuide.placeholder}
-            />
-          </div>
             );
           })()}
         </Modal>
@@ -4836,7 +4848,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               {playwrightImportSummary.unmatchedExecutionCases.length > 0 && (
                 <div>
                   <div className="mb-2 text-sm font-semibold text-slate-800">
-                    Casos de la ejecución sin match en {labelAutomationImportTool(automationImportTool)}
+                    Casos de la ejecución sin match en{' '}
+                    {labelAutomationImportTool(automationImportTool)}
                   </div>
                   <List
                     size="small"
@@ -4987,9 +5000,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   className="rounded-2xl shadow-sm border-slate-100"
                   title={
                     <div className="flex flex-col gap-1">
-                      <span className="text-slate-800 font-bold">
-                        Historial de Automatización
-                      </span>
+                      <span className="text-slate-800 font-bold">Historial de Automatización</span>
                       <span className="text-xs text-slate-400">
                         Registro de importaciones automáticas por ejecución, herramienta y match
                         aplicado.
@@ -5313,8 +5324,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 >
                   {isSubmittingTestRun
                     ? isEditingRunInfo
-                      ? 'Guardando informaciÃ³n...'
-                      : 'Creando ejecuciÃ³n...'
+                      ? 'Guardando información...'
+                      : 'Creando ejecución...'
                     : testRunModalPrimaryLabel}
                 </Button>,
               ]
