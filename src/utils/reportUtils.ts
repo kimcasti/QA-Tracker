@@ -569,6 +569,63 @@ function pdfText(pdf: jsPDF, text: string, x: number, y: number, maxWidth: numbe
   return y + lines.length * 6;
 }
 
+function buildPdfRichTextLines(
+  pdf: jsPDF,
+  label: string,
+  content: string | null | undefined,
+  maxWidth: number,
+  options?: { numberedList?: boolean },
+) {
+  const rawContent = String(content || '').trim();
+
+  if (!rawContent) {
+    return pdf.splitTextToSize(`${label}: N/A`, maxWidth);
+  }
+
+  const hasHtmlTags = /<[^>]+>/.test(rawContent);
+
+  if (!hasHtmlTags) {
+    return pdf.splitTextToSize(`${label}: ${rawContent}`, maxWidth);
+  }
+
+  const listItemMatches = Array.from(rawContent.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi))
+    .map((match, index) => {
+      const itemText = stripHtmlToText(match[1] || '').replace(/\s+/g, ' ').trim();
+      if (!itemText) return '';
+      return `${options?.numberedList ? `${index + 1}.` : '•'} ${itemText}`;
+    })
+    .filter(Boolean);
+
+  if (listItemMatches.length > 0) {
+    const lines = pdf.splitTextToSize(`${label}:`, maxWidth);
+    listItemMatches.forEach(item => {
+      lines.push(...pdf.splitTextToSize(item, maxWidth - 2));
+    });
+    return lines;
+  }
+
+  const normalizedText = stripHtmlToText(
+    rawContent
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n'),
+  )
+    .split('\n')
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  if (normalizedText.length === 0) {
+    return pdf.splitTextToSize(`${label}: N/A`, maxWidth);
+  }
+
+  const [firstLine, ...otherLines] = normalizedText;
+  const lines = pdf.splitTextToSize(`${label}: ${firstLine}`, maxWidth);
+  otherLines.forEach(line => {
+    lines.push(...pdf.splitTextToSize(line, maxWidth));
+  });
+  return lines;
+}
+
 function normalizePdfEvidenceText(notes?: string | null) {
   return stripHtmlToText(notes || '')
     .replace(/âœ…|✅/g, '[Verificado]')
@@ -787,7 +844,6 @@ export const exportTestRunToPdf = async ({
       safeTestCases.find(item => item.documentId === result.testCaseId);
     const titleText = `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`;
     const metaText = `Modulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
-    const expectedResultText = `Resultado esperado: ${stripHtmlToText(result.expectedResult || testCase?.expectedResult || '') || 'N/A'}`;
     const innerWidth = contentWidth - 8;
 
     pdf.setFont('helvetica', 'bold');
@@ -796,13 +852,35 @@ export const exportTestRunToPdf = async ({
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
     const metaLines = pdf.splitTextToSize(metaText, innerWidth);
-    const expectedLines = pdf.splitTextToSize(expectedResultText, innerWidth);
+    const preconditionsLines = buildPdfRichTextLines(
+      pdf,
+      'Precondiciones',
+      testCase?.preconditions,
+      innerWidth,
+    );
+    const testStepsLines = buildPdfRichTextLines(
+      pdf,
+      'Pasos de prueba',
+      testCase?.testSteps,
+      innerWidth,
+      { numberedList: true },
+    );
+    const expectedLines = buildPdfRichTextLines(
+      pdf,
+      'Resultado esperado',
+      result.expectedResult || testCase?.expectedResult,
+      innerWidth,
+    );
 
     const cardHeight =
       6 +
       titleLines.length * 6 +
       2 +
       metaLines.length * 5 +
+      2 +
+      preconditionsLines.length * 5 +
+      2 +
+      testStepsLines.length * 5 +
       2 +
       expectedLines.length * 5 +
       4;
@@ -822,9 +900,28 @@ export const exportTestRunToPdf = async ({
     pdf.setFontSize(10);
     pdf.text(metaLines, margin + 4, cardTopY + 7 + titleLines.length * 6 + 2);
     pdf.text(
-      expectedLines,
+      preconditionsLines,
       margin + 4,
       cardTopY + 7 + titleLines.length * 6 + 2 + metaLines.length * 5 + 2,
+    );
+    pdf.text(
+      testStepsLines,
+      margin + 4,
+      cardTopY + 7 + titleLines.length * 6 + 2 + metaLines.length * 5 + 2 + preconditionsLines.length * 5 + 2,
+    );
+    pdf.text(
+      expectedLines,
+      margin + 4,
+      cardTopY +
+        7 +
+        titleLines.length * 6 +
+        2 +
+        metaLines.length * 5 +
+        2 +
+        preconditionsLines.length * 5 +
+        2 +
+        testStepsLines.length * 5 +
+        2,
     );
 
     cursorY = cardTopY + cardHeight;

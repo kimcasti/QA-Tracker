@@ -2346,9 +2346,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const handleUpdateTestRunInfo = async () => {
     if (!activeTestRun) return;
+    const loadingMessageKey = 'update-test-run-info';
 
     try {
       setIsSubmittingTestRun(true);
+      message.loading({
+        key: loadingMessageKey,
+        content: 'Se estan guardando los cambios de la ejecucion, por favor espere.',
+        duration: 0,
+      });
       const values = await form.validateFields();
       const updatedRun: TestRun = {
         ...activeTestRun,
@@ -2378,10 +2384,21 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
       resetTestRunModal();
-      message.success('Información de la ejecución actualizada');
+      message.success({
+        key: loadingMessageKey,
+        content: 'Información de la ejecución actualizada',
+      });
     } catch (error) {
       console.error('Update failed:', error);
+      message.error({
+        key: loadingMessageKey,
+        content:
+          error instanceof Error && error.message
+            ? error.message
+            : 'No fue posible actualizar la información de la ejecución.',
+      });
     } finally {
+      message.destroy(loadingMessageKey);
       setIsSubmittingTestRun(false);
     }
   };
@@ -4594,9 +4611,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     </div>
                     <div className="mb-4">
                       <Text strong>Precondiciones:</Text>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                        {testCase.preconditions || '—'}
-                      </p>
+                      {renderRichTextContent(testCase.preconditions)}
                     </div>
                     <div className="mb-4">
                       <Text strong>Pasos de Prueba:</Text>
@@ -4677,14 +4692,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           ]}
         >
           <div className="space-y-4">
-            {isSubmittingTestRun && !isEditingRunInfo && (
-              <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
-                <Spin size="small" />
-                <span className="text-sm font-medium">
-                  Se est&aacute; creando la ejecuci&oacute;n de prueba, por favor espere.
-                </span>
-              </div>
-            )}
+          {isSubmittingTestRun && (
+            <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+              <Spin size="small" />
+              <span className="text-sm font-medium">
+                {isEditingRunInfo
+                  ? 'Se están guardando los cambios de la ejecución, por favor espere.'
+                  : 'Se está creando la ejecución de prueba, por favor espere.'}
+              </span>
+            </div>
+          )}
             {testRunPlanningFormContent}
           </div>
         </Modal>
@@ -5465,11 +5482,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         ]}
       >
         <div className="space-y-4">
-          {isSubmittingTestRun && !isEditingRunInfo && (
+          {isSubmittingTestRun && (
             <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
               <Spin size="small" />
               <span className="text-sm font-medium">
-                Se est&aacute; creando la ejecuci&oacute;n de prueba, por favor espere.
+                {isEditingRunInfo
+                  ? 'Se están guardando los cambios de la ejecución, por favor espere.'
+                  : 'Se está creando la ejecución de prueba, por favor espere.'}
               </span>
             </div>
           )}
@@ -5479,3 +5498,4 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     </div>
   );
 }
+
