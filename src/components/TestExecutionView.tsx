@@ -4008,6 +4008,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       return matchesSearch && matchesFailed;
     });
 
+    const executionModuleFilters = Array.from(
+      new Set(
+        executionResults
+          .map(r => functionalities.find(f => f.id === r.functionalityId)?.module?.trim())
+          .filter((moduleName): moduleName is string => Boolean(moduleName)),
+      ),
+    )
+      .sort((left, right) => left.localeCompare(right))
+      .map(moduleName => ({
+        text: moduleName,
+        value: moduleName,
+      }));
+
     return (
       <div className="space-y-6 pb-10">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -4309,6 +4322,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   </span>
                 ),
                 key: 'module',
+                filters: executionModuleFilters,
+                filterSearch: true,
+                onFilter: (value, record) => {
+                  const moduleName = functionalities.find(
+                    f => f.id === record.functionalityId,
+                  )?.module?.trim();
+                  return moduleName === value;
+                },
                 width: '14%',
                 render: (_, record) => {
                   const func = functionalityById.get(record.functionalityId);
