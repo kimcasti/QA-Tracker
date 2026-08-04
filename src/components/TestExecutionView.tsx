@@ -4163,9 +4163,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         <Row gutter={20}>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <BarChartOutlined className="text-slate-400 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Total Tests
                 </Text>
               </div>
@@ -4174,9 +4177,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Col>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-sky-50/30">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <CheckCircleOutlined className="text-sky-500 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Automatizados
                 </Text>
               </div>
@@ -4187,9 +4193,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Col>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-slate-50">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <ClockCircleOutlined className="text-slate-500 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Manuales
                 </Text>
               </div>
@@ -4200,9 +4209,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Col>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-emerald-50/30">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <CheckCircleOutlined className="text-emerald-500 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Approved
                 </Text>
               </div>
@@ -4226,9 +4238,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Col>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-rose-50/30">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <CloseCircleOutlined className="text-rose-500 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Failed
                 </Text>
               </div>
@@ -4239,9 +4254,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </Col>
           <Col span={4}>
             <Card className="rounded-2xl shadow-sm border-slate-100 text-center py-2 bg-amber-50/30">
-              <div className="flex items-center justify-center gap-3 mb-1">
+              <div className="mb-1 flex min-h-[42px] flex-col items-center justify-center gap-1">
                 <ClockCircleOutlined className="text-amber-500 text-lg" />
-                <Text type="secondary" className="text-[10px] font-bold uppercase tracking-wider">
+                <Text
+                  type="secondary"
+                  className="text-[10px] font-bold uppercase tracking-wider leading-tight"
+                >
                   Pending
                 </Text>
               </div>
