@@ -626,6 +626,14 @@ function buildPdfRichTextLines(
   return lines;
 }
 
+function stripLeadingEvidenceEmoji(value: string) {
+  return value
+    .replace(/^(?:\u2705|âœ…|Ã¢Å“â€¦)\s*/u, '')
+    .replace(/^(?:\u26A0\uFE0F|\u26A0|âš ï¸|âš |Ã¢Å¡Â Ã¯Â¸Â|Ã¢Å¡Â )\s*/u, '')
+    .replace(/^(?:\u274C|âŒ|Ã¢ÂÅ’)\s*/u, '')
+    .trim();
+}
+
 function normalizePdfEvidenceText(notes?: string | null) {
   return stripHtmlToText(notes || '')
     .replace(/âœ…|✅/g, '[Verificado]')
@@ -929,10 +937,14 @@ export const exportTestRunToPdf = async ({
     const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
     if (parsedNotes.icon || parsedNotes.text) {
       cursorY += 3;
-      ensureSpace(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Notas / evidencia registrada:', margin, cursorY);
-      pdf.setFont('helvetica', 'normal');
+      const notesLines = buildPdfRichTextLines(
+        pdf,
+        'Notas / evidencia registrada',
+        stripLeadingEvidenceEmoji(String(result.notes || '')),
+        contentWidth - (parsedNotes.icon ? 8 : 0),
+      );
+      const notesBlockHeight = Math.max(notesLines.length * 5 + 4, 14);
+      ensureSpace(notesBlockHeight);
       const notesStartY = cursorY + 5;
 
       if (parsedNotes.icon) {
@@ -940,23 +952,22 @@ export const exportTestRunToPdf = async ({
         try {
           const iconDataUrl = buildPdfEvidenceIconDataUrl(parsedNotes.icon);
           pdf.addImage(iconDataUrl, 'PNG', margin, notesStartY - 3.6, iconSize, iconSize);
-          cursorY = parsedNotes.text
-            ? pdfText(
-                pdf,
-                parsedNotes.text,
-                margin + iconSize + 1.5,
-                notesStartY,
-                contentWidth - iconSize - 1.5,
-              )
-            : notesStartY + 2;
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(10);
+          pdf.text(notesLines, margin + iconSize + 2.5, notesStartY);
+          cursorY = notesStartY + notesLines.length * 5;
         } catch (error) {
           console.warn('Falling back to text-only PDF evidence icon.', error);
-          cursorY = parsedNotes.text
-            ? pdfText(pdf, parsedNotes.text, margin, notesStartY, contentWidth)
-            : notesStartY + 2;
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(10);
+          pdf.text(notesLines, margin, notesStartY);
+          cursorY = notesStartY + notesLines.length * 5;
         }
       } else {
-        cursorY = pdfText(pdf, parsedNotes.text, margin, notesStartY, contentWidth);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        pdf.text(notesLines, margin, notesStartY);
+        cursorY = notesStartY + notesLines.length * 5;
       }
     }
 

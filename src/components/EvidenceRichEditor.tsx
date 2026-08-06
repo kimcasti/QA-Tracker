@@ -1,5 +1,11 @@
-import { Button, message } from 'antd';
-import { FileImageOutlined } from '@ant-design/icons';
+import { Button, Divider, message } from 'antd';
+import {
+  BoldOutlined,
+  FileImageOutlined,
+  ItalicOutlined,
+  OrderedListOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -20,6 +26,9 @@ type EvidenceRichEditorProps = {
 };
 
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+const VERIFIED_EMOJI = '\u2705';
+const WARNING_EMOJI = '\u26A0\uFE0F';
+const ERROR_EMOJI = '\u274C';
 
 function extractAcceptedImageFiles(files?: FileList | null) {
   return Array.from(files || []).filter(file => ACCEPTED_IMAGE_TYPES.includes(file.type));
@@ -41,7 +50,7 @@ async function resolveImageSource(file: File) {
 async function insertImagesIntoEditor(
   currentEditor: NonNullable<ReturnType<typeof useEditor>>,
   files: File[],
-  insertAt?: number
+  insertAt?: number,
 ) {
   let currentPosition = insertAt;
 
@@ -76,7 +85,7 @@ export default function EvidenceRichEditor({
   value,
   onChange,
   disabled = false,
-  placeholder = 'Escribe aquí las notas de la ejecución...',
+  placeholder = 'Escribe aqui las notas de la ejecucion...',
 }: EvidenceRichEditorProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedValue = useMemo(() => normalizeEvidenceHtml(value), [value]);
@@ -166,6 +175,26 @@ export default function EvidenceRichEditor({
     editor.chain().focus().insertContent(`${emoji} `).run();
   };
 
+  const toggleBold = () => {
+    if (!editor || disabled) return;
+    editor.chain().focus().toggleBold().run();
+  };
+
+  const toggleItalic = () => {
+    if (!editor || disabled) return;
+    editor.chain().focus().toggleItalic().run();
+  };
+
+  const toggleBulletList = () => {
+    if (!editor || disabled) return;
+    editor.chain().focus().toggleBulletList().run();
+  };
+
+  const toggleOrderedList = () => {
+    if (!editor || disabled) return;
+    editor.chain().focus().toggleOrderedList().run();
+  };
+
   const openFilePicker = () => {
     if (disabled) return;
     fileInputRef.current?.click();
@@ -185,26 +214,63 @@ export default function EvidenceRichEditor({
         <Button
           size="small"
           className="rounded-full"
-          onClick={() => insertEmoji('✅')}
+          type={editor?.isActive('bold') ? 'primary' : 'default'}
+          onClick={toggleBold}
           disabled={disabled}
         >
-          ✅ Verificado
+          <BoldOutlined /> Negrita
         </Button>
         <Button
           size="small"
           className="rounded-full"
-          onClick={() => insertEmoji('⚠️')}
+          type={editor?.isActive('italic') ? 'primary' : 'default'}
+          onClick={toggleItalic}
           disabled={disabled}
         >
-          ⚠️ Advertencia
+          <ItalicOutlined /> Italica
         </Button>
         <Button
           size="small"
           className="rounded-full"
-          onClick={() => insertEmoji('❌')}
+          type={editor?.isActive('bulletList') ? 'primary' : 'default'}
+          onClick={toggleBulletList}
           disabled={disabled}
         >
-          ❌ Error
+          <UnorderedListOutlined /> Vinetas
+        </Button>
+        <Button
+          size="small"
+          className="rounded-full"
+          type={editor?.isActive('orderedList') ? 'primary' : 'default'}
+          onClick={toggleOrderedList}
+          disabled={disabled}
+        >
+          <OrderedListOutlined /> Numeracion
+        </Button>
+        <Divider type="vertical" className="h-8" />
+        <Button
+          size="small"
+          className="rounded-full"
+          onClick={() => insertEmoji(VERIFIED_EMOJI)}
+          disabled={disabled}
+        >
+          {VERIFIED_EMOJI} Verificado
+        </Button>
+        <Button
+          size="small"
+          className="rounded-full"
+          onClick={() => insertEmoji(WARNING_EMOJI)}
+          disabled={disabled}
+        >
+          {WARNING_EMOJI} Advertencia
+        </Button>
+        <Button
+          size="small"
+          className="rounded-full"
+          onClick={() => insertEmoji(ERROR_EMOJI)}
+          disabled={disabled}
+        >
+          {ERROR_EMOJI} Error
         </Button>
         <Button
           size="small"
@@ -219,10 +285,10 @@ export default function EvidenceRichEditor({
 
       <div
         className={`min-h-[180px] rounded-xl border px-3 py-3 transition ${
-          disabled ? 'bg-slate-50 border-slate-200' : 'bg-white border-sky-200'
+          disabled ? 'border-slate-200 bg-slate-50' : 'border-sky-200 bg-white'
         }`}
       >
-        <EditorContent editor={editor} className="evidence-rich-editor" />
+        <EditorContent editor={editor} className="evidence-rich-editor qa-rich-text-content" />
       </div>
 
       <input
@@ -240,7 +306,7 @@ export default function EvidenceRichEditor({
       />
 
       <p className="text-[11px] text-slate-500">
-        Puedes escribir texto, usar emojis, pegar una captura con `Ctrl + V` o arrastrar una
+        Puedes usar formato enriquecido, emojis, pegar una captura con `Ctrl + V` o arrastrar una
         imagen al editor.
       </p>
     </div>
