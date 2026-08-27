@@ -516,6 +516,8 @@ export interface TestRun {
   selectedModules: string[];
   selectedFunctionalities: string[]; // IDs
   results: TestRunResult[];
+  totalResults?: number;
+  executedResults?: number;
   publicUatSession?: PublicUatSessionSummary | null;
 }
 

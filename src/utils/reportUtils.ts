@@ -776,6 +776,28 @@ export const exportTestRunToPdf = async ({
   const safeResults = Array.isArray(results) ? results : [];
   const safeFunctionalities = Array.isArray(functionalities) ? functionalities : [];
   const safeTestCases = Array.isArray(testCases) ? testCases : [];
+  const functionalityById = new Map<string, (typeof safeFunctionalities)[number]>();
+  const testCaseById = new Map<string, (typeof safeTestCases)[number]>();
+
+  safeFunctionalities.forEach(item => {
+    if (item.id) {
+      functionalityById.set(item.id, item);
+    }
+
+    if (item.documentId) {
+      functionalityById.set(item.documentId, item);
+    }
+  });
+
+  safeTestCases.forEach(item => {
+    if (item.id) {
+      testCaseById.set(item.id, item);
+    }
+
+    if (item.documentId) {
+      testCaseById.set(item.documentId, item);
+    }
+  });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 14;
@@ -844,12 +866,8 @@ export const exportTestRunToPdf = async ({
   );
 
   for (const [index, result] of safeResults.entries()) {
-    const functionality =
-      safeFunctionalities.find(item => item.id === result.functionalityId) ||
-      safeFunctionalities.find(item => item.documentId === result.functionalityId);
-    const testCase =
-      safeTestCases.find(item => item.id === result.testCaseId) ||
-      safeTestCases.find(item => item.documentId === result.testCaseId);
+    const functionality = functionalityById.get(result.functionalityId);
+    const testCase = testCaseById.get(result.testCaseId);
     const titleText = `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`;
     const metaText = `Modulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
     const innerWidth = contentWidth - 8;
@@ -937,10 +955,8 @@ export const exportTestRunToPdf = async ({
     const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
     if (parsedNotes.icon || parsedNotes.text) {
       cursorY += 3;
-      const notesLines = buildPdfRichTextLines(
-        pdf,
-        'Notas / evidencia registrada',
-        stripLeadingEvidenceEmoji(String(result.notes || '')),
+      const notesLines = pdf.splitTextToSize(
+        `Notas / evidencia registrada: ${parsedNotes.text || 'N/A'}`,
         contentWidth - (parsedNotes.icon ? 8 : 0),
       );
       const notesBlockHeight = Math.max(notesLines.length * 5 + 4, 14);

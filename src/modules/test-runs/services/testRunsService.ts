@@ -32,6 +32,13 @@ import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestRunDto, TestRunResultDto } from '../types/api';
 import { Http } from '../../../config/http';
 
+type SaveTestRunOptions = {
+  resultsToSync?: TestRunResult[];
+  removeMissingResults?: boolean;
+};
+
+const testRunBasePopulatePaths = ['project', 'sprint'] as const;
+
 function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicUatSessionSummary | null {
   if (!document?.documentId) {
     return null;
@@ -73,6 +80,8 @@ function mapTestRunResult(document: TestRunResultDto): TestRunResult {
 }
 
 function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): TestRun {
+  const resolvedResults = resultsOverride || (document.results || []).map(mapTestRunResult);
+
   return {
     id: document.documentId,
     projectId: document.project?.key || '',
@@ -96,7 +105,11 @@ function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): Te
     exitCriteria: document.exitCriteria || [],
     selectedModules: document.selectedModules || [],
     selectedFunctionalities: document.selectedFunctionalities || [],
-    results: resultsOverride || (document.results || []).map(mapTestRunResult),
+    results: resolvedResults,
+    totalResults: document.totalResults ?? resolvedResults.length,
+    executedResults:
+      document.executedResults ??
+      resolvedResults.filter(result => result.result !== 'No Ejecutado').length,
     publicUatSession: mapPublicUatSession(document.publicUatSession),
   };
 }
@@ -129,13 +142,16 @@ async function syncResults(
   testRun: TestRun,
   organizationDocumentId?: string,
   projectDocumentId?: string,
+  options?: SaveTestRunOptions,
 ) {
+  const resultsToSync = options?.resultsToSync ?? testRun.results;
   const response = await Http.post<{ data: TestRunDto }>('/api/test-run-results/batch-sync', {
     data: {
       testRun: testRunDocumentId,
       project: projectDocumentId,
       organization: organizationDocumentId,
-      items: testRun.results.map(result => ({
+      removeMissingResults: options?.removeMissingResults ?? true,
+      items: resultsToSync.map(result => ({
         documentId: result.id.startsWith('TR-') ? null : result.id,
         data: {
           result: testResultToApi(result.result),
@@ -163,14 +179,7 @@ export async function getTestRuns(projectId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const [documents, resultsByRun] = await Promise.all([
     listDocuments<TestRunDto>('/api/test-runs', {
-      ...populateParams([
-        'project',
-        'sprint',
-        'results',
-        'results.functionality',
-        'results.testCase',
-        'results.bug',
-      ]),
+      ...populateParams([...testRunBasePopulatePaths]),
       'sort[0]': 'executionDate:desc',
       'sort[1]': 'createdAt:desc',
       ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
@@ -195,14 +204,7 @@ export async function getTestRunSummaries(projectId?: string) {
 export async function getTestRunById(documentId: string) {
   const [document, resultsByRun] = await Promise.all([
     getDocument<TestRunDto>('/api/test-runs', documentId, {
-      ...populateParams([
-        'project',
-        'sprint',
-        'results',
-        'results.functionality',
-        'results.testCase',
-        'results.bug',
-      ]),
+      ...populateParams([...testRunBasePopulatePaths]),
     }),
     getResultsByRun(undefined, documentId),
   ]);
@@ -210,7 +212,7 @@ export async function getTestRunById(documentId: string) {
   return mapTestRun(document, resultsByRun[documentId] || []);
 }
 
-export async function saveTestRun(testRun: TestRun) {
+export async function saveTestRun(testRun: TestRun, options?: SaveTestRunOptions) {
   const context = await findProjectContext(testRun.projectId);
   if (!context) {
     throw new Error(`Project ${testRun.projectId} is not available in the workspace.`);
@@ -248,6 +250,7 @@ export async function saveTestRun(testRun: TestRun) {
     testRun,
     context.organizationDocumentId,
     context.documentId,
+    options,
   );
 
   return mapTestRun(syncedRun);

@@ -55,6 +55,8 @@ export interface TestRunDto {
     name: string;
   };
   results?: TestRunResultDto[];
+  totalResults?: number;
+  executedResults?: number;
   publicUatSession?: {
     documentId: string;
     status: 'draft' | 'active' | 'completed' | 'expired' | 'revoked';

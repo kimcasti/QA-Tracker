@@ -157,6 +157,19 @@ const executionExitCriteriaLabelByValue = new Map(
   EXECUTION_EXIT_CRITERIA_OPTIONS.map(option => [option.value, option.label] as const),
 );
 
+function buildExpectedResultEvidenceTemplate(expectedResult?: string | null) {
+  const normalizedExpectedResult = normalizeEvidenceHtml(expectedResult);
+  if (!normalizedExpectedResult || !stripHtmlToText(normalizedExpectedResult)) {
+    return '';
+  }
+
+  return [
+    '<p><strong>Resultado esperado:</strong></p>',
+    normalizedExpectedResult,
+    '<p><strong>Resultado obtenido:</strong></p>',
+  ].join('');
+}
+
 type ScopeAutomationFilter = 'all' | 'automated' | 'candidate' | 'obsolete' | 'manual';
 type AutomationImportTool = 'playwright' | 'cypress' | 'postman' | 'k6';
 
@@ -715,6 +728,50 @@ function normalizeAutomationMatchValue(value?: string | null) {
   return (value || '').trim().toLowerCase();
 }
 
+type IndexedAutomationImportResults = {
+  duplicateReportReferences: string[];
+  reportResultByReference: Map<string, AutomationImportResult>;
+  reportResultByTitle: Map<string, AutomationImportResult>;
+};
+
+function indexAutomationImportResults(
+  reportResults: AutomationImportResult[],
+): IndexedAutomationImportResults {
+  const referenceCount = new Map<string, number>();
+  const reportResultByReference = new Map<string, AutomationImportResult>();
+  const reportResultByTitle = new Map<string, AutomationImportResult>();
+
+  reportResults.forEach(reportResult => {
+    const uniqueCandidates = Array.from(
+      new Set(
+        reportResult.referenceCandidates
+          .map(candidate => normalizeAutomationMatchValue(candidate))
+          .filter(Boolean),
+      ),
+    );
+
+    uniqueCandidates.forEach(candidate => {
+      referenceCount.set(candidate, (referenceCount.get(candidate) || 0) + 1);
+      if (!reportResultByReference.has(candidate)) {
+        reportResultByReference.set(candidate, reportResult);
+      }
+    });
+
+    const normalizedTitle = normalizeAutomationMatchValue(reportResult.title);
+    if (normalizedTitle && !reportResultByTitle.has(normalizedTitle)) {
+      reportResultByTitle.set(normalizedTitle, reportResult);
+    }
+  });
+
+  return {
+    duplicateReportReferences: Array.from(referenceCount.entries())
+      .filter(([, count]) => count > 1)
+      .map(([reference]) => reference),
+    reportResultByReference,
+    reportResultByTitle,
+  };
+}
+
 function mapPlaywrightStatusToAutomationResult(status?: string): AutomationResultStatus {
   switch ((status || '').toLowerCase()) {
     case 'passed':
@@ -742,6 +799,43 @@ function mapAutomationResultToExecutionResult(status: AutomationResultStatus): T
     default:
       return TestResult.NOT_EXECUTED;
   }
+}
+
+function buildExecutionResultSyncKey(result: TestRunResult) {
+  return `${result.functionalityId || '__functionality__'}::${result.testCaseId || '__test_case__'}`;
+}
+
+function areExecutionResultsEquivalent(left?: TestRunResult, right?: TestRunResult) {
+  if (!left || !right) return false;
+
+  return (
+    left.result === right.result &&
+    (left.notes || '') === (right.notes || '') &&
+    (left.evidenceImage || '') === (right.evidenceImage || '') &&
+    (left.bugId || '') === (right.bugId || '') &&
+    (left.bugTitle || '') === (right.bugTitle || '') &&
+    (left.bugLink || '') === (right.bugLink || '') &&
+    (left.severity || null) === (right.severity || null) &&
+    (left.linkedBugId || '') === (right.linkedBugId || '')
+  );
+}
+
+function getDirtyExecutionResults(
+  currentResults: TestRunResult[],
+  syncedResults: TestRunResult[],
+) {
+  const syncedByKey = new Map(
+    syncedResults.map(result => [buildExecutionResultSyncKey(result), result]),
+  );
+
+  return currentResults.filter(result => {
+    const syncedResult = syncedByKey.get(buildExecutionResultSyncKey(result));
+    if (!syncedResult) {
+      return true;
+    }
+
+    return !areExecutionResultsEquivalent(result, syncedResult);
+  });
 }
 
 function buildAutomationImportStatusTotals(
@@ -1396,6 +1490,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [isSubmittingTestRun, setIsSubmittingTestRun] = useState(false);
   const [isFinalizingExecution, setIsFinalizingExecution] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
+  const [lastSyncedExecutionResults, setLastSyncedExecutionResults] = useState<TestRunResult[]>(
+    [],
+  );
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
     useParticipantDirectoryMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
@@ -1458,9 +1555,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   useEffect(() => {
     if (currentEvidenceRecord && isEvidenceModalOpen) {
+      const baseEvidenceContent = currentEvidenceRecord.notes?.trim()
+        ? currentEvidenceRecord.notes
+        : buildExpectedResultEvidenceTemplate(activeEvidenceTestCase?.expectedResult);
+
       evidenceForm.setFieldsValue({
         evidence: mergeEvidenceContentWithImage(
-          currentEvidenceRecord.notes || '',
+          baseEvidenceContent,
           currentEvidenceRecord.evidenceImage,
         ),
         bugTitle: currentEvidenceRecord.bugTitle || '',
@@ -1470,7 +1571,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     } else {
       evidenceForm.resetFields();
     }
-  }, [currentEvidenceRecord, evidenceForm, isEvidenceModalOpen]);
+  }, [activeEvidenceTestCase?.expectedResult, currentEvidenceRecord, evidenceForm, isEvidenceModalOpen]);
 
   const functionalityIdsWithTestCases = useMemo(() => {
     return new Set(testCases.map(testCase => testCase.functionalityId).filter(Boolean));
@@ -1696,6 +1797,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const functionalityById = useMemo(() => {
     return new Map<string, Functionality>(functionalities.map(func => [func.id, func]));
+  }, [functionalities]);
+
+  const functionalityModuleById = useMemo(() => {
+    return new Map(functionalities.map(func => [func.id, func.module || '']));
   }, [functionalities]);
 
   const selectedFunctionalityModels = useMemo(() => {
@@ -2094,6 +2199,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       .then(fullRun => {
         setActiveTestRun(fullRun);
         setExecutionResults(fullRun.results);
+        setLastSyncedExecutionResults(fullRun.results);
       })
       .catch(error => {
         console.error('Error loading test run detail:', error);
@@ -2322,12 +2428,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       });
 
       const savedRun = await saveTestRun({
-        ...newRun,
-        results: initialResults,
+        testRun: {
+          ...newRun,
+          results: initialResults,
+        },
       });
 
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
       resetTestRunModal();
 
       message.success('Ejecución de pruebas creada. Iniciando fase de ejecución...');
@@ -2380,9 +2489,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         results: executionResults,
       };
 
-      const savedRun = await saveTestRun(updatedRun);
+      const dirtyResults = getDirtyExecutionResults(executionResults, lastSyncedExecutionResults);
+      const savedRun = await saveTestRun({
+        testRun: updatedRun,
+        options: {
+          resultsToSync: dirtyResults,
+          removeMissingResults: false,
+        },
+      });
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
       resetTestRunModal();
       message.success({
         key: loadingMessageKey,
@@ -2451,15 +2568,24 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       results: executionResults,
     };
 
-    const savedRun = await saveTestRun(updatedRun);
+    const dirtyResults = getDirtyExecutionResults(executionResults, lastSyncedExecutionResults);
+    const savedRun = await saveTestRun({
+      testRun: updatedRun,
+      options: {
+        resultsToSync: dirtyResults,
+        removeMissingResults: false,
+      },
+    });
     message.success(`Ejecución guardada como ${status}`);
     if (isFinalStatus) {
       setActiveTestRun(null);
       setExecutionResults([]);
+      setLastSyncedExecutionResults([]);
       return;
     }
     setActiveTestRun(savedRun);
     setExecutionResults(savedRun.results);
+    setLastSyncedExecutionResults(savedRun.results);
     } catch (error) {
       console.error('Failed to save execution:', error);
       message.error(
@@ -2537,24 +2663,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         return;
       }
 
-      const duplicateReportReferences = Array.from(
-        reportResults.reduce<Map<string, number>>((acc, reportResult) => {
-          Array.from(
-            new Set(
-              reportResult.referenceCandidates.map(candidate =>
-                normalizeAutomationMatchValue(candidate),
-              ),
-            ),
-          )
-            .filter(Boolean)
-            .forEach(candidate => {
-              acc.set(candidate, (acc.get(candidate) || 0) + 1);
-            });
-          return acc;
-        }, new Map<string, number>()),
-      )
-        .filter(([, count]) => count > 1)
-        .map(([reference]) => reference);
+      const { duplicateReportReferences, reportResultByReference, reportResultByTitle } =
+        indexAutomationImportResults(reportResults);
 
       const now = new Date().toISOString();
       const matchedCaseIds = new Set<string>();
@@ -2566,15 +2676,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
         const normalizedReference = normalizeAutomationMatchValue(testCase.automationReference);
         const normalizedTitle = normalizeAutomationMatchValue(testCase.title);
-        const matchedReport = reportResults.find(reportResult => {
-          const referenceMatch =
-            normalizedReference &&
-            reportResult.referenceCandidates.some(
-              candidate => normalizeAutomationMatchValue(candidate) === normalizedReference,
-            );
-          const titleMatch = normalizeAutomationMatchValue(reportResult.title) === normalizedTitle;
-          return referenceMatch || titleMatch;
-        });
+        const matchedReport =
+          (normalizedReference ? reportResultByReference.get(normalizedReference) : undefined) ||
+          (normalizedTitle ? reportResultByTitle.get(normalizedTitle) : undefined);
 
         if (!matchedReport) return result;
 
@@ -2602,8 +2706,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       }
 
       const savedRun = await saveTestRun({
-        ...activeTestRun,
-        results: nextResults,
+        testRun: {
+          ...activeTestRun,
+          results: nextResults,
+        },
+        options: {
+          resultsToSync: getDirtyExecutionResults(nextResults, lastSyncedExecutionResults),
+          removeMissingResults: false,
+        },
       });
 
       if (metadataUpdatesById.size > 0) {
@@ -2612,6 +2722,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
       setIsPlaywrightImportModalOpen(false);
       setPlaywrightImportJson('');
       message.success(`Importación completada. ${matchedCaseIds.size} caso(s) actualizados.`);
@@ -2663,6 +2774,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         return;
       }
 
+      const { duplicateReportReferences, reportResultByReference } =
+        indexAutomationImportResults(reportResults);
       const now = new Date().toISOString();
       const matchedReferences = new Set<string>();
       const metadataUpdatesById = new Map<string, TestCase>();
@@ -2687,11 +2800,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           return result;
         }
 
-        const matchedReport = reportResults.find(reportResult =>
-          reportResult.referenceCandidates.some(
-            candidate => normalizeAutomationMatchValue(candidate) === normalizedReference,
-          ),
-        );
+        const matchedReport = reportResultByReference.get(normalizedReference);
 
         if (!matchedReport) {
           unmatchedExecutionCases.push({
@@ -2725,30 +2834,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         };
       });
 
-      const duplicateReportReferences = Array.from(
-        reportResults.reduce<Map<string, number>>((acc, reportResult) => {
-          Array.from(
-            new Set(
-              reportResult.referenceCandidates.map(candidate =>
-                normalizeAutomationMatchValue(candidate),
-              ),
-            ),
-          )
-            .filter(Boolean)
-            .forEach(candidate => {
-              acc.set(candidate, (acc.get(candidate) || 0) + 1);
-            });
-          return acc;
-        }, new Map<string, number>()),
-      )
-        .filter(([, count]) => count > 1)
-        .map(([reference]) => reference);
-
       const unmatchedReportReferences = reportResults
         .filter(reportResult => {
-          const normalizedCandidates = reportResult.referenceCandidates.map(candidate =>
-            normalizeAutomationMatchValue(candidate),
-          );
+          const normalizedCandidates = reportResult.referenceCandidates
+            .map(candidate => normalizeAutomationMatchValue(candidate))
+            .filter(Boolean);
           return !normalizedCandidates.some(candidate => matchedReferences.has(candidate));
         })
         .map(reportResult => reportResult.referenceCandidates[0] || reportResult.title)
@@ -2770,8 +2860,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       }
 
       const savedRun = await saveTestRun({
-        ...activeTestRun,
-        results: nextResults,
+        testRun: {
+          ...activeTestRun,
+          results: nextResults,
+        },
+        options: {
+          resultsToSync: getDirtyExecutionResults(nextResults, lastSyncedExecutionResults),
+          removeMissingResults: false,
+        },
       });
 
       await saveAutomationImportHistory({
@@ -2793,6 +2889,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       setActiveTestRun(savedRun);
       setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
       setIsPlaywrightImportModalOpen(false);
       setPlaywrightImportJson('');
       message.success(
@@ -3812,8 +3909,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       key: 'progress',
       width: 160,
       render: (_: any, record: TestRun) => {
-        const total = record.results.length;
-        const executed = record.results.filter(r => r.result !== TestResult.NOT_EXECUTED).length;
+        const total = record.totalResults ?? record.results.length;
+        const executed =
+          record.executedResults ??
+          record.results.filter(r => r.result !== TestResult.NOT_EXECUTED).length;
         const percent = total > 0 ? Math.round((executed / total) * 100) : 0;
         return (
           <div className="min-w-[110px]">
@@ -3986,49 +4085,84 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     });
   };
 
-  if (activeTestRun) {
-    const hasActivePublicUatSession = activeTestRun.publicUatSession?.status === 'active';
-    const isReadOnly =
-      activeTestRun.status === ExecutionStatus.FINAL || isViewer || hasActivePublicUatSession;
-    const notExecutedCount = executionResults.filter(
-      result => result.result === TestResult.NOT_EXECUTED,
-    ).length;
-    const isReferenceAlertDismissed = dismissedReferenceAlertRunIds.includes(activeTestRun.id);
-    const automatedCasesWithoutReference = executionResults.flatMap(result => {
-      const testCase = testCaseById.get(result.testCaseId);
-
-      if (
-        !testCase ||
-        deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED ||
-        normalizeAutomationMatchValue(testCase.automationReference)
-      ) {
-        return [];
+  const executionDetailStats = useMemo(() => {
+    const searchLower = executionSearchText.toLowerCase();
+    let passedCount = 0;
+    let failedCount = 0;
+    let blockedCount = 0;
+    let notExecutedCount = 0;
+    const automatedCasesWithoutReference: TestCase[] = [];
+    const filteredExecutionResults = executionResults.filter(result => {
+      switch (result.result) {
+        case TestResult.PASSED:
+          passedCount += 1;
+          break;
+        case TestResult.FAILED:
+          failedCount += 1;
+          break;
+        case TestResult.BLOCKED:
+          blockedCount += 1;
+          break;
+        case TestResult.NOT_EXECUTED:
+        default:
+          notExecutedCount += 1;
+          break;
       }
 
-      return [testCase];
-    });
+      const testCase = testCaseById.get(result.testCaseId);
+      if (
+        testCase &&
+        deriveAutomationStatus(testCase) === AutomationStatus.AUTOMATED &&
+        !normalizeAutomationMatchValue(testCase.automationReference)
+      ) {
+        automatedCasesWithoutReference.push(testCase);
+      }
 
-    const filteredExecutionResults = executionResults.filter(r => {
-      const tc = testCases.find(t => t.id === r.testCaseId);
-      const func = functionalities.find(f => f.id === r.functionalityId);
-
-      const searchLower = executionSearchText.toLowerCase();
+      const func = functionalityById.get(result.functionalityId);
       const matchesSearch =
         !executionSearchText ||
-        tc?.id.toLowerCase().includes(searchLower) ||
-        tc?.title.toLowerCase().includes(searchLower) ||
+        testCase?.id.toLowerCase().includes(searchLower) ||
+        testCase?.title.toLowerCase().includes(searchLower) ||
         func?.module.toLowerCase().includes(searchLower) ||
         func?.name.toLowerCase().includes(searchLower);
-
-      const matchesFailed = !filterOnlyFailed || r.result === TestResult.FAILED;
+      const matchesFailed = !filterOnlyFailed || result.result === TestResult.FAILED;
 
       return matchesSearch && matchesFailed;
     });
 
+    return {
+      passedCount,
+      failedCount,
+      blockedCount,
+      notExecutedCount,
+      automatedCasesWithoutReference,
+      filteredExecutionResults,
+    };
+  }, [
+    executionResults,
+    executionSearchText,
+    filterOnlyFailed,
+    functionalityById,
+    testCaseById,
+  ]);
+
+  if (activeTestRun) {
+    const hasActivePublicUatSession = activeTestRun.publicUatSession?.status === 'active';
+    const isReadOnly =
+      activeTestRun.status === ExecutionStatus.FINAL || isViewer || hasActivePublicUatSession;
+    const isReferenceAlertDismissed = dismissedReferenceAlertRunIds.includes(activeTestRun.id);
+    const {
+      passedCount,
+      failedCount,
+      notExecutedCount,
+      automatedCasesWithoutReference,
+      filteredExecutionResults,
+    } = executionDetailStats;
+
     const executionModuleFilters = Array.from(
       new Set(
         executionResults
-          .map(r => functionalities.find(f => f.id === r.functionalityId)?.module?.trim())
+          .map(r => functionalityModuleById.get(r.functionalityId)?.trim())
           .filter((moduleName): moduleName is string => Boolean(moduleName)),
       ),
     )
@@ -4249,17 +4383,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 </Text>
               </div>
               <div className="flex items-center justify-center gap-2">
-                <span className="text-2xl font-black text-slate-800">
-                  {executionResults.filter(r => r.result === TestResult.PASSED).length}
-                </span>
+                <span className="text-2xl font-black text-slate-800">{passedCount}</span>
                 <Text type="secondary" className="text-xs font-bold text-emerald-600">
                   (
                   {executionResults.length > 0
-                    ? Math.round(
-                        (executionResults.filter(r => r.result === TestResult.PASSED).length /
-                          executionResults.length) *
-                          100,
-                      )
+                    ? Math.round((passedCount / executionResults.length) * 100)
                     : 0}
                   %)
                 </Text>
@@ -4277,9 +4405,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   Failed
                 </Text>
               </div>
-              <div className="text-2xl font-black text-rose-600">
-                {executionResults.filter(r => r.result === TestResult.FAILED).length}
-              </div>
+              <div className="text-2xl font-black text-rose-600">{failedCount}</div>
             </Card>
           </Col>
           <Col span={4}>
@@ -4293,9 +4419,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   Pending
                 </Text>
               </div>
-              <div className="text-2xl font-black text-amber-600">
-                {executionResults.filter(r => r.result === TestResult.NOT_EXECUTED).length}
-              </div>
+              <div className="text-2xl font-black text-amber-600">{notExecutedCount}</div>
             </Card>
           </Col>
         </Row>
@@ -4342,9 +4466,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 filters: executionModuleFilters,
                 filterSearch: true,
                 onFilter: (value, record) => {
-                  const moduleName = functionalities.find(
-                    f => f.id === record.functionalityId,
-                  )?.module?.trim();
+                  const moduleName = functionalityModuleById.get(record.functionalityId)?.trim();
                   return moduleName === value;
                 },
                 width: '14%',

@@ -41,7 +41,12 @@ function renderRichText(value?: string | null) {
     return <span className="text-sm text-slate-400">Sin contenido adicional.</span>;
   }
 
-  return <div className="qa-rich-text-content text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: normalized }} />;
+  return (
+    <div
+      className="qa-rich-text-content text-sm text-slate-700"
+      dangerouslySetInnerHTML={{ __html: normalized }}
+    />
+  );
 }
 
 function resultOptions() {
@@ -92,8 +97,29 @@ export default function PublicUatSessionPage() {
       .length;
   }, [data]);
 
+  const pendingResultsCount = useMemo(() => {
+    return (data?.testRun?.results || []).filter(result => result.result === TestResult.NOT_EXECUTED)
+      .length;
+  }, [data]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    const persistedResults = data?.testRun?.results || [];
+    return persistedResults.some(result => {
+      const draft = drafts[result.id];
+      if (!draft) return false;
+
+      return draft.result !== result.result || draft.notes !== (result.notes || '');
+    });
+  }, [data, drafts]);
+
   const totalCount = data?.testRun?.results.length || 0;
   const isReadOnly = data?.session.readOnly ?? true;
+  const canCompleteSession =
+    !isReadOnly &&
+    totalCount > 0 &&
+    pendingResultsCount === 0 &&
+    !hasUnsavedChanges &&
+    !isSavingResult;
 
   const saveSingleResult = async (resultId: string) => {
     const draft = drafts[resultId];
@@ -118,12 +144,12 @@ export default function PublicUatSessionPage() {
   const handleComplete = async () => {
     try {
       await completeSession();
-      message.success('La evaluación UAT fue finalizada correctamente.');
+      message.success('La evaluacion UAT fue finalizada correctamente.');
     } catch (completeError) {
       message.error(
         completeError instanceof Error
           ? completeError.message
-          : 'No fue posible finalizar la evaluación UAT.',
+          : 'No fue posible finalizar la evaluacion UAT.',
       );
     }
   };
@@ -133,7 +159,7 @@ export default function PublicUatSessionPage() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-3">
           <Spin size="large" />
-          <Text type="secondary">Cargando evaluación UAT...</Text>
+          <Text type="secondary">Cargando evaluacion UAT...</Text>
         </div>
       </div>
     );
@@ -146,12 +172,10 @@ export default function PublicUatSessionPage() {
           <Alert
             type="error"
             showIcon
-            message="No pudimos abrir esta evaluación UAT"
+            message="No pudimos abrir esta evaluacion UAT"
             description={
               <div className="space-y-3">
-                <p>
-                  El enlace puede haber expirado, haber sido cerrado o no ser válido.
-                </p>
+                <p>El enlace puede haber expirado, haber sido cerrado o no ser valido.</p>
                 <Button onClick={() => void refetch()} loading={isFetching}>
                   Reintentar
                 </Button>
@@ -170,13 +194,13 @@ export default function PublicUatSessionPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <Tag color="blue" className="rounded-full px-3 py-1 font-semibold">
-                UAT pública
+                UAT publica
               </Tag>
               <Title level={2} className="!mb-0 !text-slate-800">
                 {data.testRun?.title}
               </Title>
               <Paragraph className="!mb-0 text-slate-500">
-                {data.testRun?.description || 'Validación externa compartida con cliente.'}
+                {data.testRun?.description || 'Validacion externa compartida con cliente.'}
               </Paragraph>
               <Space size={[8, 8]} wrap className="mb-2">
                 <Tag>{data.session.status}</Tag>
@@ -211,7 +235,7 @@ export default function PublicUatSessionPage() {
               className="mt-9 rounded-2xl"
               type="info"
               showIcon
-              message="Indicaciones para la evaluación"
+              message="Indicaciones para la evaluacion"
               description={data.session.deliveryNotes}
             />
           ) : null}
@@ -219,7 +243,7 @@ export default function PublicUatSessionPage() {
 
         {!data.testRun?.results.length ? (
           <Card className="rounded-3xl border-slate-100 shadow-sm">
-            <Empty description="Esta evaluación UAT no tiene casos disponibles." />
+            <Empty description="Esta evaluacion UAT no tiene casos disponibles." />
           </Card>
         ) : null}
 
@@ -235,7 +259,7 @@ export default function PublicUatSessionPage() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
                     <Text className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                      {result.moduleName || 'Módulo'}
+                      {result.moduleName || 'Modulo'}
                     </Text>
                     <Title level={4} className="!mb-0 !text-slate-800">
                       {result.testCaseTitle || 'Caso de prueba'}
@@ -274,7 +298,7 @@ export default function PublicUatSessionPage() {
                 <div className="grid gap-4 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                     <Text strong className="block text-slate-800">
-                      Descripción
+                      Descripcion
                     </Text>
                     <div className="mt-2">{renderRichText(result.testCaseDescription)}</div>
                   </div>
@@ -304,7 +328,11 @@ export default function PublicUatSessionPage() {
                     Comentarios y evidencia
                   </Text>
                   <Suspense
-                    fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">Cargando editor...</div>}
+                    fallback={
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                        Cargando editor...
+                      </div>
+                    }
                   >
                     <EvidenceRichEditor
                       value={draft.notes}
@@ -317,8 +345,11 @@ export default function PublicUatSessionPage() {
                           },
                         }))
                       }
-                      disabled={isReadOnly || (!data.session.allowCommentEditing && !data.session.allowEvidenceUpload)}
-                      placeholder="Escribe aquí tus observaciones y, si aplica, pega o sube una evidencia."
+                      disabled={
+                        isReadOnly ||
+                        (!data.session.allowCommentEditing && !data.session.allowEvidenceUpload)
+                      }
+                      placeholder="Escribe aqui tus observaciones y, si aplica, pega o sube una evidencia."
                     />
                   </Suspense>
                 </div>
@@ -345,23 +376,35 @@ export default function PublicUatSessionPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <Title level={4} className="!mb-1 !text-slate-800">
-                Cierre de evaluación
+                Cierre de evaluacion
               </Title>
               <Text className="text-slate-500">
-                Cuando hayas terminado de registrar los resultados, finaliza esta sesión para dejarla cerrada.
+                Cuando hayas terminado de registrar los resultados, finaliza esta sesion para dejarla cerrada.
               </Text>
             </div>
 
-            <Button
-              type="primary"
-              icon={<CheckCircleOutlined />}
-              disabled={isReadOnly}
-              loading={isCompletingSession}
-              onClick={() => void handleComplete()}
-              className="h-11 rounded-xl px-6"
-            >
-              Finalizar evaluación UAT
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              {!isReadOnly && !canCompleteSession ? (
+                <Text className="max-w-md text-right text-sm text-amber-600">
+                  {hasUnsavedChanges
+                    ? 'Guarda los cambios pendientes antes de finalizar la evaluacion.'
+                    : pendingResultsCount > 0
+                      ? 'Debes registrar y guardar el resultado de todas las pruebas antes de finalizar la evaluacion.'
+                      : 'La evaluacion debe tener resultados guardados antes de finalizarse.'}
+                </Text>
+              ) : null}
+
+              <Button
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                disabled={!canCompleteSession}
+                loading={isCompletingSession}
+                onClick={() => void handleComplete()}
+                className="h-11 rounded-xl px-6"
+              >
+                Finalizar evaluacion UAT
+              </Button>
+            </div>
           </div>
         </Card>
       </div>

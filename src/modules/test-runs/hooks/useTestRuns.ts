@@ -2,6 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TestRun } from '../../../types';
 import { getTestRuns, removeTestRun, saveTestRun } from '../services/testRunsService';
 
+type SaveTestRunInput = {
+  testRun: TestRun;
+  options?: {
+    resultsToSync?: TestRun['results'];
+    removeMissingResults?: boolean;
+  };
+};
+
 export function useTestRuns(projectId?: string, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
   const enabled = options?.enabled ?? Boolean(projectId);
@@ -13,7 +21,7 @@ export function useTestRuns(projectId?: string, options?: { enabled?: boolean })
   });
 
   const saveMutation = useMutation({
-    mutationFn: (testRun: TestRun) => saveTestRun(testRun),
+    mutationFn: ({ testRun, options }: SaveTestRunInput) => saveTestRun(testRun, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] });
       queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] });
