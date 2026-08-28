@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Avatar,
@@ -52,6 +52,7 @@ import { ParticipantSelect } from '../modules/participant-directory/components/P
 import { useParticipantDirectoryMembers } from '../modules/participant-directory/hooks/useParticipantDirectoryMembers';
 import { createExternalParticipant } from '../modules/participant-directory/services/participantDirectoryService';
 import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
+import { getOrganizationTeam } from '../modules/organization-team/services/organizationTeamService';
 import {
   buildProjectUpgradeWhatsAppUrl,
   normalizeOrganizationPlan,
@@ -884,6 +885,12 @@ export default function AboutView({ project }: AboutViewProps) {
     projectQuota?.effectivePlan || projectQuota?.plan || activeMembership?.organization?.plan,
   );
   const activeOrganizationName = activeMembership?.organization?.name;
+  const organizationTeamQuery = useQuery({
+    queryKey: ['organization-team', 'about-view'],
+    queryFn: getOrganizationTeam,
+    enabled: Boolean(activeMembership?.organization?.documentId),
+    staleTime: 60_000,
+  });
   const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
   const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
   const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
@@ -893,6 +900,29 @@ export default function AboutView({ project }: AboutViewProps) {
     limit: projectLimit,
     upgradePriceMonthlyUsd,
   });
+
+  const projectAccessMembers = useMemo(() => {
+    if (!project.documentId) {
+      return [];
+    }
+
+    return (organizationTeamQuery.data?.members || []).filter(member => {
+      if (member.status !== 'active') {
+        return false;
+      }
+
+      const roleCode = member.role?.code;
+      if (roleCode === 'owner' || roleCode === 'qa-lead' || roleCode === 'qa-engineer') {
+        return true;
+      }
+
+      if (roleCode === 'manager' || roleCode === 'viewer') {
+        return member.workspaceProjectDocumentIds?.includes(project.documentId) || false;
+      }
+
+      return false;
+    });
+  }, [organizationTeamQuery.data?.members, project.documentId]);
 
   const stats = useMemo(() => {
     const activeBugs = bugs.filter(bug => bug.status !== BugStatus.RESOLVED).length;
@@ -1829,29 +1859,32 @@ export default function AboutView({ project }: AboutViewProps) {
               <Row gutter={[20, 20]}>
                 <Col xs={24}>
                   <SurfaceCard
-                    title="Participantes del proyecto"
+                    title="Acceso al proyecto"
                     icon={<TeamOutlined className="text-2xl" />}
                     accent={qaPalette.functionalityStatus.completed}
                   >
-                    <Text className="mb-5 block text-slate-400">
-                      {stats.participants} personas base asociadas al proyecto
+                    <Text className="mb-3 block text-slate-400">
+                      {projectAccessMembers.length} miembros con acceso a este proyecto
                     </Text>
-                    {project.teamMembers && project.teamMembers.length > 0 ? (
+                    {projectAccessMembers.length > 0 ? (
                       <div className="flex flex-wrap gap-3">
-                        {project.teamMembers.map(member => (
+                        {projectAccessMembers.map(member => (
                           <Tag
-                            key={member}
+                            key={member.documentId}
                             variant="filled"
                             className="m-0 rounded-full px-4 py-2 text-slate-700"
                             style={{ backgroundColor: softSurface(qaPalette.accent) }}
                           >
-                            {member}
+                            {member.name}
                           </Tag>
                         ))}
                       </div>
                     ) : (
-                      <Empty description="No hay participantes base definidos para este proyecto." />
+                      <Empty description="No hay miembros con acceso definidos para este proyecto." />
                     )}
+                    <Text className="mt-5 block text-slate-400">
+                      {stats.participants} participantes base asociados al proyecto
+                    </Text>
                   </SurfaceCard>
                 </Col>
 
@@ -2218,7 +2251,7 @@ export default function AboutView({ project }: AboutViewProps) {
             <Input.TextArea rows={4} />
           </Form.Item>
 
-          <Form.Item name="teamMembers" label="Participantes del proyecto">
+          <Form.Item name="teamMembers" label="Participantes base del proyecto">
             <ParticipantSelect
               size="large"
               members={participantDirectoryMembers}
@@ -2497,7 +2530,7 @@ export default function AboutView({ project }: AboutViewProps) {
           <Form.Item
             name="participants"
             label="Participantes"
-            extra="Puedes seleccionar miembros existentes o escribir un nombre externo y presionar Enter."
+            extra="Puedes seleccionar participantes existentes o escribir un nombre externo y presionar Enter."
           >
             <ParticipantSelect
               size="large"
@@ -2507,7 +2540,7 @@ export default function AboutView({ project }: AboutViewProps) {
               allowCustomOptions
               extraOptions={meetingParticipantExtraOptions}
               loading={isParticipantDirectoryLoading}
-              placeholder="Selecciona miembros del workspace o escribe un participante externo"
+              placeholder="Selecciona participantes base del workspace o escribe un participante externo"
             />
           </Form.Item>
 

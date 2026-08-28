@@ -371,13 +371,13 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
             </Col>
           </Row>
 
-          <Form.Item name="teamMembers" label="Miembros del equipo">
+          <Form.Item name="teamMembers" label="Participantes base del proyecto">
             <ParticipantSelect
               members={participantDirectoryMembers}
               size="large"
               valueField="fullName"
               loading={isParticipantDirectoryLoading}
-              placeholder="Selecciona miembros registrados del workspace"
+              placeholder="Selecciona participantes base del workspace"
             />
           </Form.Item>
 

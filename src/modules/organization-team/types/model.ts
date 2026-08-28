@@ -21,6 +21,12 @@ export interface OrganizationTeamMember {
   role: OrganizationTeamRole | null;
   status: MemberStatus;
   isCurrentUser: boolean;
+  workspaceProjectDocumentIds?: string[];
+  assignedProjects?: Array<{
+    documentId: string;
+    name: string;
+  }>;
+  workspaceName?: string | null;
 }
 
 export interface OrganizationTeamInvitation {
@@ -28,6 +34,8 @@ export interface OrganizationTeamInvitation {
   email: string;
   acceptUrl?: string;
   organizationId: string;
+  workspaceProjectDocumentIds?: string[];
+  workspaceName?: string | null;
   role: OrganizationTeamRole | null;
   invitedBy?: {
     id: number;

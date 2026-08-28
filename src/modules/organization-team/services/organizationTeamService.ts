@@ -9,7 +9,7 @@ export async function getOrganizationTeam() {
 export async function inviteOrganizationMember(input: {
   email: string;
   roleDocumentId: string;
-  workspaceProjectDocumentId?: string;
+  workspaceProjectDocumentIds?: string[];
 }) {
   const response = await Http.post<OrganizationTeamData>('/api/organization-team/invitations', {
     data: input,
@@ -27,6 +27,22 @@ export async function updateOrganizationMemberRole(input: {
     {
       data: {
         roleDocumentId: input.roleDocumentId,
+      },
+    },
+  );
+
+  return response.data;
+}
+
+export async function updateOrganizationMemberProjects(input: {
+  membershipDocumentId: string;
+  workspaceProjectDocumentIds: string[];
+}) {
+  const response = await Http.put<OrganizationTeamData>(
+    `/api/organization-team/members/${input.membershipDocumentId}/projects`,
+    {
+      data: {
+        workspaceProjectDocumentIds: input.workspaceProjectDocumentIds,
       },
     },
   );

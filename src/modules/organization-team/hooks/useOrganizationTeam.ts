@@ -6,6 +6,7 @@ import {
   inviteOrganizationMember,
   reactivateOrganizationMember,
   resendOrganizationInvitation,
+  updateOrganizationMemberProjects,
   updateOrganizationMemberRole,
 } from '../services/organizationTeamService';
 import type { OrganizationTeamData } from '../types/model';
@@ -38,6 +39,11 @@ export function useOrganizationTeam(enabled = true) {
     onSuccess: syncTeamState,
   });
 
+  const updateProjectsMutation = useMutation({
+    mutationFn: updateOrganizationMemberProjects,
+    onSuccess: syncTeamState,
+  });
+
   const deactivateMutation = useMutation({
     mutationFn: deactivateOrganizationMember,
     onSuccess: syncTeamState,
@@ -62,12 +68,14 @@ export function useOrganizationTeam(enabled = true) {
     ...query,
     inviteMember: inviteMutation.mutateAsync,
     updateMemberRole: updateRoleMutation.mutateAsync,
+    updateMemberProjects: updateProjectsMutation.mutateAsync,
     deactivateMember: deactivateMutation.mutateAsync,
     reactivateMember: reactivateMutation.mutateAsync,
     resendInvitation: resendInvitationMutation.mutateAsync,
     cancelInvitation: cancelInvitationMutation.mutateAsync,
     isInviting: inviteMutation.isPending,
     isUpdatingRole: updateRoleMutation.isPending,
+    isUpdatingProjects: updateProjectsMutation.isPending,
     isDeactivatingMember: deactivateMutation.isPending,
     isReactivatingMember: reactivateMutation.isPending,
     isResendingInvitation: resendInvitationMutation.isPending,

@@ -49,6 +49,7 @@ export interface SuperadminInvitation {
   invitedAt?: string;
   status: string;
   workspaceProjectDocumentId: string | null;
+  workspaceProjectDocumentIds?: string[];
   workspaceName: string | null;
   role: {
     documentId: string;

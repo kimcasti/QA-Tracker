@@ -17,6 +17,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   CopyOutlined,
+  EditOutlined,
   MailOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -24,7 +25,7 @@ import {
   UserSwitchOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toApiError } from '../../../config/http';
 import { qaPalette, softSurface } from '../../../theme/palette';
 import type { Project } from '../../../types';
@@ -130,8 +131,14 @@ export function OrganizationTeamModal({
   const [form] = Form.useForm<{
     email: string;
     roleDocumentId: string;
-    workspaceProjectDocumentId?: string;
+    workspaceProjectDocumentIds?: string[];
   }>();
+  const [projectAccessForm] = Form.useForm<{
+    workspaceProjectDocumentIds: string[];
+  }>();
+  const [editingProjectsMember, setEditingProjectsMember] = useState<OrganizationTeamMember | null>(
+    null,
+  );
   const {
     data,
     error,
@@ -139,12 +146,14 @@ export function OrganizationTeamModal({
     isFetching,
     inviteMember,
     updateMemberRole,
+    updateMemberProjects,
     deactivateMember,
     reactivateMember,
     resendInvitation,
     cancelInvitation,
     isInviting,
     isUpdatingRole,
+    isUpdatingProjects,
     isDeactivatingMember,
     isReactivatingMember,
     isResendingInvitation,
@@ -174,32 +183,41 @@ export function OrganizationTeamModal({
     if (!open || !primaryInviteRole) return;
     form.setFieldsValue({
       roleDocumentId: form.getFieldValue('roleDocumentId') || primaryInviteRole,
-      workspaceProjectDocumentId: form.getFieldValue('workspaceProjectDocumentId'),
+      workspaceProjectDocumentIds: form.getFieldValue('workspaceProjectDocumentIds'),
     });
   }, [form, open, primaryInviteRole]);
 
   useEffect(() => {
     if (requiresProjectAssignment) return;
-    if (!form.getFieldValue('workspaceProjectDocumentId')) return;
-    form.setFieldValue('workspaceProjectDocumentId', undefined);
+    const selectedProjectIds = form.getFieldValue('workspaceProjectDocumentIds');
+    if (!selectedProjectIds?.length) return;
+    form.setFieldValue('workspaceProjectDocumentIds', undefined);
   }, [form, requiresProjectAssignment]);
+
+  useEffect(() => {
+    if (open) return;
+    setEditingProjectsMember(null);
+    projectAccessForm.resetFields();
+  }, [open, projectAccessForm]);
 
   const handleInvite = async (values: {
     email: string;
     roleDocumentId: string;
-    workspaceProjectDocumentId?: string;
+    workspaceProjectDocumentIds?: string[];
   }) => {
     try {
       await inviteMember({
         email: values.email.trim().toLowerCase(),
         roleDocumentId: values.roleDocumentId,
-        workspaceProjectDocumentId: values.workspaceProjectDocumentId || undefined,
+        workspaceProjectDocumentIds: values.workspaceProjectDocumentIds?.length
+          ? values.workspaceProjectDocumentIds
+          : undefined,
       });
       message.success('Invitacion creada');
       form.setFieldsValue({
         email: '',
-        workspaceProjectDocumentId: requiresProjectAssignment
-          ? values.workspaceProjectDocumentId
+        workspaceProjectDocumentIds: requiresProjectAssignment
+          ? values.workspaceProjectDocumentIds
           : undefined,
       });
     } catch (inviteError) {
@@ -214,6 +232,33 @@ export function OrganizationTeamModal({
         roleDocumentId,
       });
       message.success(`Rol actualizado para ${member.name}`);
+    } catch (updateError) {
+      message.error(toApiError(updateError).message);
+    }
+  };
+
+  const openProjectAccessEditor = (member: OrganizationTeamMember) => {
+    projectAccessForm.setFieldsValue({
+      workspaceProjectDocumentIds: member.workspaceProjectDocumentIds || [],
+    });
+    setEditingProjectsMember(member);
+  };
+
+  const handleProjectAccessSave = async (values: {
+    workspaceProjectDocumentIds: string[];
+  }) => {
+    if (!editingProjectsMember) {
+      return;
+    }
+
+    try {
+      await updateMemberProjects({
+        membershipDocumentId: editingProjectsMember.documentId,
+        workspaceProjectDocumentIds: values.workspaceProjectDocumentIds,
+      });
+      message.success(`Acceso por proyectos actualizado para ${editingProjectsMember.name}`);
+      setEditingProjectsMember(null);
+      projectAccessForm.resetFields();
     } catch (updateError) {
       message.error(toApiError(updateError).message);
     }
@@ -275,6 +320,11 @@ export function OrganizationTeamModal({
     }
   };
 
+  const canEditProjectAssignments = (member: OrganizationTeamMember) =>
+    canManageOrganizationAccess &&
+    member.status === 'active' &&
+    (member.role?.code === 'manager' || member.role?.code === 'viewer');
+
   const memberColumns: ColumnsType<OrganizationTeamMember> = [
     {
       title: 'Nombre',
@@ -301,7 +351,10 @@ export function OrganizationTeamModal({
       title: 'Rol',
       key: 'role',
       render: (_, member) =>
-        canManageOrganizationAccess && member.status === 'active' ? (
+        canManageOrganizationAccess &&
+        member.status === 'active' &&
+        member.role?.code !== 'manager' &&
+        member.role?.code !== 'viewer' ? (
           <Select
             value={member.role?.documentId}
             options={availableRoles
@@ -316,6 +369,26 @@ export function OrganizationTeamModal({
           />
         ) : (
           <RoleTag role={member.role} />
+        ),
+    },
+    {
+      title: 'Proyecto(s)',
+      key: 'assignedProjects',
+      render: (_, member) =>
+        member.role?.code === 'manager' || member.role?.code === 'viewer' ? (
+          member.assignedProjects?.length ? (
+            <Space size={[6, 6]} wrap>
+              {member.assignedProjects.map(project => (
+                <Tag key={project.documentId} className="m-0 rounded-full px-3 py-1">
+                  {project.name}
+                </Tag>
+              ))}
+            </Space>
+          ) : (
+            <Text type="secondary">Sin proyectos asignados</Text>
+          )
+        ) : (
+          <Text type="secondary">No aplica</Text>
         ),
     },
     {
@@ -359,17 +432,24 @@ export function OrganizationTeamModal({
         }
 
         return (
-          <Popconfirm
-            title="Desactivar acceso"
-            description={`Se revocara el acceso actual de ${member.name}.`}
-            okText="Desactivar"
-            cancelText="Cancelar"
-            onConfirm={() => handleDeactivate(member)}
-          >
-            <Button danger type="text" icon={<StopOutlined />} loading={isDeactivatingMember}>
-              Desactivar acceso
-            </Button>
-          </Popconfirm>
+          <Space size="small" wrap className="justify-end">
+            {canEditProjectAssignments(member) ? (
+              <Button type="text" icon={<EditOutlined />} onClick={() => openProjectAccessEditor(member)}>
+                Editar proyectos
+              </Button>
+            ) : null}
+            <Popconfirm
+              title="Desactivar acceso"
+              description={`Se revocara el acceso actual de ${member.name}.`}
+              okText="Desactivar"
+              cancelText="Cancelar"
+              onConfirm={() => handleDeactivate(member)}
+            >
+              <Button danger type="text" icon={<StopOutlined />} loading={isDeactivatingMember}>
+                Desactivar acceso
+              </Button>
+            </Popconfirm>
+          </Space>
         );
       },
     },
@@ -385,6 +465,19 @@ export function OrganizationTeamModal({
       title: 'Rol',
       key: 'role',
       render: (_, invitation) => <RoleTag role={invitation.role} />,
+    },
+    {
+      title: 'Proyecto(s)',
+      key: 'workspaceName',
+      render: (_, invitation) =>
+        invitation.workspaceName || invitation.workspaceProjectDocumentIds?.length ? (
+          <Text>
+            {invitation.workspaceName ||
+              `${invitation.workspaceProjectDocumentIds?.length || 0} proyectos asignados`}
+          </Text>
+        ) : (
+          <Text type="secondary">Sin restriccion</Text>
+        ),
     },
     {
       title: 'Fecha',
@@ -444,6 +537,7 @@ export function OrganizationTeamModal({
   ];
 
   return (
+    <>
     <Modal
       open={open}
       onCancel={onCancel}
@@ -538,7 +632,7 @@ export function OrganizationTeamModal({
                 showIcon
                 message={
                   requiresProjectAssignment
-                    ? 'Manager y Viewer requieren proyecto asignado desde la invitacion.'
+                    ? 'Manager y Viewer requieren al menos un proyecto asignado desde la invitacion.'
                     : 'Owner, QA Lead y QA Engineer mantienen acceso segun su rol organizacional.'
                 }
               />
@@ -585,19 +679,20 @@ export function OrganizationTeamModal({
 
                   {requiresProjectAssignment ? (
                     <Form.Item
-                      name="workspaceProjectDocumentId"
-                      label="Proyecto asignado"
+                      name="workspaceProjectDocumentIds"
+                      label="Proyectos asignados"
                       rules={[
                         {
                           required: true,
-                          message: 'Selecciona el proyecto que podra observar este perfil.',
+                          message: 'Selecciona al menos un proyecto para este perfil.',
                         },
                       ]}
                       className="mb-0"
                     >
                       <Select
+                        mode="multiple"
                         size="large"
-                        placeholder="Selecciona un proyecto"
+                        placeholder="Selecciona uno o varios proyectos"
                         options={projectOptions}
                         disabled={projectOptions.length === 0}
                       />
@@ -662,7 +757,7 @@ export function OrganizationTeamModal({
                 />
               ),
             }}
-            scroll={{ x: 920 }}
+            scroll={{ x: 1120 }}
           />
         </Card>
 
@@ -709,5 +804,48 @@ export function OrganizationTeamModal({
         </Card>
       </div>
     </Modal>
+      <Modal
+        open={Boolean(editingProjectsMember)}
+        title={`Editar proyectos de ${editingProjectsMember?.name || ''}`}
+        onCancel={() => {
+          setEditingProjectsMember(null);
+          projectAccessForm.resetFields();
+        }}
+        onOk={() => projectAccessForm.submit()}
+        okText="Guardar cambios"
+        cancelText="Cancelar"
+        confirmLoading={isUpdatingProjects}
+        destroyOnHidden
+      >
+        <Form form={projectAccessForm} layout="vertical" onFinish={handleProjectAccessSave}>
+          <Form.Item
+            name="workspaceProjectDocumentIds"
+            label="Proyectos asignados"
+            rules={[
+              {
+                required: true,
+                message: 'Selecciona al menos un proyecto para este miembro.',
+              },
+            ]}
+          >
+            <Select
+              mode="multiple"
+              size="large"
+              placeholder="Selecciona uno o varios proyectos"
+              options={projectOptions}
+              disabled={projectOptions.length === 0}
+            />
+          </Form.Item>
+
+          {!projectOptions.length ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="No hay proyectos disponibles para asignar."
+            />
+          ) : null}
+        </Form>
+      </Modal>
+    </>
   );
 }

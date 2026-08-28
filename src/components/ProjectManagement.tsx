@@ -297,6 +297,37 @@ export default function ProjectManagement({
     organizationForm.setFieldValue('name', activeOrganization?.name || '');
   }, [activeOrganization?.name, isEditOrganizationModalOpen, organizationForm]);
 
+  const projectAccessCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const activeMembers = organizationTeamQuery.data?.members?.filter(
+      member => member.status === 'active',
+    ) || [];
+
+    for (const project of projects) {
+      if (!project.documentId) {
+        continue;
+      }
+
+      const activeMemberCount = activeMembers.filter(member => {
+        const roleCode = member.role?.code;
+
+        if (roleCode === 'owner' || roleCode === 'qa-lead' || roleCode === 'qa-engineer') {
+          return true;
+        }
+
+        if (roleCode === 'manager' || roleCode === 'viewer') {
+          return member.workspaceProjectDocumentIds?.includes(project.documentId) || false;
+        }
+
+        return false;
+      }).length;
+
+      counts.set(project.documentId, activeMemberCount);
+    }
+
+    return counts;
+  }, [organizationTeamQuery.data?.members, projects]);
+
   const projectMetrics = useMemo(() => {
     const activeProjects = projects.filter(
       project => project.status === ProjectStatus.ACTIVE,
@@ -810,9 +841,11 @@ export default function ProjectManagement({
 
         {filteredProjects.length > 0 ? (
           <div className="mt-3 grid gap-4 sm:mt-4 sm:grid-cols-2 xl:grid-cols-4">
-            {filteredProjects.map(project => {
+        {filteredProjects.map(project => {
               const statusMeta = PROJECT_STATUS_META[project.status];
-              const teamMemberCount = project.teamMembers?.length || 0;
+              const projectAccessMemberCount = project.documentId
+                ? projectAccessCounts.get(project.documentId) || 0
+                : 0;
               const menuItems: MenuProps['items'] = [
                 {
                   key: 'open',
@@ -957,7 +990,7 @@ export default function ProjectManagement({
                           </Space>
                           <Space size={8}>
                             <TeamOutlined />
-                            <span>{teamMemberCount} miembros</span>
+                            <span>{projectAccessMemberCount} miembros con acceso</span>
                           </Space>
                         </div>
                       </div>
