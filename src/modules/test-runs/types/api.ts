@@ -1,5 +1,6 @@
 export interface TestRunResultDto {
   documentId: string;
+  orderIndex?: number;
   result?: string;
   notes?: string;
   evidenceImage?: string;

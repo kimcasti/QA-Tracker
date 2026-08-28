@@ -51,7 +51,7 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
 import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
-import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
@@ -1803,6 +1803,76 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     return new Map(functionalities.map(func => [func.id, func.module || '']));
   }, [functionalities]);
 
+  const selectedModuleOrder = useMemo(() => {
+    const source = activeTestRun?.selectedModules || selectedModules;
+    return new Map(source.map((moduleName, index) => [moduleName, index]));
+  }, [activeTestRun?.selectedModules, selectedModules]);
+
+  const selectedFunctionalityOrder = useMemo(() => {
+    const source = activeTestRun?.selectedFunctionalities || selectedFuncIds;
+    return new Map(source.map((functionalityId, index) => [functionalityId, index]));
+  }, [activeTestRun?.selectedFunctionalities, selectedFuncIds]);
+
+  const compareExecutionResults = useCallback(
+    (left: TestRunResult, right: TestRunResult) => {
+      const leftExplicitOrder =
+        typeof left.orderIndex === 'number' ? left.orderIndex : Number.MAX_SAFE_INTEGER;
+      const rightExplicitOrder =
+        typeof right.orderIndex === 'number' ? right.orderIndex : Number.MAX_SAFE_INTEGER;
+
+      if (leftExplicitOrder !== rightExplicitOrder) {
+        return leftExplicitOrder - rightExplicitOrder;
+      }
+
+      const leftFunctionality = functionalityById.get(left.functionalityId);
+      const rightFunctionality = functionalityById.get(right.functionalityId);
+      const leftModuleOrder =
+        selectedModuleOrder.get(leftFunctionality?.module || '') ?? Number.MAX_SAFE_INTEGER;
+      const rightModuleOrder =
+        selectedModuleOrder.get(rightFunctionality?.module || '') ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftModuleOrder !== rightModuleOrder) {
+        return leftModuleOrder - rightModuleOrder;
+      }
+
+      const leftFunctionalityOrder =
+        typeof leftFunctionality?.sortOrder === 'number'
+          ? leftFunctionality.sortOrder
+          : (selectedFunctionalityOrder.get(left.functionalityId) ?? Number.MAX_SAFE_INTEGER);
+      const rightFunctionalityOrder =
+        typeof rightFunctionality?.sortOrder === 'number'
+          ? rightFunctionality.sortOrder
+          : (selectedFunctionalityOrder.get(right.functionalityId) ?? Number.MAX_SAFE_INTEGER);
+
+      if (leftFunctionalityOrder !== rightFunctionalityOrder) {
+        return leftFunctionalityOrder - rightFunctionalityOrder;
+      }
+
+      const leftTestCase = testCaseById.get(left.testCaseId);
+      const rightTestCase = testCaseById.get(right.testCaseId);
+      const leftTestCaseOrder =
+        typeof leftTestCase?.sortOrder === 'number'
+          ? leftTestCase.sortOrder
+          : Number.MAX_SAFE_INTEGER;
+      const rightTestCaseOrder =
+        typeof rightTestCase?.sortOrder === 'number'
+          ? rightTestCase.sortOrder
+          : Number.MAX_SAFE_INTEGER;
+
+      if (leftTestCaseOrder !== rightTestCaseOrder) {
+        return leftTestCaseOrder - rightTestCaseOrder;
+      }
+
+      return left.testCaseId.localeCompare(right.testCaseId);
+    },
+    [
+      functionalityById,
+      selectedFunctionalityOrder,
+      selectedModuleOrder,
+      testCaseById,
+    ],
+  );
+
   const selectedFunctionalityModels = useMemo(() => {
     return selectedFuncIds
       .map(id => functionalityById.get(id))
@@ -2414,13 +2484,57 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       };
 
       // Prepare initial results based on test cases
+      const orderedFunctionalities = selectedFuncIds
+        .map(fId => functionalityById.get(fId))
+        .filter((func): func is Functionality => Boolean(func))
+        .sort((left, right) => {
+          const leftModuleOrder =
+            selectedModuleOrder.get(left.module || '') ?? Number.MAX_SAFE_INTEGER;
+          const rightModuleOrder =
+            selectedModuleOrder.get(right.module || '') ?? Number.MAX_SAFE_INTEGER;
+
+          if (leftModuleOrder !== rightModuleOrder) {
+            return leftModuleOrder - rightModuleOrder;
+          }
+
+          const leftFunctionalityOrder =
+            typeof left.sortOrder === 'number'
+              ? left.sortOrder
+              : (selectedFunctionalityOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER);
+          const rightFunctionalityOrder =
+            typeof right.sortOrder === 'number'
+              ? right.sortOrder
+              : (selectedFunctionalityOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER);
+
+          if (leftFunctionalityOrder !== rightFunctionalityOrder) {
+            return leftFunctionalityOrder - rightFunctionalityOrder;
+          }
+
+          return left.name.localeCompare(right.name);
+        });
+
       const initialResults: TestRunResult[] = [];
-      selectedFuncIds.forEach(fId => {
-        const funcCases = filteredTestCasesByFunctionality.get(fId) || [];
-        funcCases.forEach(tc => {
+      orderedFunctionalities.forEach(func => {
+        const orderedCases = [...(filteredTestCasesByFunctionality.get(func.id) || [])].sort(
+          (left, right) => {
+            const leftOrder =
+              typeof left.sortOrder === 'number' ? left.sortOrder : Number.MAX_SAFE_INTEGER;
+            const rightOrder =
+              typeof right.sortOrder === 'number' ? right.sortOrder : Number.MAX_SAFE_INTEGER;
+
+            if (leftOrder !== rightOrder) {
+              return leftOrder - rightOrder;
+            }
+
+            return left.title.localeCompare(right.title);
+          },
+        );
+
+        orderedCases.forEach(tc => {
           initialResults.push({
             id: `${newRun.id}-${tc.id}`,
-            functionalityId: fId,
+            orderIndex: initialResults.length,
+            functionalityId: func.id,
             testCaseId: tc.id,
             result: TestResult.NOT_EXECUTED,
           });
@@ -4130,15 +4244,20 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       return matchesSearch && matchesFailed;
     });
 
+    const orderedFilteredExecutionResults = [...filteredExecutionResults].sort(compareExecutionResults);
+
     return {
       passedCount,
       failedCount,
       blockedCount,
       notExecutedCount,
       automatedCasesWithoutReference,
-      filteredExecutionResults,
+      filteredExecutionResults: orderedFilteredExecutionResults,
     };
   }, [
+    activeTestRun?.selectedFunctionalities,
+    activeTestRun?.selectedModules,
+    compareExecutionResults,
     executionResults,
     executionSearchText,
     filterOnlyFailed,

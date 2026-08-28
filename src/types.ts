@@ -423,6 +423,7 @@ export interface TestExecution {
 
 export interface TestRunResult {
   id: string;
+  orderIndex?: number;
   functionalityId: string;
   testCaseId: string;
   functionalityName?: string;

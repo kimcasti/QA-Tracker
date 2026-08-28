@@ -39,6 +39,22 @@ type SaveTestRunOptions = {
 
 const testRunBasePopulatePaths = ['project', 'sprint'] as const;
 
+function compareTestRunResults(left: TestRunResult, right: TestRunResult) {
+  const leftOrder = typeof left.orderIndex === 'number' ? left.orderIndex : Number.MAX_SAFE_INTEGER;
+  const rightOrder =
+    typeof right.orderIndex === 'number' ? right.orderIndex : Number.MAX_SAFE_INTEGER;
+
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
+  }
+
+  if (left.functionalityId !== right.functionalityId) {
+    return left.functionalityId.localeCompare(right.functionalityId);
+  }
+
+  return left.testCaseId.localeCompare(right.testCaseId);
+}
+
 function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicUatSessionSummary | null {
   if (!document?.documentId) {
     return null;
@@ -66,6 +82,7 @@ function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicU
 function mapTestRunResult(document: TestRunResultDto): TestRunResult {
   return {
     id: document.documentId,
+    orderIndex: typeof document.orderIndex === 'number' ? document.orderIndex : undefined,
     functionalityId: document.functionality?.code || '',
     testCaseId: document.testCase?.documentId || '',
     result: testResultFromApi(document.result),
@@ -80,7 +97,9 @@ function mapTestRunResult(document: TestRunResultDto): TestRunResult {
 }
 
 function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): TestRun {
-  const resolvedResults = resultsOverride || (document.results || []).map(mapTestRunResult);
+  const resolvedResults = (resultsOverride || (document.results || []).map(mapTestRunResult)).sort(
+    compareTestRunResults,
+  );
 
   return {
     id: document.documentId,
@@ -118,6 +137,8 @@ async function getResultsByRun(projectId?: string, testRunDocumentId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
   const documents = await listDocuments<TestRunResultDto>('/api/test-run-results', {
     ...populateParams(['testRun', 'functionality', 'testCase', 'bug']),
+    'sort[0]': 'orderIndex:asc',
+    'sort[1]': 'createdAt:asc',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
     ...(testRunDocumentId ? { 'filters[testRun][documentId][$eq]': testRunDocumentId } : {}),
   });
@@ -154,6 +175,10 @@ async function syncResults(
       items: resultsToSync.map(result => ({
         documentId: result.id.startsWith('TR-') ? null : result.id,
         data: {
+          orderIndex:
+            typeof result.orderIndex === 'number' && Number.isFinite(result.orderIndex)
+              ? result.orderIndex
+              : null,
           result: testResultToApi(result.result),
           notes: result.notes || null,
           evidenceImage: result.evidenceImage || null,
