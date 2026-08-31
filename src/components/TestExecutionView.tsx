@@ -46,6 +46,7 @@ import {
   CopyOutlined,
   InfoCircleOutlined,
   UploadOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
@@ -809,6 +810,7 @@ function areExecutionResultsEquivalent(left?: TestRunResult, right?: TestRunResu
   if (!left || !right) return false;
 
   return (
+    left.orderIndex === right.orderIndex &&
     left.result === right.result &&
     (left.notes || '') === (right.notes || '') &&
     (left.evidenceImage || '') === (right.evidenceImage || '') &&
@@ -1523,6 +1525,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [executionResults, setExecutionResults] = useState<TestRunResult[]>([]);
   const [executionSearchText, setExecutionSearchText] = useState('');
   const [filterOnlyFailed, setFilterOnlyFailed] = useState(false);
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderDraft, setReorderDraft] = useState<TestRunResult[]>([]);
+  const [draggedResultId, setDraggedResultId] = useState<string | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isPlaywrightImportModalOpen, setIsPlaywrightImportModalOpen] = useState(false);
   const [playwrightImportJson, setPlaywrightImportJson] = useState('');
   const [isImportingPlaywright, setIsImportingPlaywright] = useState(false);
@@ -1872,6 +1878,67 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       testCaseById,
     ],
   );
+
+  const openReorderModal = () => {
+    setReorderDraft([...executionResults].sort(compareExecutionResults));
+    setDraggedResultId(null);
+    setIsReorderModalOpen(true);
+  };
+
+  const moveReorderDraftItem = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+
+    setReorderDraft(current => {
+      const sourceIndex = current.findIndex(result => result.id === sourceId);
+      const targetIndex = current.findIndex(result => result.id === targetId);
+
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+
+      const next = [...current];
+      const [movedResult] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, movedResult);
+      return next;
+    });
+  };
+
+  const handleSaveExecutionOrder = async () => {
+    if (!activeTestRun) return;
+
+    const orderedResults = reorderDraft.map((result, index) => ({
+      ...result,
+      orderIndex: index,
+    }));
+
+    try {
+      setIsSavingOrder(true);
+      const savedRun = await saveTestRun({
+        testRun: {
+          ...activeTestRun,
+          results: orderedResults,
+        },
+        options: {
+          // All results carry a new position, so the complete sequence must be synchronized.
+          resultsToSync: orderedResults,
+          removeMissingResults: false,
+        },
+      });
+
+      setActiveTestRun(savedRun);
+      setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
+      setIsReorderModalOpen(false);
+      message.success('El orden de los casos fue actualizado.');
+    } catch (error) {
+      console.error('Failed to save execution order:', error);
+      message.error(
+        error instanceof Error && error.message
+          ? error.message
+          : 'No fue posible guardar el orden de los casos.',
+      );
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   const selectedFunctionalityModels = useMemo(() => {
     return selectedFuncIds
@@ -4417,6 +4484,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 Editar Info
               </Button>
             )}
+            {!isReadOnly && !isViewer && (
+              <Button icon={<MenuOutlined />} className="rounded-lg" onClick={openReorderModal}>
+                Ordenar casos
+              </Button>
+            )}
             <Button icon={<ExportOutlined />} onClick={handleExportReport} className="rounded-lg">
               Descargar PDF
             </Button>
@@ -4868,6 +4940,90 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             }}
           />
         </Card>
+        <Modal
+          title="Ordenar casos de prueba"
+          open={isReorderModalOpen}
+          onCancel={() => {
+            if (!isSavingOrder) {
+              setIsReorderModalOpen(false);
+              setDraggedResultId(null);
+            }
+          }}
+          closable={!isSavingOrder}
+          maskClosable={!isSavingOrder}
+          keyboard={!isSavingOrder}
+          width={720}
+          footer={[
+            <Button
+              key="cancel"
+              disabled={isSavingOrder}
+              onClick={() => setIsReorderModalOpen(false)}
+            >
+              Cancelar
+            </Button>,
+            <Button
+              key="save"
+              type="primary"
+              loading={isSavingOrder}
+              onClick={() => void handleSaveExecutionOrder()}
+            >
+              Guardar orden
+            </Button>,
+          ]}
+        >
+          <Text type="secondary" className="mb-4 block text-sm">
+            Arrastra los casos para definir la secuencia de ejecución. Este mismo orden se usará en el PDF.
+          </Text>
+          <List
+            className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
+            dataSource={reorderDraft}
+            locale={{ emptyText: 'No hay casos para ordenar.' }}
+            renderItem={(result, index) => {
+              const testCase = testCaseById.get(result.testCaseId);
+              const functionality = functionalityById.get(result.functionalityId);
+              const isDragging = draggedResultId === result.id;
+
+              return (
+                <List.Item
+                  key={result.id}
+                  draggable={!isSavingOrder}
+                  className={`cursor-grab px-4 py-3 transition ${
+                    isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
+                  } ${isSavingOrder ? 'cursor-not-allowed' : 'active:cursor-grabbing'}`}
+                  onDragStart={event => {
+                    setDraggedResultId(result.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => {
+                    event.preventDefault();
+                    if (draggedResultId) {
+                      moveReorderDraftItem(draggedResultId, result.id);
+                    }
+                    setDraggedResultId(null);
+                  }}
+                  onDragEnd={() => setDraggedResultId(null)}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
+                      {index + 1}
+                    </span>
+                    <MenuOutlined className="shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <Text strong className="block truncate text-slate-800">
+                        {testCase?.title || result.testCaseTitle || 'Caso de prueba'}
+                      </Text>
+                      <Text type="secondary" className="block truncate text-xs">
+                        {functionality?.module || result.moduleName || 'Sin módulo'} •{' '}
+                        {functionality?.name || result.functionalityName || 'Sin funcionalidad'}
+                      </Text>
+                    </div>
+                  </div>
+                </List.Item>
+              );
+            }}
+          />
+        </Modal>
         {!isReadOnly && !isViewer && (
           <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
             <Button

@@ -17,11 +17,13 @@ import {
   Tooltip,
   Typography,
   message,
+  List,
 } from 'antd';
 import {
   DownloadOutlined,
   FileSearchOutlined,
   InfoCircleOutlined,
+  MenuOutlined,
   MinusOutlined,
   PlusOutlined,
   ThunderboltOutlined,
@@ -650,6 +652,12 @@ function getPlanningMetrics(functionalities: Functionality[]) {
   };
 }
 
+function getStableFunctionalitySortOrder(functionality: Pick<Functionality, 'sortOrder'>) {
+  return typeof functionality.sortOrder === 'number' && Number.isFinite(functionality.sortOrder)
+    ? functionality.sortOrder
+    : Number.MAX_SAFE_INTEGER;
+}
+
 function matchesCoverageFilter(
   record: Functionality,
   value: string,
@@ -870,6 +878,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     isLoading,
     isFetching,
     bulkUpdate,
+    reorder,
     save,
   } = useFunctionalities(projectId);
   const { data: testCasesData = [] } = useTestCases(projectId);
@@ -903,6 +912,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const [aiMetricFilter, setAiMetricFilter] = React.useState<AiMetricFilter>('all');
   const [aiModuleFilter, setAiModuleFilter] = React.useState<string>('all');
   const [aiSearchTerm, setAiSearchTerm] = React.useState('');
+  const [isFunctionalityReorderModalOpen, setIsFunctionalityReorderModalOpen] =
+    React.useState(false);
+  const [functionalityReorderDraft, setFunctionalityReorderDraft] = React.useState<
+    Functionality[]
+  >([]);
+  const [draggedFunctionalityId, setDraggedFunctionalityId] = React.useState<string | null>(null);
+  const [isFunctionalityReordering, setIsFunctionalityReordering] = React.useState(false);
 
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
@@ -1047,7 +1063,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           );
         });
 
-    return [...items].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+    return [...items].sort((left, right) => {
+      const moduleCompare = String(left.module || '').localeCompare(String(right.module || ''));
+      if (moduleCompare !== 0) return moduleCompare;
+
+      const sortOrderCompare =
+        getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right);
+      if (sortOrderCompare !== 0) return sortOrderCompare;
+
+      return String(left.id).localeCompare(String(right.id));
+    });
   }, [functionalities, searchTerm]);
 
   const metrics = React.useMemo(
@@ -1914,11 +1939,92 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       Object.values(tableFilters).some(value => Array.isArray(value) && value.length > 0),
     [searchTerm, tableFilters],
   );
+  const selectedModuleForReorder =
+    tableFilters.module?.length === 1 ? String(tableFilters.module[0]) : null;
+  const selectedModuleFunctionalities = React.useMemo(
+    () =>
+      selectedModuleForReorder
+        ? functionalities
+            .filter(item => item.module === selectedModuleForReorder)
+            .sort((left, right) => {
+              const sortOrderCompare =
+                getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right);
+              return sortOrderCompare || String(left.id).localeCompare(String(right.id));
+            })
+        : [],
+    [functionalities, selectedModuleForReorder],
+  );
+  const isModuleReorderAvailable = selectedModuleFunctionalities.length > 3;
+  const isModuleReorderBlocked =
+    Boolean(searchTerm.trim()) ||
+    Boolean(activeRecommendation) ||
+    Boolean(tableFilters.coverage?.length) ||
+    Boolean(tableFilters.riskLevel?.length) ||
+    Boolean(tableFilters.priority?.length) ||
+    Boolean(tableFilters.status?.length);
 
   const handleClearTableFilters = React.useCallback(() => {
     setSearchTerm('');
     setTableFilters(INITIAL_TABLE_FILTERS);
   }, []);
+
+  const openFunctionalityReorderModal = () => {
+    if (isModuleReorderBlocked || !isModuleReorderAvailable) return;
+
+    setFunctionalityReorderDraft(selectedModuleFunctionalities);
+    setDraggedFunctionalityId(null);
+    setIsFunctionalityReorderModalOpen(true);
+  };
+
+  const moveFunctionalityReorderDraftItem = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+
+    setFunctionalityReorderDraft(current => {
+      const sourceIndex = current.findIndex(item => item.id === sourceId);
+      const targetIndex = current.findIndex(item => item.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+
+      const next = [...current];
+      const [movedFunctionality] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, movedFunctionality);
+      return next;
+    });
+  };
+
+  const handleSaveFunctionalityOrder = async () => {
+    const originalById = new Map(
+      selectedModuleFunctionalities.map(functionality => [functionality.id, functionality]),
+    );
+    const changedItems = functionalityReorderDraft
+      .map((functionality, index) => ({ ...functionality, sortOrder: index }))
+      .filter(
+        functionality =>
+          originalById.get(functionality.id)?.sortOrder !== functionality.sortOrder,
+      )
+      .filter(
+        (functionality): functionality is Functionality & { documentId: string; sortOrder: number } =>
+          Boolean(functionality.documentId) && typeof functionality.sortOrder === 'number',
+      )
+      .map(functionality => ({
+        documentId: functionality.documentId,
+        sortOrder: functionality.sortOrder,
+      }));
+
+    try {
+      setIsFunctionalityReordering(true);
+      if (changedItems.length > 0) {
+        await reorder(changedItems);
+      }
+      setIsFunctionalityReorderModalOpen(false);
+      setDraggedFunctionalityId(null);
+      message.success('Orden de funcionalidades actualizado');
+    } catch (error) {
+      console.error('Qa planning functionality reorder failed:', error);
+      message.error('No se pudo actualizar el orden de las funcionalidades.');
+    } finally {
+      setIsFunctionalityReordering(false);
+    }
+  };
 
   const statusFilters = React.useMemo(
     () =>
@@ -3884,6 +3990,26 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                   Columnas
                 </Button>
               </Popover>
+              {!isViewer && isModuleReorderAvailable ? (
+                <Tooltip
+                  title={
+                    isModuleReorderBlocked
+                      ? 'Limpia los demás filtros para ordenar el módulo completo'
+                      : undefined
+                  }
+                >
+                  <span>
+                    <Button
+                      icon={<MenuOutlined />}
+                      disabled={isModuleReorderBlocked}
+                      onClick={openFunctionalityReorderModal}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+                    >
+                      Ordenar funcionalidades
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
             </div>
           </div>
 
@@ -3958,6 +4084,93 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             onChange={(_, filters) => handleTableChange(filters)}
             className="[&_.ant-table-container]:rounded-2xl [&_.ant-table]:text-slate-700 [&_.ant-table-thead>tr>th]:sticky [&_.ant-table-thead>tr>th]:top-0 [&_.ant-table-thead>tr>th]:z-10 [&_.ant-table-thead>tr>th]:bg-sky-50 [&_.ant-table-thead>tr>th]:px-2.5 [&_.ant-table-thead>tr>th]:py-3 [&_.ant-table-tbody>tr:hover>td]:bg-sky-50/40 [&_.ant-table-tbody>tr>td]:px-2.5 [&_.ant-table-tbody>tr>td]:py-1.5 [&_.ant-table-tbody>tr>td]:align-middle [&_.ant-table-tbody>tr>td]:border-b-slate-100"
           />
+
+          <Modal
+            title={`Ordenar funcionalidades${selectedModuleForReorder ? ` - ${selectedModuleForReorder}` : ''}`}
+            open={isFunctionalityReorderModalOpen}
+            onCancel={() => {
+              if (!isFunctionalityReordering) {
+                setIsFunctionalityReorderModalOpen(false);
+                setDraggedFunctionalityId(null);
+              }
+            }}
+            closable={!isFunctionalityReordering}
+            maskClosable={!isFunctionalityReordering}
+            keyboard={!isFunctionalityReordering}
+            width={720}
+            footer={[
+              <Button
+                key="cancel"
+                disabled={isFunctionalityReordering}
+                onClick={() => setIsFunctionalityReorderModalOpen(false)}
+              >
+                Cancelar
+              </Button>,
+              <Button
+                key="save"
+                type="primary"
+                loading={isFunctionalityReordering}
+                onClick={() => void handleSaveFunctionalityOrder()}
+              >
+                Guardar orden
+              </Button>,
+            ]}
+          >
+            <Text type="secondary" className="mb-4 block text-sm">
+              Arrastra las funcionalidades para definir la secuencia del módulo. El orden se aplicará al guardar.
+            </Text>
+            <List
+              className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
+              dataSource={functionalityReorderDraft}
+              locale={{ emptyText: 'No hay funcionalidades para ordenar.' }}
+              renderItem={(functionality, index) => {
+                const isDragging = draggedFunctionalityId === functionality.id;
+
+                return (
+                  <List.Item
+                    key={functionality.id}
+                    draggable={!isFunctionalityReordering}
+                    className={`cursor-grab px-4 py-3 transition ${
+                      isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
+                    } ${
+                      isFunctionalityReordering ? 'cursor-not-allowed' : 'active:cursor-grabbing'
+                    }`}
+                    onDragStart={event => {
+                      setDraggedFunctionalityId(functionality.id);
+                      event.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={event => event.preventDefault()}
+                    onDrop={event => {
+                      event.preventDefault();
+                      if (draggedFunctionalityId) {
+                        moveFunctionalityReorderDraftItem(
+                          draggedFunctionalityId,
+                          functionality.id,
+                        );
+                      }
+                      setDraggedFunctionalityId(null);
+                    }}
+                    onDragEnd={() => setDraggedFunctionalityId(null)}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
+                        {index + 1}
+                      </span>
+                      <MenuOutlined className="shrink-0 text-slate-400" />
+                      <div className="min-w-0">
+                        <Text strong className="block truncate text-slate-800">
+                          {functionality.name || 'Funcionalidad'}
+                        </Text>
+                        <Text type="secondary" className="block truncate text-xs">
+                          {functionality.id}
+                        </Text>
+                      </div>
+                    </div>
+                  </List.Item>
+                );
+              }}
+            />
+          </Modal>
         </Card>
         {false ? (
           <Card className="hidden rounded-2xl border-slate-100 shadow-sm xl:sticky xl:top-6 xl:block">

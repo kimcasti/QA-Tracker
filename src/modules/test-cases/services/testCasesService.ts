@@ -19,6 +19,7 @@ import {
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
+import { Http } from '../../../config/http';
 import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseDto } from '../types/api';
@@ -235,6 +236,14 @@ export async function saveTestCase(testCase: TestCase) {
   });
 
   return mapTestCase(saved);
+}
+
+export async function reorderTestCases(items: Array<{ documentId: string; sortOrder: number }>) {
+  const response = await Http.post<{ data: TestCaseDto[] }>('/api/test-cases/reorder', {
+    data: { items },
+  });
+
+  return response.data.data.map(mapTestCase);
 }
 
 export async function removeTestCase(id: string) {

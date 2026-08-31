@@ -15,6 +15,7 @@ import {
   Popconfirm,
   Tooltip,
   Alert,
+  List,
 } from 'antd';
 import {
   PlusOutlined,
@@ -25,7 +26,7 @@ import {
   CopyOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
-  HolderOutlined,
+  MenuOutlined,
   RobotOutlined,
   DownOutlined,
   RightOutlined,
@@ -212,6 +213,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     error,
     refetch,
     save,
+    reorder,
     saveManyWithSingleRefresh,
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
@@ -221,8 +223,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [draggedTestCaseId, setDraggedTestCaseId] = useState<string | null>(null);
-  const [dragOverTestCaseId, setDragOverTestCaseId] = useState<string | null>(null);
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderDraft, setReorderDraft] = useState<TestCase[]>([]);
+  const [draggedReorderTestCaseId, setDraggedReorderTestCaseId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [generatedForFunctionalityId, setGeneratedForFunctionalityId] = useState<string | null>(
@@ -382,7 +385,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const projectUsageCount = projectQuota?.usage?.projects ?? projectQuota?.currentCount ?? 0;
   const projectLimit = projectQuota?.limits?.projects ?? projectQuota?.limit ?? 3;
   const upgradePriceMonthlyUsd = projectQuota?.upgradePriceMonthlyUsd ?? 5;
-  const pageStartIndex = (currentPage - 1) * pageSize;
   const aiUpgradeUrl = buildProjectUpgradeWhatsAppUrl({
     organizationName: activeMembership?.organization?.name,
     currentCount: projectUsageCount,
@@ -627,21 +629,35 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     });
   };
 
-  const handlePersistReorder = async (reorderedTestCases: TestCase[]) => {
+  const handlePersistReorder = async (changedTestCases: TestCase[]) => {
     setIsReordering(true);
     try {
-      await saveManyWithSingleRefresh(reorderedTestCases);
+      const items = changedTestCases
+        .filter(
+          (testCase): testCase is TestCase & { documentId: string; sortOrder: number } =>
+            Boolean(testCase.documentId) &&
+            typeof testCase.sortOrder === 'number' &&
+            Number.isFinite(testCase.sortOrder),
+        )
+        .map(testCase => ({
+          documentId: testCase.documentId,
+          sortOrder: testCase.sortOrder,
+        }));
+
+      if (items.length > 0) {
+        await reorder(items);
+      }
       message.success('Orden de casos de prueba actualizado');
+      return true;
     } catch (error) {
       message.error(
         error instanceof Error
           ? error.message
           : 'No pudimos actualizar el orden de los casos de prueba.',
       );
+      return false;
     } finally {
       setIsReordering(false);
-      setDraggedTestCaseId(null);
-      setDragOverTestCaseId(null);
     }
   };
 
@@ -658,60 +674,49 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     }
 
     const reorderedTestCases = moveTestCase(visibleTestCases, currentIndex, targetIndex);
-    await handlePersistReorder(reorderedTestCases);
+    const originalById = new Map(visibleTestCases.map(testCase => [testCase.id, testCase]));
+    const changedTestCases = reorderedTestCases.filter(
+      testCase => originalById.get(testCase.id)?.sortOrder !== testCase.sortOrder,
+    );
+    await handlePersistReorder(changedTestCases);
   };
 
-  const handleDragStart = (testCaseId: string) => {
-    if (isViewer || isReordering) {
-      return;
-    }
-
-    setDraggedTestCaseId(testCaseId);
-    setDragOverTestCaseId(testCaseId);
+  const openReorderModal = () => {
+    setReorderDraft(visibleTestCases);
+    setDraggedReorderTestCaseId(null);
+    setIsReorderModalOpen(true);
   };
 
-  const handleDragEnd = () => {
-    setDraggedTestCaseId(null);
-    setDragOverTestCaseId(null);
+  const moveReorderDraftItem = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+
+    setReorderDraft(current => {
+      const sourceIndex = current.findIndex(testCase => testCase.id === sourceId);
+      const targetIndex = current.findIndex(testCase => testCase.id === targetId);
+
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+
+      const next = [...current];
+      const [movedTestCase] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, movedTestCase);
+      return next;
+    });
   };
 
-  const handleDropOnRow = async (targetTestCaseId: string) => {
-    if (!draggedTestCaseId || draggedTestCaseId === targetTestCaseId) {
-      handleDragEnd();
-      return;
+  const handleSaveTestCaseOrder = async () => {
+    const reorderedTestCases = normalizeTestCaseOrder(reorderDraft);
+    const originalById = new Map(visibleTestCases.map(testCase => [testCase.id, testCase]));
+    const changedTestCases = reorderedTestCases.filter(
+      testCase => originalById.get(testCase.id)?.sortOrder !== testCase.sortOrder,
+    );
+
+    if (await handlePersistReorder(changedTestCases)) {
+      setIsReorderModalOpen(false);
+      setDraggedReorderTestCaseId(null);
     }
-
-    const fromIndex = visibleTestCases.findIndex(testCase => testCase.id === draggedTestCaseId);
-    const toIndex = visibleTestCases.findIndex(testCase => testCase.id === targetTestCaseId);
-
-    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
-      handleDragEnd();
-      return;
-    }
-
-    const reorderedTestCases = moveTestCase(visibleTestCases, fromIndex, toIndex);
-    await handlePersistReorder(reorderedTestCases);
   };
 
   const columns = [
-    {
-      title: '',
-      key: 'drag',
-      width: 52,
-      align: 'center' as const,
-      render: () =>
-        !isViewer ? (
-          <Tooltip title="Arrastra para reordenar">
-            <span
-              className={`qa-test-case-drag-handle${
-                isReordering ? ' qa-test-case-drag-handle--disabled' : ''
-              }`}
-            >
-              <HolderOutlined />
-            </span>
-          </Tooltip>
-        ) : null,
-    },
     {
       title: 'Título',
       dataIndex: 'title',
@@ -848,6 +853,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     {generateAiButtonLabel}
                   </Button>
                 </Tooltip>
+                {visibleTestCases.length > 5 ? (
+                  <Button icon={<MenuOutlined />} onClick={openReorderModal}>
+                    Ordenar casos
+                  </Button>
+                ) : null}
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
                   Nuevo Caso de Prueba
                 </Button>
@@ -1144,56 +1154,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             }
           },
         }}
-        onRow={(record, index) => {
-          const globalIndex = pageStartIndex + (index ?? 0);
-          const rowPositionLabel = globalIndex + 1;
-          const isDraggedRow = draggedTestCaseId === record.id;
-          const isDragOverRow = dragOverTestCaseId === record.id && draggedTestCaseId !== record.id;
-
-          return {
-            draggable: !isViewer && !isReordering,
-            onDragStart: event => {
-              const target = event.target as HTMLElement | null;
-              if (!target?.closest('.qa-test-case-drag-handle')) {
-                event.preventDefault();
-                return;
-              }
-
-              event.dataTransfer.effectAllowed = 'move';
-              event.dataTransfer.setData('text/plain', record.id);
-              handleDragStart(record.id);
-            },
-            onDragEnter: event => {
-              event.preventDefault();
-              if (!isViewer && draggedTestCaseId && draggedTestCaseId !== record.id) {
-                setDragOverTestCaseId(record.id);
-              }
-            },
-            onDragOver: event => {
-              if (!isViewer && draggedTestCaseId) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-              }
-            },
-            onDrop: async event => {
-              event.preventDefault();
-              await handleDropOnRow(record.id);
-            },
-            onDragEnd: () => {
-              handleDragEnd();
-            },
-            className: [
-              !isViewer ? 'qa-test-case-table__draggable-row' : '',
-              isDraggedRow ? 'qa-test-case-table__draggable-row--dragging' : '',
-              isDragOverRow ? 'qa-test-case-table__draggable-row--over' : '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-            'aria-label': !isViewer
-              ? `Caso de prueba ${rowPositionLabel}. Arrastra para cambiar su posición.`
-              : undefined,
-          };
-        }}
         locale={{
           emptyText: isError
             ? 'No se pudieron cargar los casos de prueba.'
@@ -1222,6 +1182,88 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           ),
         }}
       />
+
+      <Modal
+        title="Ordenar casos de prueba"
+        open={isReorderModalOpen}
+        onCancel={() => {
+          if (!isReordering) {
+            setIsReorderModalOpen(false);
+            setDraggedReorderTestCaseId(null);
+          }
+        }}
+        closable={!isReordering}
+        maskClosable={!isReordering}
+        keyboard={!isReordering}
+        width={720}
+        footer={[
+          <Button
+            key="cancel"
+            disabled={isReordering}
+            onClick={() => setIsReorderModalOpen(false)}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            loading={isReordering}
+            onClick={() => void handleSaveTestCaseOrder()}
+          >
+            Guardar orden
+          </Button>,
+        ]}
+      >
+        <Text type="secondary" className="mb-4 block text-sm">
+          Arrastra los casos para definir su secuencia. El orden se aplicara cuando guardes.
+        </Text>
+        <List
+          className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
+          dataSource={reorderDraft}
+          locale={{ emptyText: 'No hay casos para ordenar.' }}
+          renderItem={(testCase, index) => {
+            const isDragging = draggedReorderTestCaseId === testCase.id;
+
+            return (
+              <List.Item
+                key={testCase.id}
+                draggable={!isReordering}
+                className={`cursor-grab px-4 py-3 transition ${
+                  isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
+                } ${isReordering ? 'cursor-not-allowed' : 'active:cursor-grabbing'}`}
+                onDragStart={event => {
+                  setDraggedReorderTestCaseId(testCase.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={event => event.preventDefault()}
+                onDrop={event => {
+                  event.preventDefault();
+                  if (draggedReorderTestCaseId) {
+                    moveReorderDraftItem(draggedReorderTestCaseId, testCase.id);
+                  }
+                  setDraggedReorderTestCaseId(null);
+                }}
+                onDragEnd={() => setDraggedReorderTestCaseId(null)}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
+                    {index + 1}
+                  </span>
+                  <MenuOutlined className="shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <Text strong className="block truncate text-slate-800">
+                      {testCase.title || 'Caso de prueba'}
+                    </Text>
+                    <Text type="secondary" className="block truncate text-xs">
+                      {testCase.testType} - {testCase.priority}
+                    </Text>
+                  </div>
+                </div>
+              </List.Item>
+            );
+          }}
+        />
+      </Modal>
 
       <Modal
         title={editingTestCase ? 'Editar Caso de Prueba' : 'Nuevo Caso de Prueba'}

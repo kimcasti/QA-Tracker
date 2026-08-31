@@ -4,6 +4,7 @@ import {
   bulkAddFunctionalities,
   bulkUpdateFunctionalities,
   getFunctionalities,
+  reorderFunctionalities,
   removeFunctionality,
   saveFunctionality,
 } from '../services/functionalitiesService';
@@ -86,6 +87,29 @@ export function useFunctionalities(projectId?: string) {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: (items: Array<{ documentId: string; sortOrder: number }>) =>
+      reorderFunctionalities(items),
+    onSuccess: async reorderedFunctionalities => {
+      invalidateWorkspaceCache();
+      queryClient.setQueryData<Functionality[] | undefined>(queryKey, previous => {
+        if (!previous?.length) {
+          return previous;
+        }
+
+        const reorderedByDocumentId = new Map(
+          reorderedFunctionalities.map(item => [item.documentId, item] as const),
+        );
+
+        return previous.map(item => reorderedByDocumentId.get(item.documentId || '') ?? item);
+      });
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['plan-usage', 'functionalities'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace', 'organization-usage'] });
+    },
+  });
+
   const saveManyWithSingleRefresh = async (functionalities: Functionality[]) => {
     await Promise.all(functionalities.map(item => saveFunctionality(item)));
     invalidateWorkspaceCache();
@@ -101,6 +125,7 @@ export function useFunctionalities(projectId?: string) {
     delete: deleteMutation.mutateAsync,
     bulkUpdate: bulkUpdateMutation.mutateAsync,
     bulkAdd: bulkAddMutation.mutateAsync,
+    reorder: reorderMutation.mutateAsync,
     saveManyWithSingleRefresh,
   };
 }

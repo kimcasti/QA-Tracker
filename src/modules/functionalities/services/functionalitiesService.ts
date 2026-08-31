@@ -1,4 +1,5 @@
 import { TestType, type Functionality } from '../../../types';
+import { Http } from '../../../config/http';
 import {
   impactFromApi,
   impactToApi,
@@ -231,6 +232,22 @@ export async function bulkUpdateFunctionalities(
   const functionalities = await getFunctionalities(projectId);
   const targets = functionalities.filter(item => ids.includes(item.id));
   await Promise.all(targets.map(target => saveFunctionality({ ...target, ...updates })));
+}
+
+export async function reorderFunctionalities(
+  items: Array<{ documentId: string; sortOrder: number }>,
+) {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const response = await Http.post<{ data: FunctionalityDto[] }>('/api/functionalities/reorder', {
+    data: {
+      items,
+    },
+  });
+
+  return (response.data.data || []).map(mapFunctionality);
 }
 
 export async function bulkAddFunctionalities(functionalities: Functionality[]) {

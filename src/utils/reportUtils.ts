@@ -243,7 +243,7 @@ export const exportDeliveryUnitProgressToDocx = async (
     new TableRow({
       children: [
         new TableCell({ children: [new Paragraph({ text: 'Funcionalidad', style: 'Strong' })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Modulo', style: 'Strong' })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Módulo', style: 'Strong' })] }),
         new TableCell({ children: [new Paragraph({ text: 'Estado', style: 'Strong' })] }),
         new TableCell({ children: [new Paragraph({ text: 'Prioridad', style: 'Strong' })] }),
         new TableCell({ children: [new Paragraph({ text: 'QA status', style: 'Strong' })] }),
@@ -774,6 +774,16 @@ export const exportTestRunToPdf = async ({
 }: TestRunPdfExportData) => {
   const pdf = new jsPDF('p', 'mm', 'a4');
   const safeResults = Array.isArray(results) ? results : [];
+  const orderedResults = [...safeResults].sort((left, right) => {
+    const leftOrder = typeof left.orderIndex === 'number' ? left.orderIndex : Number.MAX_SAFE_INTEGER;
+    const rightOrder = typeof right.orderIndex === 'number' ? right.orderIndex : Number.MAX_SAFE_INTEGER;
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return left.testCaseId.localeCompare(right.testCaseId);
+  });
   const safeFunctionalities = Array.isArray(functionalities) ? functionalities : [];
   const safeTestCases = Array.isArray(testCases) ? testCases : [];
   const functionalityById = new Map<string, (typeof safeFunctionalities)[number]>();
@@ -812,12 +822,12 @@ export const exportTestRunToPdf = async ({
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(18);
-  pdf.text('Reporte UAT', margin, cursorY);
+  pdf.text(`Reporte de Ejecución - ${testRun.testType || 'QA'}`, margin, cursorY);
   cursorY += 9;
 
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(11);
-  cursorY = pdfText(pdf, `Ejecucion: ${testRun.title}`, margin, cursorY, contentWidth);
+  cursorY = pdfText(pdf, `Ejecución: ${testRun.title}`, margin, cursorY, contentWidth);
   cursorY = pdfText(
     pdf,
     `Fecha: ${testRun.executionDate || 'N/A'} | Sprint: ${testRun.sprint || 'N/A'} | Tester: ${testRun.tester || 'N/A'}`,
@@ -836,18 +846,18 @@ export const exportTestRunToPdf = async ({
   if (publicUatSession) {
     cursorY = pdfText(
       pdf,
-      `Sesion publica: ${publicUatSession.status} | Participante: ${publicUatSession.participant?.name || 'N/A'} | Correo: ${publicUatSession.participant?.email || 'N/A'}`,
+      `Sesión pública: ${publicUatSession.status} | Participante: ${publicUatSession.participant?.name || 'N/A'} | Correo: ${publicUatSession.participant?.email || 'N/A'}`,
       margin,
       cursorY + 2,
       contentWidth,
     );
   }
 
-  const total = safeResults.length;
-  const passed = safeResults.filter(result => result.result === TestResult.PASSED).length;
-  const failed = safeResults.filter(result => result.result === TestResult.FAILED).length;
-  const blocked = safeResults.filter(result => result.result === TestResult.BLOCKED).length;
-  const pending = safeResults.filter(result => result.result === TestResult.NOT_EXECUTED).length;
+  const total = orderedResults.length;
+  const passed = orderedResults.filter(result => result.result === TestResult.PASSED).length;
+  const failed = orderedResults.filter(result => result.result === TestResult.FAILED).length;
+  const blocked = orderedResults.filter(result => result.result === TestResult.BLOCKED).length;
+  const pending = orderedResults.filter(result => result.result === TestResult.NOT_EXECUTED).length;
 
   cursorY += 4;
   pdf.setFont('helvetica', 'bold');
@@ -865,11 +875,11 @@ export const exportTestRunToPdf = async ({
     contentWidth,
   );
 
-  for (const [index, result] of safeResults.entries()) {
+  for (const [index, result] of orderedResults.entries()) {
     const functionality = functionalityById.get(result.functionalityId);
     const testCase = testCaseById.get(result.testCaseId);
     const titleText = `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`;
-    const metaText = `Modulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
+    const metaText = `Módulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
     const innerWidth = contentWidth - 8;
 
     pdf.setFont('helvetica', 'bold');
@@ -1033,7 +1043,7 @@ export const exportQaStrategyCandidatesToPdf = async ({
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(18);
-  pdf.text('Analisis de candidatos QA', margin, cursorY);
+  pdf.text('Análisis de candidatos QA', margin, cursorY);
   cursorY += 9;
 
   pdf.setFont('helvetica', 'normal');
@@ -1063,7 +1073,7 @@ export const exportQaStrategyCandidatesToPdf = async ({
   );
   cursorY = pdfText(
     pdf,
-    `Distribucion: UI ${summary.uiCount} | Postman ${summary.postmanCount} | k6 ${summary.k6Count} | Total analizado ${summary.total}`,
+    `Distribución: UI ${summary.uiCount} | Postman ${summary.postmanCount} | k6 ${summary.k6Count} | Total analizado ${summary.total}`,
     margin,
     cursorY + 2,
     contentWidth,
@@ -1084,7 +1094,7 @@ export const exportQaStrategyCandidatesToPdf = async ({
     pdf.setFontSize(10);
     cursorY = pdfText(
       pdf,
-      `Modulo: ${item.module} | Recomendacion: ${item.recommendedCategory} | Herramienta: ${item.recommendedTool} | Prioridad: ${item.priority} | Score: ${item.score}`,
+      `Módulo: ${item.module} | Recomendación: ${item.recommendedCategory} | Herramienta: ${item.recommendedTool} | Prioridad: ${item.priority} | Score: ${item.score}`,
       margin + 4,
       cursorY + 13,
       contentWidth - 8,

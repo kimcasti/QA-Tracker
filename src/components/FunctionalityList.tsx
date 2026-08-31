@@ -17,6 +17,7 @@ import {
   Upload,
   message,
   Tooltip,
+  List,
 } from 'antd';
 import {
   PlusOutlined,
@@ -32,6 +33,7 @@ import {
   LinkOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -100,10 +102,13 @@ type FunctionalityTableToolbarProps = {
   planningMode: boolean;
   selectedCount: number;
   selectedPreset: QaPlanningPreset;
+  isReorderAvailable: boolean;
+  isReorderBlocked: boolean;
   onSearchChange: (value: string) => void;
   onClearFilters: () => void;
   onOpenBulkEdit: () => void;
   onPresetChange: (value: QaPlanningPreset) => void;
+  onOpenReorder: () => void;
   onTogglePlanningMode: () => void;
 };
 
@@ -566,10 +571,13 @@ function FunctionalityTableToolbar({
   planningMode,
   selectedCount,
   selectedPreset,
+  isReorderAvailable,
+  isReorderBlocked,
   onSearchChange,
   onClearFilters,
   onOpenBulkEdit,
   onPresetChange,
+  onOpenReorder,
   onTogglePlanningMode,
 }: FunctionalityTableToolbarProps) {
   return (
@@ -615,6 +623,26 @@ function FunctionalityTableToolbar({
       >
         Limpiar filtros
       </Button>
+      {!isViewer && isReorderAvailable ? (
+        <Tooltip
+          title={
+            isReorderBlocked
+              ? 'Limpia los demás filtros para ordenar el módulo completo'
+              : undefined
+          }
+        >
+          <span>
+            <Button
+              icon={<MenuOutlined />}
+              disabled={isReorderBlocked}
+              onClick={onOpenReorder}
+              className="rounded-lg h-9 px-4"
+            >
+              Ordenar funcionalidades
+            </Button>
+          </span>
+        </Tooltip>
+      ) : null}
       {!isViewer && selectedCount > 0 && (
         <Button
           onClick={onOpenBulkEdit}
@@ -1465,6 +1493,7 @@ export default function FunctionalityList({
     delete: deleteFunc,
     bulkUpdate,
     bulkAdd,
+    reorder,
     saveManyWithSingleRefresh,
   } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
@@ -1628,6 +1657,9 @@ export default function FunctionalityList({
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderDraft, setReorderDraft] = useState<Functionality[]>([]);
+  const [draggedFunctionalityId, setDraggedFunctionalityId] = useState<string | null>(null);
   const [detailFunctionality, setDetailFunctionality] = useState<Functionality | null>(null);
   const [editingFunc, setEditingFunc] = useState<Functionality | null>(null);
   const [nextFunctionalityIdPreview, setNextFunctionalityIdPreview] = useState('');
@@ -1636,6 +1668,26 @@ export default function FunctionalityList({
   const selectedModule = Form.useWatch('module', form);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  const selectedModuleForReorder =
+    tableFilters.module?.length === 1 ? String(tableFilters.module[0]) : null;
+  const selectedModuleFunctionalities = React.useMemo(
+    () =>
+      selectedModuleForReorder
+        ? orderedFunctionalities.filter(item => item.module === selectedModuleForReorder)
+        : [],
+    [orderedFunctionalities, selectedModuleForReorder],
+  );
+  const isReorderAvailable = selectedModuleFunctionalities.length > 3;
+  const isReorderBlocked =
+    Boolean(functionalitySearch.trim()) ||
+    Boolean(tableFilters.riskLevel?.length) ||
+    Boolean(tableFilters.priority?.length) ||
+    Boolean(tableFilters.status?.length) ||
+    Boolean(tableFilters.deliveryUnit?.length) ||
+    Boolean(tableFilters.qaCoverage?.length) ||
+    (isQaPlanningMode && qaPlanningPreset !== 'all') ||
+    Boolean(filter);
 
   const moduleOptions = React.useMemo(
     () => modulesData.map(item => ({ label: item.name, value: item.name })),
@@ -1798,10 +1850,29 @@ export default function FunctionalityList({
     });
   };
 
-  const handlePersistReorder = async (reorderedFunctionalities: Functionality[]) => {
+  const handlePersistReorder = async (
+    reorderedFunctionalities: Functionality[],
+    changedFunctionalities?: Functionality[],
+  ) => {
     setIsReordering(true);
     try {
-      await saveManyWithSingleRefresh(reorderedFunctionalities);
+      if (changedFunctionalities?.length) {
+        await reorder(
+          changedFunctionalities
+            .filter(
+              (item): item is Functionality & { documentId: string } =>
+                Boolean(item.documentId) &&
+                typeof item.sortOrder === 'number' &&
+                Number.isFinite(item.sortOrder),
+            )
+            .map(item => ({
+              documentId: item.documentId,
+              sortOrder: item.sortOrder,
+            })),
+        );
+      } else {
+        await saveManyWithSingleRefresh(reorderedFunctionalities);
+      }
       message.success('Orden de funcionalidades actualizado');
     } catch (error) {
       message.error(
@@ -1835,25 +1906,105 @@ export default function FunctionalityList({
       return;
     }
 
-    const reorderedVisibleFunctionalities = moveFunctionality(
-      visibleModuleFunctionalities,
-      currentIndex,
-      targetIndex,
-    );
-    const reorderedVisibleIds = new Set(reorderedVisibleFunctionalities.map(item => item.id));
-    let visibleCursor = 0;
+    const sourceFunctionality = visibleModuleFunctionalities[currentIndex];
+    const targetFunctionality = visibleModuleFunctionalities[targetIndex];
+
+    if (!sourceFunctionality || !targetFunctionality) {
+      return;
+    }
+
+    const sourceSortOrder = getStableFunctionalitySortOrder(sourceFunctionality, currentIndex);
+    const targetSortOrder = getStableFunctionalitySortOrder(targetFunctionality, targetIndex);
 
     const mergedFunctionalities = orderedFunctionalities.map(item => {
-      if (!reorderedVisibleIds.has(item.id)) {
-        return item;
+      if (item.id === sourceFunctionality.id) {
+        return {
+          ...item,
+          sortOrder: targetSortOrder,
+        };
       }
 
-      const nextVisibleItem = reorderedVisibleFunctionalities[visibleCursor];
-      visibleCursor += 1;
-      return nextVisibleItem ?? item;
+      if (item.id === targetFunctionality.id) {
+        return {
+          ...item,
+          sortOrder: sourceSortOrder,
+        };
+      }
+
+      return item;
     });
 
-    await handlePersistReorder(normalizeFunctionalityOrder(mergedFunctionalities));
+    await handlePersistReorder(mergedFunctionalities, [
+      {
+        ...sourceFunctionality,
+        sortOrder: targetSortOrder,
+      },
+      {
+        ...targetFunctionality,
+        sortOrder: sourceSortOrder,
+      },
+    ]);
+  };
+
+  const openReorderModal = () => {
+    if (isReorderBlocked || !isReorderAvailable) return;
+
+    setReorderDraft(selectedModuleFunctionalities);
+    setDraggedFunctionalityId(null);
+    setIsReorderModalOpen(true);
+  };
+
+  const moveReorderDraftItem = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+
+    setReorderDraft(current => {
+      const sourceIndex = current.findIndex(item => item.id === sourceId);
+      const targetIndex = current.findIndex(item => item.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+
+      const next = [...current];
+      const [movedFunctionality] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, movedFunctionality);
+      return next;
+    });
+  };
+
+  const handleSaveFunctionalityOrder = async () => {
+    const reorderedFunctionalities = normalizeFunctionalityOrder(reorderDraft);
+    const originalById = new Map(
+      selectedModuleFunctionalities.map(functionality => [functionality.id, functionality]),
+    );
+    const changedFunctionalities = reorderedFunctionalities.filter(
+      functionality =>
+        originalById.get(functionality.id)?.sortOrder !== functionality.sortOrder,
+    );
+
+    setIsReordering(true);
+    try {
+      const reorderItems = changedFunctionalities
+        .filter(
+          (item): item is Functionality & { documentId: string; sortOrder: number } =>
+            Boolean(item.documentId) &&
+            typeof item.sortOrder === 'number' &&
+            Number.isFinite(item.sortOrder),
+        )
+        .map(item => ({ documentId: item.documentId, sortOrder: item.sortOrder }));
+
+      if (reorderItems.length > 0) {
+        await reorder(reorderItems);
+      }
+      setIsReorderModalOpen(false);
+      setDraggedFunctionalityId(null);
+      message.success('Orden de funcionalidades actualizado');
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos actualizar el orden de las funcionalidades.',
+      );
+    } finally {
+      setIsReordering(false);
+    }
   };
 
   const handleSave = async () => {
@@ -2421,8 +2572,11 @@ export default function FunctionalityList({
             planningMode={isQaPlanningMode}
             selectedCount={selectedRowKeys.length}
             selectedPreset={qaPlanningPreset}
+            isReorderAvailable={isReorderAvailable}
+            isReorderBlocked={isReorderBlocked}
             onOpenBulkEdit={() => setIsBulkModalOpen(true)}
             onPresetChange={setQaPlanningPreset}
+            onOpenReorder={openReorderModal}
             onTogglePlanningMode={() => {
               setIsQaPlanningMode(current => !current);
               setSelectedRowKeys([]);
@@ -2453,6 +2607,88 @@ export default function FunctionalityList({
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>
+
+      <Modal
+        title={`Ordenar funcionalidades${selectedModuleForReorder ? ` - ${selectedModuleForReorder}` : ''}`}
+        open={isReorderModalOpen}
+        onCancel={() => {
+          if (!isReordering) {
+            setIsReorderModalOpen(false);
+            setDraggedFunctionalityId(null);
+          }
+        }}
+        closable={!isReordering}
+        maskClosable={!isReordering}
+        keyboard={!isReordering}
+        width={720}
+        footer={[
+          <Button
+            key="cancel"
+            disabled={isReordering}
+            onClick={() => setIsReorderModalOpen(false)}
+          >
+            Cancelar
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            loading={isReordering}
+            onClick={() => void handleSaveFunctionalityOrder()}
+          >
+            Guardar orden
+          </Button>,
+        ]}
+      >
+        <Text type="secondary" className="mb-4 block text-sm">
+          Arrastra las funcionalidades para definir la secuencia del módulo. El orden se aplicará al guardar.
+        </Text>
+        <List
+          className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
+          dataSource={reorderDraft}
+          locale={{ emptyText: 'No hay funcionalidades para ordenar.' }}
+          renderItem={(functionality, index) => {
+            const isDragging = draggedFunctionalityId === functionality.id;
+
+            return (
+              <List.Item
+                key={functionality.id}
+                draggable={!isReordering}
+                className={`cursor-grab px-4 py-3 transition ${
+                  isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
+                } ${isReordering ? 'cursor-not-allowed' : 'active:cursor-grabbing'}`}
+                onDragStart={event => {
+                  setDraggedFunctionalityId(functionality.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={event => event.preventDefault()}
+                onDrop={event => {
+                  event.preventDefault();
+                  if (draggedFunctionalityId) {
+                    moveReorderDraftItem(draggedFunctionalityId, functionality.id);
+                  }
+                  setDraggedFunctionalityId(null);
+                }}
+                onDragEnd={() => setDraggedFunctionalityId(null)}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
+                    {index + 1}
+                  </span>
+                  <MenuOutlined className="shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <Text strong className="block truncate text-slate-800">
+                      {functionality.name || 'Funcionalidad'}
+                    </Text>
+                    <Text type="secondary" className="block truncate text-xs">
+                      {functionality.id}
+                    </Text>
+                  </div>
+                </div>
+              </List.Item>
+            );
+          }}
+        />
+      </Modal>
 
       <Modal
         title={

@@ -51,6 +51,7 @@ type PublicSessionDetailDto = {
     } | null;
     results?: Array<{
       documentId: string;
+      orderIndex?: number | null;
       result?: string;
       notes?: string;
       evidenceImage?: string | null;
@@ -99,6 +100,7 @@ function mapPublicUatSessionSummary(
 function mapPublicResult(dto: NonNullable<NonNullable<PublicSessionDetailDto['testRun']>['results']>[number]): TestRunResult {
   return {
     id: dto.documentId,
+    orderIndex: typeof dto.orderIndex === 'number' ? dto.orderIndex : undefined,
     functionalityId: dto.functionality?.documentId || '',
     functionalityName: dto.functionality?.name || '',
     moduleName: dto.functionality?.module || '',

@@ -77,10 +77,22 @@ export default function PublicUatSessionPage() {
   const { saveResult, completeSession, isSavingResult, isCompletingSession } =
     usePublicUatResultActions(token);
   const [drafts, setDrafts] = useState<Record<string, ResultDraft>>({});
+  const orderedResults = useMemo(
+    () =>
+      [...(data?.testRun?.results || [])].sort((left, right) => {
+        const leftOrder =
+          typeof left.orderIndex === 'number' ? left.orderIndex : Number.MAX_SAFE_INTEGER;
+        const rightOrder =
+          typeof right.orderIndex === 'number' ? right.orderIndex : Number.MAX_SAFE_INTEGER;
+
+        return leftOrder - rightOrder || left.testCaseId.localeCompare(right.testCaseId);
+      }),
+    [data?.testRun?.results],
+  );
 
   useEffect(() => {
     const nextDrafts = Object.fromEntries(
-      (data?.testRun?.results || []).map(result => [
+      orderedResults.map(result => [
         result.id,
         {
           result: result.result,
@@ -90,17 +102,17 @@ export default function PublicUatSessionPage() {
     );
 
     setDrafts(nextDrafts);
-  }, [data]);
+  }, [orderedResults]);
 
   const executedCount = useMemo(() => {
-    return (data?.testRun?.results || []).filter(result => result.result !== TestResult.NOT_EXECUTED)
+    return orderedResults.filter(result => result.result !== TestResult.NOT_EXECUTED)
       .length;
-  }, [data]);
+  }, [orderedResults]);
 
   const pendingResultsCount = useMemo(() => {
-    return (data?.testRun?.results || []).filter(result => result.result === TestResult.NOT_EXECUTED)
+    return orderedResults.filter(result => result.result === TestResult.NOT_EXECUTED)
       .length;
-  }, [data]);
+  }, [orderedResults]);
 
   const hasUnsavedChanges = useMemo(() => {
     const persistedResults = data?.testRun?.results || [];
@@ -112,7 +124,7 @@ export default function PublicUatSessionPage() {
     });
   }, [data, drafts]);
 
-  const totalCount = data?.testRun?.results.length || 0;
+  const totalCount = orderedResults.length;
   const isReadOnly = data?.session.readOnly ?? true;
   const canCompleteSession =
     !isReadOnly &&
@@ -144,12 +156,12 @@ export default function PublicUatSessionPage() {
   const handleComplete = async () => {
     try {
       await completeSession();
-      message.success('La evaluacion UAT fue finalizada correctamente.');
+      message.success('La evaluación UAT fue finalizada correctamente.');
     } catch (completeError) {
       message.error(
         completeError instanceof Error
           ? completeError.message
-          : 'No fue posible finalizar la evaluacion UAT.',
+          : 'No fue posible finalizar la evaluación UAT.',
       );
     }
   };
@@ -159,7 +171,7 @@ export default function PublicUatSessionPage() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-3">
           <Spin size="large" />
-          <Text type="secondary">Cargando evaluacion UAT...</Text>
+          <Text type="secondary">Cargando evaluación UAT...</Text>
         </div>
       </div>
     );
@@ -172,10 +184,10 @@ export default function PublicUatSessionPage() {
           <Alert
             type="error"
             showIcon
-            message="No pudimos abrir esta evaluacion UAT"
+            message="No pudimos abrir esta evaluación UAT"
             description={
               <div className="space-y-3">
-                <p>El enlace puede haber expirado, haber sido cerrado o no ser valido.</p>
+                <p>El enlace puede haber expirado, haber sido cerrado o no ser válido.</p>
                 <Button onClick={() => void refetch()} loading={isFetching}>
                   Reintentar
                 </Button>
@@ -194,13 +206,13 @@ export default function PublicUatSessionPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <Tag color="blue" className="rounded-full px-3 py-1 font-semibold">
-                UAT publica
+                UAT pública
               </Tag>
               <Title level={2} className="!mb-0 !text-slate-800">
                 {data.testRun?.title}
               </Title>
               <Paragraph className="!mb-0 text-slate-500">
-                {data.testRun?.description || 'Validacion externa compartida con cliente.'}
+                {data.testRun?.description || 'Validación externa compartida con cliente.'}
               </Paragraph>
               <Space size={[8, 8]} wrap className="mb-2">
                 <Tag>{data.session.status}</Tag>
@@ -235,19 +247,19 @@ export default function PublicUatSessionPage() {
               className="mt-9 rounded-2xl"
               type="info"
               showIcon
-              message="Indicaciones para la evaluacion"
+              message="Indicaciones para la evaluación"
               description={data.session.deliveryNotes}
             />
           ) : null}
         </Card>
 
-        {!data.testRun?.results.length ? (
+        {!orderedResults.length ? (
           <Card className="rounded-3xl border-slate-100 shadow-sm">
-            <Empty description="Esta evaluacion UAT no tiene casos disponibles." />
+            <Empty description="Esta evaluación UAT no tiene casos disponibles." />
           </Card>
         ) : null}
 
-        {(data.testRun?.results || []).map(result => {
+        {orderedResults.map((result, index) => {
           const draft = drafts[result.id] || {
             result: result.result,
             notes: result.notes || '',
@@ -258,9 +270,14 @@ export default function PublicUatSessionPage() {
               <div className="space-y-5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
-                    <Text className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                      {result.moduleName || 'Modulo'}
-                    </Text>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-bold text-sky-700">
+                        Caso {index + 1}
+                      </span>
+                      <Text className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                        {result.moduleName || 'Módulo'}
+                      </Text>
+                    </div>
                     <Title level={4} className="!mb-0 !text-slate-800">
                       {result.testCaseTitle || 'Caso de prueba'}
                     </Title>
@@ -298,7 +315,7 @@ export default function PublicUatSessionPage() {
                 <div className="grid gap-4 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                     <Text strong className="block text-slate-800">
-                      Descripcion
+                      Descripción
                     </Text>
                     <div className="mt-2">{renderRichText(result.testCaseDescription)}</div>
                   </div>
@@ -349,7 +366,7 @@ export default function PublicUatSessionPage() {
                         isReadOnly ||
                         (!data.session.allowCommentEditing && !data.session.allowEvidenceUpload)
                       }
-                      placeholder="Escribe aqui tus observaciones y, si aplica, pega o sube una evidencia."
+                      placeholder="Escribe aquí tus observaciones y, si aplica, pega o sube una evidencia."
                     />
                   </Suspense>
                 </div>
@@ -376,10 +393,10 @@ export default function PublicUatSessionPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <Title level={4} className="!mb-1 !text-slate-800">
-                Cierre de evaluacion
+                Cierre de evaluación
               </Title>
               <Text className="text-slate-500">
-                Cuando hayas terminado de registrar los resultados, finaliza esta sesion para dejarla cerrada.
+                Cuando hayas terminado de registrar los resultados, finaliza esta sesión para dejarla cerrada.
               </Text>
             </div>
 
@@ -387,10 +404,10 @@ export default function PublicUatSessionPage() {
               {!isReadOnly && !canCompleteSession ? (
                 <Text className="max-w-md text-right text-sm text-amber-600">
                   {hasUnsavedChanges
-                    ? 'Guarda los cambios pendientes antes de finalizar la evaluacion.'
+                    ? 'Guarda los cambios pendientes antes de finalizar la evaluación.'
                     : pendingResultsCount > 0
-                      ? 'Debes registrar y guardar el resultado de todas las pruebas antes de finalizar la evaluacion.'
-                      : 'La evaluacion debe tener resultados guardados antes de finalizarse.'}
+                      ? 'Debes registrar y guardar el resultado de todas las pruebas antes de finalizar la evaluación.'
+                      : 'La evaluación debe tener resultados guardados antes de finalizarse.'}
                 </Text>
               ) : null}
 
@@ -402,7 +419,7 @@ export default function PublicUatSessionPage() {
                 onClick={() => void handleComplete()}
                 className="h-11 rounded-xl px-6"
               >
-                Finalizar evaluacion UAT
+                Finalizar evaluación UAT
               </Button>
             </div>
           </div>
