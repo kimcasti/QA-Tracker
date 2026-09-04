@@ -822,10 +822,7 @@ function areExecutionResultsEquivalent(left?: TestRunResult, right?: TestRunResu
   );
 }
 
-function getDirtyExecutionResults(
-  currentResults: TestRunResult[],
-  syncedResults: TestRunResult[],
-) {
+function getDirtyExecutionResults(currentResults: TestRunResult[], syncedResults: TestRunResult[]) {
   const syncedByKey = new Map(
     syncedResults.map(result => [buildExecutionResultSyncKey(result), result]),
   );
@@ -1492,9 +1489,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [isSubmittingTestRun, setIsSubmittingTestRun] = useState(false);
   const [isFinalizingExecution, setIsFinalizingExecution] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
-  const [lastSyncedExecutionResults, setLastSyncedExecutionResults] = useState<TestRunResult[]>(
-    [],
-  );
+  const [lastSyncedExecutionResults, setLastSyncedExecutionResults] = useState<TestRunResult[]>([]);
   const { data: participantDirectoryMembers = [], isLoading: isParticipantDirectoryLoading } =
     useParticipantDirectoryMembers(isModalOpen);
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
@@ -1512,6 +1507,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Step 1 State
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedFuncIds, setSelectedFuncIds] = useState<string[]>([]);
+  const [excludedTestCaseIds, setExcludedTestCaseIds] = useState<string[]>([]);
   const [scopeAutomationFilter, setScopeAutomationFilter] = useState<ScopeAutomationFilter>('all');
   const [scopeAutomationToolFilter, setScopeAutomationToolFilter] = useState<
     AutomationTool | 'all'
@@ -1577,7 +1573,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     } else {
       evidenceForm.resetFields();
     }
-  }, [activeEvidenceTestCase?.expectedResult, currentEvidenceRecord, evidenceForm, isEvidenceModalOpen]);
+  }, [
+    activeEvidenceTestCase?.expectedResult,
+    currentEvidenceRecord,
+    evidenceForm,
+    isEvidenceModalOpen,
+  ]);
 
   const functionalityIdsWithTestCases = useMemo(() => {
     return new Set(testCases.map(testCase => testCase.functionalityId).filter(Boolean));
@@ -1871,12 +1872,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       return left.testCaseId.localeCompare(right.testCaseId);
     },
-    [
-      functionalityById,
-      selectedFunctionalityOrder,
-      selectedModuleOrder,
-      testCaseById,
-    ],
+    [functionalityById, selectedFunctionalityOrder, selectedModuleOrder, testCaseById],
   );
 
   const openReorderModal = () => {
@@ -2082,10 +2078,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     () =>
       selectedFuncIds.reduce(
         (total, functionalityId) =>
-          total + (filteredTestCasesByFunctionality.get(functionalityId)?.length || 0),
+          total +
+          (filteredTestCasesByFunctionality
+            .get(functionalityId)
+            ?.filter(testCase => !excludedTestCaseIds.includes(testCase.id)).length || 0),
         0,
       ),
-    [filteredTestCasesByFunctionality, selectedFuncIds],
+    [excludedTestCaseIds, filteredTestCasesByFunctionality, selectedFuncIds],
   );
 
   const availableExecutableFunctionalities = useMemo(() => {
@@ -2328,6 +2327,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     form.resetFields();
     setSelectedModules([]);
     setSelectedFuncIds([]);
+    setExcludedTestCaseIds([]);
   };
 
   const openTestRunDetail = (record: TestRun) => {
@@ -2473,6 +2473,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     });
     setSelectedModules([]);
     setSelectedFuncIds([]);
+    setExcludedTestCaseIds([]);
     setIsModalOpen(true);
   };
 
@@ -2503,6 +2504,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     });
     setSelectedModules(activeTestRun.selectedModules || []);
     setSelectedFuncIds(activeTestRun.selectedFunctionalities || []);
+    setExcludedTestCaseIds([]);
     setIsModalOpen(true);
   };
 
@@ -2518,9 +2520,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       const values = await form.validateFields();
       if (selectedFuncIds.length === 0 || selectedTestCaseCount === 0) {
         message.destroy(loadingMessageKey);
-        message.error(
-          'Selecciona al menos una funcionalidad con casos compatibles con el filtro actual.',
-        );
+        message.error('Selecciona al menos un caso compatible con el filtro actual.');
         return;
       }
 
@@ -2582,8 +2582,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
       const initialResults: TestRunResult[] = [];
       orderedFunctionalities.forEach(func => {
-        const orderedCases = [...(filteredTestCasesByFunctionality.get(func.id) || [])].sort(
-          (left, right) => {
+        const orderedCases = (filteredTestCasesByFunctionality.get(func.id) || [])
+          .filter(testCase => !excludedTestCaseIds.includes(testCase.id))
+          .sort((left, right) => {
             const leftOrder =
               typeof left.sortOrder === 'number' ? left.sortOrder : Number.MAX_SAFE_INTEGER;
             const rightOrder =
@@ -2594,8 +2595,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             }
 
             return left.title.localeCompare(right.title);
-          },
-        );
+          });
 
         orderedCases.forEach(tc => {
           initialResults.push({
@@ -2744,29 +2744,29 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       }
 
       const updatedRun: TestRun = {
-      ...activeTestRun,
-      status,
-      results: executionResults,
-    };
+        ...activeTestRun,
+        status,
+        results: executionResults,
+      };
 
-    const dirtyResults = getDirtyExecutionResults(executionResults, lastSyncedExecutionResults);
-    const savedRun = await saveTestRun({
-      testRun: updatedRun,
-      options: {
-        resultsToSync: dirtyResults,
-        removeMissingResults: false,
-      },
-    });
-    message.success(`Ejecución guardada como ${status}`);
-    if (isFinalStatus) {
-      setActiveTestRun(null);
-      setExecutionResults([]);
-      setLastSyncedExecutionResults([]);
-      return;
-    }
-    setActiveTestRun(savedRun);
-    setExecutionResults(savedRun.results);
-    setLastSyncedExecutionResults(savedRun.results);
+      const dirtyResults = getDirtyExecutionResults(executionResults, lastSyncedExecutionResults);
+      const savedRun = await saveTestRun({
+        testRun: updatedRun,
+        options: {
+          resultsToSync: dirtyResults,
+          removeMissingResults: false,
+        },
+      });
+      message.success(`Ejecución guardada como ${status}`);
+      if (isFinalStatus) {
+        setActiveTestRun(null);
+        setExecutionResults([]);
+        setLastSyncedExecutionResults([]);
+        return;
+      }
+      setActiveTestRun(savedRun);
+      setExecutionResults(savedRun.results);
+      setLastSyncedExecutionResults(savedRun.results);
     } catch (error) {
       console.error('Failed to save execution:', error);
       message.error(
@@ -3579,9 +3579,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   <Button
                     size="small"
                     type="link"
-                    onClick={() =>
-                      setSelectedFuncIds(availableExecutableFunctionalities.map(f => f.id))
-                    }
+                    onClick={() => {
+                      setSelectedFuncIds(availableExecutableFunctionalities.map(f => f.id));
+                      setExcludedTestCaseIds([]);
+                    }}
                     className="text-[11px] p-0"
                   >
                     Seleccionar todas
@@ -3591,7 +3592,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     size="small"
                     type="link"
                     danger
-                    onClick={() => setSelectedFuncIds([])}
+                    onClick={() => {
+                      setSelectedFuncIds([]);
+                      setExcludedTestCaseIds([]);
+                    }}
                     className="text-[11px] p-0"
                   >
                     Limpiar selección
@@ -3651,7 +3655,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               ) : null}
 
               <div className="mb-4 flex flex-wrap gap-2">
-                <Tag color="blue">Casos visibles: {selectedTestCaseCount}</Tag>
+                <Tag color="blue">Casos incluidos: {selectedTestCaseCount}</Tag>
                 <Tag color="green">
                   Funcionalidades ejecutables: {availableExecutableFunctionalities.length}
                 </Tag>
@@ -3699,9 +3703,25 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                                 setSelectedFuncIds(prev =>
                                   Array.from(new Set([...prev, ...executableFuncIds])),
                                 );
+                                setExcludedTestCaseIds(prev =>
+                                  prev.filter(
+                                    testCaseId =>
+                                      !executableFuncIds.includes(
+                                        testCaseById.get(testCaseId)?.functionalityId || '',
+                                      ),
+                                  ),
+                                );
                               } else {
                                 setSelectedFuncIds(prev =>
                                   prev.filter(id => !executableFuncIds.includes(id)),
+                                );
+                                setExcludedTestCaseIds(prev =>
+                                  prev.filter(
+                                    testCaseId =>
+                                      !executableFuncIds.includes(
+                                        testCaseById.get(testCaseId)?.functionalityId || '',
+                                      ),
+                                  ),
                                 );
                               }
                             }}
@@ -3714,64 +3734,101 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                         </Space>
                       </div>
                       <div className="p-4">
-                        <Checkbox.Group
-                          className="w-full"
-                          value={selectedInModule}
-                          onChange={vals => {
-                            const nextModuleValues = vals as string[];
-                            setSelectedFuncIds(prev => {
-                              const withoutCurrentModule = prev.filter(
-                                id => !executableFuncIds.includes(id),
-                              );
-                              return [...withoutCurrentModule, ...nextModuleValues];
-                            });
-                          }}
-                        >
-                          <Row gutter={[12, 12]}>
-                            {funcs.map(item => {
-                              const isExecutable = executableFunctionalityIds.has(item.id);
-                              const testCaseCount =
-                                filteredTestCasesByFunctionality.get(item.id)?.length || 0;
+                        <Row gutter={[12, 12]}>
+                          {funcs.map(item => {
+                            const isExecutable = executableFunctionalityIds.has(item.id);
+                            const testCaseCount =
+                              filteredTestCasesByFunctionality.get(item.id)?.length || 0;
+                            const selectedCases = (
+                              filteredTestCasesByFunctionality.get(item.id) || []
+                            ).filter(testCase => !excludedTestCaseIds.includes(testCase.id));
 
-                              return (
-                                <Col span={12} key={item.id}>
-                                  <div
-                                    className={`rounded-lg border p-2 transition-all ${
-                                      selectedFuncIds.includes(item.id)
-                                        ? 'border-blue-200 bg-blue-50'
-                                        : isExecutable
-                                          ? 'border-slate-200 bg-white'
-                                          : 'border-slate-200 bg-slate-100'
-                                    }`}
+                            return (
+                              <Col
+                                xs={24}
+                                md={selectedFuncIds.includes(item.id) ? 24 : 12}
+                                key={item.id}
+                              >
+                                <div
+                                  className={`rounded-lg border p-2 transition-all ${
+                                    selectedFuncIds.includes(item.id)
+                                      ? 'border-blue-200 bg-blue-50'
+                                      : isExecutable
+                                        ? 'border-slate-200 bg-white'
+                                        : 'border-slate-200 bg-slate-100'
+                                  }`}
+                                >
+                                  <Checkbox
+                                    className="w-full"
+                                    disabled={!isExecutable}
+                                    checked={selectedFuncIds.includes(item.id)}
+                                    onChange={event => {
+                                      const isSelected = event.target.checked;
+                                      setSelectedFuncIds(prev =>
+                                        isSelected
+                                          ? Array.from(new Set([...prev, item.id]))
+                                          : prev.filter(id => id !== item.id),
+                                      );
+                                      if (!isSelected) {
+                                        setExcludedTestCaseIds(prev =>
+                                          prev.filter(
+                                            testCaseId =>
+                                              testCaseById.get(testCaseId)?.functionalityId !==
+                                              item.id,
+                                          ),
+                                        );
+                                      }
+                                    }}
                                   >
-                                    <Checkbox
-                                      value={item.id}
-                                      className="w-full"
-                                      disabled={!isExecutable}
-                                    >
-                                      <div className="ml-1 flex flex-col">
-                                        <span className="text-xs font-bold leading-tight text-slate-800">
-                                          {item.id}
-                                        </span>
-                                        <span
-                                          className="max-w-[200px] truncate text-[11px] text-slate-500"
-                                          title={item.name}
-                                        >
-                                          {item.name}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400">
-                                          {isExecutable
-                                            ? `${testCaseCount} caso${testCaseCount === 1 ? '' : 's'} disponible${testCaseCount === 1 ? '' : 's'}`
-                                            : 'Sin casos compatibles con el filtro actual'}
-                                        </span>
-                                      </div>
-                                    </Checkbox>
-                                  </div>
-                                </Col>
-                              );
-                            })}
-                          </Row>
-                        </Checkbox.Group>
+                                    <div className="ml-1 flex flex-col">
+                                      <span className="text-xs font-bold leading-tight text-slate-800">
+                                        {item.id}
+                                      </span>
+                                      <span
+                                        className="max-w-[200px] truncate text-[11px] text-slate-500"
+                                        title={item.name}
+                                      >
+                                        {item.name}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400">
+                                        {isExecutable
+                                          ? `${selectedCases.length} de ${testCaseCount} caso${testCaseCount === 1 ? '' : 's'} incluido${selectedCases.length === 1 ? '' : 's'}`
+                                          : 'Sin casos compatibles con el filtro actual'}
+                                      </span>
+                                    </div>
+                                  </Checkbox>
+                                  {selectedFuncIds.includes(item.id) && isExecutable ? (
+                                    <div className="mt-3 space-y-2 border-t border-blue-100 pt-3">
+                                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                        Casos a ejecutar
+                                      </span>
+                                      {(filteredTestCasesByFunctionality.get(item.id) || []).map(
+                                        testCase => (
+                                          <Checkbox
+                                            key={testCase.id}
+                                            className="flex w-full items-start rounded-md px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-white"
+                                            checked={!excludedTestCaseIds.includes(testCase.id)}
+                                            onChange={event => {
+                                              setExcludedTestCaseIds(prev =>
+                                                event.target.checked
+                                                  ? prev.filter(id => id !== testCase.id)
+                                                  : Array.from(new Set([...prev, testCase.id])),
+                                              );
+                                            }}
+                                          >
+                                            <span className="leading-5 text-slate-700">
+                                              {testCase.title}
+                                            </span>
+                                          </Checkbox>
+                                        ),
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </Col>
+                            );
+                          })}
+                        </Row>
                       </div>
                     </div>
                   );
@@ -4328,7 +4385,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       return matchesSearch && matchesFailed;
     });
 
-    const orderedFilteredExecutionResults = [...filteredExecutionResults].sort(compareExecutionResults);
+    const orderedFilteredExecutionResults = [...filteredExecutionResults].sort(
+      compareExecutionResults,
+    );
 
     return {
       passedCount,
@@ -4989,7 +5048,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           ]}
         >
           <Text type="secondary" className="mb-4 block text-sm">
-            Arrastra los casos para definir la secuencia de ejecución. Este mismo orden se usará en el PDF.
+            Arrastra los casos para definir la secuencia de ejecución. Este mismo orden se usará en
+            el PDF.
           </Text>
           <List
             className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
@@ -5106,16 +5166,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           ]}
         >
           <div className="space-y-4">
-          {isSubmittingTestRun && (
-            <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
-              <Spin size="small" />
-              <span className="text-sm font-medium">
-                {isEditingRunInfo
-                  ? 'Se están guardando los cambios de la ejecución, por favor espere.'
-                  : 'Se está creando la ejecución de prueba, por favor espere.'}
-              </span>
-            </div>
-          )}
+            {isSubmittingTestRun && (
+              <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+                <Spin size="small" />
+                <span className="text-sm font-medium">
+                  {isEditingRunInfo
+                    ? 'Se están guardando los cambios de la ejecución, por favor espere.'
+                    : 'Se está creando la ejecución de prueba, por favor espere.'}
+                </span>
+              </div>
+            )}
             {testRunPlanningFormContent}
           </div>
         </Modal>
@@ -5912,4 +5972,3 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     </div>
   );
 }
-

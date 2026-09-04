@@ -381,7 +381,7 @@ function WorkspaceApp({
     ensureLink('apple-touch-icon').href = appBranding.appleTouchIconUrl;
   }, []);
 
-const workspaceMenuItems = useMemo(
+  const workspaceMenuItems = useMemo(
     () =>
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
@@ -739,7 +739,7 @@ const workspaceMenuItems = useMemo(
               onCollapse={value => setCollapsed(value)}
               trigger={null}
               theme="light"
-              className="bg-white border-r border-slate-100"
+              className="qa-workspace-sider bg-white border-r border-slate-100"
             >
               <div
                 className={`px-4 py-6 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-3`}
