@@ -63,7 +63,7 @@ import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRunSummaries } from '../modules/test-runs/hooks/useTestRunSummaries';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
-import { getTestRunById } from '../modules/test-runs/services/testRunsService';
+import { getTestRunById, removeTestRunResult } from '../modules/test-runs/services/testRunsService';
 import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
@@ -3171,9 +3171,26 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     );
   };
 
-  const removeTestCase = (tcId: string) => {
+  const removeTestCase = async (tcId: string) => {
+    if (!activeTestRun) return;
+
     const nextResults = executionResults.filter(result => result.testCaseId !== tcId);
+    const removedResult = executionResults.find(result => result.testCaseId === tcId);
+    if (!removedResult) return;
+
+    try {
+      await removeTestRunResult(removedResult.id);
+      await queryClient.invalidateQueries({
+        queryKey: ['test-runs', 'summary', projectId],
+      });
+    } catch (error) {
+      console.error('Failed to discard test case from execution:', error);
+      message.error('No fue posible descartar el caso de prueba de esta ejecucion.');
+      return;
+    }
+
     setExecutionResults(nextResults);
+    setLastSyncedExecutionResults(nextResults);
     setActiveTestRun(prev => {
       if (!prev) {
         return prev;

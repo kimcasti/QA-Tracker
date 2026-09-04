@@ -291,3 +291,7 @@ export async function removeTestRun(id: string) {
   );
   await deleteDocument('/api/test-runs', id);
 }
+
+export async function removeTestRunResult(id: string) {
+  await deleteDocument('/api/test-run-results', id);
+}
