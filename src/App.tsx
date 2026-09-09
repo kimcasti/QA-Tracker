@@ -742,9 +742,9 @@ function WorkspaceApp({
               className="qa-workspace-sider bg-white border-r border-slate-100"
             >
               <div
-                className={`px-4 py-6 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} gap-3`}
+                className={`px-4 py-6 flex shrink-0 items-center ${collapsed ? 'flex-col justify-center' : 'justify-between'} gap-3`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <img
                     src={appBranding.logoUrl}
                     alt={qaBrand.workspaceLabel}
@@ -770,11 +770,11 @@ function WorkspaceApp({
                   type="text"
                   icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                   onClick={() => setCollapsed(!collapsed)}
-                  className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg flex items-center justify-center"
+                  className="shrink-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg flex items-center justify-center"
                 />
               </div>
 
-              <div className="py-2 h-[calc(100%-80px)] flex flex-col justify-between">
+              <div className="py-2 flex flex-1 flex-col justify-between">
                 <Menu
                   mode="inline"
                   selectedKeys={[workspaceView]}

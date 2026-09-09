@@ -54,7 +54,34 @@
   top: 64px;
   align-self: flex-start;
   height: calc(100vh - 64px);
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #b8c7d5 transparent;
+}
+
+.qa-workspace-sider::-webkit-scrollbar {
+  width: 6px;
+}
+
+.qa-workspace-sider::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.qa-workspace-sider::-webkit-scrollbar-thumb {
+  background: #b8c7d5;
+  border-radius: 999px;
+}
+
+.qa-workspace-sider::-webkit-scrollbar-thumb:hover {
+  background: #8fa4b8;
+}
+
+.qa-workspace-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 100%;
 }
 
 .qa-workspace-content {
