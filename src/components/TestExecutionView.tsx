@@ -2369,7 +2369,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const copyPublicUatLink = async (record: TestRun) => {
     try {
       const session = await getPublicUatSessionStatus(record.id);
-      if (!session?.publicUrl) {
+      await queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] });
+      const hasExpired = Boolean(session?.expiresAt && dayjs(session.expiresAt).isBefore(dayjs()));
+      if (!session?.publicUrl || hasExpired) {
+        if (!session || hasExpired || session.status === 'expired' || session.status === 'revoked') {
+          openPublicUatActivationModal({ ...record, publicUatSession: session });
+          return;
+        }
         message.warning('Esta ejecución UAT aún no tiene un enlace público disponible.');
         return;
       }
@@ -2404,7 +2410,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           participantNameSnapshot: values.participantNameSnapshot || '',
           participantEmailSnapshot: values.participantEmailSnapshot || '',
           deliveryNotes: values.deliveryNotes || '',
-          expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
+          expiresAt: values.expiresAt ? values.expiresAt.endOf('day').toISOString() : undefined,
         },
       });
 
@@ -2432,6 +2438,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     try {
       const session = await getPublicUatSessionStatus(record.id);
       setPublicUatStatusInfo(session);
+      await queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] });
     } catch (error) {
       console.error('Error loading public UAT status:', error);
       setPublicUatStatusInfo(null);
@@ -5796,7 +5803,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           >
             <Input placeholder="cliente@empresa.com" className="rounded-lg" />
           </Form.Item>
-          <Form.Item name="expiresAt" label="Fecha de expiración">
+          <Form.Item
+            name="expiresAt"
+            label="Fecha de expiración"
+            extra="El enlace vence al finalizar el día seleccionado, según tu hora local."
+          >
             <DatePicker className="w-full rounded-lg" />
           </Form.Item>
           <Form.Item name="deliveryNotes" label="Indicaciones para el cliente">

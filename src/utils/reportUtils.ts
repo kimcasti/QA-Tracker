@@ -4,6 +4,7 @@ import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow, Tab
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { stripHtmlToText } from './evidenceRichText';
+import { normalizePdfEvidenceBody } from './pdfEvidenceText';
 import {
   PublicUatSessionSummary,
   RegressionCycle,
@@ -742,7 +743,9 @@ function buildPdfEvidenceIconDataUrl(icon: PdfEvidenceIconKind) {
 }
 
 function parsePdfEvidenceNotesForExport(notes?: string | null) {
-  const normalized = stripHtmlToText(notes || '').replace(/\s+/g, ' ').trim();
+  const container = document.createElement('textarea');
+  container.innerHTML = stripHtmlToText(notes || '');
+  const normalized = container.value.trim();
 
   const iconMatchers: Array<{ icon: PdfEvidenceIconKind; pattern: RegExp }> = [
     { icon: 'verified', pattern: /^(?:\u2705|✅|âœ…)\s*/u },
@@ -754,14 +757,14 @@ function parsePdfEvidenceNotesForExport(notes?: string | null) {
     if (matcher.pattern.test(normalized)) {
       return {
         icon: matcher.icon,
-        text: normalized.replace(matcher.pattern, '').trim(),
+        text: normalizePdfEvidenceBody(normalized.replace(matcher.pattern, '')),
       };
     }
   }
 
   return {
     icon: null as PdfEvidenceIconKind | null,
-    text: normalized,
+    text: normalizePdfEvidenceBody(normalized),
   };
 }
 
@@ -965,12 +968,13 @@ export const exportTestRunToPdf = async ({
     const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
     if (parsedNotes.icon || parsedNotes.text) {
       cursorY += 3;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
       const notesLines = pdf.splitTextToSize(
         `Notas / evidencia registrada: ${parsedNotes.text || 'N/A'}`,
         contentWidth - (parsedNotes.icon ? 8 : 0),
       );
-      const notesBlockHeight = Math.max(notesLines.length * 5 + 4, 14);
-      ensureSpace(notesBlockHeight);
+      ensureSpace(14);
       const notesStartY = cursorY + 5;
 
       if (parsedNotes.icon) {
@@ -978,31 +982,26 @@ export const exportTestRunToPdf = async ({
         try {
           const iconDataUrl = buildPdfEvidenceIconDataUrl(parsedNotes.icon);
           pdf.addImage(iconDataUrl, 'PNG', margin, notesStartY - 3.6, iconSize, iconSize);
-          pdf.setFont('helvetica', 'normal');
-          pdf.setFontSize(10);
-          pdf.text(notesLines, margin + iconSize + 2.5, notesStartY);
-          cursorY = notesStartY + notesLines.length * 5;
         } catch (error) {
           console.warn('Falling back to text-only PDF evidence icon.', error);
-          pdf.setFont('helvetica', 'normal');
-          pdf.setFontSize(10);
-          pdf.text(notesLines, margin, notesStartY);
-          cursorY = notesStartY + notesLines.length * 5;
         }
-      } else {
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(10);
-        pdf.text(notesLines, margin, notesStartY);
-        cursorY = notesStartY + notesLines.length * 5;
+      }
+      cursorY = notesStartY;
+      for (const line of notesLines) {
+        ensureSpace(5);
+        pdf.text(line, margin + (parsedNotes.icon ? 7 : 0), cursorY, { align: 'left', charSpace: 0 });
+        cursorY += 5;
       }
     }
 
     if (result.evidenceImage) {
       try {
-        ensureSpace(48);
         const imageData = await normalizeImageSourceForPdf(result.evidenceImage);
-        const imageHeight = 40;
-        const imageWidth = Math.min(contentWidth, 120);
+        const dimensions = pdf.getImageProperties(imageData);
+        const scale = Math.min(contentWidth / dimensions.width, (pageHeight - margin - 24) / dimensions.height);
+        const imageWidth = dimensions.width * scale;
+        const imageHeight = dimensions.height * scale;
+        ensureSpace(imageHeight + 6);
         pdf.addImage(imageData, 'JPEG', margin, cursorY + 3, imageWidth, imageHeight);
         cursorY += imageHeight + 6;
       } catch (error) {

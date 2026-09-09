@@ -9,7 +9,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { CheckCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DownOutlined, RightOutlined, SaveOutlined } from '@ant-design/icons';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { TestResult } from '../../../types';
@@ -19,6 +19,9 @@ import {
   usePublicUatSession,
 } from '../hooks/usePublicUatSession';
 import { derivePublicUatEvidencePayload } from '../services/publicUatSessionsService';
+import PublicUatCaseNavigator from './PublicUatCaseNavigator';
+import PublicUatCompletionSummary from './PublicUatCompletionSummary';
+import type { PublicUatSessionDetail } from '../types/model';
 
 const { Title, Text, Paragraph } = Typography;
 const EvidenceRichEditor = lazy(() => import('../../../components/EvidenceRichEditor'));
@@ -77,6 +80,30 @@ export default function PublicUatSessionPage() {
   const { saveResult, completeSession, isSavingResult, isCompletingSession } =
     usePublicUatResultActions(token);
   const [drafts, setDrafts] = useState<Record<string, ResultDraft>>({});
+  const [collapsedCases, setCollapsedCases] = useState<Record<string, boolean>>({});
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [completionReceipt, setCompletionReceipt] = useState<PublicUatSessionDetail | null>(null);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+
+  useEffect(() => {
+    setCollapsedCases({});
+    setSelectedCaseId(null);
+    setCompletionReceipt(null);
+    setIsSummaryOpen(false);
+  }, [token]);
+
+  const navigateToCase = (id: string) => {
+    setSelectedCaseId(id);
+    setCollapsedCases(current => ({ ...current, [id]: false }));
+    requestAnimationFrame(() => {
+      const target = document.getElementById(`uat-case-${id}`);
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+        block: 'start',
+      });
+    });
+  };
   const orderedResults = useMemo(
     () =>
       [...(data?.testRun?.results || [])].sort((left, right) => {
@@ -125,7 +152,8 @@ export default function PublicUatSessionPage() {
   }, [data, drafts]);
 
   const totalCount = orderedResults.length;
-  const isReadOnly = data?.session.readOnly ?? true;
+  const completedSession = completionReceipt || (data?.session.status === 'completed' ? data : null);
+  const isReadOnly = completedSession ? true : data?.session.readOnly ?? true;
   const canCompleteSession =
     !isReadOnly &&
     totalCount > 0 &&
@@ -155,7 +183,9 @@ export default function PublicUatSessionPage() {
 
   const handleComplete = async () => {
     try {
-      await completeSession();
+      const completed = await completeSession();
+      setCompletionReceipt(completed);
+      setIsSummaryOpen(true);
       message.success('La evaluación UAT fue finalizada correctamente.');
     } catch (completeError) {
       message.error(
@@ -201,7 +231,17 @@ export default function PublicUatSessionPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      <div className="mx-auto grid max-w-7xl items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        {orderedResults.length > 0 ? (
+          <aside className="min-w-0 lg:sticky lg:top-6">
+            <PublicUatCaseNavigator
+              results={orderedResults}
+              selectedCaseId={selectedCaseId}
+              onSelectCase={navigateToCase}
+            />
+          </aside>
+        ) : null}
+        <div className={`flex min-w-0 flex-col gap-6 ${orderedResults.length ? '' : 'lg:col-span-2'}`}>
         <Card className="rounded-3xl border-slate-100 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
@@ -260,17 +300,47 @@ export default function PublicUatSessionPage() {
         ) : null}
 
         {orderedResults.map((result, index) => {
+          const isCollapsed = Boolean(collapsedCases[result.id]);
+          const detailsId = `uat-case-details-${result.id}`;
           const draft = drafts[result.id] || {
             result: result.result,
             notes: result.notes || '',
           };
+          const isPassed = draft.result === TestResult.PASSED;
+          const isFailed = draft.result === TestResult.FAILED;
+          const resultColors = isPassed
+            ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800 focus:border-emerald-500'
+            : isFailed
+              ? 'border-rose-200 bg-rose-50/60 text-rose-800 focus:border-rose-500'
+              : 'border-slate-200 bg-white text-slate-700 focus:border-sky-400';
 
           return (
-            <Card key={result.id} className="rounded-3xl border-slate-100 shadow-sm">
+            <Card
+              key={result.id}
+              id={`uat-case-${result.id}`}
+              tabIndex={-1}
+              aria-label={`Caso ${index + 1}: ${result.testCaseTitle || 'Caso de prueba'}`}
+              className="scroll-mt-6 rounded-3xl border-slate-100 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+            >
               <div className="space-y-5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={isCollapsed ? <RightOutlined /> : <DownOutlined />}
+                        aria-expanded={!isCollapsed}
+                        aria-controls={detailsId}
+                        title={isCollapsed ? 'Mostrar detalles' : 'Ocultar detalles'}
+                        aria-label={`${isCollapsed ? 'Mostrar' : 'Ocultar'} detalles del caso ${index + 1}: ${result.testCaseTitle || 'Caso de prueba'}`}
+                        onClick={() =>
+                          setCollapsedCases(current => ({
+                            ...current,
+                            [result.id]: !current[result.id],
+                          }))
+                        }
+                      />
                       <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-bold text-sky-700">
                         Caso {index + 1}
                       </span>
@@ -289,86 +359,99 @@ export default function PublicUatSessionPage() {
                     <Text className="mb-2 block text-xs font-bold uppercase tracking-widest text-slate-400">
                       Resultado
                     </Text>
-                    <select
-                      value={draft.result}
-                      disabled={isReadOnly || !data.session.allowResultEditing}
-                      onChange={event =>
-                        setDrafts(current => ({
-                          ...current,
-                          [result.id]: {
-                            ...draft,
-                            result: event.target.value as TestResult,
-                          },
-                        }))
+                    <div className="relative">
+                      {isPassed || isFailed ? (
+                        <span
+                          aria-hidden="true"
+                          className={`pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm ${isPassed ? 'text-emerald-600' : 'text-rose-600'}`}
+                        >
+                          {isPassed ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+                        </span>
+                      ) : null}
+                      <select
+                        aria-label={`Resultado del caso ${index + 1}`}
+                        value={draft.result}
+                        disabled={isReadOnly || !data.session.allowResultEditing}
+                        onChange={event =>
+                          setDrafts(current => ({
+                            ...current,
+                            [result.id]: {
+                              ...draft,
+                              result: event.target.value as TestResult,
+                            },
+                          }))
+                        }
+                        className={`h-11 w-full rounded-xl border pr-3 text-sm outline-none transition ${resultColors} ${isPassed || isFailed ? 'pl-9' : 'pl-3'}`}
+                      >
+                        {resultOptions().map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div id={detailsId} hidden={isCollapsed} className="space-y-5">
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <Text strong className="block text-slate-800">
+                        Descripción
+                      </Text>
+                      <div className="mt-2">{renderRichText(result.testCaseDescription)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <Text strong className="block text-slate-800">
+                        Precondiciones
+                      </Text>
+                      <div className="mt-2">{renderRichText(result.preconditions)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <Text strong className="block text-slate-800">
+                        Resultado esperado
+                      </Text>
+                      <div className="mt-2">{renderRichText(result.expectedResult)}</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <Text strong className="block text-slate-800">
+                      Pasos de prueba
+                    </Text>
+                    <div className="mt-2">{renderRichText(result.testSteps)}</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Text className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Comentarios y evidencia
+                    </Text>
+                    <Suspense
+                      fallback={
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                          Cargando editor...
+                        </div>
                       }
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-sky-400"
                     >
-                      {resultOptions().map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      <EvidenceRichEditor
+                        value={draft.notes}
+                        onChange={value =>
+                          setDrafts(current => ({
+                            ...current,
+                            [result.id]: {
+                              ...draft,
+                              notes: value,
+                            },
+                          }))
+                        }
+                        disabled={
+                          isReadOnly ||
+                          (!data.session.allowCommentEditing && !data.session.allowEvidenceUpload)
+                        }
+                        placeholder="Escribe aquí tus observaciones y, si aplica, pega o sube una evidencia."
+                      />
+                    </Suspense>
                   </div>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <Text strong className="block text-slate-800">
-                      Descripción
-                    </Text>
-                    <div className="mt-2">{renderRichText(result.testCaseDescription)}</div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <Text strong className="block text-slate-800">
-                      Precondiciones
-                    </Text>
-                    <div className="mt-2">{renderRichText(result.preconditions)}</div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <Text strong className="block text-slate-800">
-                      Resultado esperado
-                    </Text>
-                    <div className="mt-2">{renderRichText(result.expectedResult)}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <Text strong className="block text-slate-800">
-                    Pasos de prueba
-                  </Text>
-                  <div className="mt-2">{renderRichText(result.testSteps)}</div>
-                </div>
-
-                <div className="space-y-2">
-                  <Text className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Comentarios y evidencia
-                  </Text>
-                  <Suspense
-                    fallback={
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
-                        Cargando editor...
-                      </div>
-                    }
-                  >
-                    <EvidenceRichEditor
-                      value={draft.notes}
-                      onChange={value =>
-                        setDrafts(current => ({
-                          ...current,
-                          [result.id]: {
-                            ...draft,
-                            notes: value,
-                          },
-                        }))
-                      }
-                      disabled={
-                        isReadOnly ||
-                        (!data.session.allowCommentEditing && !data.session.allowEvidenceUpload)
-                      }
-                      placeholder="Escribe aquí tus observaciones y, si aplica, pega o sube una evidencia."
-                    />
-                  </Suspense>
                 </div>
 
                 {!isReadOnly ? (
@@ -396,7 +479,9 @@ export default function PublicUatSessionPage() {
                 Cierre de evaluación
               </Title>
               <Text className="text-slate-500">
-                Cuando hayas terminado de registrar los resultados, finaliza esta sesión para dejarla cerrada.
+                {completedSession
+                  ? 'La evaluación está finalizada. Puedes consultar e imprimir el resumen de tus resultados.'
+                  : 'Cuando hayas terminado de registrar los resultados, finaliza esta sesión para dejarla cerrada.'}
               </Text>
             </div>
 
@@ -411,7 +496,11 @@ export default function PublicUatSessionPage() {
                 </Text>
               ) : null}
 
-              <Button
+              {completedSession ? (
+                <Button type="primary" onClick={() => setIsSummaryOpen(true)} className="h-11 rounded-xl px-6">
+                  Ver resumen
+                </Button>
+              ) : <Button
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 disabled={!canCompleteSession}
@@ -420,11 +509,19 @@ export default function PublicUatSessionPage() {
                 className="h-11 rounded-xl px-6"
               >
                 Finalizar evaluación UAT
-              </Button>
+              </Button>}
             </div>
           </div>
         </Card>
+        </div>
       </div>
+      {completedSession ? (
+        <PublicUatCompletionSummary
+          data={completedSession}
+          open={isSummaryOpen}
+          onClose={() => setIsSummaryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
