@@ -15,6 +15,8 @@ import {
   Row,
   Col,
   Spin,
+  Steps,
+  Descriptions,
   message,
   Tooltip,
   Divider,
@@ -581,6 +583,11 @@ function renderRichTextContent(value?: string | null) {
   return (
     <div
       className="qa-rich-text-content mt-1 text-sm text-slate-700"
+      ref={element => {
+        element?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(checkbox => {
+          checkbox.disabled = true;
+        });
+      }}
       dangerouslySetInnerHTML={{ __html: normalizedHtml }}
     />
   );
@@ -1485,6 +1492,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [planningStep, setPlanningStep] = useState(0);
+  const planningScrollRef = React.useRef<HTMLDivElement>(null);
+  const planningHeadingRef = React.useRef<HTMLDivElement>(null);
+  const goToPlanningStep = (step: number) => {
+    setPlanningStep(step);
+    requestAnimationFrame(() => {
+      planningScrollRef.current?.scrollTo({ top: 0 });
+      planningHeadingRef.current?.focus();
+    });
+  };
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isEditingRunInfo, setIsEditingRunInfo] = useState(false);
   const [isSubmittingTestRun, setIsSubmittingTestRun] = useState(false);
@@ -2104,55 +2121,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     availableFunctionalities.length > 0 &&
     unavailableFunctionalitiesCount > 0;
 
-  const executionPlanningSteps = useMemo(() => {
-    const generalComplete = Boolean(
-      watchedTitle?.trim() &&
-      selectedTestType &&
-      watchedSprint &&
-      watchedPriority &&
-      watchedTester &&
-      watchedEnvironment,
-    );
-    const scopeComplete = Boolean(
-      selectedModules.length > 0 && (isEditingRunInfo || selectedFuncIds.length > 0),
-    );
-    const environmentComplete = Boolean(watchedEnvironment);
-    const risksComplete = watchedIdentifiedRisks.length > 0;
-    const criteriaComplete = watchedExitCriteria.length > 0;
-
-    const sections = [
-      { key: 'general', label: 'General', complete: generalComplete },
-      { key: 'scope', label: 'Alcance', complete: scopeComplete },
-      { key: 'environment', label: 'Ambiente', complete: environmentComplete },
-      { key: 'risks', label: 'Riesgos', complete: risksComplete },
-      { key: 'criteria', label: 'Criterios', complete: criteriaComplete },
-      {
-        key: 'create',
-        label: 'Crear',
-        complete: generalComplete && scopeComplete && environmentComplete,
-      },
-    ];
-
-    const currentIndex = sections.findIndex(section => !section.complete);
-
-    return {
-      sections,
-      currentIndex: currentIndex === -1 ? sections.length - 1 : currentIndex,
-    };
-  }, [
-    isEditingRunInfo,
-    selectedFuncIds.length,
-    selectedModules.length,
-    selectedTestType,
-    watchedEnvironment,
-    watchedExitCriteria.length,
-    watchedIdentifiedRisks.length,
-    watchedPriority,
-    watchedSprint,
-    watchedTester,
-    watchedTitle,
-  ]);
-
   const executionTestTypeOptions = useMemo(
     () =>
       Object.values(TestType).map(type => ({
@@ -2309,6 +2277,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const resetTestRunModal = () => {
     if (isSubmittingTestRun) return;
     setIsModalOpen(false);
+    setPlanningStep(0);
     setIsEditingRunInfo(false);
     form.resetFields();
     setSelectedModules([]);
@@ -2467,6 +2436,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setSelectedModules([]);
     setSelectedFuncIds([]);
     setExcludedTestCaseIds([]);
+    setPlanningStep(0);
     setIsModalOpen(true);
   };
 
@@ -2498,6 +2468,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setSelectedModules(activeTestRun.selectedModules || []);
     setSelectedFuncIds(activeTestRun.selectedFunctionalities || []);
     setExcludedTestCaseIds([]);
+    setPlanningStep(0);
     setIsModalOpen(true);
   };
 
@@ -3306,10 +3277,58 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     ? 'Guardar información'
     : 'Crear Ejecución de Pruebas';
 
+  const planningStepLabels = ['General', 'Alcance', 'Ambiente', 'Riesgos', 'Criterios', 'Resumen'];
+  const testRunModalHeading = <span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>;
+
+  const validatePlanningStep = async (step: number) => {
+    if (step === 0) {
+      try {
+        await form.validateFields(['title', 'testType', 'executionDate', 'sprint', 'priority', 'tester', 'environment']);
+      } catch {
+        goToPlanningStep(0);
+        return false;
+      }
+    }
+    if (step === 1 && !isEditingRunInfo &&
+        (selectedModules.length === 0 || selectedFuncIds.length === 0 || selectedTestCaseCount === 0)) {
+      goToPlanningStep(1);
+      message.error('Selecciona al menos un caso compatible con el filtro actual.');
+      return false;
+    }
+    return true;
+  };
+
+  const submitPlanning = async () => {
+    if (isSubmittingTestRun || isViewer) return;
+    if (!(await validatePlanningStep(0)) || !(await validatePlanningStep(1))) return;
+    if (isEditingRunInfo) await handleUpdateTestRunInfo();
+    else await handleCreateTestRun();
+  };
+
+  const testRunModalFooter = (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button onClick={resetTestRunModal} disabled={isSubmittingTestRun}>Cancelar</Button>
+      {planningStep > 0 && (
+        <Button onClick={() => goToPlanningStep(planningStep - 1)} disabled={isSubmittingTestRun}>Anterior</Button>
+      )}
+      {planningStep < 5 ? (
+        <Button type="primary" disabled={isSubmittingTestRun} onClick={async () => {
+          if (await validatePlanningStep(planningStep)) goToPlanningStep(planningStep + 1);
+        }}>Siguiente</Button>
+      ) : !isViewer ? (
+        <Button type="primary" onClick={() => void submitPlanning()} loading={isSubmittingTestRun} disabled={isSubmittingTestRun}>
+          {isSubmittingTestRun ? (isEditingRunInfo ? 'Guardando información...' : 'Creando ejecución...') : testRunModalPrimaryLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+
   const testRunPlanningFormContent = (
     <Form
       form={form}
       layout="vertical"
+      preserve
+      disabled={isSubmittingTestRun || isViewer}
       onValuesChange={changedValues => {
         if (changedValues.testType) {
           setSelectedExecutionType(changedValues.testType as TestType);
@@ -3321,53 +3340,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         priority: Priority.MEDIUM,
       }}
     >
-      <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-        <div className="mb-3">
-          <span className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-            Flujo sugerido
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-          {executionPlanningSteps.sections.map((section, index) => {
-            const isCurrent = executionPlanningSteps.currentIndex === index;
-            const isComplete = section.complete;
-
-            return (
-              <div
-                key={section.key}
-                className={`rounded-xl border px-3 py-3 text-center transition-colors ${
-                  isComplete
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : isCurrent
-                      ? 'border-sky-200 bg-sky-50'
-                      : 'border-slate-200 bg-white'
-                }`}
-              >
-                <div
-                  className={`mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
-                    isComplete
-                      ? 'bg-emerald-500 text-white'
-                      : isCurrent
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {index + 1}
-                </div>
-                <div
-                  className={`text-xs font-semibold ${
-                    isComplete || isCurrent ? 'text-slate-800' : 'text-slate-500'
-                  }`}
-                >
-                  {section.label}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <div ref={planningHeadingRef} tabIndex={-1} aria-label={`Paso ${planningStep + 1}: ${planningStepLabels[planningStep]}`} className="mb-4 outline-none">
+        <Steps
+          current={planningStep}
+          size="small"
+          responsive
+          onChange={step => { if (!isSubmittingTestRun && step < planningStep) goToPlanningStep(step); }}
+          items={planningStepLabels.map((title, index) => ({ title, disabled: isSubmittingTestRun || index > planningStep }))}
+        />
       </div>
-
-      <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-2">
+      <div ref={planningScrollRef} className="max-h-[60vh] overflow-y-auto pr-2">
+        <div hidden={planningStep !== 0}>
         <PlanningSectionCard
           step="1"
           title="Información general"
@@ -3409,12 +3392,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="testType" label="Tipo de prueba" rules={[{ required: true }]}>
                 <Select className="h-10 rounded-lg" options={executionTestTypeOptions} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item
                 name="executionDate"
                 label="Fecha de ejecución"
@@ -3423,7 +3406,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 <DatePicker className="h-10 w-full rounded-lg" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="sprint" label="Sprint" rules={[{ required: true }]}>
                 <Select
                   placeholder="Selecciona el sprint"
@@ -3432,7 +3415,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
                 <Select
                   options={Object.values(Priority).map(v => ({
@@ -3443,7 +3426,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="tester" label="Tester" rules={[{ required: true }]}>
                 <ParticipantSelect
                   members={participantDirectoryMembers}
@@ -3455,7 +3438,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="environment" label="Environment" rules={[{ required: true }]}>
                 <Select
                   placeholder="Selecciona el environment"
@@ -3479,7 +3462,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
           </Row>
         </PlanningSectionCard>
+        </div>
 
+        <div hidden={planningStep !== 1}>
         <PlanningSectionCard
           step="2"
           title="Alcance de la prueba"
@@ -3919,7 +3904,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </div>
           )}
         </PlanningSectionCard>
+        </div>
 
+        <div hidden={planningStep !== 2}>
         <PlanningSectionCard
           step="3"
           title="Ambiente de ejecución"
@@ -3931,7 +3918,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 <Input placeholder="Ej: v1.2.3 (1234)" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="browser" label="Navegador">
                 <Select
                   allowClear
@@ -3941,7 +3928,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="deviceType" label="Tipo de dispositivo">
                 <Select
                   allowClear
@@ -3951,7 +3938,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="operatingSystem" label="Sistema operativo">
                 <Select
                   allowClear
@@ -3961,24 +3948,26 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="browserVersion" label="Versión del navegador">
                 <Input placeholder="Ej: Chrome 122" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="osVersion" label="Versión del sistema operativo">
                 <Input placeholder="Ej: iOS 17" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={12} lg={8}>
               <Form.Item name="resolution" label="Resolución de pantalla">
                 <Input placeholder="Ej: 1920x1080" className="h-10 rounded-lg" />
               </Form.Item>
             </Col>
           </Row>
         </PlanningSectionCard>
+        </div>
 
+        <div hidden={planningStep !== 3}>
         <PlanningSectionCard
           step="4"
           title="Riesgos identificados"
@@ -3994,7 +3983,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             />
           </Form.Item>
         </PlanningSectionCard>
+        </div>
 
+        <div hidden={planningStep !== 4}>
         <PlanningSectionCard
           step="5"
           title="Criterios de salida"
@@ -4007,6 +3998,42 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             />
           </Form.Item>
         </PlanningSectionCard>
+        </div>
+
+        <div hidden={planningStep !== 5}>
+          <PlanningSectionCard step="6" title="Resumen" subtitle="Revisa la información antes de confirmar.">
+            <Form.Item noStyle shouldUpdate>
+              {() => {
+                const values = form.getFieldsValue(true);
+                const display = (value: unknown): string => {
+                  if (Array.isArray(value)) return value.length ? value.map(String).join(', ') : 'Sin especificar';
+                  return value === undefined || value === null || String(value).trim() === '' ? 'Sin especificar' : String(value);
+                };
+                const optionLabels = (values: string[] | undefined, options: { value: string; label: string }[]) =>
+                  (values || []).map(value => options.find(option => option.value === value)?.label || value);
+                const modules = isEditingRunInfo ? activeTestRun?.selectedModules || [] : selectedModules;
+                const functionalityIds = isEditingRunInfo ? activeTestRun?.selectedFunctionalities || [] : selectedFuncIds;
+                const items = [
+                  ['Título', values.title], ['Tipo de prueba', values.testType],
+                  ['Fecha', values.executionDate ? dayjs(values.executionDate).format('DD/MM/YYYY') : undefined],
+                  ['Sprint', values.sprint], ['Prioridad', values.priority ? labelPriority(values.priority, t) : undefined],
+                  ['Tester', values.tester], ['Descripción / objetivo', values.description],
+                  ['Módulos', modules], ['Funcionalidades', functionalityIds.length],
+                  ['Casos incluidos', isEditingRunInfo ? executionResults.length : selectedTestCaseCount],
+                  ['Environment', values.environment], ['Build version', values.buildVersion],
+                  ['Navegador', values.browser], ['Tipo de dispositivo', values.deviceType],
+                  ['Sistema operativo', values.operatingSystem], ['Versión del navegador', values.browserVersion],
+                  ['Versión del sistema operativo', values.osVersion], ['Resolución', values.resolution],
+                  ['Riesgos', optionLabels(values.identifiedRisks, EXECUTION_RISK_OPTIONS)],
+                  ['Criterios de salida', optionLabels(values.exitCriteria, EXECUTION_EXIT_CRITERIA_OPTIONS)],
+                ];
+                return <Descriptions bordered size="small" column={1} items={items.map(([label, value]) => ({
+                  key: String(label), label: String(label), children: <span className="whitespace-pre-wrap break-words">{display(value)}</span>,
+                }))} />;
+              }}
+            </Form.Item>
+          </PlanningSectionCard>
+        </div>
       </div>
     </Form>
   );
@@ -4246,15 +4273,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           <Space size="small" className="flex-nowrap items-center">
             <Button
               icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
+              aria-label={record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
+              title={record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
               size="small"
               loading={openingRunId === record.id}
               onClick={() => openTestRunDetail(record)}
               className={
                 record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'
               }
-            >
-              {record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
-            </Button>
+            />
             {shouldCollapseActions ? (
               <Dropdown trigger={['click']} menu={{ items: extraActions }} placement="bottomRight">
                 <Button icon={<MoreOutlined />} size="small" aria-label="Más acciones" />
@@ -5127,7 +5154,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         )}
 
         <Modal
-          title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
+          title={testRunModalHeading}
           open={isModalOpen}
           onCancel={isSubmittingTestRun ? undefined : resetTestRunModal}
           closable={!isSubmittingTestRun}
@@ -5135,28 +5162,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           keyboard={!isSubmittingTestRun}
           width={920}
           centered
-          footer={[
-            <Button key="cancel" onClick={resetTestRunModal} disabled={isSubmittingTestRun}>
-              Cancelar
-            </Button>,
-            ...(!isViewer
-              ? [
-                  <Button
-                    key="create"
-                    type="primary"
-                    onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
-                    loading={isSubmittingTestRun}
-                    disabled={isSubmittingTestRun}
-                  >
-                    {isSubmittingTestRun
-                      ? isEditingRunInfo
-                        ? 'Guardando información...'
-                        : 'Creando ejecución...'
-                      : testRunModalPrimaryLabel}
-                  </Button>,
-                ]
-              : []),
-          ]}
+          footer={testRunModalFooter}
         >
           <div className="space-y-4">
             {isSubmittingTestRun && (
@@ -5942,7 +5948,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       </Modal>
 
       <Modal
-        title={<span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>}
+        title={testRunModalHeading}
         open={isModalOpen}
         onCancel={isSubmittingTestRun ? undefined : resetTestRunModal}
         closable={!isSubmittingTestRun}
@@ -5950,28 +5956,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         keyboard={!isSubmittingTestRun}
         width={920}
         centered
-        footer={[
-          <Button key="cancel" onClick={resetTestRunModal} disabled={isSubmittingTestRun}>
-            Cancelar
-          </Button>,
-          ...(!isViewer
-            ? [
-                <Button
-                  key="create"
-                  type="primary"
-                  onClick={isEditingRunInfo ? handleUpdateTestRunInfo : handleCreateTestRun}
-                  loading={isSubmittingTestRun}
-                  disabled={isSubmittingTestRun}
-                >
-                  {isSubmittingTestRun
-                    ? isEditingRunInfo
-                      ? 'Guardando información...'
-                      : 'Creando ejecución...'
-                    : testRunModalPrimaryLabel}
-                </Button>,
-              ]
-            : []),
-        ]}
+        footer={testRunModalFooter}
       >
         <div className="space-y-4">
           {isSubmittingTestRun && (

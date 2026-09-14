@@ -27,6 +27,9 @@ type EvidenceRichEditorProps = {
   onChange?: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  minHeightClassName?: string;
+  showMarkers?: boolean;
+  showImageUpload?: boolean;
   projectId?: string;
   aiContext?: string;
   aiRecordId?: string;
@@ -93,6 +96,9 @@ export default function EvidenceRichEditor({
   onChange,
   disabled = false,
   placeholder = 'Escribe aqui las notas de la ejecucion...',
+  minHeightClassName = 'min-h-[180px]',
+  showMarkers = true,
+  showImageUpload = true,
   projectId,
   aiContext,
   aiRecordId,
@@ -291,7 +297,7 @@ export default function EvidenceRichEditor({
   return (
     <div className="space-y-3">
       <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-start gap-2">
           <div role="group" aria-label="Formato de texto" className="flex flex-wrap items-center gap-1">
             {[
               { label: 'Negrita', name: 'bold', icon: <BoldOutlined />, action: toggleBold },
@@ -323,44 +329,48 @@ export default function EvidenceRichEditor({
           >
             Checklist
           </Button>
-          <Button
-            icon={<FileImageOutlined />}
-            onClick={openFilePicker}
-            disabled={disabled || !editor}
-          >
-            Subir imagen
-          </Button>
+          {showImageUpload && (
+            <Button
+              icon={<FileImageOutlined />}
+              onClick={openFilePicker}
+              disabled={disabled || !editor}
+            >
+              Subir imagen
+            </Button>
+          )}
         </div>
 
-        <div className="mt-3 border-t border-slate-200 pt-3">
-          <span className="mb-2 block text-xs font-medium text-slate-500">Insertar marcador</span>
-          <div role="group" aria-label="Insertar marcador en las notas" className="flex flex-wrap gap-2">
-            <Button
-              color="green"
-              variant="filled"
-              onClick={() => insertEmoji(VERIFIED_EMOJI)}
-              disabled={disabled || !editor}
-            >
-              {VERIFIED_EMOJI} Verificado
-            </Button>
-            <Button
-              color="orange"
-              variant="filled"
-              onClick={() => insertEmoji(WARNING_EMOJI)}
-              disabled={disabled || !editor}
-            >
-              {WARNING_EMOJI} Advertencia
-            </Button>
-            <Button
-              color="danger"
-              variant="filled"
-              onClick={() => insertEmoji(ERROR_EMOJI)}
-              disabled={disabled || !editor}
-            >
-              {ERROR_EMOJI} Error
-            </Button>
+        {showMarkers && (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <span className="mb-2 block text-xs font-medium text-slate-500">Insertar marcador</span>
+            <div role="group" aria-label="Insertar marcador en las notas" className="flex flex-wrap gap-2">
+              <Button
+                color="green"
+                variant="filled"
+                onClick={() => insertEmoji(VERIFIED_EMOJI)}
+                disabled={disabled || !editor}
+              >
+                {VERIFIED_EMOJI} Verificado
+              </Button>
+              <Button
+                color="orange"
+                variant="filled"
+                onClick={() => insertEmoji(WARNING_EMOJI)}
+                disabled={disabled || !editor}
+              >
+                {WARNING_EMOJI} Advertencia
+              </Button>
+              <Button
+                color="danger"
+                variant="filled"
+                onClick={() => insertEmoji(ERROR_EMOJI)}
+                disabled={disabled || !editor}
+              >
+                {ERROR_EMOJI} Error
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {projectId && (
           <div className="mt-3 border-t border-slate-200 pt-3">
@@ -380,7 +390,7 @@ export default function EvidenceRichEditor({
       </div>
 
       <div
-        className={`min-h-[180px] rounded-xl border px-3 py-3 transition ${
+        className={`${minHeightClassName} rounded-xl border px-3 py-3 transition ${
           disabled ? 'border-slate-200 bg-slate-50' : 'border-sky-200 bg-white'
         }`}
       >
@@ -408,24 +418,28 @@ export default function EvidenceRichEditor({
         </p>
       </Modal>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={ACCEPTED_IMAGE_TYPES.join(',')}
-        hidden
-        aria-hidden="true"
-        tabIndex={-1}
-        className="hidden"
-        style={{ display: 'none' }}
-        onChange={event => {
-          void handleFileSelection(event);
-        }}
-      />
+      {showImageUpload && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_IMAGE_TYPES.join(',')}
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            className="hidden"
+            style={{ display: 'none' }}
+            onChange={event => {
+              void handleFileSelection(event);
+            }}
+          />
 
-      <p className="text-[11px] text-slate-500">
-        Puedes usar formato enriquecido, emojis, pegar una captura con `Ctrl + V` o arrastrar una
-        imagen al editor.
-      </p>
+          <p className="text-[11px] text-slate-500">
+            Puedes usar formato enriquecido, emojis, pegar una captura con `Ctrl + V` o arrastrar una
+            imagen al editor.
+          </p>
+        </>
+      )}
     </div>
   );
 }

@@ -25,6 +25,7 @@ import {
   ThunderboltOutlined,
   CopyOutlined,
   ArrowUpOutlined,
+  ArrowLeftOutlined,
   ArrowDownOutlined,
   MenuOutlined,
   RobotOutlined,
@@ -51,7 +52,7 @@ import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTe
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
-import { normalizeEvidenceHtml, stripHtmlToText } from '../utils/evidenceRichText';
+import { hasMeaningfulEvidenceContent, normalizeEvidenceHtml } from '../utils/evidenceRichText';
 import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
 import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
 import {
@@ -60,7 +61,7 @@ import {
 } from '../modules/projects/utils/projectUpgrade';
 
 const { Text } = Typography;
-const BasicRichTextEditor = lazy(() => import('./BasicRichTextEditor'));
+const EvidenceRichEditor = lazy(() => import('./EvidenceRichEditor'));
 const automationStatusOptions = Object.values(AutomationStatus);
 const automationTypeOptions = Object.values(AutomationType);
 const automationToolOptions = [...ACTIVE_AUTOMATION_TOOLS];
@@ -116,19 +117,18 @@ function formatAutomationRunAt(value?: string) {
   }).format(parsed);
 }
 
-function BasicRichTextEditorField(props: React.ComponentProps<typeof BasicRichTextEditor>) {
+function TestCaseRichTextEditorField(props: React.ComponentProps<typeof EvidenceRichEditor>) {
   return (
     <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
-      <BasicRichTextEditor {...props} />
+      <EvidenceRichEditor {...props} showMarkers={false} showImageUpload={false} />
     </Suspense>
   );
 }
 
 function renderRichTextContent(value?: string) {
   const normalizedHtml = normalizeEvidenceHtml(value);
-  const plainText = stripHtmlToText(value);
 
-  if (!normalizedHtml || !plainText) {
+  if (!hasMeaningfulEvidenceContent(normalizedHtml)) {
     return <p className="mt-1 text-slate-500">-</p>;
   }
 
@@ -219,7 +219,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   } = useTestCases(projectId, functionalityId);
   const { data: templates = [] } = useTestCaseTemplates(projectId, moduleName);
   const { isViewer, activeMembership, projectQuota } = useWorkspaceAccess();
-  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isCaseFormVisible, setIsCaseFormVisible] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
@@ -506,7 +506,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     await runGenerateAI();
   };
 
-  const showModal = (testCase?: TestCase) => {
+  const openCaseForm = (testCase?: TestCase) => {
     if (testCase) {
       setEditingTestCase(testCase);
       form.setFieldsValue({
@@ -517,11 +517,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       setEditingTestCase(null);
       form.resetFields();
     }
-    setIsModalVisible(true);
+    setIsCaseFormVisible(true);
   };
 
   const handleCancel = () => {
-    setIsModalVisible(false);
+    setIsCaseFormVisible(false);
     form.resetFields();
   };
 
@@ -582,7 +582,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     save(newTestCase, {
       onSuccess: () => {
         message.success(editingTestCase ? 'Caso de prueba actualizado' : 'Caso de prueba creado');
-        setIsModalVisible(false);
+        setIsCaseFormVisible(false);
         form.resetFields();
         void refetch();
       },
@@ -794,7 +794,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 size="small"
                 type="text"
                 icon={<EditOutlined />}
-                onClick={() => showModal(record)}
+                onClick={() => openCaseForm(record)}
                 className="!px-1"
               />
               <Tooltip title="Duplicar caso de prueba">
@@ -835,12 +835,18 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             <FileTextOutlined className="shrink-0" />
             <Tooltip title={`Casos de Prueba - ${functionalityName}`}>
               <span className="qa-test-case-management-header__title-text">
-                Casos de Prueba - {functionalityName}
+                {isCaseFormVisible
+                  ? `${editingTestCase ? 'Editar' : 'Nuevo'} Caso de Prueba - ${functionalityName}`
+                  : `Casos de Prueba - ${functionalityName}`}
               </span>
             </Tooltip>
           </div>
           <div className="qa-test-case-management-header__actions">
-            {!isViewer ? (
+            {isCaseFormVisible ? (
+              <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
+                Volver a los casos
+              </Button>
+            ) : !isViewer ? (
               <>
                 <Tooltip title={generateAiTooltipTitle}>
                   <Button
@@ -858,7 +864,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     Ordenar casos
                   </Button>
                 ) : null}
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openCaseForm()}>
                   Nuevo Caso de Prueba
                 </Button>
               </>
@@ -868,6 +874,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       }
       className="qa-test-case-management-card shadow-sm"
     >
+      <div hidden={isCaseFormVisible}>
       <PlanBillingBanner
         organizationName={activeMembership?.organization?.name}
         contractedPlan={activeOrganizationPlan}
@@ -1265,13 +1272,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         />
       </Modal>
 
-      <Modal
-        title={editingTestCase ? 'Editar Caso de Prueba' : 'Nuevo Caso de Prueba'}
-        open={isModalVisible}
-        onCancel={handleCancel}
-        footer={null}
-        width={800}
-      >
+      </div>
+
+      {isCaseFormVisible ? (
         <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
           <Form
             form={form}
@@ -1332,7 +1335,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </Form.Item>
 
               <Form.Item name="description" label="Descripción" className="col-span-2">
-                <BasicRichTextEditor placeholder="Descripción breve del objetivo de la prueba" />
+                <TestCaseRichTextEditorField placeholder="Descripción breve del objetivo de la prueba" />
               </Form.Item>
 
               <Form.Item name="isAutomated" valuePropName="checked" hidden>
@@ -1412,7 +1415,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </div>
 
               <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
-                <BasicRichTextEditor
+                <TestCaseRichTextEditorField
                   placeholder="Estado inicial requerido"
                   minHeightClassName="min-h-[96px]"
                 />
@@ -1424,7 +1427,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
                 className="col-span-2"
               >
-                <BasicRichTextEditor
+                <TestCaseRichTextEditorField
                   placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
                   minHeightClassName="min-h-[160px]"
                 />
@@ -1436,7 +1439,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
                 className="col-span-2"
               >
-                <BasicRichTextEditor
+                <TestCaseRichTextEditorField
                   placeholder="El sistema debe mostrar el dashboard..."
                   minHeightClassName="min-h-[120px]"
                 />
@@ -1455,7 +1458,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             </Form.Item>
           </Form>
         </Suspense>
-      </Modal>
+      ) : null}
     </Card>
   );
 };

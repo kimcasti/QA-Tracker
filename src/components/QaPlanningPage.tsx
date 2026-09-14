@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   Button,
   Card,
@@ -14,6 +14,7 @@ import {
   Select,
   Spin,
   Table,
+  Tabs,
   Tooltip,
   Typography,
   message,
@@ -21,6 +22,7 @@ import {
 } from 'antd';
 import {
   DownloadOutlined,
+  EditOutlined,
   FileSearchOutlined,
   InfoCircleOutlined,
   MenuOutlined,
@@ -154,12 +156,6 @@ type RecommendationCardProps = {
   toneClassName: string;
 };
 
-type GuidanceItemProps = {
-  label: string;
-  message: string;
-  toneClassName: string;
-  icon: React.ReactNode;
-};
 
 type PlanningColumnOption = {
   key: PlanningColumnKey;
@@ -529,10 +525,11 @@ function RecommendationCard({
     <button
       type="button"
       onClick={onClick}
-      className={`h-full w-full rounded-2xl border px-4 py-4 text-left transition ${
+      aria-pressed={active}
+      className={`h-full w-full cursor-pointer rounded-2xl border px-4 py-4 text-left transition duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 motion-safe:hover:-translate-y-0.5 ${
         active
           ? 'border-sky-300 bg-sky-50 ring-1 ring-sky-200 shadow-[0_10px_28px_rgba(14,116,144,0.10)]'
-          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+          : 'border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/50'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -548,10 +545,6 @@ function RecommendationCard({
           </div>
         </div>
         <div className={`rounded-full px-2.5 py-1 text-xs font-bold ${toneClassName}`}>{count}</div>
-      </div>
-      <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-sky-700">
-        <span>{active ? 'Filtro activo' : 'Ver detalle'}</span>
-        <span aria-hidden="true">&rarr;</span>
       </div>
     </button>
   );
@@ -611,29 +604,6 @@ function InlineChipSelect<TValue extends string>({
         </span>
       </button>
     </Dropdown>
-  );
-}
-
-function GuidanceItem({ label, message, toneClassName, icon }: GuidanceItemProps) {
-  return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold ${toneClassName}`}
-    >
-      <span className="inline-flex items-center gap-1.5">
-        {icon}
-        {label}
-      </span>
-      <Tooltip
-        title={message}
-        placement="top"
-        overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
-        overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
-      >
-        <span className="inline-flex cursor-help items-center text-slate-400 transition hover:text-slate-600">
-          <Info size={12} />
-        </span>
-      </Tooltip>
-    </div>
   );
 }
 
@@ -884,6 +854,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const { data: testCasesData = [] } = useTestCases(projectId);
 
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [isRecommendationsExpanded, setIsRecommendationsExpanded] = React.useState(false);
+  const [activePlanningTab, setActivePlanningTab] = React.useState('table');
+  const [isClassificationExpanded, setIsClassificationExpanded] = React.useState(false);
   const [savingIds, setSavingIds] = React.useState<string[]>([]);
   const [isBulkSaving, setIsBulkSaving] = React.useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = React.useState<React.Key[]>([]);
@@ -1018,6 +991,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       functionalities.find(item => item.id === selectedFunctionality.id) || null;
     setSelectedFunctionality(refreshedSelection);
   }, [functionalities, selectedFunctionality]);
+
+  React.useEffect(() => {
+    setIsClassificationExpanded(false);
+  }, [selectedFunctionality?.id]);
 
   React.useEffect(() => {
     if (!selectedFunctionality) {
@@ -1936,8 +1913,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const hasActiveTableFilters = React.useMemo(
     () =>
       Boolean(searchTerm.trim()) ||
+      Boolean(activeRecommendation) ||
       Object.values(tableFilters).some(value => Array.isArray(value) && value.length > 0),
-    [searchTerm, tableFilters],
+    [searchTerm, tableFilters, activeRecommendation],
   );
   const selectedModuleForReorder =
     tableFilters.module?.length === 1 ? String(tableFilters.module[0]) : null;
@@ -1964,6 +1942,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     Boolean(tableFilters.status?.length);
 
   const handleClearTableFilters = React.useCallback(() => {
+    setActiveRecommendation(null);
     setSearchTerm('');
     setTableFilters(INITIAL_TABLE_FILTERS);
   }, []);
@@ -2135,8 +2114,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.');
   }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate]);
 
-  const saveDetailChanges = React.useCallback(async () => {
-    if (!selectedFunctionality || !detailEditDraft) return;
+  const detailPendingUpdates = React.useMemo<Partial<Functionality>>(() => {
+    if (!selectedFunctionality || !detailEditDraft) return {};
 
     const updates: Partial<Functionality> = {};
 
@@ -2183,13 +2162,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       updates.lastFunctionalChangeAt = new Date().toISOString().split('T')[0];
     }
 
-    if (Object.keys(updates).length === 0) {
-      message.info('No hay cambios por guardar en esta funcionalidad.');
-      return;
-    }
+    return updates;
+  }, [detailCalculatedRisk, detailEditDraft, selectedFunctionality]);
 
-    await saveRowUpdate(selectedFunctionality, updates, 'Funcionalidad actualizada correctamente.');
-  }, [detailCalculatedRisk, detailEditDraft, saveRowUpdate, selectedFunctionality]);
+  const hasDetailChanges = Object.keys(detailPendingUpdates).length > 0;
+
+  const saveDetailChanges = React.useCallback(async () => {
+    if (!selectedFunctionality || isViewer || !isClassificationExpanded || !hasDetailChanges) return;
+
+    await saveRowUpdate(selectedFunctionality, detailPendingUpdates, 'Funcionalidad actualizada correctamente.');
+  }, [detailPendingUpdates, hasDetailChanges, isClassificationExpanded, isViewer, saveRowUpdate, selectedFunctionality]);
 
   const applyDetailRecommendation = React.useCallback(() => {
     if (!selectedFunctionality || !detailEditDraft) return;
@@ -2217,6 +2199,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       return;
     }
 
+    setIsClassificationExpanded(true);
     setDetailEditDraft(nextDraft);
     message.success('Recomendación aplicada al formulario. Recuerda guardar los cambios.');
   }, [detailEditDraft, selectedFunctionality]);
@@ -2355,7 +2338,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             <div className="flex min-w-0 flex-wrap justify-center gap-1">
               {coverageItems.length > 0 ? (
                 coverageItems.map(item => (
-                  <Tooltip key={item.key} title={item.label} placement="top">
+                  <Tooltip key={item.key} title={
+                      item.key === 'core'
+                        ? 'Core business: funcionalidades esenciales del negocio'
+                        : item.key === 'smoke'
+                          ? 'Smoke: validar en cada release'
+                          : 'Regresión: revalidar ante cambios'
+                    } placement="top">
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-900">
                       {getCoverageChipIcon(item.key)}
                       <span>{item.label}</span>
@@ -2389,7 +2378,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         onFilter: (value: boolean | React.Key, record: Functionality) => record.priority === value,
         render: (priority: Priority, record: Functionality) => (
           <Tooltip
-            title={getPriorityVisualLabel(priority).label}
+            title={`${getPriorityVisualLabel(priority).label}: definir orden de ejecución`}
             placement="top"
             overlayStyle={INFO_TOOLTIP_OVERLAY_STYLE}
             overlayInnerStyle={INFO_TOOLTIP_INNER_STYLE}
@@ -2508,7 +2497,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         filteredValue: tableFilters.riskLevel,
         onFilter: (value: boolean | React.Key, record: Functionality) => record.riskLevel === value,
         render: (risk: RiskLevel) => (
-          <Tooltip title={labelRisk(risk, t)} placement="top">
+          <Tooltip title={`${labelRisk(risk, t)}: medir impacto`} placement="top">
             <span
               className={`inline-flex h-3 w-3 rounded-full shadow-sm ring-1 ring-black/5 ${RISK_DOT_CLASSNAMES[risk]}`}
             />
@@ -2571,34 +2560,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       .filter(column => visibleColumnKeys.includes(String(column.key) as PlanningColumnKey));
   }, [columns, visibleColumnKeys]);
 
-  const tableColumns = React.useMemo<ColumnsType<Functionality>>(
-    () => [
-      ...orderedColumns,
-      {
-        title: '',
-        key: 'actions',
-        width: 32,
-        align: 'center',
-        render: (_: unknown, record: Functionality) => (
-          <div
-            className="flex items-center justify-center"
-            onClick={event => event.stopPropagation()}
-          >
-            <Button
-              size="small"
-              aria-label={`Ver detalle de ${record.name}`}
-              className="rounded-full border-slate-200 px-1.5 text-xs font-medium text-slate-700"
-              onClick={() => setSelectedFunctionality(record)}
-            >
-              ...
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    [orderedColumns],
-  );
-
   const visibleColumnCount = visibleColumnKeys.length;
 
   const handleVisibleColumnToggle = React.useCallback((columnKey: PlanningColumnKey) => {
@@ -2656,6 +2617,55 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       </div>
     ),
     [handleVisibleColumnToggle, restoreAllColumns, visibleColumnCount, visibleColumnKeys],
+  );
+
+  const tableColumns = React.useMemo<ColumnsType<Functionality>>(
+    () => [
+      ...orderedColumns,
+      {
+        title: (
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            content={columnSettingsContent}
+            overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-4"
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<Settings2 size={16} />}
+              aria-label="Columnas visibles"
+              title="Columnas visibles"
+            />
+          </Popover>
+        ),
+        key: 'actions',
+        width: 44,
+        fixed: 'right',
+        align: 'center',
+        render: (_: unknown, record: Functionality) => (
+          <div
+            className="flex items-center justify-center"
+            onClick={event => event.stopPropagation()}
+          >
+            <Button
+              size="small"
+              aria-label={`Ver detalle de ${record.name}`}
+              className="rounded-full border-slate-200 px-1.5 text-xs font-medium text-slate-700"
+              onClick={() => setSelectedFunctionality(record)}
+            >
+              ...
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [orderedColumns, columnSettingsContent],
+  );
+
+  const tableScrollWidth = tableColumns.reduce(
+    (total, column) => total + (typeof column.width === 'number' ? column.width : 120),
+    isViewer ? 0 : 36,
   );
 
   const expandable = React.useMemo<ExpandableConfig<Functionality>>(
@@ -3022,554 +3032,596 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             </div>
           </div>
 
-          {selectedFunctionalityAutomationSummary ? (
-            <div className="mt-4 rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-800">Automatización</div>
-                  <div className="text-xs text-slate-500">
-                    Resumen operativo de automatización para esta funcionalidad.
-                  </div>
-                </div>
-                <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {selectedFunctionalityAutomationSummary.automatedCoverage}% automatizada
-                </div>
-              </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Automatizadas
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-slate-800">
-                    {selectedFunctionalityAutomationSummary.byStatus.automated}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Candidatas
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-slate-800">
-                    {selectedFunctionalityAutomationSummary.byStatus.candidate}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Herramienta líder
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionalityAutomationSummary.leadingTool || 'Sin definir'}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Último estado
-                  </div>
-                  <div className="mt-1">
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationResultBadgeClassName(
-                        selectedFunctionalityAutomationSummary.leadingResult as
-                          | AutomationResultStatus
-                          | undefined,
-                      )}`}
-                    >
-                      {selectedFunctionalityAutomationSummary.leadingResult || 'Sin datos'}
-                    </span>
-                  </div>
-                </div>
-              </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
-                    AutomationStatus.AUTOMATED,
-                  )}`}
-                >
-                  Automatizadas: {selectedFunctionalityAutomationSummary.byStatus.automated}
-                </span>
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
-                    AutomationStatus.CANDIDATE,
-                  )}`}
-                >
-                  Candidatas: {selectedFunctionalityAutomationSummary.byStatus.candidate}
-                </span>
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
-                    AutomationStatus.OBSOLETE,
-                  )}`}
-                >
-                  Obsoletas: {selectedFunctionalityAutomationSummary.byStatus.obsolete}
-                </span>
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
-                    AutomationStatus.NOT_AUTOMATED,
-                  )}`}
-                >
-                  Manuales: {selectedFunctionalityAutomationSummary.byStatus.manual}
-                </span>
-              </div>
+        </div>
 
-              {selectedFunctionalityAutomationSummary.highlightedCases.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  {selectedFunctionalityAutomationSummary.highlightedCases.map(testCase => (
-                    <div key={testCase.id} className="rounded-2xl border border-slate-100 px-3 py-3">
-                      <div className="text-sm font-medium text-slate-700">{testCase.title}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+        <Tabs
+          key={selectedFunctionality.id}
+          defaultActiveKey="coverage"
+          destroyOnHidden={false}
+          items={[
+            {
+              key: 'coverage',
+              label: 'Cobertura QA',
+              children: (
+                <div className="space-y-5">
+                  <div
+                    data-testid="qa-detail-coverage"
+                    className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <Text strong>Cobertura QA</Text>
+                      {detailEditDraft ? (
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={isClassificationExpanded ? <ChevronUp size={16} /> : <EditOutlined />}
+                          aria-label={isClassificationExpanded ? 'Contraer clasificación QA' : 'Ver y editar clasificación QA'}
+                          title={isClassificationExpanded ? 'Contraer clasificación QA' : 'Ver y editar clasificación QA'}
+                          aria-expanded={isClassificationExpanded}
+                          aria-controls="qa-detail-classification"
+                          onClick={() => setIsClassificationExpanded(expanded => !expanded)}
+                        />
+                      ) : null}
+                    </div>
+                    {!isClassificationExpanded ? (
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        {getCoverageSummary(selectedFunctionality).length > 0 ? (
+                          getCoverageSummary(selectedFunctionality).map(item => (
+                            <span
+                              key={item.key}
+                              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-900"
+                            >
+                              {getCoverageChipIcon(item.key)}
+                              {item.label}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-amber-700">Sin cobertura</span>
+                        )}
+                      </div>
+                    ) : null}
+                    {detailEditDraft ? (
+                      <div
+                        id="qa-detail-classification"
+                        hidden={!isClassificationExpanded}
+                        data-testid="qa-detail-classification"
+                        className="mt-4 border-t border-slate-100 pt-4"
+                      >
+                        <div className="text-sm font-semibold text-slate-800">Clasificación QA</div>
+
+                        <div className="mt-4 space-y-4">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                              <div className="flex flex-col gap-3">
+                                <Text strong className="block">
+                                  Prioridad
+                                </Text>
+
+                                <Select
+                                  value={detailEditDraft.priority}
+                                  disabled={
+                                    isViewer ||
+                                    isRowSaving(
+                                      selectedFunctionality.documentId || selectedFunctionality.id,
+                                    )
+                                  }
+                                  options={Object.values(Priority).map(priority => ({
+                                    label: (
+                                      <span className="inline-flex items-center gap-2">
+                                        <span className={PRIORITY_TEXT_CLASSNAMES[priority]}>
+                                          {getPriorityVisualLabel(priority).icon}
+                                        </span>
+                                        <span>{labelPriority(priority, t)}</span>
+                                      </span>
+                                    ),
+                                    value: priority,
+                                  }))}
+                                  onChange={value =>
+                                    setDetailEditDraft(current =>
+                                      current ? { ...current, priority: value } : current,
+                                    )
+                                  }
+                                />
+
+                                <div className="text-xs text-slate-500">
+                                  {getPriorityImpactText(detailEditDraft.priority)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div
+                              className={`rounded-2xl border p-3 ${RISK_BADGE_CLASSNAMES[detailCalculatedRisk]}`}
+                            >
+                              <Text strong className="!text-current">
+                                Riesgo calculado
+                              </Text>
+                              <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                                <span
+                                  className={`h-3.5 w-3.5 rounded-full ${RISK_DOT_CLASSNAMES[detailCalculatedRisk]}`}
+                                />
+                                {labelRisk(detailCalculatedRisk, t)}
+                              </div>
+                              <div className="mt-2 text-xs opacity-80">
+                                {getRiskImpactText(detailCalculatedRisk)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                              <div className="flex flex-col gap-3">
+                                <Text strong className="block">
+                                  Impacto
+                                </Text>
+
+                                <Select
+                                  value={detailEditDraft.impactLevel}
+                                  disabled={
+                                    isViewer ||
+                                    isRowSaving(
+                                      selectedFunctionality.documentId || selectedFunctionality.id,
+                                    )
+                                  }
+                                  options={impactOptions}
+                                  onChange={value =>
+                                    setDetailEditDraft(current =>
+                                      current ? { ...current, impactLevel: value } : current,
+                                    )
+                                  }
+                                />
+
+                                <div className="text-xs text-slate-500">
+                                  {getImpactLevelText(detailEditDraft.impactLevel)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                              <div className="flex flex-col gap-3">
+                                <Text strong>Probabilidad</Text>
+
+                                <Select
+                                  value={detailEditDraft.probabilityLevel}
+                                  disabled={
+                                    isViewer ||
+                                    isRowSaving(
+                                      selectedFunctionality.documentId || selectedFunctionality.id,
+                                    )
+                                  }
+                                  options={probabilityOptions}
+                                  onChange={value =>
+                                    setDetailEditDraft(current =>
+                                      current ? { ...current, probabilityLevel: value } : current,
+                                    )
+                                  }
+                                />
+
+                                <div className="text-xs text-slate-500">
+                                  {getProbabilityImpactText(detailEditDraft.probabilityLevel)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-100 bg-white p-3">
+                            <Text strong>Cobertura (editar)</Text>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                              <Checkbox
+                                checked={detailEditDraft.isCore}
+                                disabled={
+                                  isViewer ||
+                                  isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                                }
+                                onChange={event =>
+                                  setDetailEditDraft(current =>
+                                    current ? { ...current, isCore: event.target.checked } : current,
+                                  )
+                                }
+                              >
+                                Core business
+                              </Checkbox>
+                              <Checkbox
+                                checked={detailEditDraft.isSmoke}
+                                disabled={
+                                  isViewer ||
+                                  isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                                }
+                                onChange={event =>
+                                  setDetailEditDraft(current =>
+                                    current ? { ...current, isSmoke: event.target.checked } : current,
+                                  )
+                                }
+                              >
+                                Smoke
+                              </Checkbox>
+                              <Checkbox
+                                checked={detailEditDraft.isRegression}
+                                disabled={
+                                  isViewer ||
+                                  isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                                }
+                                onChange={event =>
+                                  setDetailEditDraft(current =>
+                                    current ? { ...current, isRegression: event.target.checked } : current,
+                                  )
+                                }
+                              >
+                                Regresión
+                              </Checkbox>
+                              <Checkbox
+                                checked={detailEditDraft.markRecentChange}
+                                disabled={
+                                  isViewer ||
+                                  isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
+                                }
+                                onChange={event =>
+                                  setDetailEditDraft(current =>
+                                    current
+                                      ? { ...current, markRecentChange: event.target.checked }
+                                      : current,
+                                  )
+                                }
+                              >
+                                Marcar cambio reciente
+                              </Checkbox>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                              <div className="flex items-center gap-4">
+                                <Text strong className="whitespace-nowrap">
+                                  Estado
+                                </Text>
+
+                                <Select
+                                  className="min-w-[150px]"
+                                  value={detailEditDraft.status}
+                                  disabled={
+                                    isViewer ||
+                                    isRowSaving(
+                                      selectedFunctionality.documentId || selectedFunctionality.id,
+                                    )
+                                  }
+                                  options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                                    label: labelTestStatus(status, t),
+                                    value: status,
+                                  }))}
+                                  onChange={value =>
+                                    setDetailEditDraft(current =>
+                                      current ? { ...current, status: value } : current,
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div
+                    data-testid="qa-detail-cases"
+                    className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    <Text strong>Casos de prueba</Text>
+                    <div className="mt-2">
+                      {selectedFunctionalityCasesCount > 0 ? (
+                        <Text type="secondary" className="block text-sm">
+                          {selectedFunctionalityCasesCount} casos registrados para esta funcionalidad.
+                        </Text>
+                      ) : (
+                        <Text className="block text-sm text-amber-700">Sin casos asociados todavía.</Text>
+                      )}
+                    </div>
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                      <Button type="primary" onClick={() => openTestCaseModal(selectedFunctionality)}>
+                        {selectedFunctionalityCasesCount > 0
+                          ? `Ver casos (${selectedFunctionalityCasesCount})`
+                          : 'Crear caso'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">Recomendación QA</div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Sugerencias basadas en cobertura, riesgo y cambios recientes.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {selectedFunctionalityGuidance.recommendations.map(item => (
+                        <div key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                          <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      <Button
+                        onClick={applyDetailRecommendation}
+                        disabled={
+                          !detailEditDraft || isViewer || !selectedFunctionalityGuidance.actionable
+                        }
+                      >
+                        Aplicar recomendación
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="text-sm font-semibold text-slate-800">Motivo de clasificación</div>
+                    <div className="mt-3 space-y-2">
+                      {selectedFunctionalityGuidance.reasons.length > 0 ? (
+                        selectedFunctionalityGuidance.reasons.map(reason => (
+                          <div key={reason} className="flex items-start gap-2 text-sm text-slate-600">
+                            <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-slate-400" />
+                            <span>{reason}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-slate-500">
+                          No hay observaciones adicionales para esta clasificación.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              ),
+            },
+            {
+              key: 'automation',
+              label: 'Automatización',
+              children: selectedFunctionalityAutomationSummary ? (
+                <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Automatización</div>
+                      <div className="text-xs text-slate-500">
+                        Resumen operativo de automatización para esta funcionalidad.
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {selectedFunctionalityAutomationSummary.automatedCoverage}% automatizada
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Automatizadas
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-800">
+                        {selectedFunctionalityAutomationSummary.byStatus.automated}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Candidatas
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-800">
+                        {selectedFunctionalityAutomationSummary.byStatus.candidate}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Herramienta líder
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-slate-700">
+                        {selectedFunctionalityAutomationSummary.leadingTool || 'Sin definir'}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Último estado
+                      </div>
+                      <div className="mt-1">
                         <span
-                          className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationStatusBadgeClassName(
-                            deriveAutomationStatus(testCase),
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationResultBadgeClassName(
+                            selectedFunctionalityAutomationSummary.leadingResult as
+                              | AutomationResultStatus
+                              | undefined,
                           )}`}
                         >
-                          {deriveAutomationStatus(testCase)}
+                          {selectedFunctionalityAutomationSummary.leadingResult || 'Sin datos'}
                         </span>
-                        {testCase.automationTool ? (
-                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-600">
-                            {testCase.automationTool}
-                          </span>
-                        ) : null}
-                        {testCase.lastAutomationStatus ? (
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationResultBadgeClassName(
-                              testCase.lastAutomationStatus,
-                            )}`}
-                          >
-                            {testCase.lastAutomationStatus}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {testCase.automationReference || 'Sin referencia registrada'}
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-4 text-sm text-slate-500">
-                  Aún no hay metadata de automatización destacada en los casos de esta funcionalidad.
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
+                  </div>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
-          <div className="space-y-5">
-            <div
-              data-testid="qa-detail-coverage"
-              className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
-            >
-              <Text strong>Cobertura QA</Text>
-              <div className="mt-3 flex flex-wrap gap-3">
-                {getCoverageSummary(selectedFunctionality).length > 0 ? (
-                  getCoverageSummary(selectedFunctionality).map(item => (
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <span
-                      key={item.key}
-                      className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-900"
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                        AutomationStatus.AUTOMATED,
+                      )}`}
                     >
-                      {getCoverageChipIcon(item.key)}
-                      {item.label}
+                      Automatizadas: {selectedFunctionalityAutomationSummary.byStatus.automated}
                     </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-amber-700">Sin cobertura</span>
-                )}
-              </div>
-            </div>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                        AutomationStatus.CANDIDATE,
+                      )}`}
+                    >
+                      Candidatas: {selectedFunctionalityAutomationSummary.byStatus.candidate}
+                    </span>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                        AutomationStatus.OBSOLETE,
+                      )}`}
+                    >
+                      Obsoletas: {selectedFunctionalityAutomationSummary.byStatus.obsolete}
+                    </span>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAutomationStatusBadgeClassName(
+                        AutomationStatus.NOT_AUTOMATED,
+                      )}`}
+                    >
+                      Manuales: {selectedFunctionalityAutomationSummary.byStatus.manual}
+                    </span>
+                  </div>
 
-            <div
-              data-testid="qa-detail-cases"
-              className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
-            >
-              <Text strong>Casos de prueba</Text>
-              <div className="mt-2">
-                {selectedFunctionalityCasesCount > 0 ? (
-                  <Text type="secondary" className="block text-sm">
-                    {selectedFunctionalityCasesCount} casos registrados para esta funcionalidad.
-                  </Text>
-                ) : (
-                  <Text className="block text-sm text-amber-700">Sin casos asociados todavía.</Text>
-                )}
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                <Button type="primary" onClick={() => openTestCaseModal(selectedFunctionality)}>
-                  {selectedFunctionalityCasesCount > 0
-                    ? `Ver casos (${selectedFunctionalityCasesCount})`
-                    : 'Crear caso'}
-                </Button>
-              </div>
-            </div>
-
-            {detailEditDraft ? (
-              <div
-                data-testid="qa-detail-classification"
-                className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
-              >
-                <div className="text-sm font-semibold text-slate-800">Clasificación QA</div>
-
-                <div className="mt-4 space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                      <div className="flex flex-col gap-3">
-                        <Text strong className="block">
-                          Prioridad
-                        </Text>
-
-                        <Select
-                          value={detailEditDraft.priority}
-                          disabled={
-                            isViewer ||
-                            isRowSaving(
-                              selectedFunctionality.documentId || selectedFunctionality.id,
-                            )
-                          }
-                          options={Object.values(Priority).map(priority => ({
-                            label: (
-                              <span className="inline-flex items-center gap-2">
-                                <span className={PRIORITY_TEXT_CLASSNAMES[priority]}>
-                                  {getPriorityVisualLabel(priority).icon}
-                                </span>
-                                <span>{labelPriority(priority, t)}</span>
+                  {selectedFunctionalityAutomationSummary.highlightedCases.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {selectedFunctionalityAutomationSummary.highlightedCases.map(testCase => (
+                        <div key={testCase.id} className="rounded-2xl border border-slate-100 px-3 py-3">
+                          <div className="text-sm font-medium text-slate-700">{testCase.title}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationStatusBadgeClassName(
+                                deriveAutomationStatus(testCase),
+                              )}`}
+                            >
+                              {deriveAutomationStatus(testCase)}
+                            </span>
+                            {testCase.automationTool ? (
+                              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-600">
+                                {testCase.automationTool}
                               </span>
-                            ),
-                            value: priority,
-                          }))}
-                          onChange={value =>
-                            setDetailEditDraft(current =>
-                              current ? { ...current, priority: value } : current,
-                            )
-                          }
-                        />
-
-                        <div className="text-xs text-slate-500">
-                          {getPriorityImpactText(detailEditDraft.priority)}
+                            ) : null}
+                            {testCase.lastAutomationStatus ? (
+                              <span
+                                className={`inline-flex rounded-full border px-2 py-1 font-semibold ${getAutomationResultBadgeClassName(
+                                  testCase.lastAutomationStatus,
+                                )}`}
+                              >
+                                {testCase.lastAutomationStatus}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {testCase.automationReference || 'Sin referencia registrada'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-4 text-sm text-slate-500">
+                      Aún no hay metadata de automatización destacada en los casos de esta funcionalidad.
+                    </div>
+                  )}
+                </div>
+              ) : null,
+            },
+            {
+              key: 'additional',
+              label: 'Información adicional',
+              children: (
+                <div className="space-y-5">
+                  <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="text-sm font-semibold text-slate-800">Relaciones</div>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-700">Mismo módulo</div>
+                          <div className="text-xs text-slate-500">
+                            {selectedFunctionality.module || 'Sin módulo'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                          <span>{selectedFunctionalityRelations.moduleCount}</span>
+                          <ChevronRight className="h-4 w-4 text-slate-400" />
                         </div>
                       </div>
-                    </div>
-
-                    <div
-                      className={`rounded-2xl border p-3 ${RISK_BADGE_CLASSNAMES[detailCalculatedRisk]}`}
-                    >
-                      <Text strong className="!text-current">
-                        Riesgo calculado
-                      </Text>
-                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
-                        <span
-                          className={`h-3.5 w-3.5 rounded-full ${RISK_DOT_CLASSNAMES[detailCalculatedRisk]}`}
-                        />
-                        {labelRisk(detailCalculatedRisk, t)}
-                      </div>
-                      <div className="mt-2 text-xs opacity-80">
-                        {getRiskImpactText(detailCalculatedRisk)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                      <div className="flex flex-col gap-3">
-                        <Text strong className="block">
-                          Impacto
-                        </Text>
-
-                        <Select
-                          value={detailEditDraft.impactLevel}
-                          disabled={
-                            isViewer ||
-                            isRowSaving(
-                              selectedFunctionality.documentId || selectedFunctionality.id,
-                            )
-                          }
-                          options={impactOptions}
-                          onChange={value =>
-                            setDetailEditDraft(current =>
-                              current ? { ...current, impactLevel: value } : current,
-                            )
-                          }
-                        />
-
-                        <div className="text-xs text-slate-500">
-                          {getImpactLevelText(detailEditDraft.impactLevel)}
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-700">Mismo sprint</div>
+                          <div className="text-xs text-slate-500">
+                            {selectedFunctionality.sprint || 'Sin sprint'}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                      <div className="flex flex-col gap-3">
-                        <Text strong>Probabilidad</Text>
-
-                        <Select
-                          value={detailEditDraft.probabilityLevel}
-                          disabled={
-                            isViewer ||
-                            isRowSaving(
-                              selectedFunctionality.documentId || selectedFunctionality.id,
-                            )
-                          }
-                          options={probabilityOptions}
-                          onChange={value =>
-                            setDetailEditDraft(current =>
-                              current ? { ...current, probabilityLevel: value } : current,
-                            )
-                          }
-                        />
-
-                        <div className="text-xs text-slate-500">
-                          {getProbabilityImpactText(detailEditDraft.probabilityLevel)}
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                          <span>{selectedFunctionalityRelations.sprintCount}</span>
+                          <ChevronRight className="h-4 w-4 text-slate-400" />
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-100 bg-white p-3">
-                    <Text strong>Cobertura (editar)</Text>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Checkbox
-                        checked={detailEditDraft.isCore}
-                        disabled={
-                          isViewer ||
-                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
-                        }
-                        onChange={event =>
-                          setDetailEditDraft(current =>
-                            current ? { ...current, isCore: event.target.checked } : current,
-                          )
-                        }
-                      >
-                        Core business
-                      </Checkbox>
-                      <Checkbox
-                        checked={detailEditDraft.isSmoke}
-                        disabled={
-                          isViewer ||
-                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
-                        }
-                        onChange={event =>
-                          setDetailEditDraft(current =>
-                            current ? { ...current, isSmoke: event.target.checked } : current,
-                          )
-                        }
-                      >
-                        Smoke
-                      </Checkbox>
-                      <Checkbox
-                        checked={detailEditDraft.isRegression}
-                        disabled={
-                          isViewer ||
-                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
-                        }
-                        onChange={event =>
-                          setDetailEditDraft(current =>
-                            current ? { ...current, isRegression: event.target.checked } : current,
-                          )
-                        }
-                      >
-                        Regresión
-                      </Checkbox>
-                      <Checkbox
-                        checked={detailEditDraft.markRecentChange}
-                        disabled={
-                          isViewer ||
-                          isRowSaving(selectedFunctionality.documentId || selectedFunctionality.id)
-                        }
-                        onChange={event =>
-                          setDetailEditDraft(current =>
-                            current
-                              ? { ...current, markRecentChange: event.target.checked }
-                              : current,
-                          )
-                        }
-                      >
-                        Marcar cambio reciente
-                      </Checkbox>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                      <div className="flex items-center gap-4">
-                        <Text strong className="whitespace-nowrap">
-                          Estado
-                        </Text>
-
-                        <Select
-                          className="min-w-[150px]"
-                          value={detailEditDraft.status}
-                          disabled={
-                            isViewer ||
-                            isRowSaving(
-                              selectedFunctionality.documentId || selectedFunctionality.id,
-                            )
-                          }
-                          options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
-                            label: labelTestStatus(status, t),
-                            value: status,
-                          }))}
-                          onChange={value =>
-                            setDetailEditDraft(current =>
-                              current ? { ...current, status: value } : current,
-                            )
-                          }
-                        />
+                  <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="text-sm font-semibold text-slate-800">Información adicional</div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Sprint
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.sprint || 'Sin sprint'}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Último cambio
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.lastFunctionalChangeAt || 'No marcado'}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Roles
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.roles.length > 0
+                            ? selectedFunctionality.roles.join(', ')
+                            : 'Sin roles'}
+                        </div>
+                      </div>
+                      <div className="min-w-0 rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Jira
+                        </div>
+                        <div className="mt-1 min-w-0 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.jiraTaskUrl ? (
+                            <a
+                              href={selectedFunctionality.jiraTaskUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block break-all text-blue-600 hover:text-blue-700"
+                            >
+                              {selectedFunctionality.jiraTaskUrl}
+                            </a>
+                          ) : (
+                            <span className="break-words">
+                              {selectedFunctionality.jiraIssueKey || 'Sin vínculo'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Unidad de entrega
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.deliveryUnitName || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Fecha de entrega
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.deliveryDate || 'N/A'}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ),
+            },
+          ]}
+        />
 
-          <div className="space-y-5">
-            <div className="rounded-[24px] border border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-800">Recomendación QA</div>
-                  <div className="mt-1 text-sm text-slate-500">
-                    Sugerencias basadas en cobertura, riesgo y cambios recientes.
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 space-y-3">
-                {selectedFunctionalityGuidance.recommendations.map(item => (
-                  <div key={item} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4">
-                <Button
-                  onClick={applyDetailRecommendation}
-                  disabled={
-                    !detailEditDraft || isViewer || !selectedFunctionalityGuidance.actionable
-                  }
-                >
-                  Aplicar recomendación
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="text-sm font-semibold text-slate-800">Motivo de clasificación</div>
-              <div className="mt-3 space-y-2">
-                {selectedFunctionalityGuidance.reasons.length > 0 ? (
-                  selectedFunctionalityGuidance.reasons.map(reason => (
-                    <div key={reason} className="flex items-start gap-2 text-sm text-slate-600">
-                      <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-slate-400" />
-                      <span>{reason}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-slate-500">
-                    No hay observaciones adicionales para esta clasificación.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="text-sm font-semibold text-slate-800">Relaciones</div>
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-slate-700">Mismo módulo</div>
-                    <div className="text-xs text-slate-500">
-                      {selectedFunctionality.module || 'Sin módulo'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <span>{selectedFunctionalityRelations.moduleCount}</span>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-slate-700">Mismo sprint</div>
-                    <div className="text-xs text-slate-500">
-                      {selectedFunctionality.sprint || 'Sin sprint'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <span>{selectedFunctionalityRelations.sprintCount}</span>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="text-sm font-semibold text-slate-800">Información adicional</div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Sprint
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.sprint || 'Sin sprint'}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Último cambio
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.lastFunctionalChangeAt || 'No marcado'}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Roles
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.roles.length > 0
-                      ? selectedFunctionality.roles.join(', ')
-                      : 'Sin roles'}
-                  </div>
-                </div>
-                <div className="min-w-0 rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Jira
-                  </div>
-                  <div className="mt-1 min-w-0 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.jiraTaskUrl ? (
-                      <a
-                        href={selectedFunctionality.jiraTaskUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block break-all text-blue-600 hover:text-blue-700"
-                      >
-                        {selectedFunctionality.jiraTaskUrl}
-                      </a>
-                    ) : (
-                      <span className="break-words">
-                        {selectedFunctionality.jiraIssueKey || 'Sin vínculo'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Unidad de entrega
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.deliveryUnitName || 'N/A'}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Fecha de entrega
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
-                    {selectedFunctionality.deliveryDate || 'N/A'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {detailEditDraft ? (
+        {detailEditDraft && isClassificationExpanded && hasDetailChanges && !isViewer ? (
           <div
             data-testid="qa-detail-actions"
             className="sticky bottom-0 z-10 rounded-[24px] border border-slate-100 bg-white/95 p-4 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur"
@@ -3691,7 +3743,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   return (
-    <div className="mx-auto max-w-[1520px] space-y-6 pb-12">
+    <div className="mx-auto w-full min-w-0 max-w-[1520px] space-y-6 pb-12">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Title level={2} className="!m-0 text-slate-800">
@@ -3730,730 +3782,713 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         />
       </Row>
 
-      <Card className="rounded-2xl border-slate-100 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 inline-flex rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-              Enfoque QA
-            </div>
-            <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-              Recomendaciones QA
-            </Title>
-            <Text type="secondary" className="text-sm">
-              Usa estas alertas para enfocar la tabla sin agregar ruido ni columnas nuevas.
-            </Text>
-          </div>
-          {activeRecommendation ? (
-            <Button
-              onClick={() => setActiveRecommendation(null)}
-              className="rounded-full border-slate-200"
-            >
-              Mostrar todo
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-          {recommendationCards.map(card => (
-            <RecommendationCard
-              key={card.key}
-              active={activeRecommendation === card.key}
-              count={recommendationBuckets[card.key].length}
-              description={card.description}
-              icon={card.icon}
-              label={card.label}
-              toneClassName={card.toneClassName}
-              outlineClassName={card.outlineClassName}
-              onClick={() =>
-                setActiveRecommendation(current => (current === card.key ? null : card.key))
-              }
-            />
-          ))}
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <div
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-              activeRecommendation
-                ? 'border border-sky-200 bg-sky-50 text-sky-700'
-                : 'border border-slate-200 bg-slate-50 text-slate-600'
-            }`}
-          >
-            {activeRecommendation
-              ? `${visibleFunctionalities.length} funcionalidades filtradas por recomendación`
-              : 'Sin recomendación aplicada'}
-          </div>
-          <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
-            El filtro actúa sobre la tabla actual y mantiene la edición inline.
-          </div>
-        </div>
-      </Card>
-
-      {!isViewer && selectedRowKeys.length > 0 ? (
-        <Card className="mb-3 mt-4 rounded-2xl border border-sky-300 shadow-sm shadow-sky-100/70">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <div className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-sky-700 text-white shadow-sm">
-                <Check size={14} strokeWidth={2.75} />
-              </div>
-              <div className="text-sm font-semibold text-slate-800">
-                {selectedRowKeys.length} funcionalidades seleccionadas
-              </div>
-              <Button
-                type="link"
-                className="px-0 text-sm font-medium text-sky-600"
-                disabled={isBulkSaving}
-                onClick={() => setSelectedRowKeys([])}
+      <Tabs
+        activeKey={activePlanningTab}
+        onChange={setActivePlanningTab}
+        renderTabBar={(tabBarProps, DefaultTabBar) => (
+          <div className="mb-4 min-w-0">
+            <div className="flex min-w-0 items-center gap-6 overflow-x-auto border-b border-slate-200 pb-2">
+              <DefaultTabBar {...tabBarProps} style={{ margin: 0, flex: '0 0 auto' }} />
+              <div
+                className="ml-auto flex items-center gap-2 [&>*]:shrink-0"
+                style={{ flexDirection: 'row', flexWrap: 'nowrap', flexShrink: 0 }}
               >
-                Limpiar selección
-              </Button>
-              {isBulkSaving ? (
-                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
-                  Guardando cambios...
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                placeholder="Prioridad"
-                value={undefined}
-                disabled={isBulkSaving}
-                popupMatchSelectWidth={false}
-                className="min-w-[140px]"
-                onChange={value =>
-                  void saveBulkUpdate(
-                    { priority: value },
-                    `Prioridad ${labelPriority(value, t).toLowerCase()} aplicada a la selección.`,
-                  )
-                }
-                options={Object.values(Priority).map(priority => ({
-                  label: getPriorityVisualLabel(priority).label,
-                  value: priority,
-                }))}
-              />
-
-              <Dropdown
-                trigger={isBulkSaving ? [] : ['click']}
-                placement="bottomLeft"
-                menu={{
-                  items: [
-                    {
-                      key: 'core',
-                      label: 'Marcar Core business',
-                    },
-                    {
-                      key: 'smoke',
-                      label: 'Marcar Smoke',
-                    },
-                    {
-                      key: 'regression',
-                      label: 'Marcar Regresión',
-                    },
-                    {
-                      type: 'divider',
-                    },
-                    {
-                      key: 'clear',
-                      label: 'Limpiar cobertura',
-                    },
-                  ],
-                  onClick: ({ key }) => {
-                    if (key === 'core') {
-                      void saveBulkUpdate(
-                        { isCore: true },
-                        'Core business aplicado a la selección.',
-                      );
+                  <Select
+                    allowClear
+                    placeholder="Filtrar por módulo"
+                    value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
+                    options={moduleFilters.map(option => ({
+                      label: String(option.text),
+                      value: String(option.value),
+                    }))}
+                    onChange={value =>
+                      setTableFilters(current => ({
+                        ...current,
+                        module: value ? [value] : null,
+                      }))
                     }
-
-                    if (key === 'smoke') {
-                      void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.');
-                    }
-
-                    if (key === 'regression') {
-                      void saveBulkUpdate(
-                        { isRegression: true },
-                        'Regresión aplicada a la selección.',
-                      );
-                    }
-
-                    if (key === 'clear') {
-                      void saveBulkUpdate(
-                        { isCore: false, isRegression: false, isSmoke: false },
-                        'Cobertura limpiada para la selección.',
-                      );
-                    }
-                  },
-                }}
-                overlayClassName="[&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-1 [&_.ant-dropdown-menu-item]:rounded-xl [&_.ant-dropdown-menu-item]:px-3 [&_.ant-dropdown-menu-item]:py-2"
-              >
-                <Button
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
-                  disabled={isBulkSaving}
-                >
-                  Cobertura
-                  <ChevronDown size={14} strokeWidth={2} />
-                </Button>
-              </Dropdown>
-
-              <Select
-                placeholder="Estado"
-                value={undefined}
-                disabled={isBulkSaving}
-                popupMatchSelectWidth={false}
-                className="min-w-[140px]"
-                onChange={value =>
-                  void saveBulkUpdate(
-                    { status: value },
-                    `Estado ${labelTestStatus(value, t).toLowerCase()} aplicado a la selección.`,
-                  )
-                }
-                options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
-                  label: labelTestStatus(status, t),
-                  value: status,
-                }))}
-              />
-
-              <Button
-                className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
-                disabled={isBulkSaving}
-                onClick={() =>
-                  void saveBulkUpdate(
-                    { lastFunctionalChangeAt: new Date().toISOString().split('T')[0] },
-                    'Cambio reciente aplicado a la selección.',
-                  )
-                }
-              >
-                Marcar cambio reciente
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
-      <div className="grid gap-6">
-        <Card className="mx-auto max-w-[1520px] rounded-2xl border-slate-100 shadow-sm xl:max-w-none">
-          <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                Operación
-              </div>
-              <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-                Tabla de planificación
-              </Title>
-              <Text type="secondary" className="text-sm">
-                Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
-              </Text>
-            </div>
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end xl:max-w-[760px]">
-              <div className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center">
-                <Select
-                  allowClear
-                  placeholder="Filtrar por módulo"
-                  value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
-                  options={moduleFilters.map(option => ({
-                    label: String(option.text),
-                    value: String(option.value),
-                  }))}
-                  onChange={value =>
-                    setTableFilters(current => ({
-                      ...current,
-                      module: value ? [value] : null,
-                    }))
-                  }
-                  className="w-full sm:w-[220px]"
-                />
-                <Input.Search
-                  allowClear
-                  placeholder="Buscar por funcionalidad"
-                  value={searchTerm}
-                  onChange={event => setSearchTerm(event.target.value)}
-                  className="w-full sm:flex-1"
-                />
-                <Button
-                  onClick={handleClearTableFilters}
-                  disabled={!hasActiveTableFilters}
-                  className="inline-flex h-10 items-center justify-center rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:!border-rose-300 hover:!text-rose-700 sm:w-auto"
-                >
-                  Limpiar filtros
-                </Button>
-              </div>
-              <Popover
-                trigger="click"
-                placement="bottomRight"
-                content={columnSettingsContent}
-                overlayClassName="[&_.ant-popover-inner]:rounded-2xl [&_.ant-popover-inner]:p-4"
-              >
-                <Button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto">
-                  <Settings2 size={16} />
-                  Columnas
-                </Button>
-              </Popover>
-              {!isViewer && isModuleReorderAvailable ? (
-                <Tooltip
-                  title={
-                    isModuleReorderBlocked
-                      ? 'Limpia los demás filtros para ordenar el módulo completo'
-                      : undefined
-                  }
-                >
-                  <span>
-                    <Button
-                      icon={<MenuOutlined />}
-                      disabled={isModuleReorderBlocked}
-                      onClick={openFunctionalityReorderModal}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
-                    >
-                      Ordenar funcionalidades
-                    </Button>
-                  </span>
-                </Tooltip>
-              ) : null}
-            </div>
-          </div>
-
-          {activeRecommendation ? (
-            <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
-              <div className="font-semibold">Vista filtrada por recomendación QA</div>
-              <div className="mt-1 text-sky-700">
-                Estás viendo solo funcionalidades priorizadas por la alerta activa.
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-slate-50/70 px-4 py-2.5">
-            <GuidanceItem
-              label="Riesgo"
-              message="Medir impacto"
-              toneClassName="bg-transparent text-slate-700"
-              icon={<TriangleAlert size={14} className="text-amber-500" />}
-            />
-            <GuidanceItem
-              label="Prioridad"
-              message="Definir orden de ejecución"
-              toneClassName="bg-transparent text-slate-700"
-              icon={<Star size={14} className="text-sky-500" />}
-            />
-            <GuidanceItem
-              label="Smoke"
-              message="Validar en cada release"
-              toneClassName="bg-transparent text-slate-700"
-              icon={<Flame size={14} className="text-orange-500" />}
-            />
-            <GuidanceItem
-              label="Regresión"
-              message="Revalidar ante cambios"
-              toneClassName="bg-transparent text-slate-700"
-              icon={<RefreshCw size={14} className="text-violet-500" />}
-            />
-            {activeRecommendation ? (
-              <div className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                Recomendacion activa
-              </div>
-            ) : null}
-          </div>
-          <Table
-            rowSelection={
-              isViewer
-                ? undefined
-                : {
-                    selectedRowKeys,
-                    onChange: keys => setSelectedRowKeys(keys),
-                    columnWidth: 36,
-                  }
-            }
-            columns={tableColumns}
-            dataSource={visibleFunctionalities}
-            rowKey={record => record.documentId || record.id}
-            loading={isLoading || (isFetching && visibleFunctionalities.length === 0)}
-            rowClassName={record => getRowClassName(record)}
-            size="small"
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-            }}
-            sticky={{ offsetHeader: 0 }}
-            locale={{
-              emptyText: searchTerm.trim()
-                ? 'No encontramos funcionalidades con esa búsqueda.'
-                : activeRecommendation
-                  ? 'No hay funcionalidades para esta recomendación en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
-                  : 'No hay funcionalidades registradas para este proyecto.',
-            }}
-            onChange={(_, filters) => handleTableChange(filters)}
-            className="[&_.ant-table-container]:rounded-2xl [&_.ant-table]:text-slate-700 [&_.ant-table-thead>tr>th]:sticky [&_.ant-table-thead>tr>th]:top-0 [&_.ant-table-thead>tr>th]:z-10 [&_.ant-table-thead>tr>th]:bg-sky-50 [&_.ant-table-thead>tr>th]:px-2.5 [&_.ant-table-thead>tr>th]:py-3 [&_.ant-table-tbody>tr:hover>td]:bg-sky-50/40 [&_.ant-table-tbody>tr>td]:px-2.5 [&_.ant-table-tbody>tr>td]:py-1.5 [&_.ant-table-tbody>tr>td]:align-middle [&_.ant-table-tbody>tr>td]:border-b-slate-100"
-          />
-
-          <Modal
-            title={`Ordenar funcionalidades${selectedModuleForReorder ? ` - ${selectedModuleForReorder}` : ''}`}
-            open={isFunctionalityReorderModalOpen}
-            onCancel={() => {
-              if (!isFunctionalityReordering) {
-                setIsFunctionalityReorderModalOpen(false);
-                setDraggedFunctionalityId(null);
-              }
-            }}
-            closable={!isFunctionalityReordering}
-            maskClosable={!isFunctionalityReordering}
-            keyboard={!isFunctionalityReordering}
-            width={720}
-            footer={[
-              <Button
-                key="cancel"
-                disabled={isFunctionalityReordering}
-                onClick={() => setIsFunctionalityReorderModalOpen(false)}
-              >
-                Cancelar
-              </Button>,
-              <Button
-                key="save"
-                type="primary"
-                loading={isFunctionalityReordering}
-                onClick={() => void handleSaveFunctionalityOrder()}
-              >
-                Guardar orden
-              </Button>,
-            ]}
-          >
-            <Text type="secondary" className="mb-4 block text-sm">
-              Arrastra las funcionalidades para definir la secuencia del módulo. El orden se aplicará al guardar.
-            </Text>
-            <List
-              className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
-              dataSource={functionalityReorderDraft}
-              locale={{ emptyText: 'No hay funcionalidades para ordenar.' }}
-              renderItem={(functionality, index) => {
-                const isDragging = draggedFunctionalityId === functionality.id;
-
-                return (
-                  <List.Item
-                    key={functionality.id}
-                    draggable={!isFunctionalityReordering}
-                    className={`cursor-grab px-4 py-3 transition ${
-                      isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
-                    } ${
-                      isFunctionalityReordering ? 'cursor-not-allowed' : 'active:cursor-grabbing'
-                    }`}
-                    onDragStart={event => {
-                      setDraggedFunctionalityId(functionality.id);
-                      event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={event => event.preventDefault()}
-                    onDrop={event => {
-                      event.preventDefault();
-                      if (draggedFunctionalityId) {
-                        moveFunctionalityReorderDraftItem(
-                          draggedFunctionalityId,
-                          functionality.id,
-                        );
-                      }
-                      setDraggedFunctionalityId(null);
-                    }}
-                    onDragEnd={() => setDraggedFunctionalityId(null)}
+                    style={{ width: 190 }}
+                  />
+                  <Input.Search
+                    allowClear
+                    placeholder="Buscar por funcionalidad"
+                    value={searchTerm}
+                    onChange={event => setSearchTerm(event.target.value)}
+                    style={{ width: 220 }}
+                  />
+                  <Button
+                    onClick={handleClearTableFilters}
+                    disabled={!hasActiveTableFilters}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:!border-rose-300 hover:!text-rose-700 sm:w-auto"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
-                        {index + 1}
-                      </span>
-                      <MenuOutlined className="shrink-0 text-slate-400" />
-                      <div className="min-w-0">
-                        <Text strong className="block truncate text-slate-800">
-                          {functionality.name || 'Funcionalidad'}
-                        </Text>
-                        <Text type="secondary" className="block truncate text-xs">
-                          {functionality.id}
+                    Limpiar filtros
+                  </Button>
+                <Button
+                  icon={isRecommendationsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  aria-expanded={isRecommendationsExpanded}
+                  aria-controls="qa-recommendations-content"
+                  onClick={() => setIsRecommendationsExpanded(expanded => !expanded)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+                >
+                  Recomendaciones QA
+                </Button>
+                {activePlanningTab === 'table' && !isViewer && isModuleReorderAvailable ? (
+                  <Tooltip
+                    title={
+                      isModuleReorderBlocked
+                        ? 'Limpia los demás filtros para ordenar el módulo completo'
+                        : undefined
+                    }
+                  >
+                    <span>
+                      <Button
+                        icon={<MenuOutlined />}
+                        disabled={isModuleReorderBlocked}
+                        onClick={openFunctionalityReorderModal}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+                      >
+                        Ordenar funcionalidades
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : null}
+              </div>
+            </div>
+            <section id="qa-recommendations-content" hidden={!isRecommendationsExpanded} className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <Title level={5} className="!mb-1 !mt-0 text-slate-800">
+                    Recomendaciones QA
+                  </Title>
+                  <Text type="secondary" className="text-sm">
+                    Presiona cualquier tarjeta para filtrar por estas métricas.
+                  </Text>
+                </div>
+              </div>
+
+              <div>
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                  {recommendationCards.map(card => (
+                    <RecommendationCard
+                      key={card.key}
+                      active={activeRecommendation === card.key}
+                      count={recommendationBuckets[card.key].length}
+                      description={card.description}
+                      icon={card.icon}
+                      label={card.label}
+                      toneClassName={card.toneClassName}
+                      outlineClassName={card.outlineClassName}
+                      onClick={() =>
+                        setActiveRecommendation(current => (current === card.key ? null : card.key))
+                      }
+                    />
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <div
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                      activeRecommendation
+                        ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                        : 'border border-slate-200 bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    {activeRecommendation
+                      ? `${visibleFunctionalities.length} funcionalidades filtradas por recomendación`
+                      : 'Sin recomendación aplicada'}
+                  </div>
+                  <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700">
+                    El filtro se aplica a la tabla y a las gráficas.
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+        className="min-w-0 [&_.ant-tabs-content-holder]:min-w-0 [&_.ant-tabs-tabpane]:min-w-0"
+        items={[
+          {
+            key: 'table',
+            label: 'Tabla de planificación',
+            children: (
+              <div className="min-w-0 space-y-4">
+                {!isViewer && selectedRowKeys.length > 0 ? (
+                  <Card className="mb-3 mt-4 rounded-2xl border border-sky-300 shadow-sm shadow-sky-100/70">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex min-w-0 flex-wrap items-center gap-3">
+                        <div className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-sky-700 text-white shadow-sm">
+                          <Check size={14} strokeWidth={2.75} />
+                        </div>
+                        <div className="text-sm font-semibold text-slate-800">
+                          {selectedRowKeys.length} funcionalidades seleccionadas
+                        </div>
+                        <Button
+                          type="link"
+                          className="px-0 text-sm font-medium text-sky-600"
+                          disabled={isBulkSaving}
+                          onClick={() => setSelectedRowKeys([])}
+                        >
+                          Limpiar selección
+                        </Button>
+                        {isBulkSaving ? (
+                          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                            <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
+                            Guardando cambios...
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          placeholder="Prioridad"
+                          value={undefined}
+                          disabled={isBulkSaving}
+                          popupMatchSelectWidth={false}
+                          className="min-w-[140px]"
+                          onChange={value =>
+                            void saveBulkUpdate(
+                              { priority: value },
+                              `Prioridad ${labelPriority(value, t).toLowerCase()} aplicada a la selección.`,
+                            )
+                          }
+                          options={Object.values(Priority).map(priority => ({
+                            label: getPriorityVisualLabel(priority).label,
+                            value: priority,
+                          }))}
+                        />
+
+                        <Dropdown
+                          trigger={isBulkSaving ? [] : ['click']}
+                          placement="bottomLeft"
+                          menu={{
+                            items: [
+                              {
+                                key: 'core',
+                                label: 'Marcar Core business',
+                              },
+                              {
+                                key: 'smoke',
+                                label: 'Marcar Smoke',
+                              },
+                              {
+                                key: 'regression',
+                                label: 'Marcar Regresión',
+                              },
+                              {
+                                type: 'divider',
+                              },
+                              {
+                                key: 'clear',
+                                label: 'Limpiar cobertura',
+                              },
+                            ],
+                            onClick: ({ key }) => {
+                              if (key === 'core') {
+                                void saveBulkUpdate(
+                                  { isCore: true },
+                                  'Core business aplicado a la selección.',
+                                );
+                              }
+
+                              if (key === 'smoke') {
+                                void saveBulkUpdate({ isSmoke: true }, 'Smoke aplicado a la selección.');
+                              }
+
+                              if (key === 'regression') {
+                                void saveBulkUpdate(
+                                  { isRegression: true },
+                                  'Regresión aplicada a la selección.',
+                                );
+                              }
+
+                              if (key === 'clear') {
+                                void saveBulkUpdate(
+                                  { isCore: false, isRegression: false, isSmoke: false },
+                                  'Cobertura limpiada para la selección.',
+                                );
+                              }
+                            },
+                          }}
+                          overlayClassName="[&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-1 [&_.ant-dropdown-menu-item]:rounded-xl [&_.ant-dropdown-menu-item]:px-3 [&_.ant-dropdown-menu-item]:py-2"
+                        >
+                          <Button
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
+                            disabled={isBulkSaving}
+                          >
+                            Cobertura
+                            <ChevronDown size={14} strokeWidth={2} />
+                          </Button>
+                        </Dropdown>
+
+                        <Select
+                          placeholder="Estado"
+                          value={undefined}
+                          disabled={isBulkSaving}
+                          popupMatchSelectWidth={false}
+                          className="min-w-[140px]"
+                          onChange={value =>
+                            void saveBulkUpdate(
+                              { status: value },
+                              `Estado ${labelTestStatus(value, t).toLowerCase()} aplicado a la selección.`,
+                            )
+                          }
+                          options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                            label: labelTestStatus(status, t),
+                            value: status,
+                          }))}
+                        />
+
+                        <Button
+                          className="inline-flex h-10 items-center gap-2 rounded-xl border-slate-200 px-4 text-sm font-medium text-slate-700"
+                          disabled={isBulkSaving}
+                          onClick={() =>
+                            void saveBulkUpdate(
+                              { lastFunctionalChangeAt: new Date().toISOString().split('T')[0] },
+                              'Cambio reciente aplicado a la selección.',
+                            )
+                          }
+                        >
+                          Marcar cambio reciente
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ) : null}
+
+                <div className="grid min-w-0 grid-cols-1 gap-6">
+                  <Card className="w-full min-w-0 max-w-full rounded-2xl border-slate-100 shadow-sm">
+                    <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <Title level={5} className="!mb-1 !mt-0 text-slate-800">
+                          Tabla de planificación
+                        </Title>
+                        <Text type="secondary" className="text-sm">
+                          Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
                         </Text>
                       </div>
                     </div>
-                  </List.Item>
-                );
-              }}
-            />
-          </Modal>
-        </Card>
-        {false ? (
-          <Card className="hidden rounded-2xl border-slate-100 shadow-sm xl:sticky xl:top-6 xl:block">
-            {sidePanelContent}
-          </Card>
-        ) : null}
-        <Drawer
-          title={selectedBulkCount > 0 ? 'Edición masiva QA' : 'Detalle QA'}
-          placement="right"
-          width={
-            selectedBulkCount > 0
-              ? screens.md
-                ? 520
-                : '100%'
-              : screens.xl
-                ? 980
-                : screens.lg
-                  ? 860
-                  : '100%'
-          }
-          open={Boolean(selectedFunctionality) || (selectedBulkCount > 0 && isBulkDrawerOpen)}
-          onClose={() => {
-            if (selectedBulkCount > 0 && isBulkDrawerOpen) {
-              setIsBulkDrawerOpen(false);
-              return;
-            }
 
-            setSelectedFunctionality(null);
-          }}
-          destroyOnHidden={false}
-          rootClassName="[&_.ant-drawer-content-wrapper]:max-w-full"
-          styles={{ body: { padding: screens.lg ? 20 : 16 } }}
-        >
-          {sidePanelContent}
-        </Drawer>
-      </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="mb-2 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-              Analítica
-            </div>
-            <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-              Visión analítica QA
-            </Title>
-            <Text type="secondary" className="text-sm">
-              Resumen ejecutivo de la vista actual. Sirve para validar panorama, no para reemplazar
-              la tabla.
-            </Text>
-          </div>
-          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-            Cobertura visible: {analytics.coveragePercent}% sobre {analytics.totalVisible}{' '}
-            funcionalidades
-          </div>
-        </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-slate-800">Cobertura por tipo</div>
-                <div className="mt-1 text-sm text-slate-500">
-                  Distribución visible entre Core business, Regresión, Smoke y sin cobertura.
-                </div>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-              <div className="mx-auto h-[220px] w-full max-w-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analytics.coverageByType}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={54}
-                      outerRadius={82}
-                      paddingAngle={3}
-                    >
-                      {analytics.coverageByType.map((entry, index) => (
-                        <Cell
-                          key={entry.name}
-                          fill={COVERAGE_CHART_COLORS[index % COVERAGE_CHART_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-3">
-                {analytics.coverageByType.map((entry, index) => (
-                  <div
-                    key={entry.name}
-                    className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{
-                          backgroundColor:
-                            COVERAGE_CHART_COLORS[index % COVERAGE_CHART_COLORS.length],
-                        }}
-                      />
-                      <span className="text-sm font-medium text-slate-700">{entry.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-800">{entry.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">Distribución de prioridad</div>
-              <div className="mt-1 text-sm text-slate-500">
-                Balance actual de prioridades dentro del alcance visible.
-              </div>
-            </div>
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={analytics.priorityDistribution}
-                  margin={{ top: 8, right: 8, left: -24, bottom: 0 }}
-                >
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                  <RechartsTooltip />
-                  <Bar dataKey="value" radius={[10, 10, 0, 0]}>
-                    {analytics.priorityDistribution.map((entry, index) => (
-                      <Cell
-                        key={entry.name}
-                        fill={PRIORITY_CHART_COLORS[index % PRIORITY_CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-slate-800">Cobertura por módulo</div>
-                <div className="mt-1 text-sm text-slate-500">
-                  Compara cobertura mínima con casos y cobertura QA clasificada por módulo.
-                </div>
-              </div>
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder="Filtrar módulos"
-                value={moduleCoverageFilter}
-                onChange={values => setModuleCoverageFilter(values)}
-                options={analytics.moduleCoverage.map(item => ({
-                  label: item.module,
-                  value: item.module,
-                }))}
-                className="w-full sm:w-[260px]"
-                maxTagCount="responsive"
-              />
-            </div>
-            <div className="max-h-[440px] space-y-4 overflow-y-auto pr-1">
-              {visibleModuleCoverage.map(item => (
-                <div
-                  key={item.module}
-                  className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-medium text-slate-700">
-                      {item.module}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">
-                      {item.total} funcionalidades
-                    </span>
-                  </div>
-                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
-                    <span className="font-semibold text-slate-600">Cobertura con casos</span>
-                    <span className="font-semibold text-slate-700">
-                      {item.testedPercent}% ({item.tested}/{item.total})
-                    </span>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-slate-100">
-                    <div
-                      className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
-                      style={{ width: `${item.testedPercent}%` }}
-                    />
-                  </div>
-                  <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
-                    <span className="font-semibold text-slate-600">
-                      Cobertura QA clasificada
-                    </span>
-                    <span className="font-semibold text-slate-700">
-                      {item.classifiedAndTestedPercent}% ({item.classifiedAndTested}/{item.total})
-                    </span>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-slate-100">
-                    <div
-                      className="h-2.5 rounded-full bg-gradient-to-r from-violet-500 to-emerald-400"
-                      style={{ width: `${item.classifiedAndTestedPercent}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-500">
-                    <span>
-                      Clasificadas QA: {item.qaCovered} de {item.total}
-                    </span>
-                    <span>Sin casos: {item.withoutCoverage}</span>
-                  </div>
-                </div>
-              ))}
-              {visibleModuleCoverage.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No hay módulos para el filtro seleccionado.
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <div className="mb-4">
-              <div className="text-sm font-semibold text-slate-800">
-                Mapa de riesgo vs. cobertura
-              </div>
-              <div className="mt-1 text-sm text-slate-500">
-                Identifica rápido dónde siguen las mayores brechas QA.
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-2xl border border-slate-100">
-              <div className="grid grid-cols-[92px_repeat(3,1fr)] bg-slate-50 text-[11px] font-semibold text-slate-500">
-                <div className="px-3 py-2">Riesgo</div>
-                <div className="px-3 py-2 text-center">Sin cobertura</div>
-                <div className="px-3 py-2 text-center">Cobertura simple</div>
-                <div className="px-3 py-2 text-center">Cobertura amplia</div>
-              </div>
-              {analytics.riskCoverageMatrix.map(row => (
-                <div
-                  key={row.risk}
-                  className="grid grid-cols-[92px_repeat(3,1fr)] border-t border-slate-100"
-                >
-                  <div className="flex items-center px-3 py-3 text-sm font-semibold text-slate-700">
-                    {row.risk}
-                  </div>
-                  {row.cells.map((value, index) => {
-                    const toneClassName =
-                      index === 0
-                        ? 'bg-red-50 text-red-700'
-                        : index === 1
-                          ? 'bg-amber-50 text-amber-700'
-                          : 'bg-emerald-50 text-emerald-700';
-
-                    return (
-                      <div key={`${row.risk}-${index}`} className="px-2 py-2">
-                        <div
-                          className={`rounded-xl px-3 py-3 text-center text-sm font-bold ${toneClassName}`}
-                        >
-                          {value}
+                    {activeRecommendation ? (
+                      <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm">
+                        <div className="font-semibold">Vista filtrada por recomendación QA</div>
+                        <div className="mt-1 text-sky-700">
+                          Estás viendo solo funcionalidades priorizadas por la alerta activa.
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </div>
+                    ) : null}
 
-      {selectedRowKeys.length > 0 ? (
-        <div className="flex justify-end">
-          <Button
-            onClick={() => {
-              setSelectedRowKeys([]);
-              setTableFilters(INITIAL_TABLE_FILTERS);
-            }}
-            className="rounded-lg"
-          >
-            Limpiar selección
-          </Button>
-        </div>
-      ) : null}
+                    <Table
+                      rowSelection={
+                        isViewer
+                          ? undefined
+                          : {
+                              selectedRowKeys,
+                              onChange: keys => setSelectedRowKeys(keys),
+                              columnWidth: 36,
+                            }
+                      }
+                      columns={tableColumns}
+                      tableLayout="fixed"
+                      scroll={{ x: tableScrollWidth }}
+                      dataSource={visibleFunctionalities}
+                      rowKey={record => record.documentId || record.id}
+                      loading={isLoading || (isFetching && visibleFunctionalities.length === 0)}
+                      rowClassName={record => getRowClassName(record)}
+                      size="small"
+                      pagination={{
+                        pageSize: 20,
+                        showSizeChanger: true,
+                      }}
+                      sticky={{ offsetHeader: 0 }}
+                      locale={{
+                        emptyText: searchTerm.trim()
+                          ? 'No encontramos funcionalidades con esa búsqueda.'
+                          : activeRecommendation
+                            ? 'No hay funcionalidades para esta recomendación en la vista actual. Prueba otra alerta o vuelve a mostrar todo.'
+                            : 'No hay funcionalidades registradas para este proyecto.',
+                      }}
+                      onChange={(_, filters) => handleTableChange(filters)}
+                      className="[&_.ant-table-container]:rounded-2xl [&_.ant-table]:text-slate-700 [&_.ant-table-thead>tr>th]:sticky [&_.ant-table-thead>tr>th]:top-0 [&_.ant-table-thead>tr>th]:z-10 [&_.ant-table-thead>tr>th]:bg-sky-50 [&_.ant-table-thead>tr>th]:px-2.5 [&_.ant-table-thead>tr>th]:py-3 [&_.ant-table-tbody>tr:hover>td]:bg-sky-50/40 [&_.ant-table-tbody>tr>td]:px-2.5 [&_.ant-table-tbody>tr>td]:py-1.5 [&_.ant-table-tbody>tr>td]:align-middle [&_.ant-table-tbody>tr>td]:border-b-slate-100"
+                    />
+
+                    <Modal
+                      title={`Ordenar funcionalidades${selectedModuleForReorder ? ` - ${selectedModuleForReorder}` : ''}`}
+                      open={isFunctionalityReorderModalOpen}
+                      onCancel={() => {
+                        if (!isFunctionalityReordering) {
+                          setIsFunctionalityReorderModalOpen(false);
+                          setDraggedFunctionalityId(null);
+                        }
+                      }}
+                      closable={!isFunctionalityReordering}
+                      maskClosable={!isFunctionalityReordering}
+                      keyboard={!isFunctionalityReordering}
+                      width={720}
+                      footer={[
+                        <Button
+                          key="cancel"
+                          disabled={isFunctionalityReordering}
+                          onClick={() => setIsFunctionalityReorderModalOpen(false)}
+                        >
+                          Cancelar
+                        </Button>,
+                        <Button
+                          key="save"
+                          type="primary"
+                          loading={isFunctionalityReordering}
+                          onClick={() => void handleSaveFunctionalityOrder()}
+                        >
+                          Guardar orden
+                        </Button>,
+                      ]}
+                    >
+                      <Text type="secondary" className="mb-4 block text-sm">
+                        Arrastra las funcionalidades para definir la secuencia del módulo. El orden se aplicará al guardar.
+                      </Text>
+                      <List
+                        className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"
+                        dataSource={functionalityReorderDraft}
+                        locale={{ emptyText: 'No hay funcionalidades para ordenar.' }}
+                        renderItem={(functionality, index) => {
+                          const isDragging = draggedFunctionalityId === functionality.id;
+
+                          return (
+                            <List.Item
+                              key={functionality.id}
+                              draggable={!isFunctionalityReordering}
+                              className={`cursor-grab px-4 py-3 transition ${
+                                isDragging ? 'bg-sky-50 opacity-60' : 'bg-white hover:bg-slate-50'
+                              } ${
+                                isFunctionalityReordering ? 'cursor-not-allowed' : 'active:cursor-grabbing'
+                              }`}
+                              onDragStart={event => {
+                                setDraggedFunctionalityId(functionality.id);
+                                event.dataTransfer.effectAllowed = 'move';
+                              }}
+                              onDragOver={event => event.preventDefault()}
+                              onDrop={event => {
+                                event.preventDefault();
+                                if (draggedFunctionalityId) {
+                                  moveFunctionalityReorderDraftItem(
+                                    draggedFunctionalityId,
+                                    functionality.id,
+                                  );
+                                }
+                                setDraggedFunctionalityId(null);
+                              }}
+                              onDragEnd={() => setDraggedFunctionalityId(null)}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
+                                  {index + 1}
+                                </span>
+                                <MenuOutlined className="shrink-0 text-slate-400" />
+                                <div className="min-w-0">
+                                  <Text strong className="block truncate text-slate-800">
+                                    {functionality.name || 'Funcionalidad'}
+                                  </Text>
+                                  <Text type="secondary" className="block truncate text-xs">
+                                    {functionality.id}
+                                  </Text>
+                                </div>
+                              </div>
+                            </List.Item>
+                          );
+                        }}
+                      />
+                    </Modal>
+                  </Card>
+                  {false ? (
+                    <Card className="hidden rounded-2xl border-slate-100 shadow-sm xl:sticky xl:top-6 xl:block">
+                      {sidePanelContent}
+                    </Card>
+                  ) : null}
+                  <Drawer
+                    title={selectedBulkCount > 0 ? 'Edición masiva QA' : 'Detalle QA'}
+                    placement="right"
+                    width={
+                      selectedBulkCount > 0
+                        ? screens.md
+                          ? 520
+                          : '100%'
+                        : screens.xl
+                          ? 980
+                          : screens.lg
+                            ? 860
+                            : '100%'
+                    }
+                    open={Boolean(selectedFunctionality) || (selectedBulkCount > 0 && isBulkDrawerOpen)}
+                    onClose={() => {
+                      if (selectedBulkCount > 0 && isBulkDrawerOpen) {
+                        setIsBulkDrawerOpen(false);
+                        return;
+                      }
+
+                      setSelectedFunctionality(null);
+                    }}
+                    destroyOnHidden={false}
+                    rootClassName="[&_.ant-drawer-content-wrapper]:max-w-full"
+                    styles={{ body: { padding: screens.lg ? 20 : 16 } }}
+                  >
+                    {sidePanelContent}
+                  </Drawer>
+                </div>
+
+                {selectedRowKeys.length > 0 ? (
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={() => {
+                        setSelectedRowKeys([]);
+                        setTableFilters(INITIAL_TABLE_FILTERS);
+                      }}
+                      className="rounded-lg"
+                    >
+                      Limpiar selección
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ),
+          },
+          {
+            key: 'charts',
+            label: 'Gráficas QA',
+            children: (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <Title level={5} className="!mb-1 !mt-0 text-slate-800">
+                        Visión analítica QA
+                      </Title>
+                      <Text type="secondary" className="text-sm">
+                        Resumen ejecutivo de la vista actual. Sirve para validar panorama, no para reemplazar
+                        la tabla.
+                      </Text>
+                    </div>
+                    <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                      Cobertura visible: {analytics.coveragePercent}% sobre {analytics.totalVisible}{' '}
+                      funcionalidades
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <Card className="rounded-2xl border-slate-100 shadow-sm">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-800">Cobertura por tipo</div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            Distribución visible entre Core business, Regresión, Smoke y sin cobertura.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                        <div className="mx-auto h-[220px] w-full max-w-[220px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={analytics.coverageByType}
+                                dataKey="value"
+                                nameKey="name"
+                                innerRadius={54}
+                                outerRadius={82}
+                                paddingAngle={3}
+                              >
+                                {analytics.coverageByType.map((entry, index) => (
+                                  <Cell
+                                    key={entry.name}
+                                    fill={COVERAGE_CHART_COLORS[index % COVERAGE_CHART_COLORS.length]}
+                                  />
+                                ))}
+                              </Pie>
+                              <RechartsTooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="space-y-3">
+                          {analytics.coverageByType.map((entry, index) => (
+                            <div
+                              key={entry.name}
+                              className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="h-3 w-3 rounded-full"
+                                  style={{
+                                    backgroundColor:
+                                      COVERAGE_CHART_COLORS[index % COVERAGE_CHART_COLORS.length],
+                                  }}
+                                />
+                                <span className="text-sm font-medium text-slate-700">{entry.name}</span>
+                              </div>
+                              <span className="text-sm font-semibold text-slate-800">{entry.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="rounded-2xl border-slate-100 shadow-sm">
+                      <div className="mb-4">
+                        <div className="text-sm font-semibold text-slate-800">Distribución de prioridad</div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Balance actual de prioridades dentro del alcance visible.
+                        </div>
+                      </div>
+                      <div className="h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={analytics.priorityDistribution}
+                            margin={{ top: 8, right: 8, left: -24, bottom: 0 }}
+                          >
+                            <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
+                            <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                            <RechartsTooltip />
+                            <Bar dataKey="value" radius={[10, 10, 0, 0]}>
+                              {analytics.priorityDistribution.map((entry, index) => (
+                                <Cell
+                                  key={entry.name}
+                                  fill={PRIORITY_CHART_COLORS[index % PRIORITY_CHART_COLORS.length]}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </Card>
+
+                    <Card className="rounded-2xl border-slate-100 shadow-sm">
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-800">Cobertura por módulo</div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            Compara cobertura mínima con casos y cobertura QA clasificada por módulo.
+                          </div>
+                        </div>
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          placeholder="Filtrar módulos"
+                          value={moduleCoverageFilter}
+                          onChange={values => setModuleCoverageFilter(values)}
+                          options={analytics.moduleCoverage.map(item => ({
+                            label: item.module,
+                            value: item.module,
+                          }))}
+                          className="w-full sm:w-[260px]"
+                          maxTagCount="responsive"
+                        />
+                      </div>
+                      <div className="max-h-[440px] space-y-4 overflow-y-auto pr-1">
+                        {visibleModuleCoverage.map(item => (
+                          <div
+                            key={item.module}
+                            className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3"
+                          >
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <span className="truncate text-sm font-medium text-slate-700">
+                                {item.module}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-500">
+                                {item.total} funcionalidades
+                              </span>
+                            </div>
+                            <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
+                              <span className="font-semibold text-slate-600">Cobertura con casos</span>
+                              <span className="font-semibold text-slate-700">
+                                {item.testedPercent}% ({item.tested}/{item.total})
+                              </span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-slate-100">
+                              <div
+                                className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
+                                style={{ width: `${item.testedPercent}%` }}
+                              />
+                            </div>
+                            <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
+                              <span className="font-semibold text-slate-600">
+                                Cobertura QA clasificada
+                              </span>
+                              <span className="font-semibold text-slate-700">
+                                {item.classifiedAndTestedPercent}% ({item.classifiedAndTested}/{item.total})
+                              </span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-slate-100">
+                              <div
+                                className="h-2.5 rounded-full bg-gradient-to-r from-violet-500 to-emerald-400"
+                                style={{ width: `${item.classifiedAndTestedPercent}%` }}
+                              />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                              <span>
+                                Clasificadas QA: {item.qaCovered} de {item.total}
+                              </span>
+                              <span>Sin casos: {item.withoutCoverage}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {visibleModuleCoverage.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                            No hay módulos para el filtro seleccionado.
+                          </div>
+                        ) : null}
+                      </div>
+                    </Card>
+
+                    <Card className="rounded-2xl border-slate-100 shadow-sm">
+                      <div className="mb-4">
+                        <div className="text-sm font-semibold text-slate-800">
+                          Mapa de riesgo vs. cobertura
+                        </div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Identifica rápido dónde siguen las mayores brechas QA.
+                        </div>
+                      </div>
+                      <div className="overflow-hidden rounded-2xl border border-slate-100">
+                        <div className="grid grid-cols-[92px_repeat(3,1fr)] bg-slate-50 text-[11px] font-semibold text-slate-500">
+                          <div className="px-3 py-2">Riesgo</div>
+                          <div className="px-3 py-2 text-center">Sin cobertura</div>
+                          <div className="px-3 py-2 text-center">Cobertura simple</div>
+                          <div className="px-3 py-2 text-center">Cobertura amplia</div>
+                        </div>
+                        {analytics.riskCoverageMatrix.map(row => (
+                          <div
+                            key={row.risk}
+                            className="grid grid-cols-[92px_repeat(3,1fr)] border-t border-slate-100"
+                          >
+                            <div className="flex items-center px-3 py-3 text-sm font-semibold text-slate-700">
+                              {row.risk}
+                            </div>
+                            {row.cells.map((value, index) => {
+                              const toneClassName =
+                                index === 0
+                                  ? 'bg-red-50 text-red-700'
+                                  : index === 1
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-emerald-50 text-emerald-700';
+
+                              return (
+                                <div key={`${row.risk}-${index}`} className="px-2 py-2">
+                                  <div
+                                    className={`rounded-xl px-3 py-3 text-center text-sm font-bold ${toneClassName}`}
+                                  >
+                                    {value}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={null}
