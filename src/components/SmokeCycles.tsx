@@ -3090,6 +3090,9 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
               }
             >
               <EvidenceRichEditorField
+                projectId={evidenceModalOpen ? selectedCycle?.projectId || projectId : undefined}
+                aiRecordId={currentExecution?.id}
+                aiContext={currentExecution?.functionalityName}
                 placeholder="Describe el resultado de la prueba, errores encontrados o detalles relevantes. Puedes usar emojis, pegar una captura o subir una imagen."
                 disabled={isCurrentExecutionReadOnly}
               />

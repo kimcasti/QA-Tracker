@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@
 import { appBranding } from '../assets/branding';
 import { useProjects } from '../modules/projects/hooks/useProjects';
 import { Project, ProjectStatus } from '../types';
+import { JiraProjectSettings } from '../modules/jira/components/JiraProjectSettings';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -87,6 +88,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
           </div>
         </div>
 
+        <JiraProjectSettings projectKey={project.id} />
         <Form form={form} layout="vertical" onFinish={handleSave} className="space-y-8">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden">
             <div className="mb-6 flex items-center gap-4">

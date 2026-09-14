@@ -50,6 +50,10 @@ export function normalizeEvidenceHtml(value?: string | null) {
 
   if (!trimmedValue) return '';
 
+  // Preserve escaped text inside existing HTML (for example Playwright locators).
+  // Decoding it first turns literal <button> or <img> errors into editor markup.
+  if (/<\/?[a-z][\s\S]*>/i.test(trimmedValue)) return trimmedValue;
+
   const decodedValue = decodeHtmlEntities(trimmedValue);
   const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(decodedValue);
   if (looksLikeHtml) {

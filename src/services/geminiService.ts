@@ -240,6 +240,15 @@ export async function improveMeetingNotesWithAI(notes: string, projectId?: strin
   });
 }
 
+export async function interpretExecutionEvidenceWithAI(input: {
+  projectId: string;
+  notes: string;
+  context?: string;
+  hasEvidence: boolean;
+}) {
+  return postAi<{ paragraph: string }>('/api/ai/execution-evidence/interpret', input);
+}
+
 export async function recommendExecutionFunctionalitiesWithAI(input: {
   projectId?: string;
   testType: string;

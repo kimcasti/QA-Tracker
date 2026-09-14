@@ -117,6 +117,32 @@ function FixedPie({
   );
 }
 
+function AutomationPieLegend({
+  data,
+  colors,
+}: {
+  data: Array<{ name: string; value: number }>;
+  colors: string[];
+}) {
+  return (
+    <ul className="m-0 w-full min-w-0 list-none space-y-2 p-0" aria-label="Porcentajes del grafico">
+      {data.map((entry, index) => (
+        <li key={entry.name} className="flex items-start gap-2 text-sm leading-5">
+          <span
+            aria-hidden="true"
+            className="mt-1 h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: colors[index % colors.length] }}
+          />
+          <span className="min-w-0 flex-1 break-words text-slate-600">{entry.name}</span>
+          <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-slate-800">
+            {entry.value}%
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function KpiCard({
   title,
   value,
@@ -1131,7 +1157,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </Text>
                 <div className="mt-3">
                   {hasModuleAutomationCoverage ? (
-                    <div className="flex justify-center">
+                    <div className="flex min-w-0 flex-col items-center">
                       <PieChart width={220} height={220}>
                         <Pie
                           data={moduleAutomationCoveragePieData}
@@ -1141,7 +1167,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                           outerRadius={78}
                           dataKey="value"
                           labelLine={false}
-                          label={({ value }) => `${value}%`}
+                          label={false}
                           isAnimationActive={false}
                         >
                           {moduleAutomationCoveragePieData.map((entry, index) => (
@@ -1158,6 +1184,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                           ]}
                         />
                       </PieChart>
+                      <AutomationPieLegend data={moduleAutomationCoveragePieData} colors={automationPieColors} />
                     </div>
                   ) : (
                     <Empty
@@ -1176,7 +1203,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 <div className="mt-3">
                   {hasFunctionalityAutomationCoverage ? (
                     <>
-                      <div className="flex justify-center">
+                      <div className="flex min-w-0 flex-col items-center gap-2">
                         <PieChart width={220} height={220}>
                           <Pie
                             data={functionalityAutomationCoveragePieData}
@@ -1186,7 +1213,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                             outerRadius={78}
                             dataKey="value"
                             labelLine={false}
-                            label={({ value }) => `${value}%`}
+                            label={false}
                             isAnimationActive={false}
                           >
                             {functionalityAutomationCoveragePieData.map((entry, index) => (
@@ -1203,8 +1230,9 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                             ]}
                           />
                         </PieChart>
+                        <AutomationPieLegend data={functionalityAutomationCoveragePieData} colors={automationPieColors} />
                       </div>
-                      <div className="text-center text-sm text-slate-600">
+                      <div className="mt-3 text-center text-sm text-slate-600">
                         {functionalityAutomationCoverage.automated} de {functionalityAutomationCoverage.total} funcionalidades con al menos 1 caso automatizado
                       </div>
                     </>
@@ -1228,7 +1256,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                 </Text>
                 <div className="mt-3">
                   {automationSuccessByToolPieData.length > 0 ? (
-                    <div className="flex justify-center">
+                    <div className="flex min-w-0 flex-col items-center">
                       <PieChart width={220} height={220}>
                         <Pie
                           data={automationSuccessByToolPieData}
@@ -1238,7 +1266,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                           outerRadius={78}
                           dataKey="value"
                           labelLine={false}
-                          label={({ value }) => `${value}%`}
+                          label={false}
                           isAnimationActive={false}
                         >
                           {automationSuccessByToolPieData.map((entry, index) => (
@@ -1255,6 +1283,7 @@ export default function Dashboard({ projectId }: { projectId?: string }) {
                           ]}
                         />
                       </PieChart>
+                      <AutomationPieLegend data={automationSuccessByToolPieData} colors={automationPieColors} />
                     </div>
                   ) : (
                     <Empty

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { JiraAccountSettings } from '../modules/jira/components/JiraAccountSettings';
+import { JiraProjectSettings } from '../modules/jira/components/JiraProjectSettings';
 import {
   Button,
   Card,
@@ -65,7 +67,7 @@ interface SettingsProps {
   projectId: string;
 }
 
-type SettingsTabKey = 'sprints' | 'roles' | 'modules' | 'templates' | 'proposal';
+type SettingsTabKey = 'sprints' | 'roles' | 'modules' | 'templates' | 'proposal' | 'integrations';
 type SettingsItem = Sprint | Role | Module | TestCaseTemplate | null;
 
 const templateTypeOptions = Object.values(TestType);
@@ -77,6 +79,7 @@ const deliveryUnitTypeOptions = Object.values(DeliveryUnitType);
 const deliveryUnitStatusOptions = Object.values(DeliveryUnitStatus);
 
 const tabLabelMap: Record<SettingsTabKey, string> = {
+  integrations: 'Integración',
   sprints: 'Sprint',
   roles: 'Rol',
   modules: 'Módulo',
@@ -687,6 +690,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     icon: React.ReactNode;
   }> = [
     { key: 'sprints', label: 'Sprints', icon: <CalendarOutlined /> },
+    { key: 'integrations', label: 'Integraciones', icon: <AppstoreOutlined /> },
     { key: 'roles', label: 'Roles', icon: <TeamOutlined /> },
     { key: 'modules', label: 'Módulos', icon: <AppstoreOutlined /> },
     { key: 'templates', label: 'Plantillas', icon: <FileTextOutlined /> },
@@ -787,6 +791,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
   );
 
   const renderTabContent = () => {
+    if (activeTab === 'integrations') return <div className="mt-6"><JiraAccountSettings />{!isViewer && <JiraProjectSettings projectKey={projectId} />}</div>;
     if (activeTab === 'sprints') {
       return (
         <div className="mt-6">

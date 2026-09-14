@@ -55,6 +55,9 @@ const PersonalNotesPage = lazy(
   () => import('./modules/personal-notes/components/PersonalNotesPage'),
 );
 const SuperadminView = lazy(() => import('./components/SuperadminView'));
+const AutomationConnectionsPage = lazy(() => import('./modules/automation/components/AutomationConnectionsPage'));
+const PersonalIntegrationsPage = lazy(() => import('./modules/jira/components/PersonalIntegrationsPage'));
+const JiraOAuthCallback = lazy(() => import('./modules/jira/components/JiraOAuthCallback'));
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -284,7 +287,7 @@ export default function App() {
 
   return (
     <>
-      <WorkspaceApp currentUser={user} onLogout={logout} />
+      {location.pathname === '/settings/integrations/jira/callback' ? <Suspense fallback={<PageLoader />}><JiraOAuthCallback /></Suspense> : location.pathname === '/settings/integrations' ? <Suspense fallback={<PageLoader />}><PersonalIntegrationsPage /></Suspense> : location.pathname === '/automation/connect' ? <Suspense fallback={<PageLoader />}><AutomationConnectionsPage /></Suspense> : <WorkspaceApp currentUser={user} onLogout={logout} />}
       {hideWhatsAppSupportButton ? null : <WhatsAppSupportButton />}
     </>
   );

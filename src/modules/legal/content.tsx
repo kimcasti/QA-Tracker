@@ -143,7 +143,7 @@ export const legalDocuments: LegalDocument[] = [
       {
         title: 'Almacenamiento b\u00e1sico',
         body: [
-          'La informaci\u00f3n se almacena en infraestructura y servicios necesarios para operar QA Tracker.',
+          'La base de datos de QA Tracker se aloja en Railway, en la región US West (California, Estados Unidos). Esta ubicación corresponde al almacenamiento de la base de datos; los datos enviados a integraciones externas, como Jira, se procesan también en los servicios de sus respectivos proveedores.',
           'Conservamos los datos mientras sean necesarios para prestar el servicio, cumplir procesos operativos razonables o atender requerimientos t\u00e9cnicos y de seguridad.',
         ],
       },
@@ -178,7 +178,31 @@ export const legalDocuments: LegalDocument[] = [
       {
         title: 'Contacto de privacidad',
         body: [
-          'Si tienes preguntas sobre privacidad, tratamiento de informaci\u00f3n o deseas reportar una inquietud relacionada con tus datos, puedes contactarnos por los canales oficiales de QA Tracker.',
+          'Para consultas sobre privacidad, solicitudes de acceso, corrección o eliminación de datos, o para reportar una inquietud relacionada con tu información, escribe a qatracker.system@gmail.com. Indica la cuenta u organización relacionada y describe tu solicitud, sin incluir contraseñas ni tokens de acceso.',
+        ],
+      },
+      {
+        title: 'Conexión con Jira y datos utilizados',
+        body: [
+          'La conexión con Jira es opcional. Al pulsar Conectar con Jira, Atlassian te solicita autorización para el sitio seleccionado y los permisos que muestra en su pantalla. QA Tracker consulta información del perfil, sitios autorizados, proyectos y tipos de incidencia para identificar tu cuenta y configurar el destino de los reportes, dentro de los permisos de tu usuario.',
+          'Guardamos la asociación con tu usuario de QA Tracker, el nombre de la cuenta, el sitio y su identificador, además de las credenciales de acceso y renovación cifradas en el servidor. OAuth permite autorizar esta conexión sin proporcionar tu contraseña de Atlassian a QA Tracker. Renovamos el acceso cuando es necesario mientras la autorización siga vigente.',
+          'Quien opera QA Tracker es responsable de la privacidad, seguridad e integridad de los datos que procesa esta aplicación. La política de privacidad de Atlassian no sustituye esta política ni cubre el tratamiento que realiza QA Tracker.',
+        ],
+      },
+      {
+        title: 'Reportes y evidencias enviados a Atlassian',
+        body: [
+          'Conectar tu cuenta o ejecutar pruebas automatizadas no crea por sí solo incidencias en Jira. El envío requiere revisar el reporte y pulsar Crear en Jira. En ese momento enviamos al sitio y proyecto configurados el título, la descripción y las evidencias incluidas en el reporte, como capturas de pantalla y detalles del error.',
+          'Atlassian recibe esa información para registrar la incidencia y sus adjuntos. QA Tracker conserva referencias del envío, como el identificador y enlace de la incidencia, junto con la información de la ejecución. El acceso posterior en Jira depende de los permisos del proyecto de destino.',
+          'Revisa las notas y capturas antes de enviarlas. Evita incluir contraseñas, tokens, datos personales innecesarios o información de pacientes. Comparte únicamente información que estés autorizado a tratar y enviar a ese proyecto.',
+        ],
+      },
+      {
+        title: 'Desconectar Jira y solicitar eliminación',
+        body: [
+          'Puedes desconectar tu cuenta desde Mis integraciones en QA Tracker. Al hacerlo, eliminamos las credenciales OAuth guardadas para esa conexión de la base de datos activa y cancelamos sus autorizaciones pendientes. Esto impide que QA Tracker siga utilizando esa conexión. Puedes retirar también el consentimiento desde las aplicaciones conectadas de tu cuenta de Atlassian.',
+          'Desconectar no elimina los casos, ejecuciones, evidencias o referencias de incidencias ya guardados en QA Tracker, ni borra los tickets o adjuntos enviados a Jira. La eliminación en Jira se gestiona por separado con los permisos de ese sitio.',
+          'Puedes solicitar acceso, corrección o eliminación de tus datos mediante el contacto de privacidad. Las solicitudes relacionadas con información compartida de una organización requieren coordinar su alcance y verificar la autorización correspondiente. Desconectar una integración no equivale a eliminar toda la información de tu cuenta.',
         ],
       },
     ],

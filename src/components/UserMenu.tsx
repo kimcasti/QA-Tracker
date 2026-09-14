@@ -3,6 +3,7 @@ import type { MenuProps } from 'antd';
 import { Avatar, Dropdown, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useAppLanguage } from '../i18n/LanguageProvider';
+import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
 
@@ -31,8 +32,11 @@ export function UserMenu({
 }: UserMenuProps) {
   const { t } = useTranslation();
   const { language, setLanguage } = useAppLanguage();
+  const navigate = useNavigate();
 
   const items: MenuProps['items'] = [
+    { key: 'integrations', label: 'Mis integraciones', onClick: () => navigate('/settings/integrations') },
+    { key: 'automation', label: 'Conexiones de automatización', onClick: () => navigate('/automation/connect') },
     {
       key: 'notes',
       icon: <FileTextOutlined />,

@@ -1,3 +1,4 @@
+import { JiraIssueButton } from '../modules/jira/components/JiraIssueButton';
 import {
   Button,
   Card,
@@ -1674,21 +1675,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         bugLink: values.bugLink || '',
         evidenceImage: derivedEvidenceImage,
       };
-
-      if (
-        mergedRecord.result === TestResult.FAILED &&
-        !hasMeaningfulEvidenceContent(evidenceHtml)
-      ) {
-        message.error('Las notas de ejecución son obligatorias para pruebas fallidas.');
-        return;
-      }
-
-      if (mergedRecord.result === TestResult.FAILED && !mergedRecord.evidenceImage?.trim()) {
-        message.error(
-          'Para pruebas fallidas son obligatorias las notas de ejecución, el título del bug, la severidad y una imagen pegada o subida dentro del editor.',
-        );
-        return;
-      }
 
       setExecutionResults(prev =>
         prev.map(result => (result.testCaseId === mergedRecord.testCaseId ? mergedRecord : result)),
@@ -5227,15 +5213,17 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               <Form form={evidenceForm} layout="vertical">
                 <Form.Item
                   name="evidence"
-                  required={isFailureEvidenceRequired}
                   label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
-                  rules={
-                    isFailureEvidenceRequired
-                      ? [{ required: true, message: 'Las notas de ejecución son obligatorias.' }]
-                      : undefined
-                  }
                 >
                   <EvidenceRichEditorField
+                    projectId={isEvidenceModalOpen ? projectId : undefined}
+                    aiRecordId={currentEvidenceRecord.id}
+                    aiContext={JSON.stringify(activeEvidenceTestCase && {
+                      title: activeEvidenceTestCase.title,
+                      preconditions: activeEvidenceTestCase.preconditions,
+                      testSteps: activeEvidenceTestCase.testSteps,
+                      expectedResult: activeEvidenceTestCase.expectedResult,
+                    })}
                     placeholder="Escribe aquí las notas de la ejecución. Puedes usar emojis, pegar una captura o subir una imagen."
                     disabled={isReadOnly}
                   />
@@ -5252,7 +5240,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       name="bugTitle"
                       required
                       label={<span className="font-semibold text-slate-600">Título del Bug</span>}
-                      rules={[{ required: true, message: 'El título del bug es obligatorio.' }]}
+                      rules={[{ required: true, whitespace: true, max: 255, message: 'El título del bug es obligatorio y admite hasta 255 caracteres.' }]}
                     >
                       <Input
                         placeholder="Resume el error detectado"
@@ -5263,9 +5251,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
                     <Form.Item
                       name="severity"
-                      required
                       label={<span className="font-semibold text-slate-600">Severidad</span>}
-                      rules={[{ required: true, message: 'La severidad es obligatoria.' }]}
                     >
                       <Select
                         className="w-full rounded-lg"
@@ -5290,6 +5276,27 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       Al registrar un bug desde una prueba fallida, se creará o actualizará
                       automáticamente en el Historial de Bugs con estado inicial Pendiente.
                     </Text>
+                    {activeTestRun && currentEvidenceRecord && <JiraIssueButton
+                      key={`${activeTestRun.id}:${currentEvidenceRecord.testCaseId}`}
+                      projectKey={activeTestRun.projectId}
+                      disabled={isReadOnly}
+                      prepare={async () => {
+                        await evidenceForm.validateFields(['bugTitle']);
+                        const values = evidenceForm.getFieldsValue();
+                        const title = String(values.bugTitle || '').trim();
+                        if (!title) throw new Error('Title required');
+                        return { testRunId: activeTestRun.id, testCaseId: currentEvidenceRecord.testCaseId, title,
+                          description: stripHtmlToText(values.evidence || ''),
+                          evidenceImage: extractFirstImageSrc(values.evidence || ''),
+                        };
+                      }}
+                      onCreated={issue => {
+                        evidenceForm.setFieldValue('bugLink', issue.url);
+                        const updated = { ...currentEvidenceRecord, bugLink: issue.url, bugTitle: evidenceForm.getFieldValue('bugTitle') };
+                        setExecutionResults(prev => prev.map(item => item.testCaseId === updated.testCaseId ? { ...item, bugLink: issue.url, bugTitle: updated.bugTitle } : item));
+                        setOriginalEvidenceRecord(updated);
+                      }}
+                    />}
                   </>
                 )}
               </Form>

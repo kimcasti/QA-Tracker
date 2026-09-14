@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "publish:playwright": "node --import tsx ./scripts/publish-playwright-results.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
@@ -19,6 +20,7 @@
     "@tanstack/react-query": "^5.79.0",
     "@tiptap/extension-file-handler": "^3.22.4",
     "@tiptap/extension-image": "^3.22.4",
+    "@tiptap/extension-list": "3.22.4",
     "@tiptap/extension-placeholder": "^3.22.4",
     "@tiptap/pm": "^3.22.4",
     "@tiptap/react": "^3.22.4",

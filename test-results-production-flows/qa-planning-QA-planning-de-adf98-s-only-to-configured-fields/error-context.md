@@ -1,0 +1,109 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e10]:
+        - link "arrow-left Volver a la landing" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img "arrow-left" [ref=e12]:
+            - img [ref=e13]
+          - text: Volver a la landing
+        - generic [ref=e15]:
+          - img "QA Tracker" [ref=e16]
+          - generic [ref=e17]:
+            - heading "QA Tracker" [level=3] [ref=e18]
+            - text: Workspace de calidad para equipos modernos.
+        - generic [ref=e19]: Acceso QA Tracker
+        - heading "Vuelve a tu centro de calidad." [level=1] [ref=e20]
+        - generic [ref=e21]: Entra a tu workspace para continuar con proyectos, pruebas, bugs, reportes y decisiones operativas.
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - img "check-circle" [ref=e24]:
+              - img [ref=e25]
+            - generic [ref=e27]: Trazabilidad real entre funcionalidades, pruebas y bugs
+          - generic [ref=e28]:
+            - img "check-circle" [ref=e29]:
+              - img [ref=e30]
+            - generic [ref=e32]: Workspace centralizado para QA, producto y coordinación
+          - generic [ref=e33]:
+            - img "check-circle" [ref=e34]:
+              - img [ref=e35]
+            - generic [ref=e37]: Starter gratis y Growth con IA, reportes avanzados y más capacidad
+      - generic [ref=e38]:
+        - text: Lo que ganas
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]: Casos y ejecuciones
+            - generic [ref=e42]: más conectados
+          - generic [ref=e43]:
+            - generic [ref=e44]: Bugs y cobertura
+            - generic [ref=e45]: más claros
+          - generic [ref=e46]:
+            - generic [ref=e47]: Decisiones y reportes
+            - generic [ref=e48]: más rápidos
+    - generic [ref=e51]:
+      - radiogroup "segmented control" [ref=e53]:
+        - generic [ref=e54]:
+          - generic [ref=e55] [cursor=pointer]:
+            - radio "Ingresar" [checked]
+            - generic "Ingresar" [ref=e56]
+          - generic [ref=e57] [cursor=pointer]:
+            - radio "Registro"
+            - generic "Registro" [ref=e58]
+      - generic [ref=e59]:
+        - text: Acceso a QA Tracker
+        - heading "Inicia sesión" [level=2] [ref=e60]
+        - text: Usa tus credenciales para continuar con tu workspace.
+      - alert [ref=e61]:
+        - img "close-circle" [ref=e63]:
+          - img [ref=e64]
+        - generic [ref=e67]: Network Error
+      - generic [ref=e68]:
+        - generic [ref=e70]:
+          - generic "Correo o usuario" [ref=e72]: "* Correo o usuario"
+          - generic [ref=e76]:
+            - img "user" [ref=e78]:
+              - img [ref=e79]
+            - textbox "* Correo o usuario" [ref=e81]:
+              - /placeholder: tu-correo@empresa.com
+              - text: pw_00142851@mailinator.com
+        - generic [ref=e83]:
+          - generic "Contraseña" [ref=e85]: "* Contraseña"
+          - generic [ref=e89]:
+            - img "lock" [ref=e91]:
+              - img [ref=e92]
+            - textbox "* Contraseña" [ref=e94]:
+              - /placeholder: Tu contraseña segura
+              - text: Qa123456!
+            - img "eye-invisible" [ref=e96] [cursor=pointer]:
+              - img [ref=e97]
+        - button "Olvidé mi contraseña" [ref=e101] [cursor=pointer]:
+          - generic [ref=e102]: Olvidé mi contraseña
+        - button "Entrar a QA Tracker" [active] [ref=e103] [cursor=pointer]:
+          - generic [ref=e104]: Entrar a QA Tracker
+        - generic [ref=e105]:
+          - text: Al continuar aceptas los
+          - link "Términos" [ref=e106] [cursor=pointer]:
+            - /url: /terminos
+          - text: y la
+          - link "Política de Privacidad" [ref=e107] [cursor=pointer]:
+            - /url: /privacidad
+          - text: de QA Tracker.
+      - generic [ref=e108]: ¿Necesitas una cuenta? Cambia a Registro y crea tu organización en un solo paso.
+  - contentinfo [ref=e109]:
+    - generic [ref=e110]:
+      - generic [ref=e111]:
+        - generic [ref=e112]: QA Tracker
+        - text: Operación QA con trazabilidad, reportes técnicos e IA asistencial.
+      - navigation [ref=e113]:
+        - link "Términos" [ref=e114] [cursor=pointer]:
+          - /url: /terminos
+        - link "Privacidad" [ref=e115] [cursor=pointer]:
+          - /url: /privacidad
+        - link "Uso de IA" [ref=e116] [cursor=pointer]:
+          - /url: /uso-ia
+        - link "Contacto" [ref=e117] [cursor=pointer]:
+          - /url: https://wa.me/573103178526?text=Hola%2C%20tengo%20una%20consulta%20sobre%20QA%20Tracker%20y%20necesito%20ayuda.
+```

@@ -40,13 +40,13 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
 
     await page.goto(`/projects/${seed.projectKey}/dashboard`);
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-    const coverageCard = page.locator('.ant-card').filter({ hasText: 'Cobertura de casos' }).first();
+    const coverageCard = page.locator('.ant-card').filter({ hasText: 'Funcionalidades con casos' }).first();
     const bugsCard = page.locator('.ant-card').filter({ hasText: 'Bugs activos' }).first();
     const regressionCoverageCard = page
       .locator('.ant-card')
-      .filter({ hasText: 'Cobertura regression' })
+      .filter({ hasText: 'Alcance regresion' })
       .first();
-    const smokeCoverageCard = page.locator('.ant-card').filter({ hasText: 'Cobertura smoke' }).first();
+    const smokeCoverageCard = page.locator('.ant-card').filter({ hasText: 'Alcance smoke' }).first();
 
     await expect(coverageCard).toContainText('100.0%');
     await expect(bugsCard).toContainText('5');

@@ -3114,6 +3114,9 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
               }
             >
               <EvidenceRichEditorField
+                projectId={evidenceModalOpen ? selectedCycle?.projectId || projectId : undefined}
+                aiRecordId={currentExecution?.id}
+                aiContext={currentExecution?.functionalityName}
                 placeholder="Describe los hallazgos, errores encontrados o pasos realizados. Puedes usar emojis, pegar una captura o subir una imagen."
                 disabled={isCurrentExecutionReadOnly}
               />

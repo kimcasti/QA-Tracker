@@ -263,6 +263,23 @@ function SummaryMetricCard({ label, value, valueClassName, lgSpan = 5 }: Summary
   );
 }
 
+function FieldLabelWithHelp({ label, help }: { label: string; help: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 font-semibold text-slate-600">
+      {label}
+      <Tooltip title={help} trigger={['hover', 'focus', 'click']}>
+        <button
+          type="button"
+          aria-label={`Ayuda sobre ${label.toLowerCase()}`}
+          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border-0 bg-transparent p-0 text-slate-400 transition-colors hover:bg-sky-50 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        >
+          <InfoCircleOutlined className="text-xs" />
+        </button>
+      </Tooltip>
+    </span>
+  );
+}
+
 function FunctionalityEditorForm({
   form,
   moduleOptions,
@@ -442,7 +459,12 @@ function FunctionalityEditorForm({
         <Col span={12}>
           <Form.Item
             name="priority"
-            label={<span className="font-semibold text-slate-600">Prioridad</span>}
+            label={
+              <FieldLabelWithHelp
+                label="Prioridad"
+                help="Indica qué tan urgente es atender y probar esta funcionalidad. Una prioridad alta ayuda al equipo a enfocarse en ella primero."
+              />
+            }
             rules={[{ required: true }]}
           >
             <Select className="h-10 rounded-lg" options={priorityOptions} />
@@ -451,7 +473,12 @@ function FunctionalityEditorForm({
         <Col span={12}>
           <Form.Item
             name="impactLevel"
-            label={<span className="font-semibold text-slate-600">Impacto</span>}
+            label={
+              <FieldLabelWithHelp
+                label="Impacto"
+                help="Indica qué tan graves serían las consecuencias si esta funcionalidad falla. Elige alto si afecta procesos clave o a muchos usuarios."
+              />
+            }
             rules={[{ required: true }]}
           >
             <Select className="h-10 rounded-lg" options={impactOptions} />
@@ -463,7 +490,12 @@ function FunctionalityEditorForm({
         <Col span={12}>
           <Form.Item
             name="probabilityLevel"
-            label={<span className="font-semibold text-slate-600">Probabilidad</span>}
+            label={
+              <FieldLabelWithHelp
+                label="Probabilidad"
+                help="Estima qué tan probable es que esta funcionalidad falle. Considera cambios recientes, su complejidad y errores anteriores."
+              />
+            }
             rules={[{ required: true }]}
           >
             <Select className="h-10 rounded-lg" options={probabilityOptions} />
