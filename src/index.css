@@ -232,6 +232,31 @@
   gap: 8px;
 }
 
+.qa-test-case-table .ant-table {
+  overflow: hidden;
+  border: 1px solid var(--qa-color-border, #d9e5ef);
+  border-radius: 12px;
+}
+
+.qa-test-case-table .ant-table-thead > tr > th {
+  background: color-mix(in srgb, var(--qa-color-primary, #0b78d1) 9%, white);
+  color: var(--qa-color-text, #102a43);
+  font-weight: 600;
+}
+
+.qa-test-case-table .ant-table-tbody > tr > td {
+  transition: background-color 160ms ease;
+}
+
+.qa-test-case-table .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--qa-color-primary, #0b78d1) 7%, white) !important;
+}
+
+.qa-test-case-table .ant-table-tbody > .qa-test-case-table__dragging-row > td {
+  background: color-mix(in srgb, var(--qa-color-primary, #0b78d1) 12%, white) !important;
+  opacity: 0.72;
+}
+
 @media (max-width: 900px) {
   .qa-test-case-management-card .ant-card-head-wrapper {
     flex-wrap: wrap;

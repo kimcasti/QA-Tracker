@@ -1,6 +1,5 @@
 import { App as AntdApp, Layout, Menu, Button, Typography, Spin } from 'antd';
 import {
-  DatabaseOutlined,
   CheckCircleOutlined,
   SettingOutlined,
   AppstoreOutlined,
@@ -17,6 +16,7 @@ import {
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { ClipboardList, ListTree } from 'lucide-react';
 import { useAuthSession } from './modules/auth/context/AuthSessionProvider';
 import { UserMenu } from './components/UserMenu';
 import { WhatsAppSupportButton } from './components/WhatsAppSupportButton';
@@ -388,10 +388,14 @@ function WorkspaceApp({
     () =>
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
-        { key: 'functionalities', icon: <DatabaseOutlined />, label: t('nav.functionalities') },
+        {
+          key: 'functionalities',
+          icon: <ListTree size={16} strokeWidth={1.8} />,
+          label: t('nav.functionalities'),
+        },
         {
           key: 'qa_planning',
-          icon: <SafetyCertificateOutlined />,
+          icon: <ClipboardList size={16} strokeWidth={1.8} />,
           label: 'Estrategia QA',
         },
         { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },

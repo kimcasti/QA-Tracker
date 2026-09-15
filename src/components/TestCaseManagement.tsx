@@ -12,10 +12,11 @@ import {
   Card,
   Typography,
   message,
-  Popconfirm,
   Tooltip,
   Alert,
   List,
+  Tabs,
+  Dropdown,
 } from 'antd';
 import {
   PlusOutlined,
@@ -32,6 +33,10 @@ import {
   DownOutlined,
   RightOutlined,
   InfoCircleOutlined,
+  SearchOutlined,
+  MoreOutlined,
+  HolderOutlined,
+  CheckCircleFilled,
 } from '@ant-design/icons';
 import {
   AutomationResultStatus,
@@ -277,7 +282,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     AutomationResultStatus | 'all'
   >('all');
   const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
-  const [isAutomationTraceExpanded, setIsAutomationTraceExpanded] = useState(false);
+  const [testCaseSearch, setTestCaseSearch] = useState('');
   const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(true);
   const [form] = Form.useForm();
   const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
@@ -380,6 +385,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     };
   }, [visibleTestCases]);
   const filteredTestCases = useMemo(() => {
+    const normalizedSearch = testCaseSearch.trim().toLocaleLowerCase();
+
     return visibleTestCases.filter(testCase => {
       const status = deriveAutomationStatus(testCase);
 
@@ -402,9 +409,21 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       const matchesTool =
         automationToolFilter === 'all' ? true : testCase.automationTool === automationToolFilter;
 
-      return matchesStatus && matchesResult && matchesTool;
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        [testCase.title, testCase.id, testCase.automationReference]
+          .filter(Boolean)
+          .some(value => String(value).toLocaleLowerCase().includes(normalizedSearch));
+
+      return matchesStatus && matchesResult && matchesTool && matchesSearch;
     });
-  }, [automationFilter, automationResultFilter, automationToolFilter, visibleTestCases]);
+  }, [
+    automationFilter,
+    automationResultFilter,
+    automationToolFilter,
+    testCaseSearch,
+    visibleTestCases,
+  ]);
   const loadErrorMessage = isError ? toApiError(error).message : '';
   const generateAiButtonLabel = isGenerating
     ? 'Generando con IA...'
@@ -765,7 +784,53 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     }
   };
 
+  const handleTableRowDrop = async (targetTestCaseId: string) => {
+    const sourceTestCaseId = draggedReorderTestCaseId;
+    setDraggedReorderTestCaseId(null);
+
+    if (!sourceTestCaseId || sourceTestCaseId === targetTestCaseId) return;
+
+    const sourceIndex = visibleTestCases.findIndex(testCase => testCase.id === sourceTestCaseId);
+    const targetIndex = visibleTestCases.findIndex(testCase => testCase.id === targetTestCaseId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const reorderedTestCases = moveTestCase(visibleTestCases, sourceIndex, targetIndex);
+    const originalById = new Map(visibleTestCases.map(testCase => [testCase.id, testCase]));
+    const changedTestCases = reorderedTestCases.filter(
+      testCase => originalById.get(testCase.id)?.sortOrder !== testCase.sortOrder,
+    );
+    await handlePersistReorder(changedTestCases);
+  };
+
   const columns = [
+    {
+      title: '',
+      key: 'drag-handle',
+      width: 36,
+      align: 'center' as const,
+      render: (_: unknown, record: TestCase) => (
+        <Tooltip title={isViewer ? undefined : 'Arrastrar para ordenar'}>
+          <span
+            draggable={!isViewer && !isReordering}
+            aria-label="Arrastrar caso de prueba"
+            className={`inline-flex h-7 w-7 items-center justify-center text-slate-400 ${
+              isViewer || isReordering
+                ? 'cursor-default opacity-50'
+                : 'cursor-grab hover:text-slate-600 active:cursor-grabbing'
+            }`}
+            onDragStart={event => {
+              setDraggedReorderTestCaseId(record.id);
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', record.id);
+            }}
+            onDragEnd={() => setDraggedReorderTestCaseId(null)}
+          >
+            <HolderOutlined />
+          </span>
+        </Tooltip>
+      ),
+    },
+    Table.EXPAND_COLUMN,
     {
       title: 'Título',
       dataIndex: 'title',
@@ -807,68 +872,69 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     {
       title: 'Acciones',
       key: 'actions',
-      width: 190,
+      width: 120,
       align: 'center' as const,
       render: (_: any, record: TestCase) => (
         <div className="flex flex-nowrap items-center justify-center gap-1">
           {!isViewer ? (
             <>
-              <Tooltip title="Mover arriba">
+              <Tooltip title="Editar caso de prueba">
                 <Button
                   size="small"
                   type="text"
-                  icon={<ArrowUpOutlined />}
-                  onClick={() => void handleMoveTestCase(record.id, 'up')}
-                  disabled={
-                    isReordering || visibleTestCases.findIndex(item => item.id === record.id) === 0
-                  }
-                  className="!px-1"
+                  icon={<EditOutlined />}
+                  onClick={() => openCaseForm(record)}
                 />
               </Tooltip>
-              <Tooltip title="Mover abajo">
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<ArrowDownOutlined />}
-                  onClick={() => void handleMoveTestCase(record.id, 'down')}
-                  disabled={
-                    isReordering ||
-                    visibleTestCases.findIndex(item => item.id === record.id) ===
-                      visibleTestCases.length - 1
-                  }
-                  className="!px-1"
-                />
-              </Tooltip>
-              <Button
-                size="small"
-                type="text"
-                icon={<EditOutlined />}
-                onClick={() => openCaseForm(record)}
-                className="!px-1"
-              />
-              <Tooltip title="Duplicar caso de prueba">
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<CopyOutlined />}
-                  onClick={() => handleDuplicate(record)}
-                  className="!px-1"
-                />
-              </Tooltip>
-              <Popconfirm
-                title="¿Estás seguro de eliminar este caso de prueba?"
-                onConfirm={() => handleDelete(record.id)}
-                okText="Sí"
-                cancelText="No"
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
+                menu={{
+                  items: [
+                    { key: 'duplicate', icon: <CopyOutlined />, label: 'Duplicar' },
+                    {
+                      key: 'move-up',
+                      icon: <ArrowUpOutlined />,
+                      label: 'Mover arriba',
+                      disabled:
+                        isReordering ||
+                        visibleTestCases.findIndex(item => item.id === record.id) === 0,
+                    },
+                    {
+                      key: 'move-down',
+                      icon: <ArrowDownOutlined />,
+                      label: 'Mover abajo',
+                      disabled:
+                        isReordering ||
+                        visibleTestCases.findIndex(item => item.id === record.id) ===
+                          visibleTestCases.length - 1,
+                    },
+                    { type: 'divider' },
+                    { key: 'delete', icon: <DeleteOutlined />, label: 'Eliminar', danger: true },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'duplicate') handleDuplicate(record);
+                    if (key === 'move-up') void handleMoveTestCase(record.id, 'up');
+                    if (key === 'move-down') void handleMoveTestCase(record.id, 'down');
+                    if (key === 'delete') {
+                      Modal.confirm({
+                        title: '¿Eliminar este caso de prueba?',
+                        content: 'Esta acción no se puede deshacer.',
+                        okText: 'Eliminar',
+                        okButtonProps: { danger: true },
+                        cancelText: 'Cancelar',
+                        onOk: () => handleDelete(record.id),
+                      });
+                    }
+                  },
+                }}
               >
                 <Button
                   size="small"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  className="!px-1"
+                  aria-label="Más acciones"
+                  icon={<MoreOutlined />}
                 />
-              </Popconfirm>
+              </Dropdown>
             </>
           ) : null}
         </div>
@@ -882,13 +948,20 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         <div className="qa-test-case-management-header">
           <div className="qa-test-case-management-header__title">
             <FileTextOutlined className="shrink-0" />
-            <Tooltip title={`Casos de Prueba - ${functionalityName}`}>
-              <span className="qa-test-case-management-header__title-text">
-                {isCaseFormVisible
-                  ? `${editingTestCase ? 'Editar' : 'Nuevo'} Caso de Prueba - ${functionalityName}`
-                  : `Casos de Prueba - ${functionalityName}`}
-              </span>
-            </Tooltip>
+            <div className="min-w-0">
+              <Tooltip title={`Casos de prueba · ${functionalityName}`}>
+                <span className="qa-test-case-management-header__title-text">
+                  {isCaseFormVisible
+                    ? `${editingTestCase ? 'Editar' : 'Nuevo'} caso de prueba · ${functionalityName}`
+                    : `Casos de prueba · ${functionalityName}`}
+                </span>
+              </Tooltip>
+              {!isCaseFormVisible ? (
+                <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                  {visibleTestCases.length} caso{visibleTestCases.length === 1 ? '' : 's'}
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="qa-test-case-management-header__actions">
             {isCaseFormVisible ? (
@@ -914,7 +987,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                   </Button>
                 ) : null}
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openCaseForm()}>
-                  Nuevo Caso de Prueba
+                  Nuevo caso de prueba
                 </Button>
               </>
             ) : null}
@@ -967,210 +1040,325 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         />
       </div>
 
-      <Card
-        size="small"
-        title="Filtros de automatización"
-        className="rounded-2xl border-slate-100 shadow-none [&_.ant-card-head]:border-slate-100"
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div>
-            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
-              Estado
-            </Text>
-            <Select
-              className="w-full"
-              value={automationFilter}
-              options={automationFilterOptions.map(option => ({
-                label: option.label,
-                value: option.value,
-              }))}
-              onChange={value => {
-                setAutomationFilter(value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div>
-            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
-              Último resultado
-            </Text>
-            <Select
-              className="w-full"
-              value={automationResultFilter}
-              options={[
-                { label: 'Todos', value: 'all' },
-                ...automationResultStatusOptions.map(option => ({
-                  label: option,
-                  value: option,
-                })),
-              ]}
-              onChange={value => {
-                setAutomationResultFilter(value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div>
-            <Text type="secondary" className="mb-2 block text-xs uppercase tracking-wide">
-              Herramienta
-            </Text>
-            <Select
-              className="w-full"
-              value={automationToolFilter}
-              options={[
-                { label: 'Todas', value: 'all' },
-                ...automationToolOptions.map(option => ({
-                  label: option,
-                  value: option,
-                })),
-              ]}
-              onChange={value => {
-                setAutomationToolFilter(value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div className="flex items-end">
-            <Button
-              className="w-full"
-              onClick={() => {
-                setAutomationFilter('all');
-                setAutomationResultFilter('all');
-                setAutomationToolFilter('all');
-                setCurrentPage(1);
-              }}
-            >
-              Limpiar filtros
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Tag color="blue">Visibles: {filteredTestCases.length}</Tag>
-          <Tag color="green">
-            Automatizadas:{' '}
-            {
-              filteredTestCases.filter(
-                item => deriveAutomationStatus(item) === AutomationStatus.AUTOMATED,
-              ).length
-            }
-          </Tag>
-          <Tag color="gold">
-            Candidatas:{' '}
-            {
-              filteredTestCases.filter(
-                item => deriveAutomationStatus(item) === AutomationStatus.CANDIDATE,
-              ).length
-            }
-          </Tag>
-          <Tag color="red">
-            Obsoletas:{' '}
-            {
-              filteredTestCases.filter(
-                item => deriveAutomationStatus(item) === AutomationStatus.OBSOLETE,
-              ).length
-            }
-          </Tag>
-        </div>
-      </Card>
-
-      <Card
-        size="small"
-        title={
-          <button
-            type="button"
-            onClick={() => setIsAutomationTraceExpanded(current => !current)}
-            className="flex w-full items-center justify-between text-left"
-          >
-            <span>Trazabilidad automatizada</span>
-            {isAutomationTraceExpanded ? <DownOutlined /> : <RightOutlined />}
-          </button>
-        }
-        className="mt-4 rounded-2xl border-slate-100 shadow-none [&_.ant-card-head]:border-slate-100"
-      >
-        {isAutomationTraceExpanded ? (
-          automationSummary.latestRunByTool.length > 0 ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {automationSummary.latestRunByTool.map(item => (
-                <div
-                  key={item.tool}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-slate-700">{item.tool}</span>
-                    <Tag color="blue">
-                      {item.totalCases} caso{item.totalCases === 1 ? '' : 's'}
-                    </Tag>
+      <Tabs
+        className="mt-1"
+        defaultActiveKey="test-cases"
+        items={[
+          {
+            key: 'test-cases',
+            label: 'Casos de prueba',
+            children: (
+              <>
+                <div className="mb-5 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1fr)_minmax(150px,0.55fr)_minmax(150px,0.55fr)_minmax(150px,0.55fr)_auto]">
+                    <Input
+                      size="small"
+                      allowClear
+                      prefix={<SearchOutlined className="text-slate-400" />}
+                      placeholder="Buscar caso de prueba"
+                      value={testCaseSearch}
+                      onChange={event => {
+                        setTestCaseSearch(event.target.value);
+                        setCurrentPage(1);
+                      }}
+                    />
+                    <Select
+                      size="small"
+                      className="w-full"
+                      value={automationFilter}
+                      options={automationFilterOptions.map(option => ({
+                        label: `Estado: ${option.label}`,
+                        value: option.value,
+                      }))}
+                      onChange={value => {
+                        setAutomationFilter(value);
+                        setCurrentPage(1);
+                      }}
+                    />
+                    <Select
+                      size="small"
+                      className="w-full"
+                      value={automationResultFilter}
+                      options={[
+                        { label: 'Resultado: Todos', value: 'all' },
+                        ...automationResultStatusOptions.map(option => ({
+                          label: `Resultado: ${option}`,
+                          value: option,
+                        })),
+                      ]}
+                      onChange={value => {
+                        setAutomationResultFilter(value);
+                        setCurrentPage(1);
+                      }}
+                    />
+                    <Select
+                      size="small"
+                      className="w-full"
+                      value={automationToolFilter}
+                      options={[
+                        { label: 'Herramienta: Todas', value: 'all' },
+                        ...automationToolOptions.map(option => ({
+                          label: `Herramienta: ${option}`,
+                          value: option,
+                        })),
+                      ]}
+                      onChange={value => {
+                        setAutomationToolFilter(value);
+                        setCurrentPage(1);
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      className="w-full xl:w-auto"
+                      disabled={
+                        testCaseSearch.length === 0 &&
+                        automationFilter === 'all' &&
+                        automationResultFilter === 'all' &&
+                        automationToolFilter === 'all'
+                      }
+                      onClick={() => {
+                        setTestCaseSearch('');
+                        setAutomationFilter('all');
+                        setAutomationResultFilter('all');
+                        setAutomationToolFilter('all');
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Limpiar filtros
+                    </Button>
                   </div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    {item.latestCase ? (
-                      <>
-                        <div>
-                          Ultima ejecucion:{' '}
-                          {formatAutomationRunAt(item.latestCase.lastAutomationRunAt)}
-                        </div>
-                        <div className="mt-1">Caso: {item.latestCase.title}</div>
-                      </>
-                    ) : (
-                      <div>Sin ejecuciones importadas aun.</div>
-                    )}
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      {
+                        key: 'all' as const,
+                        label: 'Todos',
+                        count: automationSummary.total,
+                        activeClassName: 'border-blue-200 bg-blue-50 text-blue-700',
+                        dotClassName: 'border-blue-500',
+                      },
+                      {
+                        key: 'automated' as const,
+                        label: 'Automatizados',
+                        count: automationSummary.byStatus.automated,
+                        activeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                        dotClassName: 'border-emerald-500',
+                      },
+                      {
+                        key: 'candidate' as const,
+                        label: 'Candidatos',
+                        count: automationSummary.byStatus.candidate,
+                        activeClassName: 'border-amber-200 bg-amber-50 text-amber-700',
+                        dotClassName: 'border-amber-500',
+                      },
+                      {
+                        key: 'obsolete' as const,
+                        label: 'Obsoletos',
+                        count: automationSummary.byStatus.obsolete,
+                        activeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
+                        dotClassName: 'border-rose-500',
+                      },
+                    ].map(option => {
+                      const isActive = automationFilter === option.key;
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => {
+                            setAutomationFilter(option.key);
+                            setCurrentPage(1);
+                          }}
+                          className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                            isActive
+                              ? option.activeClassName
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {isActive ? (
+                            <CheckCircleFilled />
+                          ) : (
+                            <span className={`h-3 w-3 rounded-full border ${option.dotClassName}`} />
+                          )}
+                          <span>{option.label}</span>
+                          <span>{option.count}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {item.latestCase?.lastAutomationStatus ? (
-                    <div className="mt-2">
-                      <Tag color={getAutomationResultColor(item.latestCase.lastAutomationStatus)}>
-                        {item.latestCase.lastAutomationStatus}
-                      </Tag>
-                    </div>
-                  ) : null}
                 </div>
-              ))}
-            </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-              <div className="mb-3 text-sm font-semibold text-slate-700">
-                Historial resumido por caso automatizado
-              </div>
-              <div className="space-y-2">
-                {automationSummary.historicalAutomationCases.slice(0, 5).map(testCase => (
-                  <div
-                    key={testCase.id}
-                    className="flex flex-col gap-2 rounded-xl border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-slate-700">{testCase.title}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span>{testCase.automationTool || 'Sin herramienta'}</span>
-                        <span>{testCase.automationReference || 'Sin referencia'}</span>
+                {isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    className="mb-4"
+                    message="No pudimos cargar los casos de prueba en este momento."
+                    description={
+                      loadErrorMessage
+                        ? `${loadErrorMessage} Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.`
+                        : 'Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.'
+                    }
+                    action={
+                      <Button size="small" onClick={() => void refetch()} loading={isFetching}>
+                        Reintentar
+                      </Button>
+                    }
+                  />
+                ) : null}
+
+                <Table
+                  key={`${testCaseSearch}-${automationFilter}-${automationResultFilter}-${automationToolFilter}-${filteredTestCases.length}`}
+                  className="qa-test-case-table"
+                  columns={columns}
+                  dataSource={filteredTestCases}
+                  rowKey="id"
+                  rowClassName={record =>
+                    draggedReorderTestCaseId === record.id ? 'qa-test-case-table__dragging-row' : ''
+                  }
+                  onRow={record => ({
+                    onDragOver: event => {
+                      if (!isViewer && draggedReorderTestCaseId) event.preventDefault();
+                    },
+                    onDrop: event => {
+                      event.preventDefault();
+                      if (!isViewer) void handleTableRowDrop(record.id);
+                    },
+                  })}
+                  loading={
+                    isLoading || isReordering || (isFetching && visibleTestCases.length === 0)
+                  }
+                  pagination={{
+                    current: currentPage,
+                    pageSize,
+                    total: filteredTestCases.length,
+                    showTotal: total => `${total} caso${total === 1 ? '' : 's'}`,
+                    onChange: (page, nextPageSize) => {
+                      setCurrentPage(page);
+                      if (typeof nextPageSize === 'number' && nextPageSize !== pageSize) {
+                        setPageSize(nextPageSize);
+                      }
+                    },
+                  }}
+                  locale={{
+                    emptyText: isError
+                      ? 'No se pudieron cargar los casos de prueba.'
+                      : 'Aún no hay casos de prueba registrados para esta funcionalidad.',
+                  }}
+                  expandable={{
+                    expandedRowRender: record => (
+                      <div className="rounded-lg bg-gray-50 p-4">
+                        <div className="mb-4">
+                          <Text strong>Descripción:</Text>
+                          {renderRichTextContent(record.description)}
+                        </div>
+                        <div className="mb-4">
+                          <Text strong>Precondiciones:</Text>
+                          {renderRichTextContent(record.preconditions)}
+                        </div>
+                        <div className="mb-4">
+                          <Text strong>Pasos de Prueba:</Text>
+                          {renderRichTextContent(record.testSteps)}
+                        </div>
+                        <div>
+                          <Text strong>Resultado Esperado:</Text>
+                          {renderRichTextContent(record.expectedResult)}
+                        </div>
                       </div>
+                    ),
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'automation-traceability',
+            label: 'Trazabilidad automatizada',
+            children:
+              automationSummary.latestRunByTool.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {automationSummary.latestRunByTool.map(item => (
+                      <div
+                        key={item.tool}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-slate-700">{item.tool}</span>
+                          <Tag color="blue">
+                            {item.totalCases} caso{item.totalCases === 1 ? '' : 's'}
+                          </Tag>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {item.latestCase ? (
+                            <>
+                              <div>
+                                Ultima ejecucion:{' '}
+                                {formatAutomationRunAt(item.latestCase.lastAutomationRunAt)}
+                              </div>
+                              <div className="mt-1">Caso: {item.latestCase.title}</div>
+                            </>
+                          ) : (
+                            <div>Sin ejecuciones importadas aun.</div>
+                          )}
+                        </div>
+                        {item.latestCase?.lastAutomationStatus ? (
+                          <div className="mt-2">
+                            <Tag
+                              color={getAutomationResultColor(item.latestCase.lastAutomationStatus)}
+                            >
+                              {item.latestCase.lastAutomationStatus}
+                            </Tag>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+                    <div className="mb-3 text-sm font-semibold text-slate-700">
+                      Historial resumido por caso automatizado
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {testCase.lastAutomationStatus ? (
-                        <Tag color={getAutomationResultColor(testCase.lastAutomationStatus)}>
-                          {testCase.lastAutomationStatus}
-                        </Tag>
-                      ) : (
-                        <Tag>Sin resultado</Tag>
-                      )}
-                      <Tag color="default">
-                        {formatAutomationRunAt(testCase.lastAutomationRunAt)}
-                      </Tag>
+                    <div className="space-y-2">
+                      {automationSummary.historicalAutomationCases.slice(0, 5).map(testCase => (
+                        <div
+                          key={testCase.id}
+                          className="flex flex-col gap-2 rounded-xl border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div>
+                            <div className="text-sm font-medium text-slate-700">
+                              {testCase.title}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                              <span>{testCase.automationTool || 'Sin herramienta'}</span>
+                              <span>{testCase.automationReference || 'Sin referencia'}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {testCase.lastAutomationStatus ? (
+                              <Tag color={getAutomationResultColor(testCase.lastAutomationStatus)}>
+                                {testCase.lastAutomationStatus}
+                              </Tag>
+                            ) : (
+                              <Tag>Sin resultado</Tag>
+                            )}
+                            <Tag color="default">
+                              {formatAutomationRunAt(testCase.lastAutomationRunAt)}
+                            </Tag>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-sm text-slate-500">
-            Aun no hay trazabilidad automatizada registrada para esta funcionalidad.
-          </div>
-          )
-        ) : null}
-      </Card>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Aun no hay trazabilidad automatizada registrada para esta funcionalidad.
+                </div>
+              ),
+          },
+        ]}
+      />
 
       <UpgradeModal
         open={isUpgradeModalOpen}
@@ -1181,73 +1369,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         description="Si quieres combinar trabajo manual con IA y más capacidad operativa, aquí puedes ver con claridad el siguiente paso."
         onUpgradeGrowth={() => handleUpgradeClick('test-case-upgrade-modal-growth')}
         onContactEnterprise={() => handleEnterpriseClick()}
-      />
-
-      {isError ? (
-        <Alert
-          type="error"
-          showIcon
-          className="mb-4"
-          message="No pudimos cargar los casos de prueba en este momento."
-          description={
-            loadErrorMessage
-              ? `${loadErrorMessage} Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.`
-              : 'Si ya habías registrado casos, esto puede ser un fallo temporal del backend y no una pérdida de datos.'
-          }
-          action={
-            <Button size="small" onClick={() => void refetch()} loading={isFetching}>
-              Reintentar
-            </Button>
-          }
-        />
-      ) : null}
-
-      <Table
-        key={`${automationFilter}-${automationResultFilter}-${automationToolFilter}-${filteredTestCases.length}`}
-        className="mt-2 qa-test-case-table"
-        columns={columns}
-        dataSource={filteredTestCases}
-        rowKey="id"
-        loading={isLoading || isReordering || (isFetching && visibleTestCases.length === 0)}
-        pagination={{
-          current: currentPage,
-          pageSize,
-          total: filteredTestCases.length,
-          showTotal: total => `${total} caso${total === 1 ? '' : 's'}`,
-          onChange: (page, nextPageSize) => {
-            setCurrentPage(page);
-            if (typeof nextPageSize === 'number' && nextPageSize !== pageSize) {
-              setPageSize(nextPageSize);
-            }
-          },
-        }}
-        locale={{
-          emptyText: isError
-            ? 'No se pudieron cargar los casos de prueba.'
-            : 'Aún no hay casos de prueba registrados para esta funcionalidad.',
-        }}
-        expandable={{
-          expandedRowRender: record => (
-            <div className="rounded-lg bg-gray-50 p-4">
-              <div className="mb-4">
-                <Text strong>Descripción:</Text>
-                {renderRichTextContent(record.description)}
-              </div>
-              <div className="mb-4">
-                <Text strong>Precondiciones:</Text>
-                {renderRichTextContent(record.preconditions)}
-              </div>
-              <div className="mb-4">
-                <Text strong>Pasos de Prueba:</Text>
-                {renderRichTextContent(record.testSteps)}
-              </div>
-              <div>
-                <Text strong>Resultado Esperado:</Text>
-                {renderRichTextContent(record.expectedResult)}
-              </div>
-            </div>
-          ),
-        }}
       />
 
       <Modal
@@ -1381,11 +1502,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                   <Form.Item
                     name="automationStatus"
                     label="Estado"
-                    className={
-                      effectiveAutomationStatus === AutomationStatus.NOT_AUTOMATED
-                        ? 'sm:col-span-2'
-                        : undefined
-                    }
+                    className="sm:col-span-1"
                     rules={[{ required: true, message: 'Selecciona el estado de automatización' }]}
                   >
                     <Select
