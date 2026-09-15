@@ -43,6 +43,8 @@ import {
   ArrowDownOutlined,
   ThunderboltOutlined,
   MoreOutlined,
+  ControlOutlined,
+  DownOutlined,
   MinusOutlined,
   LinkOutlined,
   StopOutlined,
@@ -3277,7 +3279,19 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     ? 'Guardar información'
     : 'Crear Ejecución de Pruebas';
 
-  const planningStepLabels = ['General', 'Alcance', 'Ambiente', 'Riesgos', 'Criterios', 'Resumen'];
+  const planningStepLabels = ['General', 'Alcance', 'Riesgos y criterios', 'Ambiente', 'Resumen'];
+  const testRunModalLayout: React.ComponentProps<typeof Modal> = {
+    width: '92vw',
+    centered: true,
+    style: { top: 0, margin: '0 auto', paddingBottom: 0, maxWidth: 1680 },
+    styles: {
+      wrapper: { overflow: 'hidden' },
+      container: { height: '92dvh', display: 'flex', flexDirection: 'column', borderRadius: 20, overflow: 'hidden' },
+      header: { flexShrink: 0 },
+      body: { display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' },
+      footer: { flexShrink: 0 },
+    },
+  };
   const testRunModalHeading = <span className="text-xl font-bold text-slate-800">{testRunModalTitle}</span>;
 
   const validatePlanningStep = async (step: number) => {
@@ -3311,7 +3325,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       {planningStep > 0 && (
         <Button onClick={() => goToPlanningStep(planningStep - 1)} disabled={isSubmittingTestRun}>Anterior</Button>
       )}
-      {planningStep < 5 ? (
+      {planningStep < planningStepLabels.length - 1 ? (
         <Button type="primary" disabled={isSubmittingTestRun} onClick={async () => {
           if (await validatePlanningStep(planningStep)) goToPlanningStep(planningStep + 1);
         }}>Siguiente</Button>
@@ -3326,6 +3340,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const testRunPlanningFormContent = (
     <Form
       form={form}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
       layout="vertical"
       preserve
       disabled={isSubmittingTestRun || isViewer}
@@ -3340,16 +3355,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         priority: Priority.MEDIUM,
       }}
     >
-      <div ref={planningHeadingRef} tabIndex={-1} aria-label={`Paso ${planningStep + 1}: ${planningStepLabels[planningStep]}`} className="mb-4 outline-none">
+      <div ref={planningHeadingRef} tabIndex={-1} aria-label={`Paso ${planningStep + 1}: ${planningStepLabels[planningStep]}`} className="mb-4 shrink-0 overflow-x-auto outline-none">
         <Steps
           current={planningStep}
           size="small"
-          responsive
+          responsive={false}
           onChange={step => { if (!isSubmittingTestRun && step < planningStep) goToPlanningStep(step); }}
           items={planningStepLabels.map((title, index) => ({ title, disabled: isSubmittingTestRun || index > planningStep }))}
         />
       </div>
-      <div ref={planningScrollRef} className="max-h-[60vh] overflow-y-auto pr-2">
+      <div ref={planningScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-2">
         <div hidden={planningStep !== 0}>
         <PlanningSectionCard
           step="1"
@@ -3648,7 +3663,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 ) : null}
               </div>
 
-              <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 {Object.entries(groupedFunctionalities).map(([moduleName, funcs]) => {
                   const moduleFuncIds = funcs.map(f => f.id);
                   const executableFuncIds = funcs
@@ -3907,8 +3922,32 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </div>
 
         <div hidden={planningStep !== 2}>
+          <PlanningSectionCard
+            step="3"
+            title="Riesgos y criterios de salida"
+            subtitle="Opcional. Identifica los riesgos y define las condiciones para cerrar esta ejecución."
+          >
+          <Form.Item name="identifiedRisks" label="Riesgos de esta ejecución">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Selecciona uno o más riesgos"
+              className="w-full rounded-lg"
+              options={EXECUTION_RISK_OPTIONS}
+            />
+          </Form.Item>
+          <Form.Item name="exitCriteria" label="Checklist de cierre">
+            <Checkbox.Group
+              className="grid grid-cols-1 gap-3 md:grid-cols-2"
+              options={EXECUTION_EXIT_CRITERIA_OPTIONS}
+            />
+          </Form.Item>
+          </PlanningSectionCard>
+        </div>
+
+        <div hidden={planningStep !== 3}>
         <PlanningSectionCard
-          step="3"
+          step="4"
           title="Ambiente de ejecución"
           subtitle="Documenta el contexto técnico para reproducibilidad y trazabilidad."
         >
@@ -3967,41 +4006,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </PlanningSectionCard>
         </div>
 
-        <div hidden={planningStep !== 3}>
-        <PlanningSectionCard
-          step="4"
-          title="Riesgos identificados"
-          subtitle="Opcional por ahora. Ayuda a dejar explícito qué puede afectar esta ejecución."
-        >
-          <Form.Item name="identifiedRisks" label="Riesgos de esta ejecución">
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="Selecciona uno o más riesgos"
-              className="w-full rounded-lg"
-              options={EXECUTION_RISK_OPTIONS}
-            />
-          </Form.Item>
-        </PlanningSectionCard>
-        </div>
-
         <div hidden={planningStep !== 4}>
-        <PlanningSectionCard
-          step="5"
-          title="Criterios de salida"
-          subtitle="Opcional por ahora. Define cuándo esta ejecución puede considerarse cerrada."
-        >
-          <Form.Item name="exitCriteria" label="Checklist de cierre">
-            <Checkbox.Group
-              className="grid grid-cols-1 gap-3 md:grid-cols-2"
-              options={EXECUTION_EXIT_CRITERIA_OPTIONS}
-            />
-          </Form.Item>
-        </PlanningSectionCard>
-        </div>
-
-        <div hidden={planningStep !== 5}>
-          <PlanningSectionCard step="6" title="Resumen" subtitle="Revisa la información antes de confirmar.">
+          <PlanningSectionCard step="5" title="Resumen" subtitle="Revisa la información antes de confirmar.">
             <Form.Item noStyle shouldUpdate>
               {() => {
                 const values = form.getFieldsValue(true);
@@ -4454,6 +4460,39 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         value: moduleName,
       }));
 
+    const managementItems: MenuProps['items'] = [];
+    if (!isReadOnly && !isViewer) {
+      managementItems.push(
+        {
+          type: 'group',
+          key: 'configuration',
+          label: 'CONFIGURACIÓN',
+          children: [
+            { key: 'edit', label: 'Editar información', icon: <EditOutlined />, onClick: openEditTestRunModal },
+            { key: 'reorder', label: 'Ordenar casos', icon: <MenuOutlined />, onClick: openReorderModal },
+          ],
+        },
+        { type: 'divider' },
+        {
+          type: 'group',
+          key: 'automation',
+          label: 'AUTOMATIZACIÓN',
+          children: [
+            { key: 'import', label: 'Importar automatización', icon: <UploadOutlined />, onClick: () => setIsPlaywrightImportModalOpen(true) },
+          ],
+        },
+        { type: 'divider' },
+      );
+    }
+    managementItems.push({
+      type: 'group',
+      key: 'export',
+      label: 'EXPORTACIÓN',
+      children: [
+        { key: 'pdf', label: 'Descargar PDF', icon: <ExportOutlined />, onClick: () => void handleExportReport() },
+      ],
+    });
+
     return (
       <div className="space-y-6 pb-10">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -4485,6 +4524,30 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 {activeTestRun.environment ? ` • ${activeTestRun.environment}` : ''}
                 {activeTestRun.buildVersion ? ` • Build ${activeTestRun.buildVersion}` : ''}
               </Text>
+              {(activeTestRun.identifiedRisks?.length || activeTestRun.exitCriteria?.length) ? (
+                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                  {activeTestRun.identifiedRisks?.length ? (
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="shrink-0 text-slate-400">Riesgos:</span>
+                      <Tooltip title={activeTestRun.identifiedRisks.map(risk => executionRiskLabelByValue.get(risk) || risk).join(', ')}>
+                        <span tabIndex={0} className="max-w-[280px] truncate text-slate-600">
+                          {activeTestRun.identifiedRisks.map(risk => executionRiskLabelByValue.get(risk) || risk).join(', ')}
+                        </span>
+                      </Tooltip>
+                    </div>
+                  ) : null}
+                  {activeTestRun.exitCriteria?.length ? (
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="shrink-0 text-slate-400">Criterios:</span>
+                      <Tooltip title={activeTestRun.exitCriteria.map(criteria => executionExitCriteriaLabelByValue.get(criteria) || criteria).join(', ')}>
+                        <span tabIndex={0} className="max-w-[360px] truncate text-slate-600">
+                          {activeTestRun.exitCriteria.map(criteria => executionExitCriteriaLabelByValue.get(criteria) || criteria).join(', ')}
+                        </span>
+                      </Tooltip>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {(activeTestRun.browser ||
                 activeTestRun.deviceType ||
                 activeTestRun.operatingSystem) && (
@@ -4506,45 +4569,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       <span className="font-semibold text-slate-500">Sistema operativo:</span>{' '}
                       {activeTestRun.operatingSystem}
                     </Tag>
-                  )}
-                </div>
-              )}
-              {((activeTestRun.identifiedRisks && activeTestRun.identifiedRisks.length > 0) ||
-                (activeTestRun.exitCriteria && activeTestRun.exitCriteria.length > 0)) && (
-                <div className="mt-3 space-y-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3 shadow-sm">
-                  {activeTestRun.identifiedRisks && activeTestRun.identifiedRisks.length > 0 && (
-                    <div className="grid gap-2 md:grid-cols-[110px_minmax(0,1fr)] md:items-start">
-                      <span className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Riesgos
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {activeTestRun.identifiedRisks.map(risk => (
-                          <Tag
-                            key={risk}
-                            className="m-0 rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
-                          >
-                            {executionRiskLabelByValue.get(risk) || risk}
-                          </Tag>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {activeTestRun.exitCriteria && activeTestRun.exitCriteria.length > 0 && (
-                    <div className="grid gap-2 md:grid-cols-[110px_minmax(0,1fr)] md:items-start">
-                      <span className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Criterios
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {activeTestRun.exitCriteria.map(criteria => (
-                          <Tag
-                            key={criteria}
-                            className="m-0 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
-                          >
-                            {executionExitCriteriaLabelByValue.get(criteria) || criteria}
-                          </Tag>
-                        ))}
-                      </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -4575,38 +4599,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </div>
           </div>
           <Space wrap size="middle" className="w-full xl:w-auto xl:justify-end">
-            {!isReadOnly && !isViewer && (
-              <Button icon={<EditOutlined />} className="rounded-lg" onClick={openEditTestRunModal}>
-                Editar Info
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              menu={{ items: managementItems }}
+              overlayClassName="[&_.ant-dropdown-menu]:min-w-[280px] [&_.ant-dropdown-menu]:rounded-2xl [&_.ant-dropdown-menu]:p-2 [&_.ant-dropdown-menu-item]:rounded-lg [&_.ant-dropdown-menu-item-group-title]:text-xs [&_.ant-dropdown-menu-item-group-title]:font-semibold"
+            >
+              <Button icon={<ControlOutlined />} className="rounded-lg">
+                Gestionar <DownOutlined className="text-xs" />
               </Button>
-            )}
-            {!isReadOnly && !isViewer && (
-              <Button icon={<MenuOutlined />} className="rounded-lg" onClick={openReorderModal}>
-                Ordenar casos
-              </Button>
-            )}
-            <Button icon={<ExportOutlined />} onClick={handleExportReport} className="rounded-lg">
-              Descargar PDF
-            </Button>
-            {!isReadOnly && !isViewer && (
-              <Button
-                icon={<UploadOutlined />}
-                className="rounded-lg"
-                onClick={() => setIsPlaywrightImportModalOpen(true)}
-              >
-                Importar automatización
-              </Button>
-            )}
-            {!isReadOnly && !isViewer && (
-              <Button
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                onClick={handleExecuteAll}
-                className="rounded-lg bg-blue-600"
-              >
-                Execute All
-              </Button>
-            )}
+            </Dropdown>
           </Space>
         </div>
 
@@ -5160,11 +5162,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           closable={!isSubmittingTestRun}
           maskClosable={!isSubmittingTestRun}
           keyboard={!isSubmittingTestRun}
-          width={920}
-          centered
+          {...testRunModalLayout}
           footer={testRunModalFooter}
         >
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
             {isSubmittingTestRun && (
               <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
                 <Spin size="small" />
@@ -5954,11 +5955,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         closable={!isSubmittingTestRun}
         maskClosable={!isSubmittingTestRun}
         keyboard={!isSubmittingTestRun}
-        width={920}
-        centered
+        {...testRunModalLayout}
         footer={testRunModalFooter}
       >
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
           {isSubmittingTestRun && (
             <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
               <Spin size="small" />

@@ -28,7 +28,6 @@ import {
   ArrowLeftOutlined,
   ArrowDownOutlined,
   MenuOutlined,
-  RobotOutlined,
   DownOutlined,
   RightOutlined,
 } from '@ant-design/icons';
@@ -239,6 +238,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   >('all');
   const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
   const [isAutomationTraceExpanded, setIsAutomationTraceExpanded] = useState(false);
+  const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(false);
   const [form] = Form.useForm();
   const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
   const hasGeneratedCasesForCurrentFunctionality =
@@ -507,6 +507,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const openCaseForm = (testCase?: TestCase) => {
+    setIsAutomationSectionExpanded(false);
     if (testCase) {
       setEditingTestCase(testCase);
       form.setFieldsValue({
@@ -1342,12 +1343,32 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
               </Form.Item>
 
-              <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-4 flex items-center gap-2">
-                  <RobotOutlined className="text-slate-500" />
-                  <Text strong>Automatización</Text>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/50">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 rounded-xl p-4 text-left transition-colors hover:bg-blue-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
+                  aria-expanded={isAutomationSectionExpanded}
+                  aria-controls="test-case-automation-fields"
+                  onClick={() => setIsAutomationSectionExpanded(current => !current)}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                      <ThunderboltOutlined />
+                    </span>
+                    <Text strong className="text-blue-950">
+                      Automatización
+                    </Text>
+                  </span>
+                  {isAutomationSectionExpanded ? (
+                    <DownOutlined className="text-blue-600" />
+                  ) : (
+                    <RightOutlined className="text-blue-600" />
+                  )}
+                </button>
+                <div
+                  id="test-case-automation-fields"
+                  className={`${isAutomationSectionExpanded ? 'grid' : 'hidden'} grid-cols-2 gap-4 px-4 pb-4`}
+                >
                   <Form.Item
                     name="automationStatus"
                     label="Estado"
