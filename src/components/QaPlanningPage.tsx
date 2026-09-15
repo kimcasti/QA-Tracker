@@ -3757,11 +3757,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         onChange={setActivePlanningTab}
         renderTabBar={(tabBarProps, DefaultTabBar) => (
           <div className="mb-4 min-w-0">
-            <div className="flex min-w-0 items-center gap-6 overflow-x-auto border-b border-slate-200 pb-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 border-b border-slate-200 pb-2">
               <DefaultTabBar {...tabBarProps} style={{ margin: 0, flex: '0 0 auto' }} />
               <div
-                className="ml-auto flex items-center gap-2 [&>*]:shrink-0"
-                style={{ flexDirection: 'row', flexWrap: 'nowrap', flexShrink: 0 }}
+                className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 [&>*]:shrink-0"
               >
                   <Select
                     allowClear
