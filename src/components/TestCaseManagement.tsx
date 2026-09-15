@@ -30,6 +30,7 @@ import {
   MenuOutlined,
   DownOutlined,
   RightOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import {
   AutomationResultStatus,
@@ -121,6 +122,21 @@ function TestCaseRichTextEditorField(props: React.ComponentProps<typeof Evidence
     <Suspense fallback={<div className="py-3 text-sm text-slate-400">Cargando editor...</div>}>
       <EvidenceRichEditor {...props} showMarkers={false} showImageUpload={false} />
     </Suspense>
+  );
+}
+
+function InformativeLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{label}</span>
+      <Tooltip title={tooltip}>
+        <InfoCircleOutlined
+          aria-label={`Información sobre ${label}`}
+          className="cursor-help text-slate-400 hover:text-blue-600"
+          tabIndex={0}
+        />
+      </Tooltip>
+    </span>
   );
 }
 
@@ -238,7 +254,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   >('all');
   const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
   const [isAutomationTraceExpanded, setIsAutomationTraceExpanded] = useState(false);
-  const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(false);
+  const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(true);
   const [form] = Form.useForm();
   const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
   const hasGeneratedCasesForCurrentFunctionality =
@@ -507,7 +523,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const openCaseForm = (testCase?: TestCase) => {
-    setIsAutomationSectionExpanded(false);
+    setIsAutomationSectionExpanded(true);
     if (testCase) {
       setEditingTestCase(testCase);
       form.setFieldsValue({
@@ -873,7 +889,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
           </div>
         </div>
       }
-      className="qa-test-case-management-card shadow-sm"
+      className="qa-test-case-management-card shadow-none"
     >
       <div hidden={isCaseFormVisible}>
       <PlanBillingBanner
@@ -900,9 +916,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
       <div className="mb-4">
         <Alert
-          className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm"
+          className="rounded-2xl border-sky-100 bg-sky-50/70 shadow-none"
           type="info"
           showIcon
+          closable
           message="Utiliza plantillas para estandarizar tus casos de prueba."
           description="Las plantillas se configuran por módulo y permiten acelerar la creación de casos manteniendo consistencia entre funcionalidades."
         />
@@ -911,7 +928,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       <Card
         size="small"
         title="Filtros de automatización"
-        className="rounded-2xl border-slate-200 shadow-sm"
+        className="rounded-2xl border-slate-200 shadow-none"
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div>
@@ -1030,7 +1047,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             {isAutomationTraceExpanded ? <DownOutlined /> : <RightOutlined />}
           </button>
         }
-        className="mt-4 rounded-2xl border-slate-200 shadow-sm"
+        className="mt-4 rounded-2xl border-slate-200 shadow-none"
       >
         {isAutomationTraceExpanded ? (
           automationSummary.latestRunByTool.length > 0 ? (
@@ -1290,59 +1307,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             }}
           >
             <div className="grid grid-cols-2 gap-4">
-              <Form.Item
-                name="title"
-                label="Título"
-                rules={[{ required: true, message: 'Por favor ingresa el título' }]}
-                className="col-span-2"
-              >
-                <Input placeholder="Ej: Validar login con credenciales correctas" />
-              </Form.Item>
-
-              <Form.Item name="templateId" label="Plantilla" className="col-span-2">
-                <Select
-                  allowClear
-                  placeholder={
-                    templates.length > 0
-                      ? 'Selecciona una plantilla para autocompletar'
-                      : 'No hay plantillas para este módulo'
-                  }
-                  options={templates.map(template => ({
-                    label: template.name,
-                    value: template.id,
-                  }))}
-                  onChange={handleTemplateSelect}
-                />
-              </Form.Item>
-
-              <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
-                <Select>
-                  {Object.values(TestType).map(type => (
-                    <Select.Option key={type} value={type}>
-                      {type}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
-                <Select>
-                  {Object.values(Priority).map(priority => (
-                    <Select.Option key={priority} value={priority}>
-                      {labelPriority(priority, t)}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              <Form.Item name="description" label="Descripción" className="col-span-2">
-                <TestCaseRichTextEditorField placeholder="Descripción breve del objetivo de la prueba" />
-              </Form.Item>
-
-              <Form.Item name="isAutomated" valuePropName="checked" hidden>
-                <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
-              </Form.Item>
-
               <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/50">
                 <button
                   type="button"
@@ -1356,7 +1320,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                       <ThunderboltOutlined />
                     </span>
                     <Text strong className="text-blue-950">
-                      Automatización
+                      <InformativeLabel
+                        label="Automatización"
+                        tooltip="Define si el caso se automatizará o ya está automatizado, junto con la herramienta, el responsable y la referencia del script."
+                      />
                     </Text>
                   </span>
                   {isAutomationSectionExpanded ? (
@@ -1435,7 +1402,78 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 </div>
               </div>
 
-              <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
+              <Form.Item
+                name="title"
+                label="Título"
+                rules={[{ required: true, message: 'Por favor ingresa el título' }]}
+                className="col-span-2"
+              >
+                <Input placeholder="Ej: Validar login con credenciales correctas" />
+              </Form.Item>
+
+              <Form.Item name="templateId" label="Plantilla" className="col-span-2">
+                <Select
+                  allowClear
+                  placeholder={
+                    templates.length > 0
+                      ? 'Selecciona una plantilla para autocompletar'
+                      : 'No hay plantillas para este módulo'
+                  }
+                  options={templates.map(template => ({
+                    label: template.name,
+                    value: template.id,
+                  }))}
+                  onChange={handleTemplateSelect}
+                />
+              </Form.Item>
+
+              <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
+                <Select>
+                  {Object.values(TestType).map(type => (
+                    <Select.Option key={type} value={type}>
+                      {type}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>
+                <Select>
+                  {Object.values(Priority).map(priority => (
+                    <Select.Option key={priority} value={priority}>
+                      {labelPriority(priority, t)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              <Form.Item
+                name="description"
+                label={
+                  <InformativeLabel
+                    label="Descripción"
+                    tooltip="Resume el objetivo y el alcance del caso de prueba para que cualquier persona entienda qué se validará."
+                  />
+                }
+                className="col-span-2"
+              >
+                <TestCaseRichTextEditorField placeholder="Descripción breve del objetivo de la prueba" />
+              </Form.Item>
+
+              <Form.Item name="isAutomated" valuePropName="checked" hidden>
+                <Switch checkedChildren="Sí" unCheckedChildren="No" disabled={isViewer} />
+              </Form.Item>
+
+              <Form.Item
+                name="preconditions"
+                label={
+                  <InformativeLabel
+                    label="Precondiciones"
+                    tooltip="Indica los datos, permisos, configuraciones o estados que deben existir antes de iniciar la prueba."
+                  />
+                }
+                className="col-span-2"
+              >
                 <TestCaseRichTextEditorField
                   placeholder="Estado inicial requerido"
                   minHeightClassName="min-h-[96px]"
@@ -1444,7 +1482,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
               <Form.Item
                 name="testSteps"
-                label="Pasos de Prueba"
+                label={
+                  <InformativeLabel
+                    label="Pasos de Prueba"
+                    tooltip="Detalla, en orden, las acciones que debe ejecutar la persona responsable para reproducir la validación."
+                  />
+                }
                 rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
                 className="col-span-2"
               >
@@ -1456,7 +1499,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
               <Form.Item
                 name="expectedResult"
-                label="Resultado Esperado"
+                label={
+                  <InformativeLabel
+                    label="Resultado Esperado"
+                    tooltip="Describe el comportamiento observable que confirma que la prueba fue exitosa después de completar los pasos."
+                  />
+                }
                 rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
                 className="col-span-2"
               >

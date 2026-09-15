@@ -180,6 +180,12 @@
   gap: 12px;
 }
 
+.qa-test-case-modal .ant-modal-content,
+.qa-test-case-modal .ant-card,
+.qa-test-case-modal .ant-alert {
+  box-shadow: none !important;
+}
+
 .qa-test-case-management-card .ant-card-head-title {
   min-width: 0;
   width: 100%;

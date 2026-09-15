@@ -697,8 +697,8 @@ function WorkspaceApp({
     return (
       <>
         <Layout className="min-h-screen bg-slate-50">
-          <Header className="bg-white px-6 h-16 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-4">
+          <Header className="relative sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-100 bg-white px-6">
+            <div className="flex min-w-0 items-center gap-4">
               <Button
                 icon={<ArrowLeftOutlined />}
                 onClick={handleBackToProjects}
@@ -713,14 +713,26 @@ function WorkspaceApp({
                 />
                 <div className="flex flex-col leading-none">
                   <span className="font-bold text-slate-800">{qaBrand.name}</span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="max-w-[220px] truncate text-[11px] text-slate-500 lg:hidden">
                     {routedProject.name} - {routedProject.version}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 hidden w-[36vw] max-w-[620px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center text-center leading-none lg:flex">
+              <span
+                className="w-full truncate text-[18px] font-semibold leading-5 tracking-[-0.01em] text-slate-700"
+                title={routedProject.name}
+              >
+                {routedProject.name}
+              </span>
+              <span className="mt-1 text-[10px] font-medium uppercase leading-3 tracking-[0.14em] text-slate-400">
+                {routedProject.version}
+              </span>
+            </div>
+
+            <div className="relative z-10 flex items-center gap-4">
               <UserMenu
                 email={currentUser.email}
                 userDisplayName={userDisplayName}
