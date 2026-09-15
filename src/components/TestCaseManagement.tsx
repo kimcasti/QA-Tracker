@@ -24,6 +24,7 @@ import {
   FileTextOutlined,
   ThunderboltOutlined,
   CopyOutlined,
+  CloseOutlined,
   ArrowUpOutlined,
   ArrowLeftOutlined,
   ArrowDownOutlined,
@@ -66,6 +67,16 @@ const automationStatusOptions = Object.values(AutomationStatus);
 const automationTypeOptions = Object.values(AutomationType);
 const automationToolOptions = [...ACTIVE_AUTOMATION_TOOLS];
 const automationResultStatusOptions = Object.values(AutomationResultStatus);
+const automationStatusGuidance: Record<AutomationStatus, string> = {
+  [AutomationStatus.NOT_AUTOMATED]:
+    'Este caso se ejecutará manualmente. No necesitas completar datos de automatización.',
+  [AutomationStatus.CANDIDATE]:
+    'Este caso puede automatizarse. Define el tipo y, si ya se conoce, la persona responsable.',
+  [AutomationStatus.AUTOMATED]:
+    'Registra la herramienta y la referencia para vincular este caso con su script automatizado.',
+  [AutomationStatus.OBSOLETE]:
+    'La automatización ya no está vigente. Sus datos se muestran como referencia histórica.',
+};
 const automationFilterOptions = [
   { label: 'Todos', value: 'all' },
   { label: 'Automatizadas', value: 'automated' },
@@ -99,6 +110,17 @@ function getAutomationResultColor(status?: AutomationResultStatus) {
     case AutomationResultStatus.UNKNOWN:
     default:
       return 'default';
+  }
+}
+
+function getAutomationTypeLabel(type: AutomationType) {
+  switch (type) {
+    case AutomationType.INTEGRATION:
+      return 'Integración';
+    case AutomationType.PERFORMANCE:
+      return 'Rendimiento';
+    default:
+      return type;
   }
 }
 
@@ -211,6 +233,7 @@ interface TestCaseManagementProps {
   functionalityId: string;
   functionalityName: string;
   moduleName: string;
+  onClose?: () => void;
 }
 
 const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
@@ -218,6 +241,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   functionalityId,
   functionalityName,
   moduleName,
+  onClose,
 }) => {
   const { t } = useTranslation();
   const {
@@ -257,6 +281,14 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(true);
   const [form] = Form.useForm();
   const selectedAutomationStatus = Form.useWatch<AutomationStatus>('automationStatus', form);
+  const effectiveAutomationStatus =
+    selectedAutomationStatus || AutomationStatus.NOT_AUTOMATED;
+  const isAutomationCandidate = effectiveAutomationStatus === AutomationStatus.CANDIDATE;
+  const isAutomationConfigured = effectiveAutomationStatus === AutomationStatus.AUTOMATED;
+  const isAutomationObsolete = effectiveAutomationStatus === AutomationStatus.OBSOLETE;
+  const showAutomationPlanningFields =
+    isAutomationCandidate || isAutomationConfigured || isAutomationObsolete;
+  const showAutomationImplementationFields = isAutomationConfigured || isAutomationObsolete;
   const hasGeneratedCasesForCurrentFunctionality =
     generatedForFunctionalityId === functionalityId && (testCases?.length ?? 0) > 0;
   const isGenerateAiDisabled = isGenerating || hasGeneratedCasesForCurrentFunctionality;
@@ -886,6 +918,16 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 </Button>
               </>
             ) : null}
+            {onClose ? (
+              <Tooltip title="Cerrar casos de prueba">
+                <Button
+                  type="text"
+                  aria-label="Cerrar casos de prueba"
+                  icon={<CloseOutlined />}
+                  onClick={onClose}
+                />
+              </Tooltip>
+            ) : null}
           </div>
         </div>
       }
@@ -928,7 +970,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       <Card
         size="small"
         title="Filtros de automatización"
-        className="rounded-2xl border-slate-200 shadow-none"
+        className="rounded-2xl border-slate-100 shadow-none [&_.ant-card-head]:border-slate-100"
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div>
@@ -1047,7 +1089,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             {isAutomationTraceExpanded ? <DownOutlined /> : <RightOutlined />}
           </button>
         }
-        className="mt-4 rounded-2xl border-slate-200 shadow-none"
+        className="mt-4 rounded-2xl border-slate-100 shadow-none [&_.ant-card-head]:border-slate-100"
       >
         {isAutomationTraceExpanded ? (
           automationSummary.latestRunByTool.length > 0 ? (
@@ -1306,8 +1348,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               lastAutomationStatus: AutomationResultStatus.UNKNOWN,
             }}
           >
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/50">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/50 lg:col-span-2">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 rounded-xl p-4 text-left transition-colors hover:bg-blue-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
@@ -1334,11 +1376,16 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 </button>
                 <div
                   id="test-case-automation-fields"
-                  className={`${isAutomationSectionExpanded ? 'grid' : 'hidden'} grid-cols-2 gap-4 px-4 pb-4`}
+                  className={`${isAutomationSectionExpanded ? 'grid' : 'hidden'} grid-cols-1 gap-4 px-4 pb-4 sm:grid-cols-2`}
                 >
                   <Form.Item
                     name="automationStatus"
                     label="Estado"
+                    className={
+                      effectiveAutomationStatus === AutomationStatus.NOT_AUTOMATED
+                        ? 'sm:col-span-2'
+                        : undefined
+                    }
                     rules={[{ required: true, message: 'Selecciona el estado de automatización' }]}
                   >
                     <Select
@@ -1349,35 +1396,87 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     />
                   </Form.Item>
 
-                  <Form.Item name="automationType" label="Tipo de automatización">
-                    <Select
-                      allowClear
-                      options={automationTypeOptions.map(option => ({
-                        label: option,
-                        value: option,
-                      }))}
-                    />
-                  </Form.Item>
+                  {showAutomationPlanningFields ? (
+                    <Form.Item name="automationType" label="Tipo de automatización">
+                      <Select
+                        allowClear
+                        disabled={isAutomationObsolete}
+                        placeholder="Selecciona el tipo"
+                        options={automationTypeOptions.map(option => ({
+                          label: getAutomationTypeLabel(option),
+                          value: option,
+                        }))}
+                      />
+                    </Form.Item>
+                  ) : null}
 
-                  <Form.Item name="automationTool" label="Herramienta">
-                    <Select
-                      allowClear
-                      options={automationToolOptions.map(option => ({
-                        label: option,
-                        value: option,
-                      }))}
-                    />
-                  </Form.Item>
+                  <Alert
+                    className="sm:col-span-2"
+                    showIcon
+                    type={isAutomationObsolete ? 'warning' : 'info'}
+                    message={automationStatusGuidance[effectiveAutomationStatus]}
+                  />
 
-                  <Form.Item name="automationOwner" label="Responsable">
-                    <Input placeholder="Ej: Equipo de automatización QA" />
-                  </Form.Item>
+                  {showAutomationImplementationFields ? (
+                    <Form.Item
+                      name="automationTool"
+                      label="Herramienta"
+                      rules={
+                        isAutomationConfigured
+                          ? [{ required: true, message: 'Selecciona la herramienta utilizada' }]
+                          : undefined
+                      }
+                    >
+                      <Select
+                        allowClear
+                        disabled={isAutomationObsolete}
+                        placeholder="Selecciona la herramienta"
+                        options={automationToolOptions.map(option => ({
+                          label: option,
+                          value: option,
+                        }))}
+                      />
+                    </Form.Item>
+                  ) : null}
 
-                  <Form.Item name="automationReference" label="Referencia" className="col-span-2">
-                    <Input placeholder="Ej: tests/auth/login.spec.ts o AUTH-LOGIN-001" />
-                  </Form.Item>
+                  {showAutomationPlanningFields ? (
+                    <Form.Item
+                      name="automationOwner"
+                      label="Responsable"
+                      className={isAutomationCandidate ? 'sm:col-span-2' : undefined}
+                    >
+                      <Input
+                        disabled={isAutomationObsolete}
+                        placeholder="Ej: Equipo de automatización QA"
+                      />
+                    </Form.Item>
+                  ) : null}
 
-                  {selectedAutomationStatus === AutomationStatus.AUTOMATED ? (
+                  {showAutomationImplementationFields ? (
+                    <Form.Item
+                      name="automationReference"
+                      label="Referencia"
+                      className="sm:col-span-2"
+                      rules={
+                        isAutomationConfigured
+                          ? [
+                              {
+                                required: true,
+                                whitespace: true,
+                                message: 'Ingresa la ruta o identificador del script',
+                              },
+                            ]
+                          : undefined
+                      }
+                    >
+                      <Input
+                        disabled={isAutomationObsolete}
+                        placeholder="Ej: tests/auth/login.spec.ts o AUTH-LOGIN-001"
+                      />
+                    </Form.Item>
+                  ) : null}
+
+                  {isAutomationConfigured ? (
                     <>
                       <Form.Item name="lastAutomationStatus" label="Último resultado">
                         <Select
@@ -1406,12 +1505,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 name="title"
                 label="Título"
                 rules={[{ required: true, message: 'Por favor ingresa el título' }]}
-                className="col-span-2"
               >
                 <Input placeholder="Ej: Validar login con credenciales correctas" />
               </Form.Item>
 
-              <Form.Item name="templateId" label="Plantilla" className="col-span-2">
+              <Form.Item name="templateId" label="Plantilla">
                 <Select
                   allowClear
                   placeholder={
@@ -1455,9 +1553,11 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     tooltip="Resume el objetivo y el alcance del caso de prueba para que cualquier persona entienda qué se validará."
                   />
                 }
-                className="col-span-2"
               >
-                <TestCaseRichTextEditorField placeholder="Descripción breve del objetivo de la prueba" />
+                <TestCaseRichTextEditorField
+                  placeholder="Descripción breve del objetivo de la prueba"
+                  minHeightClassName="min-h-[160px]"
+                />
               </Form.Item>
 
               <Form.Item name="isAutomated" valuePropName="checked" hidden>
@@ -1472,11 +1572,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     tooltip="Indica los datos, permisos, configuraciones o estados que deben existir antes de iniciar la prueba."
                   />
                 }
-                className="col-span-2"
               >
                 <TestCaseRichTextEditorField
                   placeholder="Estado inicial requerido"
-                  minHeightClassName="min-h-[96px]"
+                  minHeightClassName="min-h-[160px]"
                 />
               </Form.Item>
 
@@ -1489,7 +1588,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                   />
                 }
                 rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
-                className="col-span-2"
               >
                 <TestCaseRichTextEditorField
                   placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
@@ -1506,11 +1604,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                   />
                 }
                 rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
-                className="col-span-2"
               >
                 <TestCaseRichTextEditorField
                   placeholder="El sistema debe mostrar el dashboard..."
-                  minHeightClassName="min-h-[120px]"
+                  minHeightClassName="min-h-[160px]"
                 />
               </Form.Item>
             </div>

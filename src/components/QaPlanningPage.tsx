@@ -869,7 +869,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     ...DEFAULT_VISIBLE_COLUMN_KEYS,
   ]);
   const [moduleCoverageFilter, setModuleCoverageFilter] = React.useState<string[]>([]);
-  const [isTestCaseModalOpen, setIsTestCaseModalOpen] = React.useState(false);
+  const [isTestCaseDrawerOpen, setIsTestCaseDrawerOpen] = React.useState(false);
   const [selectedFunctionality, setSelectedFunctionality] = React.useState<Functionality | null>(
     null,
   );
@@ -949,9 +949,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     }, new Map<string, number>());
   }, [testCases]);
 
-  const openTestCaseModal = React.useCallback((record: Functionality) => {
+  const openTestCaseDrawer = React.useCallback((record: Functionality) => {
     setSelectedFunctionality(record);
-    setIsTestCaseModalOpen(true);
+    setIsTestCaseDrawerOpen(true);
   }, []);
 
   React.useEffect(() => {
@@ -995,6 +995,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   React.useEffect(() => {
     setIsClassificationExpanded(false);
   }, [selectedFunctionality?.id]);
+
+  React.useEffect(() => {
+    if (!selectedFunctionality) {
+      setIsTestCaseDrawerOpen(false);
+    }
+  }, [selectedFunctionality]);
 
   React.useEffect(() => {
     if (!selectedFunctionality) {
@@ -1759,24 +1765,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         isRecentlyChanged(selectedFunctionality),
     };
   }, [selectedFunctionality, selectedFunctionalityCasesCount]);
-
-  const selectedFunctionalityRelations = React.useMemo(() => {
-    if (!selectedFunctionality) {
-      return {
-        moduleCount: 0,
-        sprintCount: 0,
-      };
-    }
-
-    const siblings = functionalities.filter(item => item.id !== selectedFunctionality.id);
-
-    return {
-      moduleCount: siblings.filter(item => item.module === selectedFunctionality.module).length,
-      sprintCount: selectedFunctionality.sprint
-        ? siblings.filter(item => item.sprint === selectedFunctionality.sprint).length
-        : 0,
-    };
-  }, [functionalities, selectedFunctionality]);
 
   const selectedFunctionalityCoverageItems = React.useMemo(
     () => (selectedFunctionality ? getCoverageSummary(selectedFunctionality) : []),
@@ -3321,7 +3309,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                       )}
                     </div>
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <Button type="primary" onClick={() => openTestCaseModal(selectedFunctionality)}>
+                      <Button type="primary" onClick={() => openTestCaseDrawer(selectedFunctionality)}>
                         {selectedFunctionalityCasesCount > 0
                           ? `Ver casos (${selectedFunctionalityCasesCount})`
                           : 'Crear caso'}
@@ -3520,37 +3508,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               key: 'additional',
               label: 'Información adicional',
               children: (
-                <div className="space-y-5">
-                  <div className="rounded-[20px] border border-slate-100 bg-white p-3">
-                    <div className="text-sm font-semibold text-slate-800">Relaciones</div>
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">Mismo módulo</div>
-                          <div className="text-xs text-slate-500">
-                            {selectedFunctionality.module || 'Sin módulo'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <span>{selectedFunctionalityRelations.moduleCount}</span>
-                          <ChevronRight className="h-4 w-4 text-slate-400" />
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 px-3 py-3">
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">Mismo sprint</div>
-                          <div className="text-xs text-slate-500">
-                            {selectedFunctionality.sprint || 'Sin sprint'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <span>{selectedFunctionalityRelations.sprintCount}</span>
-                          <ChevronRight className="h-4 w-4 text-slate-400" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
+                <div>
                   <div className="rounded-[20px] border border-slate-100 bg-white p-3">
                     <div className="text-sm font-semibold text-slate-800">Información adicional</div>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -3615,6 +3573,14 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                         </div>
                         <div className="mt-1 text-sm font-medium text-slate-700">
                           {selectedFunctionality.deliveryDate || 'N/A'}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Módulo
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-slate-700">
+                          {selectedFunctionality.module || 'Sin módulo'}
                         </div>
                       </div>
                     </div>
@@ -4227,6 +4193,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     }
                     open={Boolean(selectedFunctionality) || (selectedBulkCount > 0 && isBulkDrawerOpen)}
                     onClose={() => {
+                      setIsTestCaseDrawerOpen(false);
+
                       if (selectedBulkCount > 0 && isBulkDrawerOpen) {
                         setIsBulkDrawerOpen(false);
                         return;
@@ -4236,9 +4204,39 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     }}
                     destroyOnHidden={false}
                     rootClassName="[&_.ant-drawer-content-wrapper]:max-w-full"
+                    push={{ distance: screens.md ? 180 : 0 }}
                     styles={{ body: { padding: screens.md ? 12 : 10 } }}
                   >
                     {sidePanelContent}
+                    <Drawer
+                      title={null}
+                      placement="right"
+                      size={screens.lg ? 1000 : '100%'}
+                      open={isTestCaseDrawerOpen && Boolean(selectedFunctionality)}
+                      onClose={() => setIsTestCaseDrawerOpen(false)}
+                      closable={false}
+                      destroyOnHidden
+                      rootClassName="qa-test-case-drawer [&_.ant-drawer-content-wrapper]:max-w-full"
+                      styles={{ body: { padding: screens.md ? 12 : 10 } }}
+                    >
+                      {selectedFunctionality ? (
+                        <React.Suspense
+                          fallback={
+                            <div className="py-6 text-center text-sm text-slate-400">
+                              Cargando casos de prueba...
+                            </div>
+                          }
+                        >
+                          <TestCaseManagement
+                            projectId={projectId || ''}
+                            functionalityId={selectedFunctionality.id}
+                            functionalityName={selectedFunctionality.name}
+                            moduleName={selectedFunctionality.module}
+                            onClose={() => setIsTestCaseDrawerOpen(false)}
+                          />
+                        </React.Suspense>
+                      ) : null}
+                    </Drawer>
                   </Drawer>
                 </div>
 
@@ -4744,33 +4742,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         </div>
       </Modal>
 
-      <Modal
-        title={null}
-        open={isTestCaseModalOpen}
-        onCancel={() => setIsTestCaseModalOpen(false)}
-        footer={null}
-        width={1000}
-        centered
-        destroyOnHidden
-        rootClassName="qa-test-case-modal"
-      >
-        {selectedFunctionality ? (
-          <React.Suspense
-            fallback={
-              <div className="py-6 text-center text-sm text-slate-400">
-                Cargando casos de prueba...
-              </div>
-            }
-          >
-            <TestCaseManagement
-              projectId={projectId || ''}
-              functionalityId={selectedFunctionality.id}
-              functionalityName={selectedFunctionality.name}
-              moduleName={selectedFunctionality.module}
-            />
-          </React.Suspense>
-        ) : null}
-      </Modal>
     </div>
   );
 }

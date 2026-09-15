@@ -57,6 +57,16 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     const detailHeader = page.getByTestId('qa-detail-header');
     await expect(detailHeader).toContainText(firstFunctionalityName);
 
+    const detailCases = page.getByTestId('qa-detail-cases');
+    await detailCases.getByRole('button', { name: /^(Ver casos|Crear caso)/ }).click();
+
+    const testCaseDrawer = page.locator('.qa-test-case-drawer');
+    await expect(testCaseDrawer).toBeVisible();
+    await expect(testCaseDrawer).toContainText(`Casos de Prueba - ${firstFunctionalityName}`);
+    await testCaseDrawer.getByRole('button', { name: 'Cerrar casos de prueba' }).click();
+    await expect(testCaseDrawer).toBeHidden();
+    await expect(detailHeader).toBeVisible();
+
     const detailClassification = page.getByTestId('qa-detail-classification');
     const detailSelects = detailClassification.locator('.ant-select');
 

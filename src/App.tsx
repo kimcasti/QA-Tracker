@@ -761,9 +761,9 @@ function WorkspaceApp({
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <img
-                    src={appBranding.logoUrl}
-                    alt={qaBrand.workspaceLabel}
-                    className="h-8 w-8 min-w-[32px] rounded-lg object-cover shadow-md"
+                    src={routedProject.logo || appBranding.logoUrl}
+                    alt={`Logo de ${routedProject.name}`}
+                    className="h-10 w-10 min-w-[40px] rounded-lg bg-white object-contain shadow-md"
                   />
                   {!collapsed && (
                     <div className="flex flex-col overflow-hidden">

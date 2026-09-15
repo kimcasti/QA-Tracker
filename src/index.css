@@ -180,9 +180,8 @@
   gap: 12px;
 }
 
-.qa-test-case-modal .ant-modal-content,
-.qa-test-case-modal .ant-card,
-.qa-test-case-modal .ant-alert {
+.qa-test-case-drawer .ant-card,
+.qa-test-case-drawer .ant-alert {
   box-shadow: none !important;
 }
 

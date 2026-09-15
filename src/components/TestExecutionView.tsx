@@ -961,7 +961,7 @@ function renderAutomationHistorySummary(record: AutomationHistoryRow) {
     <div className="flex min-w-0 flex-col gap-1.5 py-1">
       <div className="space-y-0.5">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Importaci&oacute;n
+          Tests ejecutados
         </div>
         {renderAutomationSummaryMetrics(importMetrics)}
       </div>
@@ -5682,7 +5682,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                         render: (tool: AutomationTool) => <Tag color="blue">{tool}</Tag>,
                       },
                       {
-                        title: 'Importado',
+                        title: 'Fecha de ejecución',
                         dataIndex: 'importedAt',
                         key: 'importedAt',
                         width: 170,
