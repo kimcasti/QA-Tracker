@@ -266,6 +266,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [isCaseFormVisible, setIsCaseFormVisible] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
   const [isReordering, setIsReordering] = useState(false);
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [reorderDraft, setReorderDraft] = useState<TestCase[]>([]);
@@ -501,9 +502,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
 
   const runGenerateAI = async () => {
     setIsGenerating(true);
+    setAiGenerationError(null);
     try {
       const { generateTestCasesWithAI } = await import('../services/geminiService');
       const generated = await generateTestCasesWithAI(functionalityName, moduleName, projectId);
+      if (!Array.isArray(generated) || generated.length === 0) {
+        throw new Error('La IA no devolvió casos de prueba. Intenta generar el caso nuevamente.');
+      }
       const nextSortOrder = visibleTestCases.length;
       const generatedTestCases: TestCase[] = generated.map((tc, index) => ({
         ...tc,
@@ -538,17 +543,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         /api key not valid/i.test(nestedMessage);
 
       if (msg === 'AI_PROVIDER_MISSING' || msg === 'GEMINI_API_KEY_MISSING') {
-        message.warning(
-          'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
+        setAiGenerationError(
+          'El servicio de IA no está configurado. Contacta al administrador de la organización.',
         );
       } else if (isInvalidKey) {
-        message.error(
+        setAiGenerationError(
           isLeakedKey
             ? 'La API Key configurada en el entorno fue reportada como filtrada. Genera una nueva.'
             : 'La API Key configurada en el entorno no es válida.',
         );
       } else {
-        message.error('Error al generar casos con IA. Revisa la configuración del proveedor IA.');
+        setAiGenerationError(msg || 'No se pudo generar o guardar el caso de prueba. Inténtalo nuevamente.');
       }
     } finally {
       setIsGenerating(false);
@@ -556,17 +561,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const handleGenerateAI = async () => {
+    if (isGenerateAiDisabled) return;
     if (!canUseAi) {
       message.warning('La generación de casos con IA está disponible en el plan Growth.');
-      return;
-    }
-
-    const { hasAiProviderConfigured } = await import('../services/geminiService');
-
-    if (!(await hasAiProviderConfigured())) {
-      message.warning(
-        'Configura GEMINI_API_KEY o GROQ_API_KEY en el backend para usar la generacion con IA.',
-      );
       return;
     }
 
@@ -1007,6 +1004,27 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       className="qa-test-case-management-card shadow-none"
     >
       <div hidden={isCaseFormVisible}>
+      {aiGenerationError ? (
+        <Alert
+          className="mb-4"
+          type="error"
+          showIcon
+          closable
+          onClose={() => setAiGenerationError(null)}
+          message="No se pudo completar la generación con IA"
+          description={aiGenerationError}
+          action={
+            <Button
+              size="small"
+              onClick={handleGenerateAI}
+              loading={isGenerating}
+              disabled={isGenerateAiDisabled || !canUseAi}
+            >
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
       <PlanBillingBanner
         organizationName={activeMembership?.organization?.name}
         contractedPlan={activeOrganizationPlan}
