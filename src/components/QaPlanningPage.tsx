@@ -874,6 +874,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     null,
   );
   const [isBulkDrawerOpen, setIsBulkDrawerOpen] = React.useState(false);
+  const [bulkModuleFilter, setBulkModuleFilter] = React.useState<string[]>([]);
   const [detailEditDraft, setDetailEditDraft] = React.useState<DetailEditDraft | null>(null);
   const [bulkEditDraft, setBulkEditDraft] = React.useState<BulkEditDraft>(INITIAL_BULK_EDIT_DRAFT);
   const [isAiAnalysisModalOpen, setIsAiAnalysisModalOpen] = React.useState(false);
@@ -1816,6 +1817,18 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const selectedBulkCount = selectedRowKeys.length;
+  const bulkModuleOptions = React.useMemo(
+    () => Array.from(new Set(functionalities.map(item => item.module || '')))
+      .sort((left, right) => left.localeCompare(right))
+      .map(module => ({ label: module || 'Sin módulo', value: module })),
+    [functionalities],
+  );
+  const filteredBulkFunctionalities = React.useMemo(
+    () => selectedBulkFunctionalities.filter(item =>
+      bulkModuleFilter.length === 0 || bulkModuleFilter.includes(item.module || ''),
+    ),
+    [selectedBulkFunctionalities, bulkModuleFilter],
+  );
 
   const previousBulkCountRef = React.useRef(0);
 
@@ -1832,6 +1845,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
     if (selectedBulkCount === 0) {
       setIsBulkDrawerOpen(false);
+      setBulkModuleFilter([]);
     }
 
     previousBulkCountRef.current = selectedBulkCount;
@@ -2040,10 +2054,10 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const saveBulkUpdate = React.useCallback(
-    async (updates: Partial<Functionality>, successMessage: string) => {
+    async (updates: Partial<Functionality>, successMessage: string, targetRows?: Functionality[]) => {
       if (selectedRowKeys.length === 0 || isBulkSaving) return;
 
-      const selectedRows = functionalities.filter(item =>
+      const selectedRows = (targetRows ?? functionalities).filter(item =>
         selectedRowKeys.includes(item.documentId || item.id),
       );
 
@@ -2099,8 +2113,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       updates.isRegression = bulkEditDraft.isRegression;
     }
 
-    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.');
-  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate]);
+    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.', filteredBulkFunctionalities);
+  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate, filteredBulkFunctionalities]);
 
   const detailPendingUpdates = React.useMemo<Partial<Functionality>>(() => {
     if (!selectedFunctionality || !detailEditDraft) return {};
@@ -2744,7 +2758,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 Edición masiva
               </Title>
               <Text type="secondary" className="text-sm">
-                Estás editando {selectedBulkCount} funcionalidades.
+                Estás editando {filteredBulkFunctionalities.length} funcionalidades.
               </Text>
             </div>
             <Button type="text" onClick={() => setSelectedRowKeys([])}>
@@ -2752,6 +2766,38 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             </Button>
           </div>
 
+          <div className="mt-4 space-y-2">
+            <label htmlFor="qa-bulk-module-filter" className="block text-sm font-medium text-slate-700">
+              Filtrar por módulos
+            </label>
+            <Select
+              id="qa-bulk-module-filter"
+              aria-label="Filtrar por módulos en edición masiva"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              maxTagCount="responsive"
+              className="w-full"
+              placeholder="Seleccionar módulos del proyecto"
+              options={bulkModuleOptions}
+              value={bulkModuleFilter}
+              onChange={modules => {
+                setBulkModuleFilter(modules);
+                if (modules.length > 0) {
+                  setSelectedRowKeys(
+                    functionalities
+                      .filter(item => modules.includes(item.module || ''))
+                      .map(item => item.documentId || item.id),
+                  );
+                }
+              }}
+              disabled={isBulkSaving}
+            />
+            <Text type="secondary" className="block text-xs">
+              Al elegir módulos se seleccionan todas sus funcionalidades del proyecto. Puedes quitar las que no quieras editar en la lista.
+            </Text>
+          </div>
           <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
             Los cambios solo se aplicarán a los campos que modifiques aquí.
           </div>
@@ -2764,11 +2810,14 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           <div className="flex items-center justify-between gap-3">
             <Text strong>Funcionalidades seleccionadas</Text>
             <Text type="secondary" className="text-xs">
-              {selectedBulkFunctionalities.length} en total
+              {filteredBulkFunctionalities.length} de {selectedBulkFunctionalities.length}
             </Text>
           </div>
           <div className="mt-3 max-h-[220px] space-y-2 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50 p-3">
-            {selectedBulkFunctionalities.map(item => (
+            {filteredBulkFunctionalities.length === 0 && (
+              <Text type="secondary">No hay funcionalidades seleccionadas en estos módulos.</Text>
+            )}
+            {filteredBulkFunctionalities.map(item => (
               <div
                 key={item.documentId || item.id}
                 className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
@@ -2894,7 +2943,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           data-testid="qa-bulk-summary"
           className="rounded-[24px] border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600"
         >
-          Se aplicarán {bulkChangesCount} cambios configurados.
+          Se aplicarán {bulkChangesCount} cambios configurados a {filteredBulkFunctionalities.length} funcionalidades.
         </div>
 
         <div
@@ -2915,7 +2964,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               type="primary"
               className="flex-1"
               loading={isBulkSaving}
-              disabled={bulkChangesCount === 0}
+              disabled={bulkChangesCount === 0 || filteredBulkFunctionalities.length === 0}
               onClick={() => void applyBulkDraft()}
             >
               Aplicar cambios
@@ -3763,20 +3812,24 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 [&>*]:shrink-0"
               >
                   <Select
+                    mode="multiple"
                     allowClear
                     placeholder="Filtrar por módulo"
-                    value={tableFilters.module?.[0] ? String(tableFilters.module[0]) : undefined}
+                    value={tableFilters.module?.map(String) ?? []}
                     options={moduleFilters.map(option => ({
                       label: String(option.text),
                       value: String(option.value),
                     }))}
-                    onChange={value =>
+                    onChange={values =>
                       setTableFilters(current => ({
                         ...current,
-                        module: value ? [value] : null,
+                        module: values.length > 0 ? values : null,
                       }))
                     }
-                    style={{ width: 190 }}
+                    showSearch
+                    optionFilterProp="label"
+                    maxTagCount="responsive"
+                    style={{ width: 240 }}
                   />
                   <Input.Search
                     allowClear
@@ -4056,6 +4109,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                               selectedRowKeys,
                               onChange: keys => setSelectedRowKeys(keys),
                               columnWidth: 36,
+                              preserveSelectedRowKeys: true,
                             }
                       }
                       columns={tableColumns}

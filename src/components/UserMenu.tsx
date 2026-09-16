@@ -1,4 +1,11 @@
-import { DownOutlined, FileTextOutlined, GlobalOutlined, LogoutOutlined } from '@ant-design/icons';
+import {
+  ApiOutlined,
+  DownOutlined,
+  FileTextOutlined,
+  GlobalOutlined,
+  LogoutOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { Avatar, Dropdown, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -35,8 +42,18 @@ export function UserMenu({
   const navigate = useNavigate();
 
   const items: MenuProps['items'] = [
-    { key: 'integrations', label: 'Mis integraciones', onClick: () => navigate('/settings/integrations') },
-    { key: 'automation', label: 'Conexiones de automatización', onClick: () => navigate('/automation/connect') },
+    {
+      key: 'integrations',
+      icon: <ApiOutlined />,
+      label: 'Mis integraciones',
+      onClick: () => navigate('/settings/integrations'),
+    },
+    {
+      key: 'automation',
+      icon: <ThunderboltOutlined />,
+      label: 'Conexiones de automatización',
+      onClick: () => navigate('/automation/connect'),
+    },
     {
       key: 'notes',
       icon: <FileTextOutlined />,
