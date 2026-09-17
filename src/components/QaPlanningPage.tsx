@@ -893,6 +893,29 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const functionalities = Array.isArray(functionalitiesData) ? functionalitiesData : [];
   const testCases = Array.isArray(testCasesData) ? testCasesData : [];
 
+  const moduleFunctionalities = React.useMemo(
+    () =>
+      selectedFunctionality
+        ? functionalities
+            .filter(item =>
+              item.projectId === selectedFunctionality.projectId &&
+              item.module === selectedFunctionality.module,
+            )
+            .sort((left, right) =>
+              getStableFunctionalitySortOrder(left) - getStableFunctionalitySortOrder(right) ||
+              String(left.id).localeCompare(String(right.id)),
+            )
+        : [],
+    [functionalities, selectedFunctionality],
+  );
+  const currentModuleFunctionalityIndex = moduleFunctionalities.findIndex(
+    item => item.id === selectedFunctionality?.id,
+  );
+  const previousModuleFunctionality = moduleFunctionalities[currentModuleFunctionalityIndex - 1];
+  const nextModuleFunctionality = currentModuleFunctionalityIndex >= 0
+    ? moduleFunctionalities[currentModuleFunctionalityIndex + 1]
+    : undefined;
+
   const testCasesByFunctionality = React.useMemo(() => {
     return testCases.reduce((acc, testCase: TestCase) => {
       if (!testCase.functionalityId) return acc;
@@ -4427,10 +4450,23 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           }
                         >
                           <TestCaseManagement
+                            key={selectedFunctionality.id}
                             projectId={projectId || ''}
                             functionalityId={selectedFunctionality.id}
                             functionalityName={selectedFunctionality.name}
                             moduleName={selectedFunctionality.module}
+                            functionalityNavigation={{
+                              position: currentModuleFunctionalityIndex + 1,
+                              total: moduleFunctionalities.length,
+                              previousName: previousModuleFunctionality?.name,
+                              nextName: nextModuleFunctionality?.name,
+                              onPrevious: previousModuleFunctionality
+                                ? () => setSelectedFunctionality(previousModuleFunctionality)
+                                : undefined,
+                              onNext: nextModuleFunctionality
+                                ? () => setSelectedFunctionality(nextModuleFunctionality)
+                                : undefined,
+                            }}
                             onClose={() => setIsTestCaseDrawerOpen(false)}
                           />
                         </React.Suspense>

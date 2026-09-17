@@ -30,6 +30,7 @@ import {
   PlusOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CloseOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
@@ -1498,6 +1499,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPlanningNoticeVisible, setIsPlanningNoticeVisible] = useState(true);
   const [planningStep, setPlanningStep] = useState(0);
   const planningScrollRef = React.useRef<HTMLDivElement>(null);
   const planningHeadingRef = React.useRef<HTMLDivElement>(null);
@@ -5585,24 +5587,34 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         ) : null}
       </div>
 
-      <Card className="mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
-        <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm">
-            <InfoCircleOutlined className="text-lg" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-800">
-              Planifica antes de ejecutar
+      {isPlanningNoticeVisible && (
+        <Card className="relative mb-6 rounded-2xl border-sky-100 bg-sky-50/70 shadow-sm">
+          <Button
+            type="text"
+            icon={<CloseOutlined />}
+            aria-label="Cerrar aviso de planificación"
+            title="Cerrar aviso"
+            onClick={() => setIsPlanningNoticeVisible(false)}
+            className="!absolute right-2 top-2"
+          />
+          <div className="flex items-start gap-4 pr-6">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm">
+              <InfoCircleOutlined className="text-lg" />
             </div>
-            <div className="mt-1 text-sm text-slate-500">
-              Selecciona los módulos impactados, identifica las funcionalidades aplicables y elige
-              los casos de prueba que formarán parte de la validación.
-              <br />
-              Cuando la planificación esté lista, podrás registrar los resultados de la ejecución.
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-800">
+                Planifica antes de ejecutar
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                Selecciona los módulos impactados, identifica las funcionalidades aplicables y elige
+                los casos de prueba que formarán parte de la validación.
+                <br />
+                Cuando la planificación esté lista, podrás registrar los resultados de la ejecución.
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <Tabs
         defaultActiveKey="executions"

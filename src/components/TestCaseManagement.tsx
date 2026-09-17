@@ -28,6 +28,7 @@ import {
   CloseOutlined,
   ArrowUpOutlined,
   ArrowLeftOutlined,
+  ArrowRightOutlined,
   ArrowDownOutlined,
   MenuOutlined,
   DownOutlined,
@@ -239,6 +240,14 @@ interface TestCaseManagementProps {
   functionalityName: string;
   moduleName: string;
   onClose?: () => void;
+  functionalityNavigation?: {
+    position: number;
+    total: number;
+    previousName?: string;
+    nextName?: string;
+    onPrevious?: () => void;
+    onNext?: () => void;
+  };
 }
 
 const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
@@ -247,6 +256,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   functionalityName,
   moduleName,
   onClose,
+  functionalityNavigation,
 }) => {
   const { t } = useTranslation();
   const {
@@ -1004,6 +1014,38 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       className="qa-test-case-management-card shadow-none"
     >
       <div hidden={isCaseFormVisible}>
+      {functionalityNavigation && functionalityNavigation.total > 0 ? (
+        <nav
+          aria-label="Navegación entre funcionalidades del módulo"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3"
+        >
+          <Text type="secondary" className="min-w-0 break-words">
+            {moduleName || 'Sin módulo'} · Funcionalidad {functionalityNavigation.position} de{' '}
+            {functionalityNavigation.total}
+          </Text>
+          <Space wrap>
+            <Tooltip title={functionalityNavigation.previousName}>
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={functionalityNavigation.onPrevious}
+                disabled={!functionalityNavigation.onPrevious || isGenerating || isReordering}
+                aria-label="Funcionalidad anterior"
+              >
+                Anterior
+              </Button>
+            </Tooltip>
+            <Tooltip title={functionalityNavigation.nextName}>
+              <Button
+                onClick={functionalityNavigation.onNext}
+                disabled={!functionalityNavigation.onNext || isGenerating || isReordering}
+                aria-label="Funcionalidad siguiente"
+              >
+                Siguiente <ArrowRightOutlined />
+              </Button>
+            </Tooltip>
+          </Space>
+        </nav>
+      ) : null}
       {aiGenerationError ? (
         <Alert
           className="mb-4"
