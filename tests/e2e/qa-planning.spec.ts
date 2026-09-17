@@ -16,6 +16,7 @@ async function selectDropdownOption(
 }
 
 async function loginThroughUi(page: import('@playwright/test').Page, seed: SeededQaFlow) {
+  await page.addInitScript(() => localStorage.setItem('qa_lang', 'es'));
   await page.goto('/?mode=login');
   await page.getByLabel(/Correo o usuario/i).fill(seed.auth.user.email);
   await page.getByLabel(/Contrase/i).fill(seed.password);
@@ -41,6 +42,74 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     seed = await createSeededQaFlow();
   });
 
+  test('opens linked test cases in another tab and refreshes counts on return', async ({ page, context }) => {
+    await loginThroughUi(page, seed);
+    // Simulate the original tab before cases have been created.
+    await page.route('**/api/test-cases?*', route => route.fulfill({
+      json: { data: [], meta: { pagination: { page: 1, pageSize: 100, pageCount: 0, total: 0 } } },
+    }));
+    await page.goto(`/projects/${seed.projectKey}/qa-planning`);
+    await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
+    const list = page.getByTestId('qa-bulk-selected-list');
+    const createLink = list.getByRole('link', { name: 'Crear caso para Agregar plan medico (abre otra pestaña)' });
+    await expect(createLink).toBeVisible();
+    const popupPromise = context.waitForEvent('page');
+    await createLink.click();
+    const popup = await popupPromise;
+    await expect(popup.locator('.qa-test-case-drawer')).toBeVisible();
+    await expect(popup.locator('.qa-test-case-drawer')).toContainText(/Casos de prueba.*Agregar plan medico/i);
+    await page.unroute('**/api/test-cases?*');
+    await page.bringToFront();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(createLink).toHaveCount(0);
+    await expect(list.getByText(/\d+ casos? de prueba/).first()).toBeVisible();
+    await expect(list).toBeVisible();
+    await popup.close();
+  });
+
+  test('explores module tabs without losing checkbox choices', async ({ page }) => {
+    await loginThroughUi(page, seed);
+    await page.goto(`/projects/${seed.projectKey}/qa-planning`);
+    await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
+    const list = page.getByTestId('qa-bulk-selected-list');
+    const header = page.getByTestId('qa-bulk-drawer-header');
+    await expect(list.getByRole('tab', { name: /^Todas/ })).toBeVisible();
+    const notice = header.getByRole('alert');
+    await expect(notice).toBeVisible();
+    await notice.getByRole('button').click();
+    await expect(notice).toHaveCount(0);
+
+    const moduleSelect = page.getByRole('combobox', { name: 'Filtrar por módulos en edición masiva' });
+    await moduleSelect.click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').getByText('Pacientes', { exact: true }).click();
+    await page.keyboard.press('Escape');
+    const patient = list.getByRole('checkbox', { name: 'Seleccionar Agregar plan medico' });
+    await expect(patient).toBeChecked();
+    await patient.uncheck();
+    await expect(header).toBeVisible();
+
+    await moduleSelect.click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').getByText('Usuarios', { exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expect(list.getByRole('tab', { name: /^Usuarios/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(list.getByRole('checkbox', { name: 'Seleccionar Desactivar y activar usuario' })).toBeChecked();
+    await list.getByRole('tab', { name: /^Pacientes/ }).click();
+    await expect(patient).not.toBeChecked();
+
+    const search = list.getByRole('textbox', { name: 'Buscar funcionalidades en edición masiva' });
+    await search.fill('Agregar');
+    await list.getByRole('tab', { name: /^Usuarios/ }).click();
+    await expect(search).toHaveValue('Agregar');
+    await expect(list.getByText('No hay funcionalidades que coincidan con los filtros.')).toBeVisible();
+    await search.clear();
+    await expect(list.getByRole('checkbox', { name: 'Seleccionar Desactivar y activar usuario' })).toBeChecked();
+
+    await header.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveCount(0, { timeout: 12_000 });
+  });
+
   test('edits a single functionality and applies bulk changes only to configured fields', async ({
     page,
   }) => {
@@ -62,11 +131,12 @@ test.describe.serial('QA planning detail and bulk editing', () => {
 
     const testCaseDrawer = page.locator('.qa-test-case-drawer');
     await expect(testCaseDrawer).toBeVisible();
-    await expect(testCaseDrawer).toContainText(`Casos de Prueba - ${firstFunctionalityName}`);
+    await expect(testCaseDrawer).toContainText(`Casos de prueba · ${firstFunctionalityName}`);
     await testCaseDrawer.getByRole('button', { name: 'Cerrar casos de prueba' }).click();
     await expect(testCaseDrawer).toBeHidden();
     await expect(detailHeader).toBeVisible();
 
+    await page.getByRole('button', { name: 'Ver y editar clasificación QA', exact: true }).click();
     const detailClassification = page.getByTestId('qa-detail-classification');
     const detailSelects = detailClassification.locator('.ant-select');
 
@@ -83,11 +153,12 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await expect(page.locator('.ant-drawer-mask')).toHaveCount(0);
 
     await toggleRowSelection(page, firstFunctionalityName);
-    await toggleRowSelection(page, secondFunctionalityName);
+    await page.getByTestId('qa-bulk-selected-list')
+      .getByRole('checkbox', { name: `Seleccionar ${secondFunctionalityName}`, exact: true }).check();
 
     const bulkDrawer = page.getByTestId('qa-bulk-drawer-header');
     await expect(bulkDrawer).toBeVisible();
-    await expect(bulkDrawer).toContainText('2 funcionalidades');
+    await expect(bulkDrawer).toContainText('Alcance de la evaluación');
 
     const bulkFields = page.getByTestId('qa-bulk-edit-fields');
     const bulkSelects = bulkFields.locator('.ant-select');
@@ -96,10 +167,8 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await page.keyboard.press('Enter');
     await expect(bulkFields).toContainText('Crítico');
 
-    const bulkCoverageRows = bulkFields.locator(
-      'div.rounded-2xl.border.border-slate-100.bg-slate-50.px-3.py-3',
-    );
-    await bulkCoverageRows.nth(0).getByRole('button', { name: 'Marcar' }).click();
+    const coreCoverage = bulkFields.getByRole('radiogroup', { name: 'Core business', exact: true });
+    await coreCoverage.getByText('Incluir', { exact: true }).click();
 
     await bulkSelects.nth(1).click();
     await page.keyboard.press('Enter');
@@ -112,6 +181,7 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await expect(page.getByTestId('qa-bulk-drawer-header')).toHaveCount(0);
 
     await page.getByRole('button', { name: `Ver detalle de ${secondFunctionalityName}` }).click();
+    await page.getByRole('button', { name: 'Ver y editar clasificación QA', exact: true }).click();
     const secondDetailHeader = page.getByTestId('qa-detail-header');
     const secondDetailClassification = page.getByTestId('qa-detail-classification');
     await expect(secondDetailHeader).toContainText(secondFunctionalityName);
@@ -119,5 +189,38 @@ test.describe.serial('QA planning detail and bulk editing', () => {
 
     await expect(page.getByTestId('qa-detail-coverage')).toContainText('Core');
     await expect(secondDetailClassification).toContainText('Backlog');
+  });
+
+  test('shows saved coverage counts and keeps category choices independent', async ({ page }) => {
+    await loginThroughUi(page, seed);
+    await page.goto(`/projects/${seed.projectKey}/qa-planning`);
+    await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
+    const fields = page.getByTestId('qa-bulk-edit-fields');
+    const smoke = fields.getByRole('radiogroup', { name: 'Smoke', exact: true });
+    const regression = fields.getByRole('radiogroup', { name: 'Regresión', exact: true });
+    await expect(fields.getByText('Selecciona funcionalidades para evaluar su cobertura')).toBeVisible();
+    await expect(smoke.getByRole('radio', { name: 'Mantener actual' })).toBeDisabled();
+
+    const list = page.getByTestId('qa-bulk-selected-list');
+    await list.getByRole('checkbox', { name: 'Seleccionar Agregar plan medico', exact: true }).check();
+    const smokeCard = smoke.locator('..');
+    await expect(smokeCard).toContainText('Actualmente: 1 de 1 funcionalidades incluidas');
+    await smoke.getByText('Excluir', { exact: true }).click();
+    await expect(smokeCard).toContainText('Actualmente: 1 de 1 funcionalidades incluidas');
+    await expect(regression.getByRole('radio', { name: 'Mantener actual' })).toBeChecked();
+    await smoke.getByText('Mantener actual', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Aplicar cambios', exact: true })).toBeDisabled();
+
+    await list.getByRole('checkbox', { name: 'Seleccionar Desactivar y activar usuario', exact: true }).check();
+    await expect(smokeCard).toContainText('Actualmente: 2 de 2 funcionalidades incluidas');
+    await smoke.getByRole('radio', { name: 'Mantener actual' }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(smoke.getByRole('radio', { name: 'Incluir', exact: true })).toBeChecked();
+    await expect(regression.getByRole('radio', { name: 'Mantener actual' })).toBeChecked();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(smoke).toBeVisible();
+    const bounds = await smoke.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
   });
 });

@@ -1,5 +1,7 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -10,6 +12,7 @@ import {
   Input,
   Modal,
   Popover,
+  Radio,
   Row,
   Select,
   Spin,
@@ -195,7 +198,6 @@ type DetailEditDraft = {
   markRecentChange: boolean;
 };
 
-type BulkCoverageValue = boolean | undefined;
 type AiRecommendationFilter = 'all' | QaStrategyCandidateCategory;
 type AiMetricFilter = 'all' | 'actionable' | 'high_priority' | 'covered' | 'coverage_suggested';
 
@@ -816,30 +818,9 @@ function getPriorityVisualLabel(priority: Priority) {
   }
 }
 
-function getBulkCoverageOptionClassName(
-  currentValue: BulkCoverageValue,
-  optionValue: BulkCoverageValue,
-) {
-  const isActive = currentValue === optionValue;
-
-  if (optionValue === undefined) {
-    return isActive
-      ? 'border-slate-300 bg-slate-100 text-slate-700'
-      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300';
-  }
-
-  if (optionValue) {
-    return isActive
-      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-      : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-200';
-  }
-
-  return isActive
-    ? 'border-rose-300 bg-rose-50 text-rose-700'
-    : 'border-slate-200 bg-white text-slate-600 hover:border-rose-200';
-}
-
 export default function QaPlanningPage({ projectId }: { projectId?: string }) {
+  const location = useLocation();
+  const openedCaseLink = React.useRef<string | null>(null);
   const { t } = useTranslation();
   const screens = useBreakpoint();
   const { isViewer } = useWorkspaceAccess();
@@ -851,7 +832,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     reorder,
     save,
   } = useFunctionalities(projectId);
-  const { data: testCasesData = [] } = useTestCases(projectId);
+  const {
+    data: testCasesData = [],
+    isPending: areTestCasesPending,
+    isError: hasTestCasesError,
+    refetch: refetchTestCases,
+  } = useTestCases(projectId);
 
   const [searchTerm, setSearchTerm] = React.useState('');
   const [isRecommendationsExpanded, setIsRecommendationsExpanded] = React.useState(false);
@@ -875,6 +861,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
   const [isBulkDrawerOpen, setIsBulkDrawerOpen] = React.useState(false);
   const [bulkModuleFilter, setBulkModuleFilter] = React.useState<string[]>([]);
+  const [bulkFunctionalitySearch, setBulkFunctionalitySearch] = React.useState('');
+  const [activeBulkTab, setActiveBulkTab] = React.useState('all');
+  const [isBulkNoticeVisible, setIsBulkNoticeVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isBulkDrawerOpen) return;
+    setIsBulkNoticeVisible(true);
+    const timer = window.setTimeout(() => setIsBulkNoticeVisible(false), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [isBulkDrawerOpen]);
   const [detailEditDraft, setDetailEditDraft] = React.useState<DetailEditDraft | null>(null);
   const [bulkEditDraft, setBulkEditDraft] = React.useState<BulkEditDraft>(INITIAL_BULK_EDIT_DRAFT);
   const [isAiAnalysisModalOpen, setIsAiAnalysisModalOpen] = React.useState(false);
@@ -954,6 +950,29 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     setSelectedFunctionality(record);
     setIsTestCaseDrawerOpen(true);
   }, []);
+
+  React.useEffect(() => {
+    const functionalityId = new URLSearchParams(location.search).get('testCasesFor');
+    const linkKey = `${projectId}:${functionalityId}`;
+    if (!functionalityId || openedCaseLink.current === linkKey) return;
+    const record = functionalities.find(item => item.id === functionalityId);
+    if (!record) return;
+    openedCaseLink.current = linkKey;
+    openTestCaseDrawer(record);
+  }, [functionalities, location.search, openTestCaseDrawer, projectId]);
+
+  React.useEffect(() => {
+    if (!isBulkDrawerOpen) return;
+    const refreshCases = () => {
+      if (document.visibilityState === 'visible') void refetchTestCases();
+    };
+    window.addEventListener('focus', refreshCases);
+    document.addEventListener('visibilitychange', refreshCases);
+    return () => {
+      window.removeEventListener('focus', refreshCases);
+      document.removeEventListener('visibilitychange', refreshCases);
+    };
+  }, [isBulkDrawerOpen, refetchTestCases]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1816,7 +1835,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     [functionalities, selectedRowKeys],
   );
 
-  const selectedBulkCount = selectedRowKeys.length;
   const bulkModuleOptions = React.useMemo(
     () => Array.from(new Set(functionalities.map(item => item.module || '')))
       .sort((left, right) => left.localeCompare(right))
@@ -1830,26 +1848,28 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     [selectedBulkFunctionalities, bulkModuleFilter],
   );
 
-  const previousBulkCountRef = React.useRef(0);
+  const bulkAvailableFunctionalities = React.useMemo(
+    () => functionalities.filter(item =>
+      bulkModuleFilter.length === 0 || bulkModuleFilter.includes(item.module || ''),
+    ),
+    [functionalities, bulkModuleFilter],
+  );
+  const searchedBulkFunctionalities = React.useMemo(
+    () => bulkAvailableFunctionalities.filter(item =>
+      item.name.toLocaleLowerCase().includes(bulkFunctionalitySearch.trim().toLocaleLowerCase()),
+    ),
+    [bulkAvailableFunctionalities, bulkFunctionalitySearch],
+  );
+  const bulkTabs = bulkModuleFilter.length > 0
+    ? bulkModuleFilter.map(module => ({ key: `module:${module}`, module, label: module || 'Sin módulo' }))
+    : [{ key: 'all', module: null, label: 'Todas' }];
+  const resolvedBulkTab = bulkTabs.some(tab => tab.key === activeBulkTab)
+    ? activeBulkTab
+    : bulkTabs[0].key;
 
   React.useEffect(() => {
     setSelectedRowKeys([]);
   }, [activeRecommendation]);
-
-  React.useEffect(() => {
-    const previousCount = previousBulkCountRef.current;
-
-    if (selectedBulkCount > 0 && previousCount === 0) {
-      setIsBulkDrawerOpen(true);
-    }
-
-    if (selectedBulkCount === 0) {
-      setIsBulkDrawerOpen(false);
-      setBulkModuleFilter([]);
-    }
-
-    previousBulkCountRef.current = selectedBulkCount;
-  }, [selectedBulkCount]);
 
   const priorityOptions = React.useMemo(
     () =>
@@ -2071,6 +2091,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       try {
         await bulkUpdate({ ids: selectedIds, updates });
         message.success(successMessage);
+        setIsBulkDrawerOpen(false);
+        setBulkModuleFilter([]);
         setSelectedRowKeys([]);
       } catch (error) {
         console.error('Qa planning bulk save failed:', error);
@@ -2746,7 +2768,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const sidePanelContent =
-    selectedBulkCount > 0 ? (
+    isBulkDrawerOpen ? (
       <div className="space-y-5">
         <div
           data-testid="qa-bulk-drawer-header"
@@ -2755,13 +2777,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-                Edición masiva
+                Alcance de la evaluación
               </Title>
               <Text type="secondary" className="text-sm">
-                Estás editando {filteredBulkFunctionalities.length} funcionalidades.
+                Selecciona las funcionalidades para evaluar su cobertura, riesgo y prioridad.
               </Text>
             </div>
-            <Button type="text" onClick={() => setSelectedRowKeys([])}>
+            <Button type="text" onClick={() => setIsBulkDrawerOpen(false)}>
               Cerrar
             </Button>
           </div>
@@ -2783,13 +2805,22 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               options={bulkModuleOptions}
               value={bulkModuleFilter}
               onChange={modules => {
+                const addedModules = modules.filter(module => !bulkModuleFilter.includes(module));
+                const removedModules = bulkModuleFilter.filter(module => !modules.includes(module));
                 setBulkModuleFilter(modules);
-                if (modules.length > 0) {
-                  setSelectedRowKeys(
-                    functionalities
-                      .filter(item => modules.includes(item.module || ''))
-                      .map(item => item.documentId || item.id),
-                  );
+                setSelectedRowKeys(current => functionalities
+                  .filter(item => {
+                    const module = item.module || '';
+                    if (removedModules.includes(module)) return false;
+                    if (modules.length > 0 && !modules.includes(module)) return false;
+                    return addedModules.includes(module) || current.includes(item.documentId || item.id);
+                  })
+                  .map(item => item.documentId || item.id),
+                );
+                if (addedModules.length > 0) {
+                  setActiveBulkTab(`module:${addedModules[addedModules.length - 1]}`);
+                } else if (!modules.some(module => `module:${module}` === resolvedBulkTab)) {
+                  setActiveBulkTab(modules.length > 0 ? `module:${modules[0]}` : 'all');
                 }
               }}
               disabled={isBulkSaving}
@@ -2798,9 +2829,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               Al elegir módulos se seleccionan todas sus funcionalidades del proyecto. Puedes quitar las que no quieras editar en la lista.
             </Text>
           </div>
-          <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-            Los cambios solo se aplicarán a los campos que modifiques aquí.
-          </div>
+          {isBulkNoticeVisible && (
+            <Alert
+              type="info"
+              title="Los cambios solo se aplicarán a los campos que modifiques aquí."
+              closable
+              onClose={() => setIsBulkNoticeVisible(false)}
+              className="mt-4 rounded-2xl"
+            />
+          )}
         </div>
 
         <div
@@ -2808,40 +2845,95 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
         >
           <div className="flex items-center justify-between gap-3">
-            <Text strong>Funcionalidades seleccionadas</Text>
+            <Text strong>Selecciona las funcionalidades candidatas</Text>
             <Text type="secondary" className="text-xs">
-              {filteredBulkFunctionalities.length} de {selectedBulkFunctionalities.length}
+              {filteredBulkFunctionalities.length} de {bulkAvailableFunctionalities.length}
             </Text>
           </div>
-          <div className="mt-3 max-h-[220px] space-y-2 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50 p-3">
-            {filteredBulkFunctionalities.length === 0 && (
-              <Text type="secondary">No hay funcionalidades seleccionadas en estos módulos.</Text>
-            )}
-            {filteredBulkFunctionalities.map(item => (
-              <div
-                key={item.documentId || item.id}
-                className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
-              >
-                <Checkbox
-                  checked
-                  className="mt-1"
-                  onChange={event => {
-                    if (!event.target.checked) {
-                      setSelectedRowKeys(current =>
-                        current.filter(key => key !== (item.documentId || item.id)),
-                      );
-                    }
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-slate-800">{item.name}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {item.id} · {item.module || 'Sin módulo'}
+          <Input
+            aria-label="Buscar funcionalidades en edición masiva"
+            placeholder="Buscar funcionalidades"
+            allowClear
+            className="mt-3"
+            value={bulkFunctionalitySearch}
+            onChange={event => setBulkFunctionalitySearch(event.target.value)}
+          />
+          <Tabs
+            activeKey={resolvedBulkTab}
+            onChange={setActiveBulkTab}
+            className="mt-3 min-w-0"
+            items={bulkTabs.map(tab => {
+              const available = bulkAvailableFunctionalities.filter(item =>
+                tab.module === null || (item.module || '') === tab.module,
+              );
+              const rows = searchedBulkFunctionalities.filter(item =>
+                tab.module === null || (item.module || '') === tab.module,
+              );
+              const selectedCount = available.filter(item => selectedRowKeys.includes(item.documentId || item.id)).length;
+              return {
+                key: tab.key,
+                label: `${tab.label} (${selectedCount}/${available.length})`,
+                children: (
+                  <div className="grid max-h-[45vh] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
+                    {rows.length === 0 && (
+                      <Text type="secondary" className="col-span-full">No hay funcionalidades que coincidan con los filtros.</Text>
+                    )}
+                    {rows.map(item => (
+                      <div
+                        key={item.documentId || item.id}
+                        className="flex min-w-0 items-start gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
+                      >
+                        <Checkbox
+                          checked={selectedRowKeys.includes(item.documentId || item.id)}
+                          aria-label={`Seleccionar ${item.name}`}
+                          disabled={isBulkSaving}
+                          className="mt-1"
+                          onChange={event => {
+                            const key = item.documentId || item.id;
+                            setSelectedRowKeys(current => event.target.checked
+                              ? [...current, key]
+                              : current.filter(selectedKey => selectedKey !== key),
+                            );
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="break-words text-sm font-semibold text-slate-800">{item.name}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {item.id} · {item.module || 'Sin módulo'}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                            {areTestCasesPending ? 'Cargando casos…' : hasTestCasesError ? (
+                              <span>No se pudieron consultar los casos</span>
+                            ) : (testCaseCountByFunctionality.get(item.id) || 0) > 0 ? (
+                              <span>
+                                {testCaseCountByFunctionality.get(item.id)}{' '}
+                                {testCaseCountByFunctionality.get(item.id) === 1 ? 'caso' : 'casos'} de prueba
+                              </span>
+                            ) : (
+                              <>
+                                <span>Sin casos</span>
+                                <span aria-hidden="true">·</span>
+                                <a
+                                  href={`${location.pathname}?${new URLSearchParams({ testCasesFor: item.id })}`}
+                                  target="_blank"
+                                  // This same-origin tab inherits the app's sessionStorage login.
+                                  rel="opener"
+                                  aria-label={`Crear caso para ${item.name} (abre otra pestaña)`}
+                                  className="font-medium text-sky-700 underline-offset-2 hover:underline focus-visible:underline"
+                                >
+                                  Crear caso ↗
+                                </a>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                ),
+              };
+            })}
+          />
         </div>
 
         <div
@@ -2850,91 +2942,127 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         >
           <div className="space-y-4">
             <div className="space-y-3">
-              <Text strong className="block">
-                Prioridad
-              </Text>
-
-              <Select
-                value={bulkEditDraft.priority}
-                allowClear
-                placeholder="Sin cambio"
-                options={priorityOptions}
-                onChange={value =>
-                  setBulkEditDraft(current => ({
-                    ...current,
-                    priority: value,
-                  }))
-                }
-              />
-            </div>
-
-            <div className="space-y-3 border-t border-slate-100 pt-4">
-              <Text strong>Cobertura</Text>
+              <div>
+                <Text strong className="block">Clasificación de cobertura</Text>
+                <Text type="secondary" className="text-sm">
+                  Define qué categorías aplican a las funcionalidades seleccionadas. Una funcionalidad puede pertenecer a varias.
+                </Text>
+              </div>
+              {filteredBulkFunctionalities.length === 0 ? (
+                <Text type="secondary" className="block text-sm">
+                  Selecciona funcionalidades para evaluar su cobertura
+                </Text>
+              ) : null}
               <div className="space-y-3">
                 {[
-                  { key: 'isCore' as const, label: 'Core business' },
-                  { key: 'isSmoke' as const, label: 'Smoke' },
-                  { key: 'isRegression' as const, label: 'Regresión' },
+                  {
+                    key: 'isCore' as const, label: 'Core business', icon: Building2,
+                    description: 'Funcionalidades esenciales del negocio.',
+                    iconClassName: 'text-sky-600',
+                  },
+                  {
+                    key: 'isSmoke' as const, label: 'Smoke', icon: Flame,
+                    description: 'Validaciones básicas para comprobar que lo principal funciona.',
+                    iconClassName: 'text-orange-600',
+                  },
+                  {
+                    key: 'isRegression' as const, label: 'Regresión', icon: RefreshCw,
+                    description: 'Validaciones para comprobar que los cambios no afectan lo existente.',
+                    iconClassName: 'text-violet-600',
+                  },
                 ].map(item => (
                   <div
                     key={item.key}
                     className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-slate-700">{item.label}</span>
-                      <div className="flex items-center gap-2">
-                        {[
-                          { label: 'Sin cambio', value: undefined as BulkCoverageValue },
-                          { label: 'Marcar', value: true as BulkCoverageValue },
-                          { label: 'Quitar', value: false as BulkCoverageValue },
-                        ].map(option => (
-                          <button
-                            key={option.label}
-                            type="button"
-                            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${getBulkCoverageOptionClassName(
-                              bulkEditDraft[item.key],
-                              option.value,
-                            )}`}
-                            onClick={() =>
-                              setBulkEditDraft(current => ({
-                                ...current,
-                                [item.key]: option.value,
-                              }))
-                            }
-                          >
-                            {option.label}
-                          </button>
-                        ))}
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <item.icon size={18} aria-hidden="true" className={`shrink-0 ${item.iconClassName}`} />
+                          <span id={`bulk-coverage-${item.key}`} className="text-sm font-semibold text-slate-700">{item.label}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">{item.description}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Actualmente: {filteredBulkFunctionalities.filter(functionality => functionality[item.key]).length} de{' '}
+                          {filteredBulkFunctionalities.length} funcionalidades incluidas
+                        </p>
                       </div>
+                      <Radio.Group
+                        name={`bulk-coverage-${item.key}`}
+                        aria-labelledby={`bulk-coverage-${item.key}`}
+                        optionType="button"
+                        buttonStyle="solid"
+                        size="small"
+                        className="shrink-0 self-start lg:self-center"
+                        value={bulkEditDraft[item.key] === undefined ? 'keep' : bulkEditDraft[item.key] ? 'include' : 'exclude'}
+                        disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
+                        options={[
+                          { label: 'Mantener actual', value: 'keep' },
+                          { label: 'Incluir', value: 'include' },
+                          { label: 'Excluir', value: 'exclude' },
+                        ]}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setBulkEditDraft(current => ({
+                            ...current,
+                            [item.key]: value === 'keep' ? undefined : value === 'include',
+                          }));
+                        }}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
               <div className="text-xs text-slate-500">
-                Solo se aplican las marcas que cambies aquí. Lo demás permanece igual.
+                Mantener actual conserva la clasificación de cada funcionalidad. Excluir solo quita esa categoría.
               </div>
             </div>
 
-            <div className="space-y-3 border-t border-slate-100 pt-4">
-              <div>
-                <Text strong>Estado</Text>
+            <div className="flex flex-wrap gap-6 border-t border-slate-100 pt-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Text strong>Prioridad</Text>
+                  <Tooltip title="Indica qué funcionalidades deben atenderse primero al planificar las pruebas. Una prioridad más alta ayuda a dar preferencia a su validación; no cambia su estado de desarrollo.">
+                    <button type="button" aria-label="Qué significa la prioridad" className="inline-flex items-center text-slate-400 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-600">
+                      <InfoCircleOutlined aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </div>
+                <Select
+                  aria-label="Prioridad"
+                  className="min-w-[180px]"
+                  value={bulkEditDraft.priority}
+                  allowClear
+                  placeholder="Sin cambio"
+                  options={priorityOptions}
+                  onChange={value =>
+                    setBulkEditDraft(current => ({ ...current, priority: value }))
+                  }
+                />
               </div>
-
-              <Select
-                value={bulkEditDraft.status}
-                allowClear
-                placeholder="Sin cambio"
-                options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
-                  label: labelTestStatus(status, t),
-                  value: status,
-                }))}
-                onChange={value =>
-                  setBulkEditDraft(current => ({
-                    ...current,
-                    status: value,
+              <div className="space-y-3">
+                <div>
+                  <Text strong>Estado de desarrollo</Text>
+                </div>
+                <Select
+                  aria-label="Estado de desarrollo"
+                  className="min-w-[180px]"
+                  value={bulkEditDraft.status}
+                  allowClear
+                  placeholder="Sin cambio"
+                  options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                    label: labelTestStatus(status, t),
+                    value: status,
                   }))
-                }
-              />
+                  }
+                  onChange={value =>
+                    setBulkEditDraft(current => ({
+                      ...current,
+                      status: value,
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -2950,11 +3078,13 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           data-testid="qa-bulk-actions"
           className="sticky bottom-0 z-10 rounded-[24px] border border-slate-100 bg-white/95 p-4 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur"
         >
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-start gap-3">
             <Button
-              className="flex-1"
+              className="px-5"
               onClick={() => {
                 setIsBulkDrawerOpen(false);
+                setBulkModuleFilter([]);
+                setBulkFunctionalitySearch('');
                 setSelectedRowKeys([]);
               }}
             >
@@ -2962,7 +3092,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             </Button>
             <Button
               type="primary"
-              className="flex-1"
+              className="px-5"
               loading={isBulkSaving}
               disabled={bulkChangesCount === 0 || filteredBulkFunctionalities.length === 0}
               onClick={() => void applyBulkDraft()}
@@ -3772,16 +3902,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
             Clasifica cobertura, riesgo y prioridad para organizar el alcance de smoke y regresión.
           </Text>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            type="primary"
-            icon={<ThunderboltOutlined />}
-            loading={isAiAnalysisLoading}
-            onClick={() => void runQaStrategyAiAnalysis()}
-          >
-            Analizar candidatos con IA
-          </Button>
-        </div>
       </div>
 
       <Row gutter={[20, 20]} wrap={false} className="overflow-x-auto pb-1">
@@ -4082,12 +4202,28 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <Title level={5} className="!mb-1 !mt-0 text-slate-800">
-                          Tabla de planificación
+                          Tabla de cobertura
                         </Title>
                         <Text type="secondary" className="text-sm">
                           Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
                         </Text>
                       </div>
+                      {!isViewer ? (
+                        <Tooltip title="Evalúa la cobertura, el riesgo y la prioridad de las funcionalidades para definir el alcance de la planificación de pruebas.">
+                          <Button
+                            icon={<FileSearchOutlined aria-hidden="true" />}
+                            className="self-start rounded-xl border-sky-200 text-sky-700"
+                            disabled={isBulkSaving}
+                            onClick={() => {
+                              setSelectedFunctionality(null);
+                              setBulkFunctionalitySearch('');
+                              setIsBulkDrawerOpen(true);
+                            }}
+                          >
+                            Evaluar candidatas
+                          </Button>
+                        </Tooltip>
+                      ) : null}
                     </div>
 
 
@@ -4107,7 +4243,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           ? undefined
                           : {
                               selectedRowKeys,
-                              onChange: keys => setSelectedRowKeys(keys),
+                              onChange: keys => {
+                                setSelectedRowKeys(keys);
+                                setBulkModuleFilter([]);
+                                setBulkFunctionalitySearch('');
+                                if (keys.length > 0) {
+                                  setSelectedFunctionality(null);
+                                  setIsBulkDrawerOpen(true);
+                                }
+                              },
                               columnWidth: 36,
                               preserveSelectedRowKeys: true,
                             }
@@ -4229,13 +4373,15 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     </Card>
                   ) : null}
                   <Drawer
-                    title={selectedBulkCount > 0 ? 'Edición masiva QA' : 'Detalle QA'}
+                    title={isBulkDrawerOpen ? 'Cobertura de QA' : 'Detalle QA'}
                     placement="right"
                     width={
-                      selectedBulkCount > 0
-                        ? screens.md
-                          ? 520
-                          : '100%'
+                      isBulkDrawerOpen
+                        ? screens.lg
+                          ? '80vw'
+                          : screens.md
+                            ? '90vw'
+                            : '100%'
                         : screens.xl
                           ? 760
                           : screens.lg
@@ -4244,11 +4390,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                               ? 640
                               : '100%'
                     }
-                    open={Boolean(selectedFunctionality) || (selectedBulkCount > 0 && isBulkDrawerOpen)}
+                    open={Boolean(selectedFunctionality) || isBulkDrawerOpen}
                     onClose={() => {
                       setIsTestCaseDrawerOpen(false);
 
-                      if (selectedBulkCount > 0 && isBulkDrawerOpen) {
+                      if (isBulkDrawerOpen) {
                         setIsBulkDrawerOpen(false);
                         return;
                       }

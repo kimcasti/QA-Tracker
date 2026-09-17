@@ -27,6 +27,7 @@ export interface TestRunResultDto {
 }
 
 export interface TestRunDto {
+  createdAt?: string;
   documentId: string;
   title: string;
   description?: string;

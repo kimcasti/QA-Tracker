@@ -107,6 +107,7 @@ function mapTestRun(document: TestRunDto, resultsOverride?: TestRunResult[]): Te
     title: document.title,
     description: document.description || '',
     executionDate: document.executionDate || '',
+    createdAt: document.createdAt,
     status: executionStatusFromApi(document.status),
     testType: testTypeFromApi(document.testType),
     sprint: document.sprint?.name || '',

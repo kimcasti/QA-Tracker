@@ -525,12 +525,17 @@ function getTestTypeTagStyle(type?: string | null) {
 function renderTestTypeTag(
   type?: string | null,
   automationMeta?: { automatedCount: number; tools: string[] },
+  subtle = false,
 ) {
   return (
     <div className="inline-flex items-center gap-1.5">
-      <Tag className="m-0 text-[10px] font-semibold uppercase" style={getTestTypeTagStyle(type)}>
-        {type || 'Sin tipo'}
-      </Tag>
+      {subtle ? (
+        <span className="text-xs font-normal text-slate-500">{type || 'Sin tipo'}</span>
+      ) : (
+        <Tag className="m-0 text-[10px] font-semibold uppercase" style={getTestTypeTagStyle(type)}>
+          {type || 'Sin tipo'}
+        </Tag>
+      )}
       {automationMeta && automationMeta.automatedCount > 0 ? (
         <Tooltip
           title={
@@ -624,7 +629,6 @@ function PlanningSectionCard({
 
 type NativeExecutionTableFilterState = {
   status: React.Key[] | null;
-  sprint: React.Key[] | null;
   testType: React.Key[] | null;
   environment: React.Key[] | null;
 };
@@ -3178,7 +3182,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Filters state
   const [tableFilters, setTableFilters] = useState<NativeExecutionTableFilterState>({
     status: null,
-    sprint: null,
     testType: null,
     environment: null,
   });
@@ -3186,21 +3189,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const nativeStatusFilters = useMemo(
     () =>
       Object.values(ExecutionStatus).map(status => ({
-        text: labelExecutionStatus(status, t),
+        text: status === ExecutionStatus.FINAL
+          ? t('execution_history.status.final')
+          : t('execution_history.status.in_progress'),
         value: status,
       })),
     [t],
-  );
-
-  const nativeSprintFilters = useMemo(
-    () =>
-      Array.from(new Set(testRuns.map(run => run.sprint).filter(Boolean)))
-        .sort((left, right) => String(left).localeCompare(String(right)))
-        .map(sprint => ({
-          text: String(sprint),
-          value: String(sprint),
-        })),
-    [testRuns],
   );
 
   const nativeTestTypeFilters = useMemo(
@@ -3231,7 +3225,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const clearNativeTableFilters = () => {
     setTableFilters({
       status: null,
-      sprint: null,
       testType: null,
       environment: null,
     });
@@ -3274,7 +3267,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
 
   const testRunModalTitle = isEditingRunInfo
     ? 'Editar planificación de la ejecución'
-    : 'Nueva Ejecución de Pruebas';
+    : 'Nueva planificación de pruebas';
   const testRunModalPrimaryLabel = isEditingRunInfo
     ? 'Guardar información'
     : 'Crear Ejecución de Pruebas';
@@ -4048,49 +4041,15 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          TÍTULO
+          NOMBRE DE LA PLANIFICACIÓN
         </span>
       ),
-      key: 'title',
-      width: 240,
-      render: (_: any, record: TestRun) => (
-        <div className="flex flex-col gap-1">
-          <Text strong className="block max-w-[220px] truncate text-slate-700" title={record.title}>
-            {record.title}
-          </Text>
-          {record.testType === TestType.UAT ? (
-            <Tag
-              color={publicUatStatusColor(record.publicUatSession?.status)}
-              className="m-0 w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold"
-            >
-              {labelPublicUatSessionStatus(record.publicUatSession?.status)}
-            </Tag>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">FECHA</span>
-      ),
-      dataIndex: 'executionDate',
-      key: 'executionDate',
-      width: 120,
-      render: (date: string) => dayjs(date).format('DD/MM/YYYY'),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          TIPO DE TEST
-        </span>
-      ),
-      dataIndex: 'testType',
       key: 'testType',
-      width: 150,
+      width: 280,
       filters: nativeTestTypeFilters,
       filteredValue: tableFilters.testType,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.testType === String(value),
-      render: (type: string, record: TestRun) => {
+      render: (_: unknown, record: TestRun) => {
         const automatedCases = testCases.filter(
           testCase =>
             record.selectedFunctionalities.includes(testCase.functionalityId) &&
@@ -4104,24 +4063,60 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           ),
         );
 
-        return renderTestTypeTag(type, {
-          automatedCount: automatedCases.length,
-          tools,
-        });
+        return (
+          <div className="flex flex-col gap-1">
+            <Tooltip title={record.title}>
+              <Text strong className="block truncate text-slate-700">
+                {record.title}
+              </Text>
+            </Tooltip>
+            {renderTestTypeTag(record.testType, {
+              automatedCount: automatedCases.length,
+              tools,
+            }, true)}
+            {record.description ? (
+              <Tooltip title={record.description}>
+                <Text type="secondary" className="block truncate text-xs">
+                  {record.description}
+                </Text>
+              </Tooltip>
+            ) : null}
+            {record.testType === TestType.UAT ? (
+              <Tag
+                color={publicUatStatusColor(record.publicUatSession?.status)}
+                className="m-0 w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              >
+                {labelPublicUatSessionStatus(record.publicUatSession?.status)}
+              </Tag>
+            ) : null}
+          </div>
+        );
       },
     },
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          SPRINT
+          MÓDULOS
         </span>
       ),
-      dataIndex: 'sprint',
-      key: 'sprint',
-      width: 90,
-      filters: nativeSprintFilters,
-      filteredValue: tableFilters.sprint,
-      onFilter: (value: boolean | React.Key, record: TestRun) => record.sprint === String(value),
+      key: 'modules',
+      width: 170,
+      render: (_: unknown, record: TestRun) => {
+        const modules = [...new Set(record.selectedModules.filter(Boolean))];
+        if (!modules.length) return '—';
+        return (
+          <div className="flex min-w-0 items-center gap-1">
+            <Tooltip title={modules[0]}>
+              <Tag className="m-0 min-w-0 truncate">{modules[0]}</Tag>
+            </Tooltip>
+            {modules.length > 1 ? (
+              <Tooltip title={modules.slice(1).join(', ')}>
+                <Tag className="m-0 shrink-0" tabIndex={0}>+{modules.length - 1}</Tag>
+              </Tooltip>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       title: (
@@ -4163,32 +4158,14 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     {
       title: (
         <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          ESTADO
+          PROGRESO / ESTADO
         </span>
       ),
-      dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 180,
       filters: nativeStatusFilters,
       filteredValue: tableFilters.status,
       onFilter: (value: boolean | React.Key, record: TestRun) => record.status === String(value),
-      render: (status: ExecutionStatus) => (
-        <Tag
-          color={status === ExecutionStatus.FINAL ? 'blue' : 'orange'}
-          className="rounded-full px-3 font-bold uppercase text-[10px]"
-        >
-          {status}
-        </Tag>
-      ),
-    },
-    {
-      title: (
-        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
-          PROGRESO
-        </span>
-      ),
-      key: 'progress',
-      width: 160,
       render: (_: any, record: TestRun) => {
         const total = record.totalResults ?? record.results.length;
         const executed =
@@ -4206,9 +4183,32 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-blue-500" style={{ width: `${percent}%` }} />
             </div>
+            <div className="mt-1 flex items-center gap-1.5 text-xs font-normal text-slate-500">
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${record.status === ExecutionStatus.FINAL ? 'bg-green-500' : 'bg-orange-500'}`}
+              />
+              <span>
+                {record.status === ExecutionStatus.FINAL
+                  ? t('execution_history.status.final')
+                  : t('execution_history.status.in_progress')}
+              </span>
+            </div>
           </div>
         );
       },
+    },
+    {
+      title: (
+        <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">
+          FECHA DE CREACIÓN
+        </span>
+      ),
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 170,
+      render: (date: string | undefined) =>
+        date && dayjs(date).isValid() ? dayjs(date).format('DD/MM/YYYY') : '—',
     },
     {
       title: (
@@ -4274,20 +4274,29 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         }
 
         const shouldCollapseActions = extraActions.length > 1;
+        const executedResults =
+          record.executedResults ??
+          record.results.filter(result => result.result !== TestResult.NOT_EXECUTED).length;
+        const executionActionLabel = record.status === ExecutionStatus.DRAFT
+          ? executedResults > 0
+            ? 'Continuar ejecución de Prueba'
+            : 'Iniciar ejecución de Prueba'
+          : 'Ver';
 
         return (
           <Space size="small" className="flex-nowrap items-center">
-            <Button
-              icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
-              aria-label={record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
-              title={record.status === ExecutionStatus.DRAFT ? 'Continuar' : 'Ver'}
-              size="small"
-              loading={openingRunId === record.id}
-              onClick={() => openTestRunDetail(record)}
-              className={
-                record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'
-              }
-            />
+            <Tooltip title={executionActionLabel}>
+              <Button
+                icon={record.status === ExecutionStatus.DRAFT ? <EditOutlined /> : <EyeOutlined />}
+                aria-label={executionActionLabel}
+                size="small"
+                loading={openingRunId === record.id}
+                onClick={() => openTestRunDetail(record)}
+                className={
+                  record.status === ExecutionStatus.DRAFT ? 'text-amber-600' : 'text-blue-600'
+                }
+              />
+            </Tooltip>
             {shouldCollapseActions ? (
               <Dropdown trigger={['click']} menu={{ items: extraActions }} placement="bottomRight">
                 <Button icon={<MoreOutlined />} size="small" aria-label="Más acciones" />
@@ -4360,7 +4369,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const handleNativeTableChange = (filters: Record<string, FilterValue | null>) => {
     setTableFilters({
       status: (filters.status as React.Key[] | null) || null,
-      sprint: (filters.sprint as React.Key[] | null) || null,
       testType: (filters.testType as React.Key[] | null) || null,
       environment: (filters.environment as React.Key[] | null) || null,
     });
@@ -4505,6 +4513,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               Volver
             </Button>
             <div className="min-w-0 flex-1">
+              <Title level={2} className="m-0 font-bold text-slate-800">
+                Ejecución de Pruebas
+              </Title>
               <div className="flex items-center gap-2">
                 {isReadOnly && (
                   <Tag
@@ -5553,14 +5564,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         onRenewClick={() => handleUpgradeClick('test-execution-billing-banner')}
       />
 
-      <div className="flex justify-between items-start">
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap justify-between items-start gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
           <Title level={2} className="m-0 font-bold text-slate-800">
-            Ejecución de Pruebas
+            Planificación y Ejecución de Pruebas
           </Title>
           <Text type="secondary" className="text-slate-500">
-            Registra y monitorea los resultados de las ejecuciones de pruebas manuales y
-            automatizadas.
+            Planifica el alcance de las pruebas, crea ejecuciones y monitorea sus resultados.
           </Text>
         </div>
         {!isViewer ? (
@@ -5570,7 +5580,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             onClick={openCreateTestRunModal}
             className="rounded-lg h-10 px-6"
           >
-            Crear Ejecución de Pruebas
+            Nueva planificación
           </Button>
         ) : null}
       </div>
@@ -5582,12 +5592,13 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-slate-800">
-              Las ejecuciones se construyen a partir de los casos de prueba registrados en las
-              funcionalidades.
+              Planifica antes de ejecutar
             </div>
             <div className="mt-1 text-sm text-slate-500">
-              Antes de crear una ejecución, asegúrate de que la funcionalidad tenga casos asociados.
-              QA Tracker usa esos casos para definir el alcance inicial de la sesión.
+              Selecciona los módulos impactados, identifica las funcionalidades aplicables y elige
+              los casos de prueba que formarán parte de la validación.
+              <br />
+              Cuando la planificación esté lista, podrás registrar los resultados de la ejecución.
             </div>
           </div>
         </div>
@@ -5607,7 +5618,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     <div className="flex flex-col gap-1">
                       <span className="text-slate-800 font-bold">Historial de Ejecuciones</span>
                       <span className="text-xs text-slate-400">
-                        Usa los filtros nativos de la tabla en estado, sprint, tipo de test y
+                        Usa los filtros nativos de la tabla en estado, tipo de prueba y
                         environment.
                       </span>
                     </div>
@@ -5626,9 +5637,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     columns={columns}
                     dataSource={testRuns}
                     rowKey="id"
-                    className="executive-table"
+                    className="executive-table [&_thead_th]:whitespace-nowrap"
                     tableLayout="fixed"
-                    scroll={{ x: 1350 }}
+                    scroll={{ x: 1260 }}
                     onChange={(_, filters) => handleNativeTableChange(filters)}
                   />
                 </Card>

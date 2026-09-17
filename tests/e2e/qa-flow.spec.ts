@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { createSeededQaFlow, type SeededQaFlow } from './support/qaFlowSeed';
 
 async function loginThroughUi(page: import('@playwright/test').Page, seed: SeededQaFlow) {
+  await page.addInitScript(() => localStorage.setItem('qa_lang', 'es'));
   await page.goto('/?mode=login');
   await page.getByLabel(/Correo o usuario/i).fill(seed.auth.user.email);
   await page.getByLabel(/Contraseña/i).fill(seed.password);
@@ -55,6 +56,7 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
 
     await page.goto(`/projects/${seed.projectKey}/qa-planning`);
     await expect(page.getByRole('heading', { name: 'Estrategia QA' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Gráficas QA', exact: true }).click();
     await expect(page.locator('main')).toContainText('Cobertura visible: 100% sobre 2 funcionalidades');
     await expect(page.locator('main')).toContainText('Cobertura por tipo');
     await expect(page.locator('main')).toContainText('Regresión');
@@ -97,7 +99,13 @@ test.describe.serial('QA Tracker seeded visual flow', () => {
 
     const executionsCard = page.locator('.ant-card').filter({ hasText: 'Historial de Ejecuciones' }).first();
     await expect(executionsCard).toContainText(seed.testRunTitle);
-    await expect(executionsCard).toContainText('Legacy');
+    await expect(executionsCard.getByRole('columnheader', { name: 'MÓDULOS', exact: true })).toBeVisible();
+    await expect(executionsCard.getByRole('columnheader', { name: 'FECHA DE CREACIÓN', exact: true })).toBeVisible();
+    const executionRow = executionsCard.getByRole('row').filter({ hasText: seed.testRunTitle });
+    await expect(executionRow).toContainText('Pacientes');
+    await expect(executionRow).toContainText('+1');
+    await expect(executionRow).toContainText('Finalizada');
+    await expect(executionRow).toContainText(/\d{2}\/\d{2}\/\d{4}/);
     await expect(executionsCard).toContainText('2/2');
     await expect(executionsCard).toContainText('100%');
   });

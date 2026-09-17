@@ -19,7 +19,7 @@
   "nav.dashboard": "Dashboard",
   "nav.functionalities": "Funcionalidades",
   "nav.storymap": "Story Map",
-  "nav.testing": "Ejecución de Pruebas",
+  "nav.testing": "Planificación y Ejecución de Pruebas",
   "nav.plans": "Calendario",
   "nav.regression": "Control de Regresión",
   "nav.smoke": "Control de Smoke",
@@ -49,6 +49,8 @@
   "test_result.blocked": "Bloqueado",
   "test_result.not_executed": "No Ejecutado",
 
+  "execution_history.status.in_progress": "En curso",
+  "execution_history.status.final": "Finalizada",
   "execution_status.draft": "Borrador",
   "execution_status.final": "Final",
 

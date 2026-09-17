@@ -1,0 +1,255 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - button "arrow-left" [ref=e7] [cursor=pointer]:
+          - img "arrow-left" [ref=e9]:
+            - img [ref=e10]
+        - generic [ref=e13]:
+          - img "QA Tracker" [ref=e14]
+          - generic [ref=e16]: QA Tracker
+      - generic:
+        - generic "Playwright Flow 79080938"
+        - generic: v1.0.0
+      - button "P pw_79080938 Owner pw_79080938@mailinator.com en down" [ref=e18]:
+        - generic [ref=e20]: P
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - strong [ref=e24]: pw_79080938
+            - generic [ref=e25]: Owner
+          - generic [ref=e26]: pw_79080938@mailinator.com
+        - generic [ref=e27]:
+          - generic [ref=e28]: en
+          - img "down" [ref=e30]:
+            - img [ref=e31]
+    - generic [ref=e33]:
+      - complementary [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - img "Logo de Playwright Flow 79080938" [ref=e38]
+              - generic [ref=e39]:
+                - generic [ref=e40]: QA Workspace
+                - generic [ref=e41]: Playwright Flow 79080938
+                - generic [ref=e42]: Owner
+            - button "menu-fold" [ref=e43] [cursor=pointer]:
+              - img "menu-fold" [ref=e45]:
+                - img [ref=e46]
+          - generic [ref=e48]:
+            - menu [ref=e49]:
+              - menuitem "appstore Dashboard" [ref=e50] [cursor=pointer]:
+                - img "appstore" [ref=e51]:
+                  - img [ref=e52]
+                - generic [ref=e54]: Dashboard
+              - menuitem "Functionalities" [ref=e55] [cursor=pointer]:
+                - img [ref=e56]
+                - generic [ref=e59]: Functionalities
+              - menuitem "Estrategia QA" [ref=e60] [cursor=pointer]:
+                - img [ref=e61]
+                - generic [ref=e64]: Estrategia QA
+              - menuitem "check-circle Test Planning and Execution" [ref=e65] [cursor=pointer]:
+                - img "check-circle" [ref=e66]:
+                  - img [ref=e67]
+                - generic [ref=e70]: Test Planning and Execution
+              - menuitem "bar-chart Reports" [ref=e71] [cursor=pointer]:
+                - img "bar-chart" [ref=e72]:
+                  - img [ref=e73]
+                - generic [ref=e75]: Reports
+              - menuitem "Más" [ref=e76] [cursor=pointer]:
+                - generic [ref=e77]: Más
+            - button "logout Exit Project" [ref=e79] [cursor=pointer]:
+              - img "logout" [ref=e81]:
+                - img [ref=e82]
+              - generic [ref=e84]: Exit Project
+      - main [ref=e85]:
+        - generic [ref=e87]:
+          - generic [ref=e89]:
+            - heading "Estrategia QA" [level=2] [ref=e90]
+            - text: Clasifica cobertura, riesgo y prioridad para organizar el alcance de smoke y regresión.
+          - generic [ref=e91]:
+            - generic [ref=e94]:
+              - text: Total visibles
+              - generic [ref=e95]: "2"
+            - generic [ref=e98]:
+              - text: Sin cobertura
+              - generic [ref=e99]: "0"
+            - generic [ref=e102]:
+              - text: Smoke
+              - generic [ref=e103]: "2"
+            - generic [ref=e106]:
+              - text: Regresión
+              - generic [ref=e107]: "2"
+            - generic [ref=e110]:
+              - text: Alto riesgo
+              - generic [ref=e111]: "0"
+            - generic [ref=e114]:
+              - text: Alta prioridad
+              - generic [ref=e115]: "0"
+          - generic [ref=e116]:
+            - generic [ref=e118]:
+              - tablist [ref=e119]:
+                - generic [ref=e121]:
+                  - tab "Tabla de planificación" [selected] [ref=e123] [cursor=pointer]
+                  - tab "Gráficas QA" [ref=e125] [cursor=pointer]
+              - generic [ref=e127]:
+                - generic [ref=e128]:
+                  - generic [ref=e129]:
+                    - generic:
+                      - generic: Filtrar por módulo
+                    - combobox [ref=e131]
+                  - img "down" [ref=e133]:
+                    - img [ref=e134]
+                - generic [ref=e136]:
+                  - searchbox "Buscar por funcionalidad" [ref=e138]
+                  - button "search" [ref=e140] [cursor=pointer]:
+                    - img "search" [ref=e142]:
+                      - img [ref=e143]
+                - button "Limpiar filtros" [disabled] [ref=e145]:
+                  - generic: Limpiar filtros
+                - button "Recomendaciones QA" [ref=e146] [cursor=pointer]:
+                  - img [ref=e148]
+                  - generic [ref=e150]: Recomendaciones QA
+            - tabpanel "Tabla de planificación" [ref=e153]:
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - generic [ref=e159]:
+                    - heading "Tabla de cobertura" [level=5] [ref=e160]
+                    - text: Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
+                  - button "Evaluar candidatas" [ref=e161] [cursor=pointer]:
+                    - img [ref=e163]:
+                      - img [ref=e164]
+                    - generic [ref=e166]: Evaluar candidatas
+                - generic [ref=e169]:
+                  - generic [ref=e171]:
+                    - table [ref=e173]:
+                      - rowgroup [ref=e183]:
+                        - row "Select all Funcionalidad Casos Prioridad filter Riesgo filter Cobertura filter Estado filter Columnas visibles" [ref=e184]:
+                          - columnheader "Select all" [ref=e185]:
+                            - checkbox "Select all" [ref=e189] [cursor=pointer]
+                          - columnheader "Funcionalidad" [ref=e190]
+                          - columnheader "Casos" [ref=e191]
+                          - columnheader "Prioridad filter" [ref=e192]:
+                            - generic [ref=e193]:
+                              - generic [ref=e194]: Prioridad
+                              - button "filter" [ref=e195] [cursor=pointer]:
+                                - img "filter" [ref=e196]:
+                                  - img [ref=e197]
+                          - columnheader "Riesgo filter" [ref=e199]:
+                            - generic [ref=e200]:
+                              - generic [ref=e201]: Riesgo
+                              - button "filter" [ref=e202] [cursor=pointer]:
+                                - img "filter" [ref=e203]:
+                                  - img [ref=e204]
+                          - columnheader "Cobertura filter" [ref=e206]:
+                            - generic [ref=e207]:
+                              - generic [ref=e208]: Cobertura
+                              - button "filter" [ref=e209] [cursor=pointer]:
+                                - img "filter" [ref=e210]:
+                                  - img [ref=e211]
+                          - columnheader "Estado filter" [ref=e213]:
+                            - generic [ref=e214]:
+                              - generic [ref=e215]: Estado
+                              - button "filter" [ref=e216] [cursor=pointer]:
+                                - img "filter" [ref=e217]:
+                                  - img [ref=e218]
+                          - columnheader "Columnas visibles" [ref=e220]:
+                            - button "Columnas visibles" [ref=e221] [cursor=pointer]:
+                              - img [ref=e223]
+                    - table [ref=e227]:
+                      - rowgroup [ref=e237]:
+                        - checkbox [ref=e241] [cursor=pointer]
+                        - text: Funcionalidad Casos
+                        - generic [ref=e242]:
+                          - generic [ref=e243]: Prioridad
+                          - button [ref=e244] [cursor=pointer]:
+                            - img [ref=e245]:
+                              - img [ref=e246]
+                        - generic [ref=e248]:
+                          - generic [ref=e249]: Riesgo
+                          - button [ref=e250] [cursor=pointer]:
+                            - img [ref=e251]:
+                              - img [ref=e252]
+                        - generic [ref=e254]:
+                          - generic [ref=e255]: Cobertura
+                          - button [ref=e256] [cursor=pointer]:
+                            - img [ref=e257]:
+                              - img [ref=e258]
+                        - generic [ref=e260]:
+                          - generic [ref=e261]: Estado
+                          - button [ref=e262] [cursor=pointer]:
+                            - img [ref=e263]:
+                              - img [ref=e264]
+                        - button [ref=e266] [cursor=pointer]:
+                          - img [ref=e268]
+                        - row "Agregar plan medico 2 Smoke Regresión In Progress Ver detalle de Agregar plan medico" [ref=e271]:
+                          - cell [ref=e272]:
+                            - checkbox [ref=e275] [cursor=pointer]
+                          - cell "Agregar plan medico" [ref=e276]:
+                            - generic [ref=e279]: Agregar plan medico
+                          - cell "2" [ref=e280]:
+                            - generic [ref=e282]: "2"
+                          - cell [ref=e283]:
+                            - button [ref=e285]:
+                              - img [ref=e286]
+                          - cell [ref=e288]
+                          - cell "Smoke Regresión" [ref=e290]:
+                            - generic [ref=e291]:
+                              - generic [ref=e292]:
+                                - img [ref=e294]
+                                - generic [ref=e296]: Smoke
+                              - generic [ref=e297]:
+                                - img [ref=e299]
+                                - generic [ref=e304]: Regresión
+                          - cell "In Progress" [ref=e305]:
+                            - generic [ref=e306]: In Progress
+                          - cell "Ver detalle de Agregar plan medico" [ref=e308]:
+                            - button "Ver detalle de Agregar plan medico" [ref=e310] [cursor=pointer]:
+                              - generic [ref=e311]: ...
+                        - row "Desactivar y activar usuario 2 Smoke Regresión In Progress Ver detalle de Desactivar y activar usuario" [ref=e312]:
+                          - cell [ref=e313]:
+                            - checkbox [ref=e316] [cursor=pointer]
+                          - cell "Desactivar y activar usuario" [ref=e317]:
+                            - generic [ref=e320]: Desactivar y activar usuario
+                          - cell "2" [ref=e321]:
+                            - generic [ref=e323]: "2"
+                          - cell [ref=e324]:
+                            - button [ref=e326]:
+                              - img [ref=e327]
+                          - cell [ref=e329]
+                          - cell "Smoke Regresión" [ref=e331]:
+                            - generic [ref=e332]:
+                              - generic [ref=e333]:
+                                - img [ref=e335]
+                                - generic [ref=e337]: Smoke
+                              - generic [ref=e338]:
+                                - img [ref=e340]
+                                - generic [ref=e345]: Regresión
+                          - cell "In Progress" [ref=e346]:
+                            - generic [ref=e347]: In Progress
+                          - cell "Ver detalle de Desactivar y activar usuario" [ref=e349]:
+                            - button "Ver detalle de Desactivar y activar usuario" [ref=e351] [cursor=pointer]:
+                              - generic [ref=e352]: ...
+                  - list [ref=e353]:
+                    - listitem "Previous Page" [ref=e354]:
+                      - button "left" [disabled] [ref=e355]:
+                        - img "left" [ref=e356]:
+                          - img [ref=e357]
+                    - listitem "1" [ref=e359] [cursor=pointer]:
+                      - generic [ref=e360]: "1"
+                    - listitem "Next Page" [ref=e361]:
+                      - button "right" [disabled] [ref=e362]:
+                        - img "right" [ref=e363]:
+                          - img [ref=e364]
+                    - listitem [ref=e366]:
+                      - generic [ref=e367]:
+                        - generic "20 / page" [ref=e368]:
+                          - text: 20 / page
+                          - combobox "Page Size" [ref=e369]
+                        - img "down" [ref=e371]:
+                          - img [ref=e372]
+  - button [ref=e374] [cursor=pointer]:
+    - img [ref=e376]
+```

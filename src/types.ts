@@ -494,6 +494,7 @@ export interface AutomationImportHistoryEntry {
 }
 
 export interface TestRun {
+  createdAt?: string;
   id: string;
   projectId: string;
   title: string;

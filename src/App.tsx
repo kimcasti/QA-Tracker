@@ -398,7 +398,12 @@ function WorkspaceApp({
           icon: <ClipboardList size={16} strokeWidth={1.8} />,
           label: 'Estrategia QA',
         },
-        { key: 'testing', icon: <CheckCircleOutlined />, label: t('nav.testing') },
+        {
+          key: 'testing',
+          icon: <CheckCircleOutlined />,
+          label: t('nav.testing'),
+          className: 'testing-menu-item',
+        },
         { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
         {
           key: 'more',

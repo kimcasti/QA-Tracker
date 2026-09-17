@@ -1,0 +1,185 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - button "arrow-left" [ref=e7] [cursor=pointer]:
+          - img "arrow-left" [ref=e9]:
+            - img [ref=e10]
+        - generic [ref=e13]:
+          - img "QA Tracker" [ref=e14]
+          - generic [ref=e16]: QA Tracker
+      - generic:
+        - generic "Playwright Flow 96923232"
+        - generic: v1.0.0
+      - button "P pw_96923232 Owner pw_96923232@mailinator.com es down" [ref=e18]:
+        - generic [ref=e20]: P
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - strong [ref=e24]: pw_96923232
+            - generic [ref=e25]: Owner
+          - generic [ref=e26]: pw_96923232@mailinator.com
+        - generic [ref=e27]:
+          - generic [ref=e28]: es
+          - img "down" [ref=e30]:
+            - img [ref=e31]
+    - generic [ref=e33]:
+      - complementary [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - img "Logo de Playwright Flow 96923232" [ref=e38]
+              - generic [ref=e39]:
+                - generic [ref=e40]: QA Workspace
+                - generic [ref=e41]: Playwright Flow 96923232
+                - generic [ref=e42]: Owner
+            - button "menu-fold" [ref=e43] [cursor=pointer]:
+              - img "menu-fold" [ref=e45]:
+                - img [ref=e46]
+          - generic [ref=e48]:
+            - menu [ref=e49]:
+              - menuitem "appstore Dashboard" [ref=e50] [cursor=pointer]:
+                - img "appstore" [ref=e51]:
+                  - img [ref=e52]
+                - generic [ref=e54]: Dashboard
+              - menuitem "Funcionalidades" [ref=e55] [cursor=pointer]:
+                - img [ref=e56]
+                - generic [ref=e59]: Funcionalidades
+              - menuitem "Estrategia QA" [ref=e60] [cursor=pointer]:
+                - img [ref=e61]
+                - generic [ref=e64]: Estrategia QA
+              - menuitem "check-circle Planificación y Ejecución de Pruebas" [ref=e65] [cursor=pointer]:
+                - img "check-circle" [ref=e66]:
+                  - img [ref=e67]
+                - generic [ref=e70]: Planificación y Ejecución de Pruebas
+              - menuitem "bar-chart Reportes" [ref=e71] [cursor=pointer]:
+                - img "bar-chart" [ref=e72]:
+                  - img [ref=e73]
+                - generic [ref=e75]: Reportes
+              - menuitem "Más" [ref=e76] [cursor=pointer]:
+                - generic [ref=e77]: Más
+            - button "logout Salir del Proyecto" [ref=e79] [cursor=pointer]:
+              - img "logout" [ref=e81]:
+                - img [ref=e82]
+              - generic [ref=e84]: Salir del Proyecto
+      - main [ref=e85]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - heading "Planificación y Ejecución de Pruebas" [level=2] [ref=e90]
+              - generic [ref=e91]: Planifica el alcance de las pruebas, crea ejecuciones y monitorea sus resultados.
+            - button "plus Nueva planificación" [ref=e92] [cursor=pointer]:
+              - img "plus" [ref=e94]:
+                - img [ref=e95]
+              - generic [ref=e98]: Nueva planificación
+          - generic [ref=e101]:
+            - img "info-circle" [ref=e103]:
+              - img [ref=e104]
+            - generic [ref=e107]:
+              - generic [ref=e108]: Planifica antes de ejecutar
+              - generic [ref=e109]:
+                - text: Selecciona los módulos impactados, identifica las funcionalidades aplicables y elige los casos de prueba que formarán parte de la validación.
+                - text: Cuando la planificación esté lista, podrás registrar los resultados de la ejecución.
+          - generic [ref=e110]:
+            - tablist [ref=e111]:
+              - generic [ref=e113]:
+                - tab "Historial de Ejecuciones" [active] [selected] [ref=e115] [cursor=pointer]
+                - tab "Historial de Automatización" [ref=e117] [cursor=pointer]
+                - tab "Historial de Bugs" [ref=e119] [cursor=pointer]
+            - tabpanel "Historial de Ejecuciones" [ref=e122]:
+              - generic [ref=e124]:
+                - generic [ref=e126]:
+                  - generic [ref=e128]:
+                    - generic [ref=e129]: Historial de Ejecuciones
+                    - generic [ref=e130]: Usa los filtros nativos de la tabla en estado, tipo de prueba y environment.
+                  - button "Limpiar filtros tabla" [disabled] [ref=e132]:
+                    - generic: Limpiar filtros tabla
+                - generic [ref=e136]:
+                  - table [ref=e140]:
+                    - rowgroup [ref=e149]:
+                      - row "NOMBRE DE LA PLANIFICACIÓN filter MÓDULOS TESTER ENVIRONMENT filter PROGRESO / ESTADO filter FECHA DE CREACIÓN ACCIONES" [ref=e150]:
+                        - columnheader "NOMBRE DE LA PLANIFICACIÓN filter" [ref=e151]:
+                          - generic [ref=e152]:
+                            - generic [ref=e153]: NOMBRE DE LA PLANIFICACIÓN
+                            - button "filter" [ref=e154] [cursor=pointer]:
+                              - img "filter" [ref=e155]:
+                                - img [ref=e156]
+                        - columnheader "MÓDULOS" [ref=e158]
+                        - columnheader "TESTER" [ref=e159]
+                        - columnheader "ENVIRONMENT filter" [ref=e160]:
+                          - generic [ref=e161]:
+                            - generic [ref=e162]: ENVIRONMENT
+                            - button "filter" [ref=e163] [cursor=pointer]:
+                              - img "filter" [ref=e164]:
+                                - img [ref=e165]
+                        - columnheader "PROGRESO / ESTADO filter" [ref=e167]:
+                          - generic [ref=e168]:
+                            - generic [ref=e169]: PROGRESO / ESTADO
+                            - button "filter" [ref=e170] [cursor=pointer]:
+                              - img "filter" [ref=e171]:
+                                - img [ref=e172]
+                        - columnheader "FECHA DE CREACIÓN" [ref=e174]
+                        - columnheader "ACCIONES" [ref=e175]
+                    - rowgroup [ref=e176]:
+                      - generic [ref=e177]:
+                        - generic [ref=e178]: NOMBRE DE LA PLANIFICACIÓN
+                        - button [ref=e179] [cursor=pointer]:
+                          - img [ref=e180]:
+                            - img [ref=e181]
+                      - text: MÓDULOS TESTER
+                      - generic [ref=e183]:
+                        - generic [ref=e184]: ENVIRONMENT
+                        - button [ref=e185] [cursor=pointer]:
+                          - img [ref=e186]:
+                            - img [ref=e187]
+                      - generic [ref=e189]:
+                        - generic [ref=e190]: PROGRESO / ESTADO
+                        - button [ref=e191] [cursor=pointer]:
+                          - img [ref=e192]:
+                            - img [ref=e193]
+                      - text: FECHA DE CREACIÓN ACCIONES
+                      - row "Playwright Happy Path Funcional Seleccion parcial para UI Pacientes +1 pw_96923232 Test 2/2 100% Finalizada 16/09/2026 Ver delete" [ref=e195]:
+                        - cell "Playwright Happy Path Funcional Seleccion parcial para UI" [ref=e196]:
+                          - generic [ref=e197]:
+                            - strong [ref=e199]: Playwright Happy Path
+                            - generic [ref=e201]: Funcional
+                            - generic [ref=e202]: Seleccion parcial para UI
+                        - cell "Pacientes +1" [ref=e203]:
+                          - generic [ref=e204]:
+                            - generic [ref=e205]: Pacientes
+                            - generic [ref=e206]: "+1"
+                        - cell "pw_96923232" [ref=e207]:
+                          - generic "pw_96923232" [ref=e208]
+                        - cell "Test" [ref=e209]:
+                          - generic [ref=e210]: Test
+                        - cell "2/2 100% Finalizada" [ref=e211]:
+                          - generic [ref=e212]:
+                            - generic [ref=e213]:
+                              - generic [ref=e214]: 2/2
+                              - generic [ref=e215]: 100%
+                            - generic [ref=e220]: Finalizada
+                        - cell "16/09/2026" [ref=e221]
+                        - cell "Ver delete" [ref=e222]:
+                          - generic [ref=e223]:
+                            - button "Ver" [ref=e225] [cursor=pointer]:
+                              - img "eye" [ref=e227]:
+                                - img [ref=e228]
+                            - button "delete" [ref=e231] [cursor=pointer]:
+                              - img "delete" [ref=e233]:
+                                - img [ref=e234]
+                  - list [ref=e236]:
+                    - listitem "Página anterior" [ref=e237]:
+                      - button "left" [disabled] [ref=e238]:
+                        - img "left" [ref=e239]:
+                          - img [ref=e240]
+                    - listitem "1" [ref=e242] [cursor=pointer]:
+                      - generic [ref=e243]: "1"
+                    - listitem "Página siguiente" [ref=e244]:
+                      - button "right" [disabled] [ref=e245]:
+                        - img "right" [ref=e246]:
+                          - img [ref=e247]
+  - button [ref=e249] [cursor=pointer]:
+    - img [ref=e251]
+```
