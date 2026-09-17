@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import {
   Alert,
   Button,
@@ -2751,7 +2752,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   <span className="font-semibold text-slate-600">Objetivo de la Regresión</span>
                 }
               >
-                <Input.TextArea
+                <VoiceTextArea voiceSessionKey={`${editingCycle?.id || 'new'}:${isModalOpen}`}
                   rows={3}
                   placeholder="Ej: Asegurar estabilidad de módulos core antes de despliegue..."
                   className="rounded-lg"
@@ -3113,7 +3114,7 @@ export default function RegressionCycles({ projectId }: { projectId?: string }) 
                   : undefined
               }
             >
-              <EvidenceRichEditorField
+              <EvidenceRichEditorField voiceSessionKey={`${currentExecution?.id || ""}:${evidenceModalOpen}`}
                 projectId={evidenceModalOpen ? selectedCycle?.projectId || projectId : undefined}
                 aiRecordId={currentExecution?.id}
                 aiContext={currentExecution?.functionalityName}

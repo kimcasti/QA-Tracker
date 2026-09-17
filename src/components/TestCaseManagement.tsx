@@ -1732,6 +1732,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 }
               >
                 <TestCaseRichTextEditorField
+                  voiceSessionKey={editingTestCase?.id || "new-case"}
                   placeholder="Descripción breve del objetivo de la prueba"
                   minHeightClassName="min-h-[160px]"
                 />
@@ -1751,6 +1752,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 }
               >
                 <TestCaseRichTextEditorField
+                  voiceSessionKey={editingTestCase?.id || "new-case"}
                   placeholder="Estado inicial requerido"
                   minHeightClassName="min-h-[160px]"
                 />
@@ -1767,6 +1769,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
               >
                 <TestCaseRichTextEditorField
+                  voiceSessionKey={editingTestCase?.id || "new-case"}
                   placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
                   minHeightClassName="min-h-[160px]"
                 />
@@ -1783,6 +1786,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 rules={[{ required: true, message: 'Por favor ingresa el resultado esperado' }]}
               >
                 <TestCaseRichTextEditorField
+                  voiceSessionKey={editingTestCase?.id || "new-case"}
                   placeholder="El sistema debe mostrar el dashboard..."
                   minHeightClassName="min-h-[160px]"
                 />

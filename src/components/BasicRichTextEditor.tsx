@@ -1,3 +1,4 @@
+import EditorDictation from './EditorDictation';
 import { Button } from 'antd';
 import {
   BoldOutlined,
@@ -8,10 +9,11 @@ import {
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { normalizeEvidenceHtml } from '../utils/evidenceRichText';
 
 type BasicRichTextEditorProps = {
+  voiceSessionKey?: string;
   value?: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
@@ -44,6 +46,7 @@ function ToolbarButton({ active = false, disabled = false, icon, onClick }: Tool
 }
 
 export default function BasicRichTextEditor({
+  voiceSessionKey,
   value,
   onChange,
   disabled = false,
@@ -51,6 +54,7 @@ export default function BasicRichTextEditor({
   minHeightClassName = 'min-h-[120px]',
   className,
 }: BasicRichTextEditorProps) {
+  const voiceScopeRef = useRef<HTMLDivElement>(null);
   const normalizedValue = useMemo(() => normalizeEvidenceHtml(value), [value]);
 
   const editor = useEditor({
@@ -86,8 +90,10 @@ export default function BasicRichTextEditor({
   }, [editor, normalizedValue]);
 
   return (
-    <div className={`space-y-2 ${className || ''}`.trim()}>
+    <div ref={voiceScopeRef} className={`space-y-2 ${className || ''}`.trim()}>
       <div className="flex flex-wrap gap-2">
+        <EditorDictation editor={editor} disabled={disabled} scopeRef={voiceScopeRef}
+          sessionKey={`${voiceSessionKey || ''}:${normalizedValue !== editor?.getHTML() ? normalizedValue : 'synced'}`} />
         <ToolbarButton
           icon={<BoldOutlined />}
           active={Boolean(editor?.isActive('bold'))}

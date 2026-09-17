@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Col, Form, Input, List, Row, Select, Typography, message } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
@@ -138,7 +139,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
               PROPOSITO DEL PROYECTO
             </Title>
             <Form.Item name="purpose" label="Objetivo del Proyecto">
-              <Input.TextArea
+              <VoiceTextArea voiceSessionKey={project.id}
                 rows={4}
                 placeholder="Describe el objetivo principal y el alcance del proyecto..."
                 className="rounded-xl p-4"
@@ -190,7 +191,7 @@ const EditProject: React.FC<EditProjectProps> = ({ project, onCancel, onSave }) 
               REGLAS DE NEGOCIO
             </Title>
             <Form.Item name="businessRules" label="Reglas Importantes">
-              <Input.TextArea
+              <VoiceTextArea voiceSessionKey={project.id}
                 rows={6}
                 placeholder="Define las reglas de negocio criticas para el QA..."
                 className="rounded-xl p-4 font-mono text-sm"

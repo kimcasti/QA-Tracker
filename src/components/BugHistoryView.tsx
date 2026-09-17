@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, Upload, message } from 'antd';
 import { BugOutlined, DeleteOutlined, EditOutlined, PlusOutlined, MinusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
@@ -11,7 +12,6 @@ import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAcces
 import { readFileAsDataUrl, validateInlineImageFile } from '../utils/uploadValidation';
 
 const { Text } = Typography;
-const { TextArea } = Input;
 
 function renderRichTextContent(value?: string | null) {
   const normalizedHtml = normalizeEvidenceHtml(value);
@@ -486,7 +486,7 @@ export default function BugHistoryView({ projectId }: { projectId?: string }) {
           </Form.Item>
 
           <Form.Item name="description" label="Descripción">
-            <TextArea
+            <VoiceTextArea voiceSessionKey={editingBug?.internalBugId || 'new'}
               rows={4}
               className="rounded-lg"
               placeholder="Describe el bug, el contexto y el impacto observado."

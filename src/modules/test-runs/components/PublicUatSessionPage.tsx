@@ -434,6 +434,7 @@ export default function PublicUatSessionPage() {
                       }
                     >
                       <EvidenceRichEditor
+                  voiceSessionKey={result.id}
                         value={draft.notes}
                         onChange={value =>
                           setDrafts(current => ({

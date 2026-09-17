@@ -1,3 +1,4 @@
+import EditorDictation from './EditorDictation';
 import { Button, Modal, Tooltip, message } from 'antd';
 import {
   BoldOutlined,
@@ -23,6 +24,7 @@ import {
 } from '../utils/evidenceRichText';
 
 type EvidenceRichEditorProps = {
+  voiceSessionKey?: string;
   value?: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
@@ -92,6 +94,7 @@ async function insertImagesIntoEditor(
 }
 
 export default function EvidenceRichEditor({
+  voiceSessionKey,
   value,
   onChange,
   disabled = false,
@@ -108,6 +111,7 @@ export default function EvidenceRichEditor({
   const requestId = useRef(0);
   const sourceHtml = useRef('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceScopeRef = useRef<HTMLDivElement>(null);
   const normalizedValue = useMemo(() => normalizeEvidenceHtml(value), [value]);
 
   const editor = useEditor({
@@ -295,9 +299,11 @@ export default function EvidenceRichEditor({
   };
 
   return (
-    <div className="space-y-3">
+    <div ref={voiceScopeRef} className="space-y-3">
       <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
         <div className="flex flex-wrap items-center justify-start gap-2">
+          <EditorDictation editor={editor} disabled={disabled} scopeRef={voiceScopeRef}
+            sessionKey={`${(voiceSessionKey ?? aiRecordId) || ''}:${normalizedValue !== editor?.getHTML() ? normalizedValue : 'synced'}`} />
           <div role="group" aria-label="Formato de texto" className="flex flex-wrap items-center gap-1">
             {[
               { label: 'Negrita', name: 'bold', icon: <BoldOutlined />, action: toggleBold },

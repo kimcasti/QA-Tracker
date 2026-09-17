@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { useState } from 'react';
 import { JiraAccountSettings } from '../modules/jira/components/JiraAccountSettings';
 import { JiraProjectSettings } from '../modules/jira/components/JiraProjectSettings';
@@ -949,7 +950,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 </Select>
               </Form.Item>
               <Form.Item name="objective" label="Objetivo del Sprint">
-                <Input.TextArea rows={4} placeholder="Que se espera lograr en este ciclo?" />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Que se espera lograr en este ciclo?" />
               </Form.Item>
             </>
           )}
@@ -960,7 +961,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Input placeholder="Ej: Administrador, Cliente, Auditor" />
               </Form.Item>
               <Form.Item name="description" label="Descripción">
-                <Input.TextArea rows={4} placeholder="Describe las responsabilidades de este rol..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Describe las responsabilidades de este rol..." />
               </Form.Item>
             </>
           )}
@@ -971,7 +972,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Input placeholder="Ej: Autenticación, Pagos, Usuarios" />
               </Form.Item>
               <Form.Item name="description" label="Descripción">
-                <Input.TextArea rows={4} placeholder="Describe el alcance de este modulo..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Describe el alcance de este modulo..." />
               </Form.Item>
             </>
           )}
@@ -982,16 +983,16 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Input placeholder="Ej: Módulo Agencia -- revisión" />
               </Form.Item>
               <Form.Item name="description" label="Descripción" className="col-span-2">
-                <Input.TextArea rows={4} placeholder="Describe el escenario base de la plantilla..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Describe el escenario base de la plantilla..." />
               </Form.Item>
               <Form.Item name="preconditions" label="Precondiciones" className="col-span-2">
-                <Input.TextArea rows={4} placeholder="Condiciones necesarias antes de ejecutar la prueba..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Condiciones necesarias antes de ejecutar la prueba..." />
               </Form.Item>
               <Form.Item name="testSteps" label="Pasos" className="col-span-2">
-                <Input.TextArea rows={5} placeholder="Secuencia de pasos sugerida para el caso de prueba..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={5} placeholder="Secuencia de pasos sugerida para el caso de prueba..." />
               </Form.Item>
               <Form.Item name="expectedResult" label="Resultado esperado" className="col-span-2">
-                <Input.TextArea rows={4} placeholder="Que debe ocurrir si la funcionalidad se comporta correctamente..." />
+                <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`} rows={4} placeholder="Que debe ocurrir si la funcionalidad se comporta correctamente..." />
               </Form.Item>
               <Form.Item name="moduleId" label="Módulo" rules={[{ required: true, message: 'Campo requerido' }]}>
                 <Select placeholder="Selecciona un módulo" options={modules.map(module => ({ label: module.name, value: module.id }))} />
@@ -1181,7 +1182,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                   label="Descripción base"
                   extra="Este texto se utiliza como contexto para reportes y resúmenes de la unidad."
                 >
-                  <Input.TextArea
+                  <VoiceTextArea voiceSessionKey={`${projectId}:${activeTab}:${editingItem?.id || ''}:${editingDeliveryUnit?.id || ''}:${isModalVisible}:${isDeliveryUnitModalVisible}`}
                     rows={5}
                     className="rounded-xl"
                     placeholder="Describe el alcance base de esta fase, servicio o hito."

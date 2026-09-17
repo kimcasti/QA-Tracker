@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import { JiraIssueButton } from '../modules/jira/components/JiraIssueButton';
 import {
   Button,
@@ -3463,7 +3464,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             </Col>
             <Col span={24}>
               <Form.Item name="description" label="Descripción / objetivo">
-                <Input.TextArea
+                <VoiceTextArea voiceSessionKey={`${activeTestRun?.id || ""}:${selectedPublicUatRun?.id || ""}:${isModalOpen}:${isPublicUatModalOpen}`}
                   rows={3}
                   placeholder="Describe qué quieres validar, por qué se ejecuta esta prueba y qué esperas confirmar."
                   className="rounded-lg"
@@ -5237,7 +5238,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 >
                   <EvidenceRichEditorField
                     projectId={isEvidenceModalOpen ? projectId : undefined}
-                    aiRecordId={currentEvidenceRecord.id}
+                    aiRecordId={currentEvidenceRecord.id} voiceSessionKey={`${currentEvidenceRecord.id}:${isEvidenceModalOpen}`}
                     aiContext={JSON.stringify(activeEvidenceTestCase && {
                       title: activeEvidenceTestCase.title,
                       preconditions: activeEvidenceTestCase.preconditions,
@@ -5848,7 +5849,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             <DatePicker className="w-full rounded-lg" />
           </Form.Item>
           <Form.Item name="deliveryNotes" label="Indicaciones para el cliente">
-            <Input.TextArea
+            <VoiceTextArea voiceSessionKey={`${activeTestRun?.id || ""}:${selectedPublicUatRun?.id || ""}:${isModalOpen}:${isPublicUatModalOpen}`}
               rows={4}
               placeholder="Comparte aquí el contexto o las instrucciones de esta validación UAT."
               className="rounded-lg"

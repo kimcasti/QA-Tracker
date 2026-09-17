@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -1421,7 +1422,7 @@ export default function SuperadminView({ onBack }: { onBack: () => void }) {
               </Form.Item>
 
               <Form.Item label="Notas internas" name="statusNotes">
-                <Input.TextArea
+                <VoiceTextArea voiceSessionKey={`${selectedOrganization?.documentId || ""}:${selectedBillingRequest?.documentId || ""}:${billingRequestModalOpen}:${organizationModalOpen}`}
                   rows={4}
                   placeholder="Ej. Pago confirmado por Nequi, pendiente activar Growth y responder por WhatsApp."
                 />
@@ -1627,7 +1628,7 @@ export default function SuperadminView({ onBack }: { onBack: () => void }) {
             <Input placeholder="Ej: pago mayo, recibo 001, conversacion WA" />
           </Form.Item>
           <Form.Item label="Notas internas de billing" name="billingNotes">
-            <Input.TextArea rows={4} placeholder="Notas manuales sobre cobro, acuerdo, renovacion o seguimiento." />
+            <VoiceTextArea voiceSessionKey={`${selectedOrganization?.documentId || ""}:${selectedBillingRequest?.documentId || ""}:${billingRequestModalOpen}:${organizationModalOpen}`} rows={4} placeholder="Notas manuales sobre cobro, acuerdo, renovacion o seguimiento." />
           </Form.Item>
           <div className="flex justify-end gap-3">
             <Button onClick={() => setOrganizationModalOpen(false)}>Cancelar</Button>

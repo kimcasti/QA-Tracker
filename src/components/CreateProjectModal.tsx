@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import { useEffect, useMemo, useState } from 'react';
 import { HttpStatusCode } from 'axios';
 import { Alert, Button, Col, Form, Input, Modal, Row, Select, message } from 'antd';
@@ -341,7 +342,7 @@ export default function CreateProjectModal({ open, onCancel }: CreateProjectModa
             label="Descripción"
             rules={[{ required: true, message: 'Ingresa una descripción breve' }]}
           >
-            <Input.TextArea
+            <VoiceTextArea voiceSessionKey={String(open)}
               rows={4}
               placeholder="Describe el alcance, objetivos y el contexto del proyecto."
             />

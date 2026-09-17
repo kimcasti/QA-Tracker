@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import {
   Button,
   Calendar,
@@ -510,7 +511,7 @@ export default function TestPlanView({ projectId }: { projectId?: string }) {
           )}
 
           <Form.Item name="description" label="Descripción" rules={[{ required: true }]}>
-            <Input.TextArea
+            <VoiceTextArea voiceSessionKey={`${projectId}:${editingPlan?.id || 'new'}:${isEventModalOpen}`}
               rows={4}
               placeholder={
                 isTestEvent

@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { useState } from 'react';
 import {
   Table,
@@ -158,7 +159,7 @@ export default function RoleManagement({ projectId }: RoleManagementProps) {
           </Form.Item>
 
           <Form.Item name="description" label="Descripción">
-            <Input.TextArea rows={3} placeholder="Describe las responsabilidades de este rol..." />
+            <VoiceTextArea voiceSessionKey={`${projectId}:${editingRole?.id || 'new'}:${isModalOpen}`} rows={3} placeholder="Describe las responsabilidades de este rol..." />
           </Form.Item>
         </Form>
       </Modal>

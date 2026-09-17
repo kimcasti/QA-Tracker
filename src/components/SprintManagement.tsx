@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { useState } from 'react';
 import {
   Table,
@@ -213,7 +214,7 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
           </Form.Item>
 
           <Form.Item name="goal" label="Objetivo del Sprint">
-            <Input.TextArea rows={3} placeholder="¿Qué se espera lograr en este ciclo?" />
+            <VoiceTextArea voiceSessionKey={`${projectId}:${editingSprint?.id || 'new'}:${isModalOpen}`} rows={3} placeholder="¿Qué se espera lograr en este ciclo?" />
           </Form.Item>
         </Form>
       </Modal>

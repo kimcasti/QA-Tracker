@@ -1,3 +1,4 @@
+import VoiceTextArea from '../../../components/VoiceTextArea';
 import {
   CalendarOutlined,
   ClockCircleOutlined,
@@ -232,7 +233,8 @@ export default function PersonalNotesPage() {
                   label="Descripción"
                   rules={[{ required: true, message: 'Describe lo realizado en el dia.' }]}
                 >
-                  <Input.TextArea
+                  <VoiceTextArea
+                  voiceSessionKey={editingNote?.documentId || 'new-note'}
                     rows={7}
                     className="rounded-2xl"
                     placeholder="Que hiciste hoy? Que hallazgos, avances o bloqueos registraste?"

@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -2248,7 +2249,7 @@ export default function AboutView({ project }: AboutViewProps) {
           </Row>
 
           <Form.Item name="purpose" label="Objetivo del proyecto">
-            <Input.TextArea rows={4} />
+            <VoiceTextArea voiceSessionKey={`${project.id}:${isEditModalOpen}`} rows={4} />
           </Form.Item>
 
           <Form.Item name="teamMembers" label="Participantes base del proyecto">
@@ -2262,14 +2263,14 @@ export default function AboutView({ project }: AboutViewProps) {
           </Form.Item>
 
           <Form.Item name="coreRequirements" label="Requisitos básicos (uno por línea)">
-            <Input.TextArea
+            <VoiceTextArea voiceSessionKey={`${project.id}:${isEditModalOpen}`}
               rows={5}
               placeholder="Ej: Autenticación biométrica&#10;Pasarela de pagos"
             />
           </Form.Item>
 
           <Form.Item name="businessRules" label="Normas empresariales">
-            <Input.TextArea rows={5} />
+            <VoiceTextArea voiceSessionKey={`${project.id}:${isEditModalOpen}`} rows={5} />
           </Form.Item>
         </Form>
       </Modal>
@@ -2588,6 +2589,7 @@ export default function AboutView({ project }: AboutViewProps) {
             ]}
           >
             <BasicRichTextEditorField
+                  voiceSessionKey={`${editingMeetingNote?.id || "new-note"}:${isMeetingModalOpen}`}
               minHeightClassName="min-h-[180px]"
               className="rounded-2xl"
               placeholder="Acuerdos, decisiones, bloqueos y próximos pasos"

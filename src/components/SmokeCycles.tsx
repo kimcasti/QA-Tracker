@@ -1,3 +1,4 @@
+import VoiceTextArea from './VoiceTextArea';
 import {
   Alert,
   Button,
@@ -2687,7 +2688,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   <span className="font-semibold text-slate-600">Objetivo del Smoke Test</span>
                 }
               >
-                <Input.TextArea
+                <VoiceTextArea voiceSessionKey={`${editingCycle?.id || 'new'}:${isModalOpen}`}
                   rows={3}
                   placeholder="Ej: Validar flujos críticos después de despliegue en staging..."
                   className="rounded-lg"
@@ -3089,7 +3090,7 @@ export default function SmokeCycles({ projectId }: { projectId?: string }) {
                   : undefined
               }
             >
-              <EvidenceRichEditorField
+              <EvidenceRichEditorField voiceSessionKey={`${currentExecution?.id || ""}:${evidenceModalOpen}`}
                 projectId={evidenceModalOpen ? selectedCycle?.projectId || projectId : undefined}
                 aiRecordId={currentExecution?.id}
                 aiContext={currentExecution?.functionalityName}
