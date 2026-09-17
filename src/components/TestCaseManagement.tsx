@@ -55,6 +55,7 @@ import { useTranslation } from 'react-i18next';
 import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { BulkPasteCasesModal } from '../modules/test-cases/components/BulkPasteCasesModal';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
@@ -269,11 +270,13 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     save,
     reorder,
     saveManyWithSingleRefresh,
+    savePastedCases,
     delete: deleteTestCase,
   } = useTestCases(projectId, functionalityId);
   const { data: templates = [] } = useTestCaseTemplates(projectId, moduleName);
   const { isViewer, activeMembership, projectQuota } = useWorkspaceAccess();
   const [isCaseFormVisible, setIsCaseFormVisible] = useState(false);
+  const [isBulkPasteOpen, setIsBulkPasteOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
@@ -993,6 +996,9 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     Ordenar casos
                   </Button>
                 ) : null}
+                <Button icon={<CopyOutlined />} disabled={isLoading || isError} onClick={() => setIsBulkPasteOpen(true)}>
+                  Pegar casos en bloque
+                </Button>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openCaseForm()}>
                   Nuevo caso de prueba
                 </Button>
@@ -1420,6 +1426,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         ]}
       />
 
+      {isBulkPasteOpen && !isViewer && (
+        <BulkPasteCasesModal
+          key={`${projectId}-${functionalityId}`}
+          projectId={projectId}
+          functionalityId={functionalityId}
+          functionalityName={functionalityName}
+          existingCases={testCases || []}
+          onSave={savePastedCases}
+          onClose={() => setIsBulkPasteOpen(false)}
+        />
+      )}
       <UpgradeModal
         open={isUpgradeModalOpen}
         onClose={() => setIsUpgradeModalOpen(false)}

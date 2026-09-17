@@ -7,6 +7,7 @@ import {
 } from '../services/testCasesService';
 import type { TestCase } from '../../../types';
 import { invalidateWorkspaceCache } from '../../workspace/services/workspaceService';
+import { saveBatch } from '../utils/saveBatch';
 
 export function useTestCases(projectId?: string, functionalityId?: string) {
   const queryClient = useQueryClient();
@@ -69,6 +70,17 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
     data: query.data,
     save: saveMutation.mutate,
     saveAsync: saveMutation.mutateAsync,
+    savePastedCases: async (cases: TestCase[], onProgress?: (count: number) => void) => {
+      const result = await saveBatch(cases, saveTestCase, onProgress);
+      invalidateWorkspaceCache();
+      // Refresh errors must not hide confirmed writes from the caller.
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ['workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['plan-usage', 'test-cases'] }),
+      ]);
+      return result;
+    },
     reorder: reorderMutation.mutateAsync,
     delete: deleteMutation.mutate,
     invalidate: async () => {
