@@ -2931,6 +2931,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                       </div>
                     ))}
                   </div>
+                  <div
+                    data-testid="qa-bulk-summary"
+                    className="px-4 py-3 text-sm text-slate-600"
+                  >
+                    Se aplicarán {bulkChangesCount} cambios configurados a {filteredBulkFunctionalities.length} funcionalidades.
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1 xl:pt-7">
@@ -3087,13 +3093,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               };
             })}
           />
-        </div>
-
-        <div
-          data-testid="qa-bulk-summary"
-          className="rounded-[24px] border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600"
-        >
-          Se aplicarán {bulkChangesCount} cambios configurados a {filteredBulkFunctionalities.length} funcionalidades.
         </div>
 
         <div
