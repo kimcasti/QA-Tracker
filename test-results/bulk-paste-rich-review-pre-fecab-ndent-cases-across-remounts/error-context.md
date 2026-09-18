@@ -1,0 +1,355 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - dialog "Pegar casos en bloque":
+    - generic [ref=e4]:
+      - button "Close" [ref=e5] [cursor=pointer]:
+        - generic "Close" [ref=e6]:
+          - img "close" [ref=e7]:
+            - img [ref=e8]
+      - generic [ref=e11]: Pegar casos en bloque
+      - generic [ref=e13]:
+        - generic [ref=e15]: Los casos se crearán en Instituciones.
+        - generic [ref=e17]:
+          - generic [ref=e19]:
+            - img "check" [ref=e21]:
+              - img [ref=e22]
+            - generic [ref=e26]: Pegar contenido
+          - generic [ref=e29]:
+            - generic [ref=e31]: "2"
+            - generic [ref=e34]: Revisar casos detectados
+          - generic [ref=e37]:
+            - generic [ref=e39]: "3"
+            - generic [ref=e42]: Crear casos
+        - generic [ref=e44] [cursor=pointer]:
+          - checkbox "Seleccionar todos los pendientes" [checked] [ref=e46]
+          - generic [ref=e47]: Seleccionar todos los pendientes
+        - generic [ref=e49]:
+          - generic [ref=e52]: Caso 1 — Uno
+          - generic [ref=e54]:
+            - generic [ref=e56]:
+              - generic [ref=e58] [cursor=pointer]:
+                - checkbox "Seleccionar caso 1" [checked] [ref=e60]
+                - generic [ref=e61]: Seleccionar caso 1
+              - button "Eliminar caso 1" [ref=e63] [cursor=pointer]:
+                - generic [ref=e64]: Eliminar caso 1
+            - generic [ref=e66]:
+              - generic [ref=e68]: Descripción detectada
+              - generic [ref=e70]: Sin precondiciones (opcional)
+              - generic [ref=e72]: 2 pasos identificados
+              - generic [ref=e74]: Resultado esperado detectado
+              - generic [ref=e76]: "Tipo de prueba: Funcional"
+              - generic [ref=e78]: "Prioridad: Media"
+            - generic [ref=e81]:
+              - generic [ref=e83]:
+                - text: "*"
+                - generic [ref=e84]: Título
+                - text: ":"
+              - textbox "Título" [ref=e88]: Uno
+            - generic [ref=e91]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: Descripción
+                - text: ":"
+              - generic [ref=e98]:
+                - generic [ref=e100]:
+                  - generic [ref=e101]:
+                    - button "Iniciar dictado" [ref=e103] [cursor=pointer]:
+                      - img "audio" [ref=e105]:
+                        - img [ref=e106]
+                    - status
+                  - group "Formato de texto" [ref=e108]:
+                    - button "Negrita" [ref=e109] [cursor=pointer]:
+                      - img "bold" [ref=e111]:
+                        - img [ref=e112]
+                    - button "Cursiva" [ref=e114] [cursor=pointer]:
+                      - img "italic" [ref=e116]:
+                        - img [ref=e117]
+                    - button "Viñetas" [ref=e119] [cursor=pointer]:
+                      - img "unordered-list" [ref=e121]:
+                        - img [ref=e122]
+                    - button "Numeración" [ref=e124] [cursor=pointer]:
+                      - img "ordered-list" [ref=e126]:
+                        - img [ref=e127]
+                  - button "Checklist" [ref=e129] [cursor=pointer]:
+                    - img "check-square" [ref=e131]:
+                      - img [ref=e132]
+                    - generic [ref=e135]: Checklist
+                - textbox "Descripción" [ref=e138]:
+                  - paragraph [ref=e139]: <button>literal</button>
+            - generic [ref=e142]:
+              - generic [ref=e144]:
+                - generic [ref=e145]: Precondiciones
+                - text: ":"
+              - generic [ref=e149]:
+                - generic [ref=e151]:
+                  - generic [ref=e152]:
+                    - button "Iniciar dictado" [ref=e154] [cursor=pointer]:
+                      - img "audio" [ref=e156]:
+                        - img [ref=e157]
+                    - status
+                  - group "Formato de texto" [ref=e159]:
+                    - button "Negrita" [ref=e160] [cursor=pointer]:
+                      - img "bold" [ref=e162]:
+                        - img [ref=e163]
+                    - button "Cursiva" [ref=e165] [cursor=pointer]:
+                      - img "italic" [ref=e167]:
+                        - img [ref=e168]
+                    - button "Viñetas" [ref=e170] [cursor=pointer]:
+                      - img "unordered-list" [ref=e172]:
+                        - img [ref=e173]
+                    - button "Numeración" [ref=e175] [cursor=pointer]:
+                      - img "ordered-list" [ref=e177]:
+                        - img [ref=e178]
+                  - button "Checklist" [ref=e180] [cursor=pointer]:
+                    - img "check-square" [ref=e182]:
+                      - img [ref=e183]
+                    - generic [ref=e186]: Checklist
+                - textbox "Precondiciones" [ref=e189]:
+                  - paragraph [ref=e190]: Escribe precondiciones...
+            - generic [ref=e193]:
+              - generic [ref=e195]:
+                - text: "*"
+                - generic [ref=e196]: Pasos de prueba
+                - text: ":"
+              - generic [ref=e200]:
+                - generic [ref=e202]:
+                  - generic [ref=e203]:
+                    - button "Iniciar dictado" [ref=e205] [cursor=pointer]:
+                      - img "audio" [ref=e207]:
+                        - img [ref=e208]
+                    - status
+                  - group "Formato de texto" [ref=e210]:
+                    - button "Negrita" [ref=e211] [cursor=pointer]:
+                      - img "bold" [ref=e213]:
+                        - img [ref=e214]
+                    - button "Cursiva" [ref=e216] [cursor=pointer]:
+                      - img "italic" [ref=e218]:
+                        - img [ref=e219]
+                    - button "Viñetas" [ref=e221] [cursor=pointer]:
+                      - img "unordered-list" [ref=e223]:
+                        - img [ref=e224]
+                    - button "Numeración" [ref=e226] [cursor=pointer]:
+                      - img "ordered-list" [ref=e228]:
+                        - img [ref=e229]
+                  - button "Checklist" [ref=e231] [cursor=pointer]:
+                    - img "check-square" [ref=e233]:
+                      - img [ref=e234]
+                    - generic [ref=e237]: Checklist
+                - textbox "Pasos de prueba" [ref=e240]:
+                  - paragraph [ref=e241]: 1. Abrir
+                  - paragraph [ref=e242]: 2. Guardar
+            - generic [ref=e245]:
+              - generic [ref=e247]:
+                - text: "*"
+                - generic [ref=e248]: Resultado esperado
+                - text: ":"
+              - generic [ref=e252]:
+                - generic [ref=e254]:
+                  - generic [ref=e255]:
+                    - button "Iniciar dictado" [ref=e257] [cursor=pointer]:
+                      - img "audio" [ref=e259]:
+                        - img [ref=e260]
+                    - status
+                  - group "Formato de texto" [ref=e262]:
+                    - button "Negrita" [ref=e263] [cursor=pointer]:
+                      - img "bold" [ref=e265]:
+                        - img [ref=e266]
+                    - button "Cursiva" [ref=e268] [cursor=pointer]:
+                      - img "italic" [ref=e270]:
+                        - img [ref=e271]
+                    - button "Viñetas" [ref=e273] [cursor=pointer]:
+                      - img "unordered-list" [ref=e275]:
+                        - img [ref=e276]
+                    - button "Numeración" [ref=e278] [cursor=pointer]:
+                      - img "ordered-list" [ref=e280]:
+                        - img [ref=e281]
+                  - button "Checklist" [ref=e283] [cursor=pointer]:
+                    - img "check-square" [ref=e285]:
+                      - img [ref=e286]
+                    - generic [ref=e289]: Checklist
+                - textbox "Resultado esperado" [ref=e292]:
+                  - paragraph [ref=e293]: Visible
+            - generic [ref=e295]:
+              - generic [ref=e296]: Tipo de prueba
+              - generic [ref=e298] [cursor=pointer]:
+                - generic "Funcional" [ref=e299]:
+                  - text: Funcional
+                  - combobox "Tipo de prueba del caso 1" [ref=e300]
+                - img "down" [ref=e302]:
+                  - img [ref=e303]
+              - generic [ref=e305]: Prioridad
+              - generic [ref=e307] [cursor=pointer]:
+                - generic "Media" [ref=e308]:
+                  - text: Media
+                  - combobox "Prioridad del caso 1" [ref=e309]
+                - img "down" [ref=e311]:
+                  - img [ref=e312]
+        - generic [ref=e315]:
+          - generic [ref=e318]: Caso 2 — Dos
+          - generic [ref=e320]:
+            - generic [ref=e322]:
+              - generic [ref=e324] [cursor=pointer]:
+                - checkbox "Seleccionar caso 2" [checked] [ref=e326]
+                - generic [ref=e327]: Seleccionar caso 2
+              - button "Eliminar caso 2" [ref=e329] [cursor=pointer]:
+                - generic [ref=e330]: Eliminar caso 2
+            - generic [ref=e332]:
+              - generic [ref=e334]: Sin descripción (opcional)
+              - generic [ref=e336]: Sin precondiciones (opcional)
+              - generic [ref=e338]: 2 pasos identificados
+              - generic [ref=e340]: Resultado esperado detectado
+              - generic [ref=e342]: "Tipo de prueba: Funcional"
+              - generic [ref=e344]: "Prioridad: Media"
+            - generic [ref=e347]:
+              - generic [ref=e349]:
+                - text: "*"
+                - generic [ref=e350]: Título
+                - text: ":"
+              - textbox "Título" [ref=e354]: Dos
+            - generic [ref=e357]:
+              - generic [ref=e359]:
+                - generic [ref=e360]: Descripción
+                - text: ":"
+              - generic [ref=e364]:
+                - generic [ref=e366]:
+                  - generic [ref=e367]:
+                    - button "Iniciar dictado" [ref=e369] [cursor=pointer]:
+                      - img "audio" [ref=e371]:
+                        - img [ref=e372]
+                    - status
+                  - group "Formato de texto" [ref=e374]:
+                    - button "Negrita" [ref=e375] [cursor=pointer]:
+                      - img "bold" [ref=e377]:
+                        - img [ref=e378]
+                    - button "Cursiva" [ref=e380] [cursor=pointer]:
+                      - img "italic" [ref=e382]:
+                        - img [ref=e383]
+                    - button "Viñetas" [ref=e385] [cursor=pointer]:
+                      - img "unordered-list" [ref=e387]:
+                        - img [ref=e388]
+                    - button "Numeración" [ref=e390] [cursor=pointer]:
+                      - img "ordered-list" [ref=e392]:
+                        - img [ref=e393]
+                  - button "Checklist" [ref=e395] [cursor=pointer]:
+                    - img "check-square" [ref=e397]:
+                      - img [ref=e398]
+                    - generic [ref=e401]: Checklist
+                - textbox "Descripción" [ref=e404]:
+                  - paragraph [ref=e405]: Escribe descripción...
+            - generic [ref=e408]:
+              - generic [ref=e410]:
+                - generic [ref=e411]: Precondiciones
+                - text: ":"
+              - generic [ref=e415]:
+                - generic [ref=e417]:
+                  - generic [ref=e418]:
+                    - button "Iniciar dictado" [ref=e420] [cursor=pointer]:
+                      - img "audio" [ref=e422]:
+                        - img [ref=e423]
+                    - status
+                  - group "Formato de texto" [ref=e425]:
+                    - button "Negrita" [ref=e426] [cursor=pointer]:
+                      - img "bold" [ref=e428]:
+                        - img [ref=e429]
+                    - button "Cursiva" [ref=e431] [cursor=pointer]:
+                      - img "italic" [ref=e433]:
+                        - img [ref=e434]
+                    - button "Viñetas" [ref=e436] [cursor=pointer]:
+                      - img "unordered-list" [ref=e438]:
+                        - img [ref=e439]
+                    - button "Numeración" [ref=e441] [cursor=pointer]:
+                      - img "ordered-list" [ref=e443]:
+                        - img [ref=e444]
+                  - button "Checklist" [ref=e446] [cursor=pointer]:
+                    - img "check-square" [ref=e448]:
+                      - img [ref=e449]
+                    - generic [ref=e452]: Checklist
+                - textbox "Precondiciones" [ref=e455]:
+                  - paragraph [ref=e456]: Escribe precondiciones...
+            - generic [ref=e459]:
+              - generic [ref=e461]:
+                - text: "*"
+                - generic [ref=e462]: Pasos de prueba
+                - text: ":"
+              - generic [ref=e466]:
+                - generic [ref=e468]:
+                  - generic [ref=e469]:
+                    - button "Iniciar dictado" [ref=e471] [cursor=pointer]:
+                      - img "audio" [ref=e473]:
+                        - img [ref=e474]
+                    - status
+                  - group "Formato de texto" [ref=e476]:
+                    - button "Negrita" [ref=e477] [cursor=pointer]:
+                      - img "bold" [ref=e479]:
+                        - img [ref=e480]
+                    - button "Cursiva" [ref=e482] [cursor=pointer]:
+                      - img "italic" [ref=e484]:
+                        - img [ref=e485]
+                    - button "Viñetas" [ref=e487] [cursor=pointer]:
+                      - img "unordered-list" [ref=e489]:
+                        - img [ref=e490]
+                    - button "Numeración" [ref=e492] [cursor=pointer]:
+                      - img "ordered-list" [ref=e494]:
+                        - img [ref=e495]
+                  - button "Checklist" [ref=e497] [cursor=pointer]:
+                    - img "check-square" [ref=e499]:
+                      - img [ref=e500]
+                    - generic [ref=e503]: Checklist
+                - textbox "Pasos de prueba" [ref=e506]:
+                  - paragraph [ref=e507]: 1. Abrir
+                  - paragraph [ref=e508]: 2. Guardar
+            - generic [ref=e511]:
+              - generic [ref=e513]:
+                - text: "*"
+                - generic [ref=e514]: Resultado esperado
+                - text: ":"
+              - generic [ref=e518]:
+                - generic [ref=e520]:
+                  - generic [ref=e521]:
+                    - button "Iniciar dictado" [ref=e523] [cursor=pointer]:
+                      - img "audio" [ref=e525]:
+                        - img [ref=e526]
+                    - status
+                  - group "Formato de texto" [ref=e528]:
+                    - button "Negrita" [ref=e529] [cursor=pointer]:
+                      - img "bold" [ref=e531]:
+                        - img [ref=e532]
+                    - button "Cursiva" [ref=e534] [cursor=pointer]:
+                      - img "italic" [ref=e536]:
+                        - img [ref=e537]
+                    - button "Viñetas" [ref=e539] [cursor=pointer]:
+                      - img "unordered-list" [ref=e541]:
+                        - img [ref=e542]
+                    - button "Numeración" [ref=e544] [cursor=pointer]:
+                      - img "ordered-list" [ref=e546]:
+                        - img [ref=e547]
+                  - button "Checklist" [ref=e549] [cursor=pointer]:
+                    - img "check-square" [ref=e551]:
+                      - img [ref=e552]
+                    - generic [ref=e555]: Checklist
+                - textbox "Resultado esperado" [ref=e558]:
+                  - paragraph [ref=e559]: Visible
+            - generic [ref=e561]:
+              - generic [ref=e562]: Tipo de prueba
+              - generic [ref=e564] [cursor=pointer]:
+                - generic "Funcional" [ref=e565]:
+                  - text: Funcional
+                  - combobox "Tipo de prueba del caso 2" [ref=e566]
+                - img "down" [ref=e568]:
+                  - img [ref=e569]
+              - generic [ref=e571]: Prioridad
+              - generic [ref=e573] [cursor=pointer]:
+                - generic "Media" [ref=e574]:
+                  - text: Media
+                  - combobox "Prioridad del caso 2" [ref=e575]
+                - img "down" [ref=e577]:
+                  - img [ref=e578]
+      - generic [ref=e580]:
+        - button "Cerrar" [ref=e581] [cursor=pointer]:
+          - generic [ref=e582]: Cerrar
+        - button "Ver contenido original" [ref=e583] [cursor=pointer]:
+          - generic [ref=e584]: Ver contenido original
+        - button "Crear 2 casos de prueba" [ref=e585] [cursor=pointer]:
+          - generic [ref=e586]: Crear 2 casos de prueba
+```

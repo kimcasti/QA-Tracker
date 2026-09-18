@@ -70,7 +70,9 @@ for (const width of [390, 900]) {
     await page.getByRole('button', { name: 'Solo lectura' }).click();
     await expect(page.getByRole('button', { name: 'Checklist', exact: true })).toBeDisabled();
     const saved = await page.evaluate(() => localStorage.getItem('checklist-test'));
-    await checks.first().click();
+    await expect(checks.first()).toBeDisabled();
+    // Attempt a programmatic click too: read-only editors must reject changes.
+    await checks.first().evaluate(element => (element as HTMLInputElement).click());
     await expect(checks.first()).not.toBeChecked();
     expect(await page.evaluate(() => localStorage.getItem('checklist-test'))).toBe(saved);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

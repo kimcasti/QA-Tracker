@@ -1,4 +1,7 @@
 import { AutomationStatus, Priority, TestType, type TestCase } from '../../../types';
+import { stripHtmlToText } from '../../../utils/evidenceRichText';
+
+export type RichDraftField = 'description' | 'preconditions' | 'testSteps' | 'expectedResult';
 
 export type Draft = {
   id: string;
@@ -13,6 +16,7 @@ export type Draft = {
   selected: boolean;
   created: boolean;
   warnings: string[];
+  richFields?: Partial<Record<RichDraftField, boolean>>;
 };
 
 const normalize = (value: string) =>
@@ -115,10 +119,29 @@ export function parseBulkPaste(text: string): { drafts: Draft[]; warnings: strin
 }
 
 export function draftErrors(draft: Draft) {
-  return (['title', 'testSteps', 'expectedResult'] as const).filter(field => !draft[field].trim());
+  return (['title', 'testSteps', 'expectedResult'] as const).filter(field =>
+    field === 'title' ? !draft.title.trim() : !draftHasContent(draft, field),
+  );
 }
 
-export function countSteps(value: string) {
+function richText(value: string) {
+  return stripHtmlToText(value).replace(/&#(?:160|x0*a0);/gi, ' ').replace(/[\u200b-\u200d\ufeff]/g, '').trim();
+}
+
+export function draftHasContent(draft: Draft, field: RichDraftField) {
+  return Boolean(draft.richFields?.[field] ? richText(draft[field]) : draft[field].trim());
+}
+
+export function draftFieldHtml(draft: Draft, field: RichDraftField) {
+  return draft.richFields?.[field] ? draft[field] : literalTextHtml(draft[field]);
+}
+
+export function countSteps(value: string, isHtml = false) {
+  if (isHtml) {
+    const items = [...value.matchAll(/<li\b[^>]*>([\s\S]*?)(?=<li\b|<\/li>)/gi)];
+    if (items.length) return items.filter(item => richText(item[1])).length;
+    value = stripHtmlToText(value);
+  }
   return value.split('\n').filter(line => /^\s*(?:\d+[.)]|[-*•])\s+\S/.test(line)).length;
 }
 
@@ -146,10 +169,10 @@ export function draftToTestCase(
     functionalityId,
     sortOrder,
     title: draft.title.trim(),
-    description: literalTextHtml(draft.description),
-    preconditions: literalTextHtml(draft.preconditions),
-    testSteps: literalTextHtml(draft.testSteps),
-    expectedResult: literalTextHtml(draft.expectedResult),
+    description: draftFieldHtml(draft, 'description'),
+    preconditions: draftFieldHtml(draft, 'preconditions'),
+    testSteps: draftFieldHtml(draft, 'testSteps'),
+    expectedResult: draftFieldHtml(draft, 'expectedResult'),
     testType: draft.testType,
     priority: draft.priority,
     isAutomated: false,

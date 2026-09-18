@@ -5,6 +5,8 @@ import { Priority, TestType } from '../src/types';
 import {
   countSteps,
   draftErrors,
+  draftFieldHtml,
+  draftHasContent,
   draftToTestCase,
   literalTextHtml,
   parseBulkPaste,
@@ -24,6 +26,33 @@ Pasos de prueba:
 4. Guardar.
 Resultado esperado:
 La institución aparece en el listado.`;
+
+test('rich drafts preserve formatting while untouched pasted HTML remains literal', () => {
+  const draft = parseBulkPaste(example).drafts[0];
+  draft.description = '<button>Literal</button>\nOtra línea';
+  assert.equal(draftFieldHtml(draft, 'description'), '<p>&lt;button&gt;Literal&lt;/button&gt;</p><p>Otra línea</p>');
+  draft.testSteps = '<ol><li><p><strong>Abrir</strong></p></li><li><p>Guardar</p></li></ol>';
+  draft.richFields = { testSteps: true };
+  const saved = draftToTestCase(draft, 'p', 'f', 1);
+  assert.equal(saved.testSteps, draft.testSteps);
+  assert.equal(saved.description, draftFieldHtml(draft, 'description'));
+  assert.equal(countSteps(draft.testSteps, true), 2);
+  assert.deepEqual(draftErrors(draft), []);
+});
+
+test('empty rich paragraphs and checklists do not satisfy required fields', () => {
+  const draft = parseBulkPaste(example).drafts[0];
+  draft.richFields = { description: true, testSteps: true, expectedResult: true };
+  draft.description = '<p>&nbsp;&#160;&#xA0;\u200b</p>';
+  draft.testSteps = '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p><br></p></div></li></ul>';
+  draft.expectedResult = '<p><br></p>';
+  assert.equal(draftHasContent(draft, 'description'), false);
+  assert.equal(countSteps(draft.testSteps, true), 0);
+  assert.deepEqual(draftErrors(draft), ['testSteps', 'expectedResult']);
+  draft.testSteps = draft.testSteps.replace('<br>', 'Verificar');
+  assert.equal(countSteps(draft.testSteps, true), 1);
+  assert.equal(draftHasContent(draft, 'testSteps'), true);
+});
 
 test('parses multiple cases and counts four steps without requiring optional fields', () => {
   const { drafts } = parseBulkPaste(

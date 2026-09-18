@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -17,9 +18,12 @@ import {
   message,
 } from 'antd';
 import { Priority, TestType, type TestCase } from '../../../types';
+import EvidenceRichEditor from '../../../components/EvidenceRichEditor';
 import {
   countSteps,
   draftErrors,
+  draftFieldHtml,
+  draftHasContent,
   draftToTestCase,
   parseBulkPaste,
   type Draft,
@@ -77,6 +81,7 @@ export function BulkPasteCasesModal({
 }: Props) {
   const [source, setSource] = useState('');
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [review, setReview] = useState(false);
   const [edited, setEdited] = useState(false);
@@ -113,6 +118,7 @@ export function BulkPasteCasesModal({
     const run = () => {
       const result = parseBulkPaste(source);
       setDrafts(result.drafts);
+      setCollapsedIds([]);
       setWarnings(result.warnings);
       setEdited(false);
       setValidating(false);
@@ -137,6 +143,8 @@ export function BulkPasteCasesModal({
     if (busy.current || uncertainId || !selected.length) return;
     setValidating(true);
     if (selected.some(draft => draftErrors(draft).length)) {
+      const invalidIds = new Set(selected.filter(draft => draftErrors(draft).length).map(draft => draft.id));
+      setCollapsedIds(previous => previous.filter(id => !invalidIds.has(id)));
       setFeedback(
         'Completa los campos obligatorios de los casos seleccionados antes de continuar.',
       );
@@ -318,14 +326,28 @@ export function BulkPasteCasesModal({
               const errors =
                 validating && draft.selected && !draft.created ? draftErrors(draft) : [];
               const disabled = saving || draft.created || !!uncertainId;
-              const steps = countSteps(draft.testSteps);
+              const steps = countSteps(draft.testSteps, draft.richFields?.testSteps);
+              const collapsed = drafts.length > 1 && collapsedIds.includes(draft.id);
               return (
                 <Card
                   key={draft.id}
                   size="small"
                   title={`Caso ${draft.number} — ${draft.title || 'Sin título'}`}
+                  styles={{ body: collapsed ? { display: 'none' } : undefined }}
+                  extra={drafts.length > 1 ? (
+                    <Button
+                      type="text"
+                      icon={collapsed ? <DownOutlined /> : <UpOutlined />}
+                      aria-label={`${collapsed ? 'Expandir' : 'Colapsar'} caso ${draft.number}`}
+                      aria-expanded={!collapsed}
+                      aria-controls={`${draft.id}-content`}
+                      onClick={() => setCollapsedIds(previous => collapsed
+                        ? previous.filter(id => id !== draft.id)
+                        : [...previous, draft.id])}
+                    />
+                  ) : undefined}
                 >
-                  <Space orientation="vertical" style={{ width: '100%' }}>
+                  <Space id={`${draft.id}-content`} orientation="vertical" style={{ width: '100%' }}>
                     <Space wrap>
                       <Checkbox
                         disabled={disabled}
@@ -351,24 +373,24 @@ export function BulkPasteCasesModal({
                     </Space>
                     <Space wrap>
                       <Tag>
-                        {draft.description.trim()
+                        {draftHasContent(draft, 'description')
                           ? 'Descripción detectada'
                           : 'Sin descripción (opcional)'}
                       </Tag>
                       <Tag>
-                        {draft.preconditions.trim()
+                        {draftHasContent(draft, 'preconditions')
                           ? 'Precondiciones detectadas'
                           : 'Sin precondiciones (opcional)'}
                       </Tag>
                       <Tag>
                         {steps
                           ? `${steps} pasos identificados`
-                          : draft.testSteps.trim()
+                          : draftHasContent(draft, 'testSteps')
                             ? 'Pasos detectados'
                             : 'Sin pasos'}
                       </Tag>
                       <Tag>
-                        {draft.expectedResult.trim()
+                        {draftHasContent(draft, 'expectedResult')
                           ? 'Resultado esperado detectado'
                           : 'Sin resultado esperado'}
                       </Tag>
@@ -390,7 +412,7 @@ export function BulkPasteCasesModal({
                           validateStatus={invalid ? 'error' : undefined}
                           help={
                             invalid
-                              ? `El caso ${draft.number} no tiene ${label.toLowerCase()}. Complétalo antes de continuar.`
+                              ? <span id={`${id}-error`}>El caso {draft.number} no tiene {label.toLowerCase()}. Complétalo antes de continuar.</span>
                               : undefined
                           }
                         >
@@ -402,12 +424,24 @@ export function BulkPasteCasesModal({
                               onChange={event => patch(draft.id, { [field]: event.target.value })}
                             />
                           ) : (
-                            <Input.TextArea
+                            <EvidenceRichEditor
                               id={id}
-                              value={draft[field]}
+                              aria-label={label}
+                              aria-describedby={invalid ? `${id}-error` : undefined}
+                              aria-invalid={invalid}
+                              voiceSessionKey={id}
+                              value={draftFieldHtml(draft, field)}
                               disabled={disabled}
-                              autoSize={{ minRows: 2, maxRows: 12 }}
-                              onChange={event => patch(draft.id, { [field]: event.target.value })}
+                              showMarkers={false}
+                              showImageUpload={false}
+                              placeholder={`Escribe ${label.toLowerCase()}...`}
+                              autoSize
+                              onChange={value => {
+                                setEdited(true);
+                                setDrafts(previous => previous.map(item => item.id === draft.id
+                                  ? { ...item, [field]: value, richFields: { ...item.richFields, [field]: true } }
+                                  : item));
+                              }}
                             />
                           )}
                         </Form.Item>

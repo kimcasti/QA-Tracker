@@ -24,12 +24,17 @@ import {
 } from '../utils/evidenceRichText';
 
 type EvidenceRichEditorProps = {
+  id?: string;
+  'aria-label'?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean;
   voiceSessionKey?: string;
   value?: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
   minHeightClassName?: string;
+  autoSize?: boolean;
   showMarkers?: boolean;
   showImageUpload?: boolean;
   projectId?: string;
@@ -94,12 +99,17 @@ async function insertImagesIntoEditor(
 }
 
 export default function EvidenceRichEditor({
+  id,
+  'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
   voiceSessionKey,
   value,
   onChange,
   disabled = false,
   placeholder = 'Escribe aqui las notas de la ejecucion...',
   minHeightClassName = 'min-h-[180px]',
+  autoSize = false,
   showMarkers = true,
   showImageUpload = true,
   projectId,
@@ -189,8 +199,20 @@ export default function EvidenceRichEditor({
 
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(!disabled);
+    editor.setEditable(!disabled, false);
   }, [disabled, editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setOptions({ editorProps: { ...editor.options.editorProps, attributes: {
+      role: 'textbox', 'aria-multiline': 'true',
+      ...(id ? { id } : {}),
+      ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
+      ...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {}),
+      'aria-invalid': String(Boolean(ariaInvalid)),
+      'aria-disabled': String(disabled),
+    } } });
+  }, [editor, id, ariaLabel, ariaDescribedBy, ariaInvalid, disabled]);
 
   useEffect(() => {
     if (!editor) return;
@@ -200,7 +222,7 @@ export default function EvidenceRichEditor({
 
     if (!normalizedValue && !hasMeaningfulEvidenceContent(currentHtml)) return;
 
-    editor.commands.setContent(normalizedValue || '<p></p>');
+    editor.commands.setContent(normalizedValue || '<p></p>', { emitUpdate: false });
   }, [editor, normalizedValue]);
 
   useEffect(() => {
@@ -396,11 +418,11 @@ export default function EvidenceRichEditor({
       </div>
 
       <div
-        className={`${minHeightClassName} rounded-xl border px-3 py-3 transition ${
+        className={`${autoSize ? '' : minHeightClassName} rounded-xl border px-3 py-3 transition ${
           disabled ? 'border-slate-200 bg-slate-50' : 'border-sky-200 bg-white'
         }`}
       >
-        <EditorContent editor={editor} className="evidence-rich-editor qa-rich-text-content" />
+        <EditorContent editor={editor} className={`evidence-rich-editor qa-rich-text-content${autoSize ? ' evidence-rich-editor-auto-size' : ''}`} />
       </div>
 
       <Modal

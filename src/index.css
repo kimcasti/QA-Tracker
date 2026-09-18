@@ -459,6 +459,10 @@
   white-space: pre-wrap;
 }
 
+.evidence-rich-editor-auto-size .ProseMirror {
+  min-height: 1.6em;
+}
+
 .evidence-rich-editor .ProseMirror p {
   margin: 0 0 0.75rem;
 }

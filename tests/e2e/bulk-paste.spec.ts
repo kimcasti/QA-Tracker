@@ -15,6 +15,7 @@ async function mount(page: Page, failAt = 0, ambiguous = false, pauseSave = fals
       window.$RefreshReg$ = () => {};
       window.$RefreshSig$ = () => (type) => type;
       window.__vite_plugin_react_preamble_installed__ = true;
+      await import('/src/index.css');
       const { default: React } = await import('/node_modules/.vite/deps/react.js');
       const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
       const { BulkPasteCasesModal } = await import('/src/modules/test-cases/components/BulkPasteCasesModal.tsx');
@@ -49,6 +50,26 @@ async function mount(page: Page, failAt = 0, ambiguous = false, pauseSave = fals
 
 const content = (name: string, result = 'Visible') =>
   `Título: ${name}\nPasos de prueba:\n1. Abrir\n2. Guardar\nResultado esperado: ${result}`;
+
+test('collapses multiple cases without losing edits and opens invalid or single remaining cases', async ({ page }) => {
+  await mount(page);
+  await page.getByLabel('Contenido de los casos').fill(`${content('Uno')}\n${content('Dos', '')}`);
+  await page.getByRole('button', { name: 'Procesar casos', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Descripción', exact: true }).first().fill('Edición conservada');
+  await page.getByRole('button', { name: 'Colapsar caso 1', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Expandir caso 1', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('checkbox', { name: 'Seleccionar caso 1', exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Expandir caso 1', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Descripción', exact: true }).first()).toHaveText('Edición conservada');
+  await expect(page.getByRole('checkbox', { name: 'Seleccionar caso 1', exact: true })).toBeChecked();
+  await page.getByRole('button', { name: 'Colapsar caso 2', exact: true }).click();
+  await page.getByRole('button', { name: 'Crear 2 casos de prueba', exact: true }).click();
+  await expect(page.getByText('El caso 2 no tiene resultado esperado. Complétalo antes de continuar.')).toBeVisible();
+  await page.getByRole('button', { name: 'Colapsar caso 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Eliminar caso 2', exact: true }).click();
+  await expect(page.getByRole('button', { name: /(?:Expandir|Colapsar) caso/ })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Descripción', exact: true })).toHaveText('Edición conservada');
+});
 
 test('edits, selects, deletes and validates cases before creating records', async ({ page }) => {
   await mount(page);
@@ -139,10 +160,65 @@ test('disables editing, dismissal and duplicate submits while saving', async ({ 
   await page.getByRole('button', { name: 'Procesar casos', exact: true }).click();
   await page.getByRole('button', { name: 'Crear 1 caso de prueba', exact: true }).click();
   await expect(page.getByLabel('Título', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Pasos de prueba', exact: true })).toHaveAttribute('contenteditable', 'false');
+  await expect(page.getByRole('button', { name: 'Checklist', exact: true }).first()).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Cerrar', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.evaluate(() => (window as any).releaseSave());
   await expect(page.getByText('Modal cerrado')).toBeVisible();
   expect(await page.evaluate(() => (window as any).saved)).toHaveLength(1);
+});
+
+test('rich review preserves formatting, literal input and independent cases across remounts', async ({ page }) => {
+  await mount(page);
+  await page.getByLabel('Contenido de los casos').fill(`${content('Uno')}\nDescripción: <button>literal</button>\n${content('Dos')}`);
+  await page.getByRole('button', { name: 'Procesar casos', exact: true }).click();
+  const labels = ['Descripción', 'Precondiciones', 'Pasos de prueba', 'Resultado esperado'];
+  const actions = ['Negrita', 'Cursiva', 'Numeración', 'Checklist'];
+  await expect(page.getByRole('textbox', { name: 'Descripción', exact: true }).first()).toContainText('<button>literal</button>');
+  for (let index = 0; index < labels.length; index++) {
+    const editor = page.getByRole('textbox', { name: labels[index], exact: true }).first();
+    const field = page.locator('.ant-form-item').filter({ has: editor }).first();
+    for (const name of ['Negrita', 'Cursiva', 'Viñetas', 'Numeración', 'Checklist']) {
+      await expect(field.getByRole('button', { name, exact: true })).toBeVisible();
+    }
+    await expect(field.getByRole('button', { name: 'Iniciar dictado', exact: true })).toBeVisible();
+    await editor.fill(`Contenido ${index}`);
+    await editor.press('ControlOrMeta+a');
+    await field.getByRole('button', { name: actions[index], exact: true }).click();
+  }
+  await expect(page.getByRole('button', { name: 'Subir imagen' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ver contenido original' }).click();
+  await page.getByRole('button', { name: 'Volver a la revisión' }).click();
+  await expect(page.getByRole('textbox', { name: 'Descripción', exact: true }).first().locator('strong')).toHaveText('Contenido 0');
+  await expect(page.getByRole('textbox', { name: 'Resultado esperado', exact: true }).first().locator('ul[data-type="taskList"]')).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Resultado esperado', exact: true }).nth(1)).toHaveText('Visible');
+  await page.getByRole('textbox', { name: 'Descripción', exact: true }).first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('rich-review-desktop.png') });
+  await page.getByRole('button', { name: 'Crear 2 casos de prueba', exact: true }).click();
+  await expect(page.getByText('Modal cerrado')).toBeVisible();
+  const saved = await page.evaluate(() => (window as any).saved);
+  expect(saved[0].description).toContain('<strong>Contenido 0</strong>');
+  expect(saved[0].preconditions).toContain('<em>Contenido 1</em>');
+  expect(saved[0].testSteps).toContain('<ol>');
+  expect(saved[0].expectedResult).toContain('data-type="taskList"');
+  expect(saved[1].expectedResult).toBe('<p>Visible</p>');
+});
+
+test('empty rich content is invalid and the toolbar fits a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  await page.getByLabel('Contenido de los casos').fill(content('Uno'));
+  await page.getByRole('button', { name: 'Procesar casos', exact: true }).click();
+  const editor = page.getByRole('textbox', { name: 'Resultado esperado', exact: true });
+  await editor.fill('');
+  await page.getByRole('button', { name: 'Crear 1 caso de prueba', exact: true }).click();
+  await expect(editor).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('El caso 1 no tiene resultado esperado. Complétalo antes de continuar.')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).calls)).toBe(0);
+  const overflowing = await page.getByRole('dialog').evaluate(element => element.scrollWidth > element.clientWidth + 2);
+  expect(overflowing).toBe(false);
+  await page.getByRole('textbox', { name: 'Descripción', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('rich-review-mobile.png') });
 });
