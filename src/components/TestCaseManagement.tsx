@@ -978,6 +978,38 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
                 Volver a los casos
               </Button>
+            ) : !isViewer && visibleTestCases.length > 5 ? (
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
+                menu={{
+                  items: [
+                    {
+                      key: 'create-group',
+                      type: 'group',
+                      label: 'CREAR CASOS',
+                      children: [
+                        { key: 'new', label: 'Nuevo caso de prueba', icon: <PlusOutlined />, onClick: () => openCaseForm() },
+                        { key: 'paste', label: 'Pegar casos en bloque', icon: <CopyOutlined />, disabled: isLoading || isError, onClick: () => setIsBulkPasteOpen(true) },
+                        { key: 'ai', label: <Tooltip title={generateAiTooltipTitle}><span>{generateAiButtonLabel}</span></Tooltip>, icon: <ThunderboltOutlined />, disabled: isGenerateAiDisabled || !canUseAi || isGenerating, onClick: () => void handleGenerateAI() },
+                      ],
+                    },
+                    { type: 'divider' },
+                    {
+                      key: 'organize-group',
+                      type: 'group',
+                      label: 'ORGANIZACIÓN',
+                      children: [
+                        { key: 'reorder', label: 'Ordenar casos', icon: <MenuOutlined />, onClick: openReorderModal },
+                      ],
+                    },
+                  ],
+                }}
+              >
+                <Button icon={<MenuOutlined />} loading={isGenerating}>
+                  Gestionar <DownOutlined />
+                </Button>
+              </Dropdown>
             ) : !isViewer ? (
               <>
                 <Tooltip title={generateAiTooltipTitle}>
@@ -991,11 +1023,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     {generateAiButtonLabel}
                   </Button>
                 </Tooltip>
-                {visibleTestCases.length > 5 ? (
-                  <Button icon={<MenuOutlined />} onClick={openReorderModal}>
-                    Ordenar casos
-                  </Button>
-                ) : null}
                 <Button icon={<CopyOutlined />} disabled={isLoading || isError} onClick={() => setIsBulkPasteOpen(true)}>
                   Pegar casos en bloque
                 </Button>

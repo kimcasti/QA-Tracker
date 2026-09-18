@@ -2795,62 +2795,192 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       <div className="space-y-5">
         <div
           data-testid="qa-bulk-drawer-header"
-          className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
+          className="relative rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div>
+            <Button type="text" className="!absolute right-3 top-3" onClick={() => setIsBulkDrawerOpen(false)}>
+              Cerrar
+            </Button>
+
+          <div className="grid grid-cols-1 items-start gap-5 pt-1 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-2">
+            <div className="flex items-center gap-2">
               <Title level={5} className="!mb-1 !mt-0 text-slate-800">
                 Alcance de la evaluación
               </Title>
-              <Text type="secondary" className="text-sm">
-                Selecciona las funcionalidades para evaluar su cobertura, riesgo y prioridad.
+              <Tooltip title="Selecciona las funcionalidades para evaluar su cobertura, riesgo y prioridad.">
+                <button type="button" aria-label="Información sobre el alcance de la evaluación" className="inline-flex text-slate-400 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-600">
+                  <InfoCircleOutlined aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+
+              <label htmlFor="qa-bulk-module-filter" className="block text-sm font-medium text-slate-700">
+                Filtrar por módulos
+              </label>
+              <Select
+                id="qa-bulk-module-filter"
+                aria-label="Filtrar por módulos en edición masiva"
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                maxTagCount="responsive"
+                className="w-full"
+                placeholder="Seleccionar módulos del proyecto"
+                options={bulkModuleOptions}
+                value={bulkModuleFilter}
+                onChange={modules => {
+                  const addedModules = modules.filter(module => !bulkModuleFilter.includes(module));
+                  const removedModules = bulkModuleFilter.filter(module => !modules.includes(module));
+                  setBulkModuleFilter(modules);
+                  setSelectedRowKeys(current => functionalities
+                    .filter(item => {
+                      const module = item.module || '';
+                      if (removedModules.includes(module)) return false;
+                      if (modules.length > 0 && !modules.includes(module)) return false;
+                      return addedModules.includes(module) || current.includes(item.documentId || item.id);
+                    })
+                    .map(item => item.documentId || item.id),
+                  );
+                  if (addedModules.length > 0) {
+                    setActiveBulkTab(`module:${addedModules[addedModules.length - 1]}`);
+                  } else if (!modules.some(module => `module:${module}` === resolvedBulkTab)) {
+                    setActiveBulkTab(modules.length > 0 ? `module:${modules[0]}` : 'all');
+                  }
+                }}
+                disabled={isBulkSaving}
+              />
+              <Text type="secondary" className="block text-xs">
+                Al elegir módulos se seleccionan todas sus funcionalidades del proyecto. Puedes quitar las que no quieras editar en la lista.
               </Text>
             </div>
-            <Button type="text" onClick={() => setIsBulkDrawerOpen(false)}>
-              Cerrar
-            </Button>
-          </div>
+            <div
+              data-testid="qa-bulk-edit-fields"
+              className="min-w-0"
+            >
+              <div className="grid grid-cols-1 items-start gap-3 pt-8 sm:pt-0 xl:grid-cols-[minmax(0,3fr)_minmax(180px,1fr)]">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Text strong className="block">Clasificación de cobertura</Text>
+                    <Tooltip title="Define qué categorías aplican a las funcionalidades seleccionadas. Una funcionalidad puede pertenecer a varias. Sin selección se conserva la clasificación actual. Pulsa de nuevo una opción para deshacerla; excluir solo quita esa categoría.">
+                      <button type="button" aria-label="Información sobre la clasificación de cobertura" className="inline-flex text-slate-400 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-600">
+                        <InfoCircleOutlined aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                  {filteredBulkFunctionalities.length === 0 ? (
+                    <Text type="secondary" className="block text-sm">
+                      Selecciona funcionalidades para evaluar su cobertura
+                    </Text>
+                  ) : null}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {[
+                      {
+                        key: 'isCore' as const, label: 'Core business', icon: Building2,
+                        description: 'Funcionalidades esenciales del negocio.',
+                        iconClassName: 'text-sky-600',
+                      },
+                      {
+                        key: 'isSmoke' as const, label: 'Smoke', icon: Flame,
+                        description: 'Validaciones básicas para comprobar que lo principal funciona.',
+                        iconClassName: 'text-orange-600',
+                      },
+                      {
+                        key: 'isRegression' as const, label: 'Regresión', icon: RefreshCw,
+                        description: 'Validaciones para comprobar que los cambios no afectan lo existente.',
+                        iconClassName: 'text-violet-600',
+                      },
+                    ].map(item => (
+                      <div
+                        key={item.key}
+                        className="rounded-xl border border-slate-100 bg-white px-3 py-2"
+                      >
+                        <div className="flex flex-col items-start gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2" title={item.description}>
+                              <item.icon size={15} aria-hidden="true" className={`shrink-0 ${item.iconClassName}`} />
+                              <span id={`bulk-coverage-${item.key}`} className="text-sm font-medium text-slate-700">{item.label}</span>
+                            </div>
+                            <span className="mt-1 block text-xs font-normal text-slate-500">
+                              {filteredBulkFunctionalities.filter(functionality => functionality[item.key]).length} de{' '}
+                              {filteredBulkFunctionalities.length} incluidas
+                            </span>
+                          </div>
+                          <div
+                            role="group"
+                            aria-labelledby={`bulk-coverage-${item.key}`}
+                            className="flex shrink-0 gap-1"
+                          >
+                            {[{ label: 'Incluir', value: true }, { label: 'Excluir', value: false }].map(option => (
+                              <Button
+                                key={option.label}
+                                size="small"
+                                aria-pressed={bulkEditDraft[item.key] === option.value}
+                                className={bulkEditDraft[item.key] === option.value ? '!border-sky-200 !bg-sky-50 !text-sky-700' : '!text-slate-500'}
+                                disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
+                                onClick={() => setBulkEditDraft(current => ({
+                                  ...current,
+                                  [item.key]: current[item.key] === option.value ? undefined : option.value,
+                                }))}
+                              >
+                                {option.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-          <div className="mt-4 space-y-2">
-            <label htmlFor="qa-bulk-module-filter" className="block text-sm font-medium text-slate-700">
-              Filtrar por módulos
-            </label>
-            <Select
-              id="qa-bulk-module-filter"
-              aria-label="Filtrar por módulos en edición masiva"
-              mode="multiple"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              maxTagCount="responsive"
-              className="w-full"
-              placeholder="Seleccionar módulos del proyecto"
-              options={bulkModuleOptions}
-              value={bulkModuleFilter}
-              onChange={modules => {
-                const addedModules = modules.filter(module => !bulkModuleFilter.includes(module));
-                const removedModules = bulkModuleFilter.filter(module => !modules.includes(module));
-                setBulkModuleFilter(modules);
-                setSelectedRowKeys(current => functionalities
-                  .filter(item => {
-                    const module = item.module || '';
-                    if (removedModules.includes(module)) return false;
-                    if (modules.length > 0 && !modules.includes(module)) return false;
-                    return addedModules.includes(module) || current.includes(item.documentId || item.id);
-                  })
-                  .map(item => item.documentId || item.id),
-                );
-                if (addedModules.length > 0) {
-                  setActiveBulkTab(`module:${addedModules[addedModules.length - 1]}`);
-                } else if (!modules.some(module => `module:${module}` === resolvedBulkTab)) {
-                  setActiveBulkTab(modules.length > 0 ? `module:${modules[0]}` : 'all');
-                }
-              }}
-              disabled={isBulkSaving}
-            />
-            <Text type="secondary" className="block text-xs">
-              Al elegir módulos se seleccionan todas sus funcionalidades del proyecto. Puedes quitar las que no quieras editar en la lista.
-            </Text>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1 xl:pt-7">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Text strong>Prioridad</Text>
+                      <Tooltip title="Indica qué funcionalidades deben atenderse primero al planificar las pruebas. Una prioridad más alta ayuda a dar preferencia a su validación; no cambia su estado de desarrollo.">
+                        <button type="button" aria-label="Qué significa la prioridad" className="inline-flex items-center text-slate-400 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-600">
+                          <InfoCircleOutlined aria-hidden="true" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                    <Select
+                      aria-label="Prioridad"
+                      className="w-full"
+                      value={bulkEditDraft.priority}
+                      allowClear
+                      placeholder="Sin cambio"
+                      options={priorityOptions}
+                      onChange={value =>
+                        setBulkEditDraft(current => ({ ...current, priority: value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <Text strong>Estado de desarrollo</Text>
+                    </div>
+                    <Select
+                      aria-label="Estado de desarrollo"
+                      className="w-full"
+                      value={bulkEditDraft.status}
+                      allowClear
+                      placeholder="Sin cambio"
+                      options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
+                        label: labelTestStatus(status, t),
+                        value: status,
+                      }))
+                      }
+                      onChange={value =>
+                        setBulkEditDraft(current => ({
+                          ...current,
+                          status: value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           {isBulkNoticeVisible && (
             <Alert
@@ -2957,137 +3087,6 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               };
             })}
           />
-        </div>
-
-        <div
-          data-testid="qa-bulk-edit-fields"
-          className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm"
-        >
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <div>
-                <Text strong className="block">Clasificación de cobertura</Text>
-                <Text type="secondary" className="text-sm">
-                  Define qué categorías aplican a las funcionalidades seleccionadas. Una funcionalidad puede pertenecer a varias.
-                </Text>
-              </div>
-              {filteredBulkFunctionalities.length === 0 ? (
-                <Text type="secondary" className="block text-sm">
-                  Selecciona funcionalidades para evaluar su cobertura
-                </Text>
-              ) : null}
-              <div className="space-y-3">
-                {[
-                  {
-                    key: 'isCore' as const, label: 'Core business', icon: Building2,
-                    description: 'Funcionalidades esenciales del negocio.',
-                    iconClassName: 'text-sky-600',
-                  },
-                  {
-                    key: 'isSmoke' as const, label: 'Smoke', icon: Flame,
-                    description: 'Validaciones básicas para comprobar que lo principal funciona.',
-                    iconClassName: 'text-orange-600',
-                  },
-                  {
-                    key: 'isRegression' as const, label: 'Regresión', icon: RefreshCw,
-                    description: 'Validaciones para comprobar que los cambios no afectan lo existente.',
-                    iconClassName: 'text-violet-600',
-                  },
-                ].map(item => (
-                  <div
-                    key={item.key}
-                    className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <item.icon size={18} aria-hidden="true" className={`shrink-0 ${item.iconClassName}`} />
-                          <span id={`bulk-coverage-${item.key}`} className="text-sm font-semibold text-slate-700">{item.label}</span>
-                        </div>
-                        <p className="mt-1 text-sm text-slate-500">{item.description}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Actualmente: {filteredBulkFunctionalities.filter(functionality => functionality[item.key]).length} de{' '}
-                          {filteredBulkFunctionalities.length} funcionalidades incluidas
-                        </p>
-                      </div>
-                      <Radio.Group
-                        name={`bulk-coverage-${item.key}`}
-                        aria-labelledby={`bulk-coverage-${item.key}`}
-                        optionType="button"
-                        buttonStyle="solid"
-                        size="small"
-                        className="shrink-0 self-start lg:self-center"
-                        value={bulkEditDraft[item.key] === undefined ? 'keep' : bulkEditDraft[item.key] ? 'include' : 'exclude'}
-                        disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
-                        options={[
-                          { label: 'Mantener actual', value: 'keep' },
-                          { label: 'Incluir', value: 'include' },
-                          { label: 'Excluir', value: 'exclude' },
-                        ]}
-                        onChange={event => {
-                          const value = event.target.value;
-                          setBulkEditDraft(current => ({
-                            ...current,
-                            [item.key]: value === 'keep' ? undefined : value === 'include',
-                          }));
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs text-slate-500">
-                Mantener actual conserva la clasificación de cada funcionalidad. Excluir solo quita esa categoría.
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-6 border-t border-slate-100 pt-4">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Text strong>Prioridad</Text>
-                  <Tooltip title="Indica qué funcionalidades deben atenderse primero al planificar las pruebas. Una prioridad más alta ayuda a dar preferencia a su validación; no cambia su estado de desarrollo.">
-                    <button type="button" aria-label="Qué significa la prioridad" className="inline-flex items-center text-slate-400 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-sky-600">
-                      <InfoCircleOutlined aria-hidden="true" />
-                    </button>
-                  </Tooltip>
-                </div>
-                <Select
-                  aria-label="Prioridad"
-                  className="min-w-[180px]"
-                  value={bulkEditDraft.priority}
-                  allowClear
-                  placeholder="Sin cambio"
-                  options={priorityOptions}
-                  onChange={value =>
-                    setBulkEditDraft(current => ({ ...current, priority: value }))
-                  }
-                />
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <Text strong>Estado de desarrollo</Text>
-                </div>
-                <Select
-                  aria-label="Estado de desarrollo"
-                  className="min-w-[180px]"
-                  value={bulkEditDraft.status}
-                  allowClear
-                  placeholder="Sin cambio"
-                  options={FUNCTIONALITY_DEVELOPMENT_STATUSES.map(status => ({
-                    label: labelTestStatus(status, t),
-                    value: status,
-                  }))
-                  }
-                  onChange={value =>
-                    setBulkEditDraft(current => ({
-                      ...current,
-                      status: value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          </div>
         </div>
 
         <div

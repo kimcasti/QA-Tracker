@@ -167,7 +167,7 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await page.keyboard.press('Enter');
     await expect(bulkFields).toContainText('Crítico');
 
-    const coreCoverage = bulkFields.getByRole('radiogroup', { name: 'Core business', exact: true });
+    const coreCoverage = bulkFields.getByRole('group', { name: 'Core business', exact: true });
     await coreCoverage.getByText('Incluir', { exact: true }).click();
 
     await bulkSelects.nth(1).click();
@@ -196,27 +196,27 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await page.goto(`/projects/${seed.projectKey}/qa-planning`);
     await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
     const fields = page.getByTestId('qa-bulk-edit-fields');
-    const smoke = fields.getByRole('radiogroup', { name: 'Smoke', exact: true });
-    const regression = fields.getByRole('radiogroup', { name: 'Regresión', exact: true });
+    const smoke = fields.getByRole('group', { name: 'Smoke', exact: true });
+    const regression = fields.getByRole('group', { name: 'Regresión', exact: true });
     await expect(fields.getByText('Selecciona funcionalidades para evaluar su cobertura')).toBeVisible();
-    await expect(smoke.getByRole('radio', { name: 'Mantener actual' })).toBeDisabled();
+    await expect(smoke.getByRole('button', { name: 'Incluir', exact: true })).toBeDisabled();
 
     const list = page.getByTestId('qa-bulk-selected-list');
     await list.getByRole('checkbox', { name: 'Seleccionar Agregar plan medico', exact: true }).check();
     const smokeCard = smoke.locator('..');
-    await expect(smokeCard).toContainText('Actualmente: 1 de 1 funcionalidades incluidas');
+    await expect(smokeCard).toContainText('1 de 1 incluidas');
     await smoke.getByText('Excluir', { exact: true }).click();
-    await expect(smokeCard).toContainText('Actualmente: 1 de 1 funcionalidades incluidas');
-    await expect(regression.getByRole('radio', { name: 'Mantener actual' })).toBeChecked();
-    await smoke.getByText('Mantener actual', { exact: true }).click();
+    await expect(smokeCard).toContainText('1 de 1 incluidas');
+    await expect(regression.getByRole('button', { name: 'Incluir', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await smoke.getByRole('button', { name: 'Excluir', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Aplicar cambios', exact: true })).toBeDisabled();
 
     await list.getByRole('checkbox', { name: 'Seleccionar Desactivar y activar usuario', exact: true }).check();
-    await expect(smokeCard).toContainText('Actualmente: 2 de 2 funcionalidades incluidas');
-    await smoke.getByRole('radio', { name: 'Mantener actual' }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(smoke.getByRole('radio', { name: 'Incluir', exact: true })).toBeChecked();
-    await expect(regression.getByRole('radio', { name: 'Mantener actual' })).toBeChecked();
+    await expect(smokeCard).toContainText('2 de 2 incluidas');
+    await smoke.getByRole('button', { name: 'Incluir', exact: true }).focus();
+    await page.keyboard.press('Space');
+    await expect(smoke.getByRole('button', { name: 'Incluir', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(regression.getByRole('button', { name: 'Incluir', exact: true })).toHaveAttribute('aria-pressed', 'false');
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(smoke).toBeVisible();
     const bounds = await smoke.boundingBox();
