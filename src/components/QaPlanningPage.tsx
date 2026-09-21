@@ -2100,19 +2100,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     async (updates: Partial<Functionality>, successMessage: string, targetRows?: Functionality[]) => {
       if (selectedRowKeys.length === 0 || isBulkSaving) return;
 
-      const selectedRows = (targetRows ?? functionalities).filter(item =>
-        selectedRowKeys.includes(item.documentId || item.id),
-      );
+      const selectedRows = targetRows ?? selectedBulkFunctionalities;
 
       if (selectedRows.length === 0) return;
 
       const currentSavingIds = selectedRows.map(item => item.documentId || item.id);
-      const selectedIds = selectedRows.map(item => item.id);
       setIsBulkSaving(true);
       setSavingIds(current => [...current, ...currentSavingIds]);
 
       try {
-        await bulkUpdate({ ids: selectedIds, updates });
+        await bulkUpdate({ functionalities: selectedRows, updates });
         message.success(successMessage);
         setIsBulkDrawerOpen(false);
         setBulkModuleFilter([]);
@@ -2125,7 +2122,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         setSavingIds(current => current.filter(id => !currentSavingIds.includes(id)));
       }
     },
-    [bulkUpdate, functionalities, isBulkSaving, selectedRowKeys],
+    [bulkUpdate, isBulkSaving, selectedBulkFunctionalities, selectedRowKeys],
   );
 
   const applyBulkDraft = React.useCallback(async () => {
@@ -2158,8 +2155,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       updates.isRegression = bulkEditDraft.isRegression;
     }
 
-    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.', filteredBulkFunctionalities);
-  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate, filteredBulkFunctionalities]);
+    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.', selectedBulkFunctionalities);
+  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate, selectedBulkFunctionalities]);
 
   const detailPendingUpdates = React.useMemo<Partial<Functionality>>(() => {
     if (!selectedFunctionality || !detailEditDraft) return {};

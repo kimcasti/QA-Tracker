@@ -225,13 +225,12 @@ export async function removeFunctionality(projectId: string, functionalityId: st
 }
 
 export async function bulkUpdateFunctionalities(
-  projectId: string,
-  ids: string[],
+  functionalities: Functionality[],
   updates: Partial<Functionality>,
 ) {
-  const functionalities = await getFunctionalities(projectId);
-  const targets = functionalities.filter(item => ids.includes(item.id));
-  await Promise.all(targets.map(target => saveFunctionality({ ...target, ...updates })));
+  // Use the exact rows selected in the UI. Re-fetching and matching by the business
+  // code can silently omit rows when a bulk edit spans several modules.
+  await Promise.all(functionalities.map(target => saveFunctionality({ ...target, ...updates })));
 }
 
 export async function reorderFunctionalities(

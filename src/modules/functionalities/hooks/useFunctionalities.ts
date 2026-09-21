@@ -63,9 +63,9 @@ export function useFunctionalities(projectId?: string) {
   });
 
   const bulkUpdateMutation = useMutation({
-    mutationFn: ({ ids, updates }: { ids: string[]; updates: Partial<Functionality> }) => {
+    mutationFn: ({ functionalities, updates }: { functionalities: Functionality[]; updates: Partial<Functionality> }) => {
       if (!projectId) throw new Error('A projectId is required to bulk update functionalities.');
-      return bulkUpdateFunctionalities(projectId, ids, updates);
+      return bulkUpdateFunctionalities(functionalities, updates);
     },
     onSuccess: async () => {
       invalidateWorkspaceCache();

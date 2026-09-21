@@ -2116,7 +2116,12 @@ export default function FunctionalityList({
       }
 
       if (Object.keys(updates).length > 0) {
-        await bulkUpdate({ ids: selectedRowKeys as string[], updates });
+        await bulkUpdate({
+          functionalities: allFunctionalities.filter(item =>
+            selectedRowKeys.includes(item.documentId || item.id),
+          ),
+          updates,
+        });
         setIsBulkModalOpen(false);
         setSelectedRowKeys([]);
         bulkForm.resetFields();
@@ -2130,7 +2135,12 @@ export default function FunctionalityList({
     if (selectedRowKeys.length === 0) return;
 
     try {
-      await bulkUpdate({ ids: selectedRowKeys as string[], updates });
+      await bulkUpdate({
+        functionalities: allFunctionalities.filter(item =>
+          selectedRowKeys.includes(item.documentId || item.id),
+        ),
+        updates,
+      });
       message.success(successMessage);
     } catch (error) {
       console.error('Quick bulk update failed:', error);

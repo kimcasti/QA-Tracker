@@ -110,6 +110,38 @@ test.describe.serial('QA planning detail and bulk editing', () => {
     await expect(notice).toHaveCount(0, { timeout: 12_000 });
   });
 
+  test('applies a coverage change to every selected module', async ({ page }) => {
+    await loginThroughUi(page, seed);
+    await page.goto(`/projects/${seed.projectKey}/qa-planning`);
+    await page.getByRole('button', { name: 'Evaluar candidatas', exact: true }).click();
+
+    const moduleSelect = page.getByRole('combobox', { name: 'Filtrar por módulos en edición masiva' });
+    await moduleSelect.click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+      .getByText('Pacientes', { exact: true }).evaluate(element => (element as HTMLElement).click());
+    await moduleSelect.click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+      .getByText('Usuarios', { exact: true }).evaluate(element => (element as HTMLElement).click());
+    await page.keyboard.press('Escape');
+
+    const list = page.getByTestId('qa-bulk-selected-list');
+    await expect(list.getByRole('tab', { name: /^Pacientes \(1\/1\)/ })).toBeVisible();
+    await expect(list.getByRole('tab', { name: /^Usuarios \(1\/1\)/ })).toBeVisible();
+    await expect(page.getByTestId('qa-bulk-summary')).toContainText('a 2 funcionalidades');
+
+    const core = page.getByTestId('qa-bulk-edit-fields').getByRole('group', { name: 'Core business', exact: true });
+    await core.getByRole('button', { name: 'Incluir', exact: true }).click();
+    await page.getByRole('button', { name: 'Aplicar cambios', exact: true }).click();
+    await expect(page.getByText('Cambios masivos aplicados correctamente.')).toBeVisible();
+
+    for (const name of ['Agregar plan medico', 'Desactivar y activar usuario']) {
+      await page.getByRole('button', { name: `Ver detalle de ${name}` }).click();
+      await page.getByRole('button', { name: 'Ver y editar clasificación QA', exact: true }).click();
+      await expect(page.getByTestId('qa-detail-coverage')).toContainText('Core');
+      await page.getByTestId('qa-detail-header').getByRole('button', { name: 'Cerrar', exact: true }).click();
+    }
+  });
+
   test('edits a single functionality and applies bulk changes only to configured fields', async ({
     page,
   }) => {

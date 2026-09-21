@@ -328,11 +328,40 @@ export function BulkPasteCasesModal({
               const disabled = saving || draft.created || !!uncertainId;
               const steps = countSteps(draft.testSteps, draft.richFields?.testSteps);
               const collapsed = drafts.length > 1 && collapsedIds.includes(draft.id);
+              const detectionTags = (
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {draftHasContent(draft, 'description') ? 'Descripción detectada' : 'Sin descripción'}
+                  </Tag>
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {draftHasContent(draft, 'preconditions') ? 'Precondiciones detectadas' : 'Sin precondiciones'}
+                  </Tag>
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {steps ? `${steps} pasos identificados` : draftHasContent(draft, 'testSteps') ? 'Pasos detectados' : 'Sin pasos'}
+                  </Tag>
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {draftHasContent(draft, 'expectedResult') ? 'Resultado esperado detectado' : 'Sin resultado esperado'}
+                  </Tag>
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {draft.testType}
+                  </Tag>
+                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                    {priorityLabels[draft.priority]}
+                  </Tag>
+                </div>
+              );
               return (
                 <Card
                   key={draft.id}
                   size="small"
-                  title={`Caso ${draft.number} — ${draft.title || 'Sin título'}`}
+                  title={
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pr-2">
+                      <span className="text-sm font-semibold text-slate-800">
+                        Caso {draft.number} — {draft.title || 'Sin título'}
+                      </span>
+                      {detectionTags}
+                    </div>
+                  }
                   styles={{ body: collapsed ? { display: 'none' } : undefined }}
                   extra={drafts.length > 1 ? (
                     <Button
@@ -371,32 +400,6 @@ export function BulkPasteCasesModal({
                         </Button>
                       )}
                     </Space>
-                    <Space wrap>
-                      <Tag>
-                        {draftHasContent(draft, 'description')
-                          ? 'Descripción detectada'
-                          : 'Sin descripción (opcional)'}
-                      </Tag>
-                      <Tag>
-                        {draftHasContent(draft, 'preconditions')
-                          ? 'Precondiciones detectadas'
-                          : 'Sin precondiciones (opcional)'}
-                      </Tag>
-                      <Tag>
-                        {steps
-                          ? `${steps} pasos identificados`
-                          : draftHasContent(draft, 'testSteps')
-                            ? 'Pasos detectados'
-                            : 'Sin pasos'}
-                      </Tag>
-                      <Tag>
-                        {draftHasContent(draft, 'expectedResult')
-                          ? 'Resultado esperado detectado'
-                          : 'Sin resultado esperado'}
-                      </Tag>
-                      <Tag>Tipo de prueba: {draft.testType}</Tag>
-                      <Tag>Prioridad: {priorityLabels[draft.priority]}</Tag>
-                    </Space>
                     {draft.warnings.map((warning, index) => (
                       <Alert key={index} type="warning" title={warning} />
                     ))}
@@ -409,6 +412,7 @@ export function BulkPasteCasesModal({
                           key={field}
                           label={<label htmlFor={id}>{label}</label>}
                           required={['title', 'testSteps', 'expectedResult'].includes(field)}
+                          className="!mb-4 !block [&_.ant-form-item-control]:!block [&_.ant-form-item-control-input]:!min-h-0 [&_.ant-form-item-label>label]:!justify-start [&_.ant-form-item-label]:!block [&_.ant-form-item-label]:!w-full [&_.ant-form-item-label]:!pb-1 [&_.ant-form-item-label]:!text-left [&_.ant-form-item-row]:!block"
                           validateStatus={invalid ? 'error' : undefined}
                           help={
                             invalid
