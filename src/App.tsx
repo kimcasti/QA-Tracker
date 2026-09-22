@@ -389,11 +389,6 @@ function WorkspaceApp({
       [
         { key: 'dashboard', icon: <AppstoreOutlined />, label: t('nav.dashboard') },
         {
-          key: 'functionalities',
-          icon: <ListTree size={16} strokeWidth={1.8} />,
-          label: t('nav.functionalities'),
-        },
-        {
           key: 'qa_planning',
           icon: <ClipboardList size={16} strokeWidth={1.8} />,
           label: 'Estrategia QA',
@@ -403,6 +398,11 @@ function WorkspaceApp({
           icon: <CheckCircleOutlined />,
           label: t('nav.testing'),
           className: 'testing-menu-item',
+        },
+        {
+          key: 'functionalities',
+          icon: <ListTree size={16} strokeWidth={1.8} />,
+          label: t('nav.functionalities'),
         },
         { key: 'reports', icon: <BarChartOutlined />, label: t('nav.reports') },
         {
