@@ -24,6 +24,7 @@ import {
   List,
 } from 'antd';
 import {
+  CommentOutlined,
   DownloadOutlined,
   EditOutlined,
   FileSearchOutlined,
@@ -67,6 +68,8 @@ import {
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
+import ProjectCommentsDrawer from '../modules/project-comments/components/ProjectCommentsDrawer';
+import { useProjectComments } from '../modules/project-comments/hooks/useProjectComments';
 import {
   AutomationResultStatus,
   AutomationStatus,
@@ -824,6 +827,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const screens = useBreakpoint();
   const { isViewer } = useWorkspaceAccess();
+  const { data: projectComments = [] } = useProjectComments(projectId);
   const {
     data: functionalitiesData,
     isLoading,
@@ -841,6 +845,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
   const [searchTerm, setSearchTerm] = React.useState('');
   const [isRecommendationsExpanded, setIsRecommendationsExpanded] = React.useState(false);
+  const [isProjectCommentsOpen, setIsProjectCommentsOpen] = React.useState(false);
   const [activePlanningTab, setActivePlanningTab] = React.useState('table');
   const [isClassificationExpanded, setIsClassificationExpanded] = React.useState(false);
   const [savingIds, setSavingIds] = React.useState<string[]>([]);
@@ -2908,20 +2913,35 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                             aria-labelledby={`bulk-coverage-${item.key}`}
                             className="flex shrink-0 gap-1"
                           >
-                            {[{ label: 'Incluir', value: true }, { label: 'Excluir', value: false }].map(option => (
-                              <Button
-                                key={option.label}
-                                size="small"
-                                aria-pressed={bulkEditDraft[item.key] === option.value}
-                                className={bulkEditDraft[item.key] === option.value ? '!border-sky-200 !bg-sky-50 !text-sky-700' : '!text-slate-500'}
-                                disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
-                                onClick={() => setBulkEditDraft(current => ({
-                                  ...current,
-                                  [item.key]: current[item.key] === option.value ? undefined : option.value,
-                                }))}
-                              >
-                                {option.label}
-                              </Button>
+                            {[
+                              {
+                                label: 'Incluir', value: true, icon: <Check size={12} aria-hidden="true" />,
+                                tooltip: `Añade ${item.label} a las funcionalidades seleccionadas.`,
+                                activeClassName: '!border-emerald-600 !bg-emerald-600 !font-semibold !text-white hover:!border-emerald-600 hover:!bg-emerald-700 hover:!text-white',
+                                idleClassName: '!border-emerald-100 !text-emerald-700 hover:!bg-emerald-50',
+                              },
+                              {
+                                label: 'Excluir', value: false, icon: <MinusOutlined aria-hidden="true" />,
+                                tooltip: `Quita ${item.label} de las funcionalidades seleccionadas.`,
+                                activeClassName: '!border-rose-600 !bg-rose-600 !font-semibold !text-white hover:!border-rose-600 hover:!bg-rose-700 hover:!text-white',
+                                idleClassName: '!border-rose-100 !text-rose-600 hover:!bg-rose-50',
+                              },
+                            ].map(option => (
+                              <Tooltip key={option.label} title={option.tooltip}>
+                                <Button
+                                  size="small"
+                                  icon={option.icon}
+                                  aria-pressed={bulkEditDraft[item.key] === option.value}
+                                  className={bulkEditDraft[item.key] === option.value ? option.activeClassName : option.idleClassName}
+                                  disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
+                                  onClick={() => setBulkEditDraft(current => ({
+                                    ...current,
+                                    [item.key]: current[item.key] === option.value ? undefined : option.value,
+                                  }))}
+                                >
+                                  {option.label}
+                                </Button>
+                              </Tooltip>
                             ))}
                           </div>
                         </div>
@@ -3992,6 +4012,19 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 >
                   Recomendaciones QA
                 </Button>
+                <Button
+                  icon={<CommentOutlined />}
+                  onClick={() => setIsProjectCommentsOpen(true)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:!border-sky-300 hover:!text-sky-700 sm:w-auto"
+                  aria-label="Abrir comentarios del proyecto"
+                >
+                  Comentarios
+                  {projectComments.length > 0 ? (
+                    <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-bold text-sky-700">
+                      {projectComments.length}
+                    </span>
+                  ) : null}
+                </Button>
                 {activePlanningTab === 'table' && !isViewer && isModuleReorderAvailable ? (
                   <Tooltip
                     title={
@@ -4971,6 +5004,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           )}
         </div>
       </Modal>
+
+      <ProjectCommentsDrawer
+        projectId={projectId}
+        open={isProjectCommentsOpen}
+        onClose={() => setIsProjectCommentsOpen(false)}
+      />
 
     </div>
   );

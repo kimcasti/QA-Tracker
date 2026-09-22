@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { DownOutlined, UpOutlined } from '@ant-design/icons';
+import { CheckOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -328,24 +328,25 @@ export function BulkPasteCasesModal({
               const disabled = saving || draft.created || !!uncertainId;
               const steps = countSteps(draft.testSteps, draft.richFields?.testSteps);
               const collapsed = drafts.length > 1 && collapsedIds.includes(draft.id);
+              const tagClassName = '!m-0 !border-0 !bg-transparent !px-1 !py-0 !text-[11px] !leading-5 !text-slate-500';
               const detectionTags = (
                 <div className="flex min-w-0 flex-wrap items-center gap-1">
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
-                    {draftHasContent(draft, 'description') ? 'Descripción detectada' : 'Sin descripción'}
+                  <Tag className={tagClassName} aria-label={draftHasContent(draft, 'description') ? 'Descripción detectada' : 'Sin descripción'}>
+                    Descripción {draftHasContent(draft, 'description') ? <CheckOutlined aria-hidden="true" /> : '—'}
                   </Tag>
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
-                    {draftHasContent(draft, 'preconditions') ? 'Precondiciones detectadas' : 'Sin precondiciones'}
+                  <Tag className={tagClassName} aria-label={draftHasContent(draft, 'preconditions') ? 'Precondiciones detectadas' : 'Sin precondiciones'}>
+                    Precondiciones {draftHasContent(draft, 'preconditions') ? <CheckOutlined aria-hidden="true" /> : '—'}
                   </Tag>
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
-                    {steps ? `${steps} pasos identificados` : draftHasContent(draft, 'testSteps') ? 'Pasos detectados' : 'Sin pasos'}
+                  <Tag className={tagClassName} aria-label={steps ? `${steps} pasos identificados` : draftHasContent(draft, 'testSteps') ? 'Pasos detectados' : 'Sin pasos'}>
+                    {steps ? `${steps} pasos` : 'Pasos'} {draftHasContent(draft, 'testSteps') ? <CheckOutlined aria-hidden="true" /> : '—'}
                   </Tag>
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
-                    {draftHasContent(draft, 'expectedResult') ? 'Resultado esperado detectado' : 'Sin resultado esperado'}
+                  <Tag className={tagClassName} aria-label={draftHasContent(draft, 'expectedResult') ? 'Resultado esperado detectado' : 'Sin resultado esperado'}>
+                    Resultado esperado {draftHasContent(draft, 'expectedResult') ? <CheckOutlined aria-hidden="true" /> : '—'}
                   </Tag>
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                  <Tag className={tagClassName}>
                     {draft.testType}
                   </Tag>
-                  <Tag className="!m-0 !rounded-full !border-0 !bg-slate-100 !px-2 !py-0 !text-[11px] !leading-5 !text-slate-600">
+                  <Tag className={tagClassName}>
                     {priorityLabels[draft.priority]}
                   </Tag>
                 </div>
