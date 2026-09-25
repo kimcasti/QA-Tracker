@@ -71,6 +71,7 @@ import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { useTestRunSummaries } from '../modules/test-runs/hooks/useTestRunSummaries';
 import { useTestRuns } from '../modules/test-runs/hooks/useTestRuns';
 import { getTestRunById, removeTestRunResult } from '../modules/test-runs/services/testRunsService';
+import { RunAutomationButton } from '../modules/automation/components/RunAutomationButton';
 import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
 import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
@@ -5139,6 +5140,22 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </Modal>
         {!isReadOnly && !isViewer && (
           <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <RunAutomationButton
+              key={activeTestRun.id}
+              runId={activeTestRun.id}
+              hasUnsavedChanges={getDirtyExecutionResults(executionResults, lastSyncedExecutionResults).length > 0}
+              onResults={async job => {
+                const refreshed = await getTestRunById(activeTestRun.id);
+                const ids = new Set(job.cases.map(item => item.resultId));
+                const merge = (previous: TestRunResult[]) => previous.map(item =>
+                  ids.has(item.id) ? refreshed.results.find(result => result.id === item.id) || item : item);
+                setExecutionResults(merge);
+                setLastSyncedExecutionResults(merge);
+                await queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] });
+                await queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] });
+                await queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] });
+              }}
+            />
             <Button
               icon={<SaveOutlined />}
               onClick={() => void handleSaveExecution(ExecutionStatus.DRAFT)}
@@ -5199,7 +5216,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
           open={isEvidenceModalOpen}
           onCancel={restoreEvidenceChanges}
-          width={520}
+          width={isFailureEvidenceRequired ? 1240 : 820}
+          className="execution-evidence-modal"
+          style={{ maxWidth: 'calc(100vw - 32px)' }}
+          styles={{ body: { maxHeight: '76vh', overflowY: 'auto', overflowX: 'hidden' } }}
           centered
           footer={[
             <Button key="close" onClick={restoreEvidenceChanges} className="rounded-lg">
@@ -5232,6 +5252,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </div>
 
               <Form form={evidenceForm} layout="vertical">
+                <div className={`execution-evidence-layout${isFailureEvidenceRequired ? ' execution-evidence-layout-split' : ''}`}>
+                <section aria-label="Notas y evidencia" className="execution-evidence-notes">
                 <Form.Item
                   name="evidence"
                   label={<span className="font-semibold text-slate-600">Notas de Ejecución</span>}
@@ -5249,13 +5271,27 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                     disabled={isReadOnly}
                   />
                 </Form.Item>
+                </section>
                 {isFailureEvidenceRequired && (
-                  <>
-                    <Divider titlePlacement="left" className="!m-0 !mb-4">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        Reporte de Bug
-                      </span>
-                    </Divider>
+                  <section aria-label="Reporte de Bug"
+                    className="execution-evidence-bug">
+                      <h3 className="mb-4 flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                        <span>Reporte de Bug</span>
+                        <Tooltip
+                          title="Al registrar un bug desde una prueba fallida, se creará o actualizará automáticamente en el Historial de Bugs con estado inicial Pendiente."
+                          placement="top"
+                          trigger={['hover', 'focus', 'click']}
+                        >
+                          <Button
+                            type="text"
+                            size="small"
+                            shape="circle"
+                            aria-label="Información sobre el registro de bugs"
+                            icon={<InfoCircleOutlined />}
+                            className="!text-slate-400 hover:!text-sky-600"
+                          />
+                        </Tooltip>
+                      </h3>
 
                     <Form.Item
                       name="bugTitle"
@@ -5293,10 +5329,6 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                       />
                     </Form.Item>
 
-                    <Text type="secondary" className="text-[11px] block -mt-2">
-                      Al registrar un bug desde una prueba fallida, se creará o actualizará
-                      automáticamente en el Historial de Bugs con estado inicial Pendiente.
-                    </Text>
                     {activeTestRun && currentEvidenceRecord && <JiraIssueButton
                       key={`${activeTestRun.id}:${currentEvidenceRecord.testCaseId}`}
                       projectKey={activeTestRun.projectId}
@@ -5318,8 +5350,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                         setOriginalEvidenceRecord(updated);
                       }}
                     />}
-                  </>
+                  </section>
                 )}
+                </div>
               </Form>
             </div>
           )}

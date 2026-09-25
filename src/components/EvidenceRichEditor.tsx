@@ -366,6 +366,20 @@ export default function EvidenceRichEditor({
               Subir imagen
             </Button>
           )}
+          {projectId && (
+            <Tooltip title="Interpretar error con IA">
+              <Button
+                size="small"
+                aria-label="Interpretar error con IA"
+                icon={<RobotOutlined />}
+                loading={interpreting}
+                disabled={disabled || !editor}
+                onClick={() => { void interpretError(); }}
+              >
+                Interpretar con IA
+              </Button>
+            </Tooltip>
+          )}
         </div>
 
         {showMarkers && (
@@ -400,21 +414,6 @@ export default function EvidenceRichEditor({
           </div>
         )}
 
-        {projectId && (
-          <div className="mt-3 border-t border-slate-200 pt-3">
-            <Button
-              block
-              color="primary"
-              variant="filled"
-              icon={<RobotOutlined />}
-              loading={interpreting}
-              disabled={disabled || !editor}
-              onClick={() => { void interpretError(); }}
-            >
-              Interpretar error con IA
-            </Button>
-          </div>
-        )}
       </div>
 
       <div

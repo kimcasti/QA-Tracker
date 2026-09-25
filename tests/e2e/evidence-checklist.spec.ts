@@ -13,24 +13,7 @@ test.beforeEach(async ({ page }) => {
         window.$RefreshReg$ = () => {};
         window.$RefreshSig$ = () => type => type;
         window.__vite_plugin_react_preamble_installed__ = true;
-        const reactModule = await import('/node_modules/.vite/deps/react.js');
-        const React = reactModule.default || reactModule;
-        const domModule = await import('/node_modules/.vite/deps/react-dom_client.js');
-        const { createRoot } = domModule.default || domModule;
-        const { default: EvidenceRichEditor } = await import('/src/components/EvidenceRichEditor.tsx');
-        const { normalizeEvidenceHtml } = await import('/src/utils/evidenceRichText.ts');
-        await import('/src/index.css');
-        function Harness() {
-          const [value, setValue] = React.useState(normalizeEvidenceHtml(localStorage.getItem('checklist-test')));
-          const [disabled, setDisabled] = React.useState(false);
-          return React.createElement(React.Fragment, null,
-            React.createElement('button', { onClick: () => setDisabled(!disabled) }, 'Solo lectura'),
-            React.createElement(EvidenceRichEditor, { value, disabled, onChange: html => {
-              localStorage.setItem('checklist-test', html);
-              setValue(html);
-            } }));
-        }
-        createRoot(document.getElementById('root')).render(React.createElement(Harness));
+        await import('/tests/e2e/support/evidence-checklist-harness.tsx');
       </script></body></html>`,
   }));
 });
