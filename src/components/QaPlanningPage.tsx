@@ -2356,13 +2356,20 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
 
           return (
             <div className="flex min-w-[24px] flex-col items-center">
-              <span
-                className={`text-sm font-semibold ${
+              <Button
+                type="link"
+                size="small"
+                aria-label={`Ver ${count} casos de prueba de ${record.name}`}
+                onClick={event => {
+                  event.stopPropagation();
+                  openTestCaseDrawer(record);
+                }}
+                className={`!px-2 text-sm font-semibold hover:underline ${
                   count > 0 ? 'text-slate-700' : 'text-amber-700'
                 }`}
               >
                 {count}
-              </span>
+              </Button>
             </div>
           );
         },
@@ -2598,6 +2605,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       t,
       tableFilters,
       testCaseCountByFunctionality,
+      openTestCaseDrawer,
     ],
   );
 
@@ -2861,7 +2869,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               className="min-w-0"
             >
               <div className="grid grid-cols-1 items-start gap-3 pt-8 sm:pt-0 xl:grid-cols-[minmax(0,3fr)_minmax(180px,1fr)]">
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <div className="flex items-center gap-2">
                     <Text strong className="block">Clasificación de cobertura</Text>
                     <Tooltip title="Define qué categorías aplican a las funcionalidades seleccionadas. Una funcionalidad puede pertenecer a varias. Sin selección se conserva la clasificación actual. Pulsa de nuevo una opción para deshacerla; excluir solo quita esa categoría.">
@@ -2895,7 +2903,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     ].map(item => (
                       <div
                         key={item.key}
-                        className="rounded-xl border border-slate-100 bg-white px-3 py-2"
+                        className="min-w-0 rounded-xl border border-slate-100 bg-white px-3 py-2"
                       >
                         <div className="flex flex-col items-start gap-2">
                           <div className="min-w-0">
@@ -2911,7 +2919,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           <div
                             role="group"
                             aria-labelledby={`bulk-coverage-${item.key}`}
-                            className="flex shrink-0 gap-1"
+                            className="flex w-full min-w-0 flex-wrap gap-1"
                           >
                             {[
                               {
@@ -2932,7 +2940,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                                   size="small"
                                   icon={option.icon}
                                   aria-pressed={bulkEditDraft[item.key] === option.value}
-                                  className={bulkEditDraft[item.key] === option.value ? option.activeClassName : option.idleClassName}
+                                  className={`flex-1 ${bulkEditDraft[item.key] === option.value ? option.activeClassName : option.idleClassName}`}
                                   disabled={isBulkSaving || filteredBulkFunctionalities.length === 0}
                                   onClick={() => setBulkEditDraft(current => ({
                                     ...current,

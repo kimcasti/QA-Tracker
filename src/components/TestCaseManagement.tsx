@@ -38,6 +38,7 @@ import {
   MoreOutlined,
   HolderOutlined,
   CheckCircleFilled,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import {
   AutomationResultStatus,
@@ -55,6 +56,7 @@ import { useTranslation } from 'react-i18next';
 import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { downloadCasesText } from '../modules/test-cases/utils/exportCasesText';
 import { BulkPasteCasesModal } from '../modules/test-cases/components/BulkPasteCasesModal';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
@@ -314,6 +316,10 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const visibleTestCases = Array.isArray(testCases)
     ? [...testCases].sort((left, right) => getStableSortOrder(left) - getStableSortOrder(right))
     : [];
+  const exportCasesText = () => {
+    if (isLoading || isError || !visibleTestCases.length) return;
+    downloadCasesText(functionalityName, visibleTestCases);
+  };
   const automationSummary = useMemo(() => {
     const total = visibleTestCases.length;
     const byStatus = {
@@ -1001,6 +1007,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                       label: 'ORGANIZACIÓN',
                       children: [
                         { key: 'reorder', label: 'Ordenar casos', icon: <MenuOutlined />, onClick: openReorderModal },
+                        { key: 'export-text', label: 'Exportar casos en texto plano', icon: <DownloadOutlined />,
+                          disabled: isLoading || isError || !visibleTestCases.length, onClick: exportCasesText },
                       ],
                     },
                   ],
@@ -1031,6 +1039,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 </Button>
               </>
             ) : null}
+            {!isCaseFormVisible && (isViewer || visibleTestCases.length <= 5) && (
+              <Tooltip title="Exportar casos en texto plano">
+                <Button icon={<DownloadOutlined />} aria-label="Exportar casos en texto plano"
+                  disabled={isLoading || isError || !visibleTestCases.length} onClick={exportCasesText} />
+              </Tooltip>
+            )}
             {onClose ? (
               <Tooltip title="Cerrar casos de prueba">
                 <Button
