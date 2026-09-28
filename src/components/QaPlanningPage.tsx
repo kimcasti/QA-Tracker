@@ -67,6 +67,8 @@ import {
 } from 'recharts';
 import { useFunctionalities } from '../modules/functionalities/hooks/useFunctionalities';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { manualCasesForFunctionalities } from '../modules/test-cases/utils/automationCandidates';
+import { AutomationCandidatePicker } from '../modules/test-cases/components/AutomationCandidatePicker';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import ProjectCommentsDrawer from '../modules/project-comments/components/ProjectCommentsDrawer';
 import { useProjectComments } from '../modules/project-comments/hooks/useProjectComments';
@@ -182,6 +184,7 @@ type PlanningTableFilters = {
 };
 
 type BulkEditDraft = {
+  markAutomationCandidates?: boolean;
   priority?: Priority;
   status?: TestStatus;
   isCore?: boolean;
@@ -841,6 +844,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     isPending: areTestCasesPending,
     isError: hasTestCasesError,
     refetch: refetchTestCases,
+    markManualCandidates,
   } = useTestCases(projectId);
 
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -878,6 +882,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   }, [isBulkDrawerOpen]);
   const [detailEditDraft, setDetailEditDraft] = React.useState<DetailEditDraft | null>(null);
   const [bulkEditDraft, setBulkEditDraft] = React.useState<BulkEditDraft>(INITIAL_BULK_EDIT_DRAFT);
+  const [candidateSaveError, setCandidateSaveError] = React.useState('');
+  const [selectedCandidateIds, setSelectedCandidateIds] = React.useState<string[]>([]);
   const [isAiAnalysisModalOpen, setIsAiAnalysisModalOpen] = React.useState(false);
   const [isAiAnalysisLoading, setIsAiAnalysisLoading] = React.useState(false);
   const [aiAnalysisResult, setAiAnalysisResult] =
@@ -1072,6 +1078,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   React.useEffect(() => {
     if (selectedRowKeys.length === 0) {
       setBulkEditDraft(INITIAL_BULK_EDIT_DRAFT);
+      setCandidateSaveError('');
     }
   }, [selectedRowKeys]);
 
@@ -1937,9 +1944,23 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     bulkEditDraft.isRegression !== undefined;
 
   const bulkChangesCount =
+    Number(Boolean(bulkEditDraft.markAutomationCandidates)) +
     Number(bulkEditDraft.priority !== undefined) +
     Number(bulkEditDraft.status !== undefined) +
     Number(hasCoverageChanges);
+  const manualCandidateCases = manualCasesForFunctionalities(testCases, projectId || '',
+    filteredBulkFunctionalities.map(item => item.id));
+  const selectedManualCandidateCases = manualCandidateCases.filter(item => selectedCandidateIds.includes(item.id));
+  React.useEffect(() => {
+    const eligible = new Set(manualCandidateCases.map(item => item.id));
+    setSelectedCandidateIds(current => {
+      const next = current.filter(id => eligible.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [testCases, filteredBulkFunctionalities]);
+  React.useEffect(() => {
+    if (!isBulkDrawerOpen) setSelectedCandidateIds([]);
+  }, [isBulkDrawerOpen]);
 
   const riskOptions = React.useMemo(
     () =>
@@ -2131,10 +2152,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   );
 
   const applyBulkDraft = React.useCallback(async () => {
+    if (isBulkSaving || isViewer) return;
     if (
       bulkEditDraft.priority === undefined &&
       bulkEditDraft.status === undefined &&
-      !hasCoverageChanges
+      !hasCoverageChanges && !bulkEditDraft.markAutomationCandidates
     ) {
       message.info('Selecciona al menos un cambio antes de aplicar la edición masiva.');
       return;
@@ -2160,8 +2182,42 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       updates.isRegression = bulkEditDraft.isRegression;
     }
 
-    await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.', selectedBulkFunctionalities);
-  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate, selectedBulkFunctionalities]);
+    if (!bulkEditDraft.markAutomationCandidates) {
+      await saveBulkUpdate(updates, 'Cambios masivos aplicados correctamente.', filteredBulkFunctionalities);
+      return;
+    }
+    if (areTestCasesPending || hasTestCasesError || !filteredBulkFunctionalities.length) return;
+    if (!selectedManualCandidateCases.length && !Object.keys(updates).length) return;
+    setIsBulkSaving(true);
+    setCandidateSaveError('');
+    let confirmedCount = 0;
+    let savedFunctionalities = 0;
+    try {
+      const result = await markManualCandidates(filteredBulkFunctionalities.map(item => item.id), selectedManualCandidateCases.map(item => item.id));
+      confirmedCount = result.confirmed.length;
+      if (result.failed) {
+        setCandidateSaveError(`${confirmedCount} casos guardados como candidatos. Quedaron ${result.pending.length} sin confirmar; se detuvo en «${result.pending[0]?.title}». ${result.failed.message} Los demás cambios de funcionalidad no se aplicaron. Puedes revisar y reintentar.`);
+        return;
+      }
+      if (Object.keys(updates).length) {
+        for (const functionality of filteredBulkFunctionalities) {
+          await save({ ...functionality, ...updates });
+          savedFunctionalities += 1;
+        }
+      }
+      message.success(`${confirmedCount} casos marcados como candidatos. Cambios aplicados.`);
+      setIsBulkDrawerOpen(false);
+      setBulkModuleFilter([]);
+      setSelectedRowKeys([]);
+    } catch {
+      const pending = Object.keys(updates).length
+        ? ` ${savedFunctionalities} funcionalidades confirmadas; pendientes de confirmar: ${filteredBulkFunctionalities.slice(savedFunctionalities).map(item => item.name).join(', ')}.` : '';
+      setCandidateSaveError(`${confirmedCount} casos confirmados como candidatos.${pending} No se pudo completar la operación. Revisa los datos actualizados antes de reintentar.`);
+    } finally {
+      setIsBulkSaving(false);
+    }
+  }, [bulkEditDraft, hasCoverageChanges, saveBulkUpdate, filteredBulkFunctionalities, isBulkSaving, isViewer,
+    areTestCasesPending, hasTestCasesError, markManualCandidates, save, selectedManualCandidateCases]);
 
   const detailPendingUpdates = React.useMemo<Partial<Functionality>>(() => {
     if (!selectedFunctionality || !detailEditDraft) return {};
@@ -2961,7 +3017,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     className="px-4 py-3 text-sm text-slate-600"
                   >
                     Se aplicarán {bulkChangesCount} cambios configurados a {filteredBulkFunctionalities.length} funcionalidades.
+                    {bulkEditDraft.markAutomationCandidates && <div className="mt-1">
+                      {selectedManualCandidateCases.length} de {manualCandidateCases.length} casos manuales seleccionados pasarán a Candidata.
+                    </div>}
                   </div>
+
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1 xl:pt-7">
@@ -3012,6 +3072,23 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 </div>
               </div>
             </div>
+          </div>
+          <div data-testid="qa-candidate-section" className="mt-4 min-w-0 rounded-xl border border-slate-100 p-3">
+            <Checkbox checked={Boolean(bulkEditDraft.markAutomationCandidates)}
+              disabled={isBulkSaving || areTestCasesPending || hasTestCasesError || !filteredBulkFunctionalities.length}
+              onChange={event => { setCandidateSaveError(''); setBulkEditDraft(current => ({ ...current, markAutomationCandidates: event.target.checked })); }}>
+              Candidatas a automatización
+            </Checkbox>
+            <Text type="secondary" className="mt-1 block text-xs">
+              Elige los casos manuales que quieras marcar como candidatos.
+            </Text>
+            {bulkEditDraft.markAutomationCandidates && !areTestCasesPending && !hasTestCasesError &&
+              <AutomationCandidatePicker functionalities={filteredBulkFunctionalities}
+                cases={testCases.filter(item => item.projectId === projectId)} selectedIds={selectedCandidateIds}
+                disabled={isBulkSaving} onChange={setSelectedCandidateIds} />}
+            {hasTestCasesError && <Alert type="error" title="No se pudieron cargar los casos."
+              action={<Button size="small" onClick={() => void refetchTestCases()}>Reintentar</Button>} />}
+            {candidateSaveError && <Alert className="mt-2" type="warning" title={candidateSaveError} />}
           </div>
           {isBulkNoticeVisible && (
             <Alert
@@ -3140,7 +3217,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
               type="primary"
               className="px-5"
               loading={isBulkSaving}
-              disabled={bulkChangesCount === 0 || filteredBulkFunctionalities.length === 0}
+              disabled={bulkChangesCount === 0 || filteredBulkFunctionalities.length === 0 || (Boolean(bulkEditDraft.markAutomationCandidates) && (areTestCasesPending || hasTestCasesError || (!selectedManualCandidateCases.length && bulkChangesCount === 1)))}
               onClick={() => void applyBulkDraft()}
             >
               Aplicar cambios

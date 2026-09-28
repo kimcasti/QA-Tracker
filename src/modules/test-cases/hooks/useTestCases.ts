@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getTestCases,
+  markManualCasesAsCandidates,
   removeTestCase,
   reorderTestCases,
   saveTestCase,
@@ -70,6 +71,18 @@ export function useTestCases(projectId?: string, functionalityId?: string) {
     data: query.data,
     save: saveMutation.mutate,
     saveAsync: saveMutation.mutateAsync,
+    markManualCandidates: async (functionalityIds: string[], caseIds: string[]) => {
+      if (!projectId) throw new Error('Selecciona un proyecto.');
+      try {
+        return await markManualCasesAsCandidates(projectId, functionalityIds, caseIds);
+      } finally {
+        invalidateWorkspaceCache();
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] }),
+          queryClient.invalidateQueries({ queryKey: ['workspace'] }),
+        ]);
+      }
+    },
     savePastedCases: async (cases: TestCase[], onProgress?: (count: number) => void) => {
       const result = await saveBatch(cases, saveTestCase, onProgress);
       invalidateWorkspaceCache();

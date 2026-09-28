@@ -23,6 +23,21 @@ import { Http } from '../../../config/http';
 import { getFunctionalities } from '../../functionalities/services/functionalitiesService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseDto } from '../types/api';
+import { manualCasesForFunctionalities } from '../utils/automationCandidates';
+import { saveBatch } from '../utils/saveBatch';
+
+export async function markManualCasesAsCandidates(projectId: string, functionalityIds: string[], caseIds: string[]) {
+  // Re-read before writing so a stale planning view does not reset existing automation.
+  const selected = new Set(caseIds);
+  const cases = manualCasesForFunctionalities(await getTestCases(projectId), projectId, functionalityIds)
+    .filter(item => selected.has(item.id));
+  return saveBatch(cases, async item => {
+    const id = item.documentId || item.id;
+    if (!id) throw new Error('Caso sin identificador persistido.');
+    // The update endpoint expects the complete case, not a partial status payload.
+    return saveTestCase({ ...item, automationStatus: AutomationStatus.CANDIDATE, isAutomated: false });
+  });
+}
 
 function automationStatusFromApi(value?: string) {
   switch (value) {
