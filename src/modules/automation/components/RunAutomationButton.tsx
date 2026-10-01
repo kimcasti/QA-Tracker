@@ -62,7 +62,7 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const activeJobKey = jobs.some(job => String(job.id) === selectedJobId) ? selectedJobId : jobs[0] && String(jobs[0].id);
   const hasExecutedTests = data?.jobs.some(job => job.state === 'completed' || job.state === 'interrupted');
   const automationTitle = hasExecutedTests ? 'Consultar Test Automatizados' : 'Ejecutar automatizados';
-  const runner = data?.runners.find(item => item.id === runnerId);
+  const runner = data?.runners.find(item => item.id === runnerId && item.online);
   const active = data?.jobs.find(job => ['pending', 'running'].includes(job.state));
   const problem = (item: RunnerCase) => runnerReferenceProblem(item.reference, runner, data?.duplicateReferences);
   const selectedCases = data?.cases.filter(item => selected.includes(item.caseId)) || [];
@@ -113,10 +113,10 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
         <Tabs activeKey={section || (jobs.length ? 'history' : 'cases')} onChange={setSection} tabBarGutter={32}
           items={[{ key: 'cases', label: 'Casos automatizados', children: <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Select aria-label="Ejecutor" placeholder="Selecciona un ejecutor" style={{ width: '100%' }}
-          value={runnerId} onChange={id => { setRunnerId(id); requestId.current = crypto.randomUUID(); }}
-          options={data?.runners.map(item => ({ value: item.id,
-            label: item.label + (item.online ? item.busy ? ' · Ocupado' : ' · Disponible' : ' · Desconectado'),
-            disabled: !item.online || item.busy }))} />
+          value={runner?.id} onChange={id => { setRunnerId(id); requestId.current = crypto.randomUUID(); }}
+          options={data?.runners.filter(item => item.online).map(item => ({ value: item.id,
+            label: item.label + (item.busy ? ' · Ocupado' : ' · Disponible'),
+            disabled: item.busy }))} />
         {data && !data.runners.some(item => item.online) && <Alert type="info"
           title="No hay ejecutores conectados. Inicia npm run qa:runner en la carpeta qa-automation de tu equipo." />}
         <Card className="rounded-2xl shadow-sm border-slate-100"

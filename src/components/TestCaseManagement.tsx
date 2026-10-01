@@ -17,6 +17,7 @@ import {
   List,
   Tabs,
   Dropdown,
+  Descriptions,
 } from 'antd';
 import {
   PlusOutlined,
@@ -1355,6 +1356,23 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                   expandable={{
                     expandedRowRender: record => (
                       <div className="rounded-lg bg-gray-50 p-4">
+                        {deriveAutomationStatus(record) === AutomationStatus.AUTOMATED && (
+                          <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4" aria-label="Información del test automatizado">
+                            <Descriptions
+                              title="Información del test automatizado"
+                              size="small"
+                              column={{ xs: 1, sm: 2, md: 3 }}
+                              items={[
+                                { key: 'type', label: 'Tipo de automatización', children: record.automationType || 'Sin registrar' },
+                                { key: 'tool', label: 'Herramienta', children: record.automationTool || 'Sin registrar' },
+                                { key: 'owner', label: 'Responsable', children: record.automationOwner || 'Sin registrar' },
+                                { key: 'reference', label: 'Referencia', span: 3, children: <span className="break-all">{record.automationReference || 'Sin registrar'}</span> },
+                                { key: 'result', label: 'Último resultado', children: record.lastAutomationStatus || 'Sin ejecuciones' },
+                                { key: 'run', label: 'Última ejecución', children: record.lastAutomationRunAt ? formatAutomationRunAt(record.lastAutomationRunAt) : 'Sin ejecuciones' },
+                              ]}
+                            />
+                          </section>
+                        )}
                         <div className="mb-4">
                           <Text strong>Descripción:</Text>
                           {renderRichTextContent(record.description)}
