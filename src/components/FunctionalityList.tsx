@@ -171,6 +171,7 @@ type FunctionalityEditorFormProps = {
   probabilityOptions: SelectOption[];
   statusOptions: SelectOption[];
   t: TFunction;
+  showQaClassification: boolean;
   onValuesChange: (changedValues: Record<string, unknown>) => void;
 };
 
@@ -281,6 +282,7 @@ function FieldLabelWithHelp({ label, help }: { label: string; help: string }) {
 }
 
 function FunctionalityEditorForm({
+  showQaClassification,
   form,
   moduleOptions,
   roleOptions,
@@ -357,103 +359,105 @@ function FunctionalityEditorForm({
         />
       </Form.Item>
 
-      <Form.Item
-        label={<span className="font-semibold text-slate-600">Clasificación QA</span>}
-        extra="Define si esta funcionalidad es crítica para el negocio y en qué ciclos de prueba debe aparecer: regresión, smoke o ambos."
-      >
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <Space size={16} wrap>
-          <Form.Item name="isCore" valuePropName="checked" noStyle>
-            <Checkbox>
-              <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                <span>Es Core ⭐</span>
-                <Tooltip
-                  title={
-                    <div className="space-y-2">
-                      <p className="m-0">Funcionalidad crítica para el negocio.</p>
-                      <p className="m-0">
-                        Si falla, el proceso principal del sistema se ve afectado.
-                      </p>
-                      <p className="m-0">Ejemplos: Login, Crear paciente, Crear reporte.</p>
-                    </div>
-                  }
-                >
-                  <span
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
-                    onClick={event => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
+      {showQaClassification && (
+        <Form.Item
+          label={<span className="font-semibold text-slate-600">Clasificación QA</span>}
+          extra="Define si esta funcionalidad es crítica para el negocio y en qué ciclos de prueba debe aparecer: regresión, smoke o ambos."
+        >
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <Space size={16} wrap>
+            <Form.Item name="isCore" valuePropName="checked" noStyle>
+              <Checkbox>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <span>Es Core ⭐</span>
+                  <Tooltip
+                    title={
+                      <div className="space-y-2">
+                        <p className="m-0">Funcionalidad crítica para el negocio.</p>
+                        <p className="m-0">
+                          Si falla, el proceso principal del sistema se ve afectado.
+                        </p>
+                        <p className="m-0">Ejemplos: Login, Crear paciente, Crear reporte.</p>
+                      </div>
+                    }
                   >
-                    <InfoCircleOutlined className="text-xs" />
-                  </span>
-                </Tooltip>
-              </span>
-            </Checkbox>
-          </Form.Item>
-          <Form.Item name="isRegression" valuePropName="checked" noStyle>
-            <Checkbox>
-              <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                <span>Incluir en Regresión 🔄</span>
-                <Tooltip
-                  title={
-                    <div className="space-y-2">
-                      <p className="m-0">
-                        Debe probarse cuando se realizan cambios para verificar que no se afectaron
-                        funcionalidades existentes.
-                      </p>
-                      <p className="m-0">
-                        Ejemplos: Filtros, Búsquedas, Exportaciones, Validaciones.
-                      </p>
-                    </div>
-                  }
-                >
-                  <span
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
-                    onClick={event => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                      onClick={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      <InfoCircleOutlined className="text-xs" />
+                    </span>
+                  </Tooltip>
+                </span>
+              </Checkbox>
+            </Form.Item>
+            <Form.Item name="isRegression" valuePropName="checked" noStyle>
+              <Checkbox>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <span>Incluir en Regresión 🔄</span>
+                  <Tooltip
+                    title={
+                      <div className="space-y-2">
+                        <p className="m-0">
+                          Debe probarse cuando se realizan cambios para verificar que no se afectaron
+                          funcionalidades existentes.
+                        </p>
+                        <p className="m-0">
+                          Ejemplos: Filtros, Búsquedas, Exportaciones, Validaciones.
+                        </p>
+                      </div>
+                    }
                   >
-                    <InfoCircleOutlined className="text-xs" />
-                  </span>
-                </Tooltip>
-              </span>
-            </Checkbox>
-          </Form.Item>
-          <Form.Item name="isSmoke" valuePropName="checked" noStyle>
-            <Checkbox>
-              <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                <span>Incluir en Smoke 🔥</span>
-                <Tooltip
-                  title={
-                    <div className="space-y-2">
-                      <p className="m-0">
-                        Debe ejecutarse en cada despliegue para confirmar que la aplicación
-                        funciona.
-                      </p>
-                      <p className="m-0">
-                        Pregúntese: "Si esto falla, ¿el usuario puede seguir trabajando?"
-                      </p>
-                    </div>
-                  }
-                >
-                  <span
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
-                    onClick={event => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                      onClick={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      <InfoCircleOutlined className="text-xs" />
+                    </span>
+                  </Tooltip>
+                </span>
+              </Checkbox>
+            </Form.Item>
+            <Form.Item name="isSmoke" valuePropName="checked" noStyle>
+              <Checkbox>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <span>Incluir en Smoke 🔥</span>
+                  <Tooltip
+                    title={
+                      <div className="space-y-2">
+                        <p className="m-0">
+                          Debe ejecutarse en cada despliegue para confirmar que la aplicación
+                          funciona.
+                        </p>
+                        <p className="m-0">
+                          Pregúntese: "Si esto falla, ¿el usuario puede seguir trabajando?"
+                        </p>
+                      </div>
+                    }
                   >
-                    <InfoCircleOutlined className="text-xs" />
-                  </span>
-                </Tooltip>
-              </span>
-            </Checkbox>
-          </Form.Item>
-          </Space>
-        </div>
-      </Form.Item>
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600"
+                      onClick={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      <InfoCircleOutlined className="text-xs" />
+                    </span>
+                  </Tooltip>
+                </span>
+              </Checkbox>
+            </Form.Item>
+            </Space>
+          </div>
+        </Form.Item>
+      )}
 
       <Row gutter={20}>
         <Col span={12}>
@@ -2749,6 +2753,7 @@ export default function FunctionalityList({
         okButtonProps={{ disabled: isViewer }}
       >
         <FunctionalityEditorForm
+          showQaClassification={Boolean(editingFunc)}
           form={form}
           moduleOptions={moduleOptions}
           roleOptions={roleOptions}
