@@ -48,7 +48,7 @@ test('automation dialog selects across modules, blocks invalid/offline reference
     ];
     const inspection = { canRun: true, cases, duplicateReferences: [], jobs: [],
       runners: [{ id: 1, label: 'Equipo local', online: true, busy: false, catalog: refs },
-        { id: 2, label: 'Mi equipo', online: true, busy: false, catalog: refs }],
+        { id: 2, label: 'Mi equipo', online: true, busy: false, catalog: refs, environments: ['local', 'test'] }],
       connections: [
         { id: 10, label: 'Equipo local', isOwnConnection: false, runnerId: 1, online: true, busy: false },
         { id: 20, label: 'Mi equipo', isOwnConnection: true, runnerId: 2, online: true, busy: false },
@@ -60,7 +60,7 @@ test('automation dialog selects across modules, blocks invalid/offline reference
       const request = route.request();
       if (request.method() === 'POST') {
         posted = request.postDataJSON().data;
-        inspection.jobs = [{ id: 42, runId: 'existing', runnerId: posted.runnerId, state: 'running', cases: cases.slice(0, 2), completedCount: 1 }];
+        inspection.jobs = [{ id: 42, runId: 'existing', runnerId: posted.runnerId, environment: posted.environment, state: 'running', cases: cases.slice(0, 2), completedCount: 1 }];
         await route.fulfill({ json: { data: inspection.jobs[0] } });
       } else if (request.url().endsWith('/jobs/40')) {
         await route.fulfill({ json: { data: { ...inspection.jobs.find(job => job.id === 40),
@@ -91,6 +91,10 @@ test('automation dialog selects across modules, blocks invalid/offline reference
     await page.getByText('Equipo local · Disponible', { exact: true }).click();
     await expect(page.getByRole('row').filter({ hasText: 'Caso sin vínculo' }).getByRole('checkbox')).toBeDisabled();
     await page.getByRole('row').filter({ hasText: 'Buscar usuario' }).getByRole('checkbox').check();
+    await page.getByRole('combobox', { name: 'Ambiente de las pruebas' }).click();
+    await page.getByText('Test', { exact: true }).click();
+    await expect(page.getByText(/Este ejecutor no tiene disponible el ambiente seleccionado/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ejecutar 1 caso', exact: true })).toBeDisabled();
     await page.getByRole('combobox', { name: 'Ejecutor' }).click();
     await page.getByText('Mi equipo · Tu conexión · Disponible', { exact: true }).click();
     await expect(page.getByRole('row').filter({ hasText: 'Buscar usuario' }).getByRole('checkbox')).not.toBeChecked();
@@ -108,13 +112,17 @@ test('automation dialog selects across modules, blocks invalid/offline reference
     await submit.click();
     assert.deepEqual(posted.caseIds.sort(), ['p', 'u']);
     assert.equal(posted.runnerId, 2);
-    await expect(page.getByText('Ejecución 42 · Ejecutando', { exact: true })).toBeVisible();
+    assert.equal(posted.environment, 'test');
+    await expect(page.getByRole('tab', { name: 'Ejecución 1', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Ejecución 1 · Ejecutando', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ambiente:', { exact: false })).toContainText('Test');
     inspection.jobs[0].state = 'completed';
     inspection.jobs[0].completedCount = 2;
-    await expect(page.getByText('Ejecución 42 · Finalizado', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Ejecución 1 · Finalizado', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('tab', { name: 'Historial de ejecuciones', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(guidance).not.toBeVisible();
     const summary = page.getByRole('region', { name: 'Resumen de ejecución de Playwright', exact: true });
+    await expect(summary).toContainText('PLAYWRIGHT · Ejecución 1');
     await expect(summary).toContainText('[1/2] FAIL  ' + refs[0]);
     await expect(summary).toContainText('[2/2] PASS  ' + refs[1]);
     await expect(summary).toContainText('Tiempo de ejecución: 12 s');
@@ -135,18 +143,24 @@ test('automation dialog selects across modules, blocks invalid/offline reference
     await expect(page.getByText('patients/list.spec.ts', { exact: true })).toBeVisible();
     inspection.jobs.push({ id: 41, runId: 'existing', runnerId: 1, state: 'interrupted',
       cases: cases.slice(0, 2), completedCount: 1, message: 'Ejecutor desconectado' });
-    await expect(page.getByRole('tab', { name: 'Ejecución 41', exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('tab', { name: 'Ejecución 42', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await page.getByRole('tab', { name: 'Ejecución 41', exact: true }).click();
-    await expect(page.getByText('Ejecución 41 · Interrumpido', { exact: true })).toBeVisible();
-    await expect(page.getByText('Ejecución 42 · Finalizado', { exact: true })).not.toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Ejecución 2', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+    await expect(summary).toContainText('PLAYWRIGHT · Ejecución 2');
+    await expect(page.getByRole('tab', { name: /^Ejecución (41|42)$/, exact: true })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Ejecución 1', exact: true }).click();
+    await expect(page.getByText('Ejecución 1 · Interrumpido', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ejecución 2 · Finalizado', { exact: true })).not.toBeVisible();
     await expect(page.getByText('Ejecutor desconectado', { exact: true })).toBeVisible();
     inspection.jobs.push({ id: 40, runId: 'existing', runnerId: 1, state: 'completed', cases: cases.slice(0, 2), completedCount: 2 });
-    await page.getByRole('tab', { name: 'Ejecución 40', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Ejecución 3', exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('tab', { name: 'Ejecución 1', exact: true }).click();
     await expect(page.getByText('2/2 Aprobado', { exact: true })).toBeVisible();
     await expect(page.getByText('Aprobado: 2', { exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: 'Ejecución 42', exact: true }).click();
+    await page.getByRole('tab', { name: 'Ejecución 3', exact: true }).click();
     await expect(summary).toBeVisible();
+    await expect(summary).toContainText('PLAYWRIGHT · Ejecución 3');
+    inspection.totalJobs = 25;
+    await expect(page.getByRole('tab', { name: 'Ejecución 25', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+    await expect(summary).toContainText('PLAYWRIGHT · Ejecución 25');
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(summary).toBeVisible();
     assert.equal(await page.getByRole('dialog').evaluate(element => element.scrollWidth <= element.clientWidth), true);

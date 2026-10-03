@@ -4,7 +4,7 @@ import { Alert, Button, Card, Collapse, Empty, Modal, Progress, Select, Space, T
 import { CheckCircleFilled, CloseCircleFilled } from '@ant-design/icons';
 import { AutomationJobResults } from './AutomationJobResults';
 import { useAutomationRunner } from '../hooks/useAutomationRunner';
-import { runnerReferenceProblem, runnerService, type AutomationJob, type RunnerCase } from '../services/runnerService';
+import { runnerReferenceProblem, runnerService, type AutomationEnvironment, type AutomationJob, type RunnerCase } from '../services/runnerService';
 
 interface Props {
   runId: string;
@@ -16,13 +16,13 @@ function errorMessage(error: unknown) {
   const response = error as { response?: { data?: { error?: { message?: string } } }; message?: string };
   return response?.response?.data?.error?.message || response?.message || 'No se pudo contactar con QA Tracker.';
 }
-function JobResults({ runId, jobId }: { runId: string; jobId: number }) {
+function JobResults({ runId, jobId, executionNumber }: { runId: string; jobId: number; executionNumber: number }) {
   const query = useQuery({ queryKey: ['automation-job-results', runId, jobId],
     queryFn: () => runnerService.details(runId, jobId), staleTime: Infinity });
   if (query.isPending) return <Typography.Text>Cargando resultados…</Typography.Text>;
   if (query.isError) return <Alert type="error" title={errorMessage(query.error)}
     action={<Button onClick={() => void query.refetch()}>Reintentar</Button>} />;
-  return <AutomationJobResults job={query.data} />;
+  return <AutomationJobResults job={query.data} executionNumber={executionNumber} />;
 }
 function JobProgress({ runId, job }: { runId: string; job: AutomationJob }) {
   const { data } = useQuery({ queryKey: ['automation-job-results', runId, job.id],
@@ -49,6 +49,7 @@ function JobProgress({ runId, job }: { runId: string; job: AutomationJob }) {
 export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Props) {
   const [open, setOpen] = useState(false);
   const [connectionKey, setConnectionKey] = useState<string>();
+  const [environment, setEnvironment] = useState<AutomationEnvironment>('local');
   const [selected, setSelected] = useState<string[]>([]);
   const [refreshError, setRefreshError] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string>();
@@ -59,6 +60,7 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const { inspection, enqueue } = useAutomationRunner(runId, open);
   const data = inspection.data;
   const jobs = [...(data?.jobs || [])].sort((a, b) => b.id - a.id);
+  const totalJobs = data?.totalJobs ?? jobs.length;
   const activeJobKey = jobs.some(job => String(job.id) === selectedJobId) ? selectedJobId : jobs[0] && String(jobs[0].id);
   const hasExecutedTests = data?.jobs.some(job => job.state === 'completed' || job.state === 'interrupted');
   const automationTitle = hasExecutedTests ? 'Consultar Test Automatizados' : 'Ejecutar automatizados';
@@ -67,12 +69,14 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
     : (data?.runners || []).map(item => ({ ...item, key: `runner:${item.id}`, runnerId: item.id, isOwnConnection: false }));
   const connection = connections.find(item => item.key === connectionKey);
   const runner = data?.runners.find(item => item.id === connection?.runnerId);
+  const supportedEnvironments = runner?.environments || ['local'];
+  const environmentAvailable = supportedEnvironments.includes(environment);
   const active = data?.jobs.find(job => ['pending', 'running'].includes(job.state));
   const problem = (item: RunnerCase) => runnerReferenceProblem(item.reference, runner, data?.duplicateReferences);
   const selectedCases = data?.cases.filter(item => selected.includes(item.caseId)) || [];
   const invalid = selectedCases.some(item => problem(item));
   const blocked = !data?.canRun || !runner?.online || runner.busy || Boolean(active) || !selected.length ||
-    selectedCases.length !== selected.length || invalid || hasUnsavedChanges || inspection.isError;
+    selectedCases.length !== selected.length || invalid || !environmentAvailable || hasUnsavedChanges || inspection.isError;
 
   useEffect(() => {
     if (!open || !data || hasUnsavedChanges) return;
@@ -90,7 +94,7 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
     if (blocked || submitting.current) return;
     submitting.current = true;
     try {
-      const job = await enqueue.mutateAsync({ runnerId: runner!.id, caseIds: selected, requestId: requestId.current });
+      const job = await enqueue.mutateAsync({ runnerId: runner!.id, caseIds: selected, requestId: requestId.current, environment });
       setSelectedJobId(String(job.id));
       setSection('history');
       requestId.current = crypto.randomUUID();
@@ -123,6 +127,15 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
             label: item.label + (item.isOwnConnection ? ' · Tu conexión' : '') +
               (!item.online ? ' · Ejecutor desconectado' : item.busy ? ' · Ocupado' : ' · Disponible'),
             disabled: !item.online || item.busy }))} />
+        <Space orientation="vertical" style={{ width: '100%' }}>
+          <Typography.Text strong>Ambiente de las pruebas</Typography.Text>
+          <Select aria-label="Ambiente de las pruebas" value={environment} style={{ width: '100%' }}
+            disabled={Boolean(active) || enqueue.isPending}
+            onChange={value => { setEnvironment(value); requestId.current = crypto.randomUUID(); }}
+            options={[{ value: 'local', label: 'Local' }, { value: 'test', label: 'Test' }]} />
+          {runner && !environmentAvailable && <Alert type="warning"
+            title="Este ejecutor no tiene disponible el ambiente seleccionado. Actualiza el ejecutor, configura la URL del ambiente en su .env y reinicia npm run qa:runner." />}
+        </Space>
         {data && connections.some(item => !item.online) && <Typography.Paragraph type="secondary">
           Si tu conexión aparece con el ejecutor desconectado, inicia npm run qa:runner en la carpeta qa-automation de tu equipo.
         </Typography.Paragraph>}
@@ -149,18 +162,19 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
         </Card>
         </Space> }, { key: 'history', label: 'Historial de ejecuciones', children: jobs.length > 0 ? <Tabs activeKey={activeJobKey} onChange={setSelectedJobId}
           tabBarGutter={32} destroyOnHidden style={{ minWidth: 0 }}
-          items={jobs.map(job => ({
-            key: String(job.id), label: `Ejecución ${job.id}`,
+          items={jobs.map((job, index) => ({
+            key: String(job.id), label: `Ejecución ${totalJobs - index}`,
             children: <Card className="rounded-2xl shadow-sm border-slate-100"
               title={<div className="flex flex-col gap-1 py-2">
-                <span className="text-slate-800 font-bold">Ejecución {job.id} · {states[job.state]}</span>
+                <span className="text-slate-800 font-bold">Ejecución {totalJobs - index} · {states[job.state]}</span>
                 <span className="text-xs text-slate-400 font-normal whitespace-normal">Progreso, resultados y evidencias de la ejecución.</span>
               </div>}>
           <JobProgress runId={runId} job={job} />
+          <Typography.Paragraph>Ambiente: <Tag>{job.environment === 'test' ? 'Test' : 'Local'}</Tag></Typography.Paragraph>
           {job.message && <Alert type="warning" title={job.message} />}
           {job.state === 'completed' && <Collapse ghost defaultActiveKey={['results']} items={[{
             key: 'results', label: 'Ver resultados y capturas',
-            children: <JobResults runId={runId} jobId={job.id} />,
+            children: <JobResults runId={runId} jobId={job.id} executionNumber={totalJobs - index} />,
           }]} />}
         </Card>,
           }))} /> : <Empty description="Aún no hay ejecuciones automatizadas." /> }]} />

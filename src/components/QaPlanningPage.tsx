@@ -3131,11 +3131,33 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                 tab.module === null || (item.module || '') === tab.module,
               );
               const selectedCount = available.filter(item => selectedRowKeys.includes(item.documentId || item.id)).length;
+              const rowKeys: React.Key[] = rows.map(item => item.documentId || item.id);
+              const selectedRowsCount = rowKeys.filter(key => selectedRowKeys.includes(key)).length;
+              const allRowsSelected = rowKeys.length > 0 && selectedRowsCount === rowKeys.length;
               return {
                 key: tab.key,
                 label: `${tab.label} (${selectedCount}/${available.length})`,
                 children: (
                   <div className="grid max-h-[45vh] grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
+                    <div className="col-span-full pb-1">
+                      <Checkbox
+                        checked={allRowsSelected}
+                        indeterminate={selectedRowsCount > 0 && !allRowsSelected}
+                        disabled={isBulkSaving || rowKeys.length === 0}
+                        onChange={event => {
+                          const checked = event.target.checked;
+                          setSelectedRowKeys(current => checked
+                            ? Array.from(new Set([...current, ...rowKeys]))
+                            : current.filter(key => !rowKeys.includes(key)),
+                          );
+                        }}
+                      >
+                        {allRowsSelected ? 'Quitar las selecciones' : 'Seleccionar todo'}
+                      </Checkbox>
+                      <Text type="secondary" className="ml-2 text-xs">
+                        {bulkFunctionalitySearch.trim() ? 'Resultados de esta pestaña' : 'Funcionalidades de esta pestaña'}
+                      </Text>
+                    </div>
                     {rows.length === 0 && (
                       <Text type="secondary" className="col-span-full">No hay funcionalidades que coincidan con los filtros.</Text>
                     )}

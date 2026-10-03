@@ -20,7 +20,7 @@ function elapsed(job: AutomationJob) {
     : 'No disponible';
 }
 
-export function AutomationJobResults({ job }: { job: AutomationJob }) {
+export function AutomationJobResults({ job, executionNumber }: { job: AutomationJob; executionNumber: number }) {
   const [capture, setCapture] = useState<string>();
   const outcomes = job.outcomes || [];
   if (!outcomes.length) return <Empty description="Esta ejecución no contiene resultados detallados." />;
@@ -28,7 +28,7 @@ export function AutomationJobResults({ job }: { job: AutomationJob }) {
     ...info, status, count: outcomes.filter(result => result.status === status).length,
   }));
   const summary = [
-    `PLAYWRIGHT · Ejecución ${job.id}`,
+    `PLAYWRIGHT · Ejecución ${executionNumber}`,
     `Inicio: ${timestamp(job.startedAt)}`,
     `Fin: ${timestamp(job.finishedAt)}`,
     `Tiempo de ejecución: ${elapsed(job)}`,

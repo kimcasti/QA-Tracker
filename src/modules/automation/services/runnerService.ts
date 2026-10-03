@@ -1,12 +1,14 @@
 import { Http } from '../../../config/http';
 
 export interface RunnerCase { resultId: string; caseId: string; reference: string; title: string; module?: string }
-export interface AutomationRunner { id: number; label: string; online: boolean; busy: boolean; catalog: string[] }
+export type AutomationEnvironment = 'local' | 'test';
+export interface AutomationRunner { id: number; label: string; online: boolean; busy: boolean; catalog: string[]; environments?: AutomationEnvironment[] }
 export interface AutomationRunConnection {
   id: number; label: string; isOwnConnection: boolean; runnerId: number | null; online: boolean; busy: boolean;
 }
 export interface AutomationJob {
   id: number; runId: string; runnerId: number;
+  environment?: AutomationEnvironment;
   state: 'pending' | 'running' | 'completed' | 'interrupted';
   cases: RunnerCase[]; completedCount: number; message?: string;
   startedAt?: string | null; finishedAt?: string | null;
@@ -15,14 +17,14 @@ export interface AutomationJob {
 export interface RunnerInspection {
   runners: AutomationRunner[]; cases: RunnerCase[]; duplicateReferences: string[];
   connections?: AutomationRunConnection[];
-  jobs: AutomationJob[]; canRun: boolean;
+  jobs: AutomationJob[]; totalJobs?: number; canRun: boolean;
 }
 export const runnerService = {
   details: async (runId: string, jobId: number) =>
     (await Http.get<{ data: AutomationJob }>(`/api/automation-runs/${encodeURIComponent(runId)}/jobs/${jobId}`)).data.data,
   inspect: async (runId: string) =>
     (await Http.get<{ data: RunnerInspection }>(`/api/automation-runs/${encodeURIComponent(runId)}/runner`)).data.data,
-  enqueue: async (runId: string, data: { runnerId: number; caseIds: string[]; requestId: string }) =>
+  enqueue: async (runId: string, data: { runnerId: number; caseIds: string[]; requestId: string; environment: AutomationEnvironment }) =>
     (await Http.post<{ data: AutomationJob }>(`/api/automation-runs/${encodeURIComponent(runId)}/jobs`, { data })).data.data,
 };
 export function runnerReferenceProblem(reference: string, runner?: AutomationRunner, duplicates: string[] = []) {
