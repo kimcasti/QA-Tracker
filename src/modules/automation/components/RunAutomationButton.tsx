@@ -48,7 +48,7 @@ function JobProgress({ runId, job }: { runId: string; job: AutomationJob }) {
 }
 export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Props) {
   const [open, setOpen] = useState(false);
-  const [runnerId, setRunnerId] = useState<number>();
+  const [connectionKey, setConnectionKey] = useState<string>();
   const [selected, setSelected] = useState<string[]>([]);
   const [refreshError, setRefreshError] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string>();
@@ -62,7 +62,11 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const activeJobKey = jobs.some(job => String(job.id) === selectedJobId) ? selectedJobId : jobs[0] && String(jobs[0].id);
   const hasExecutedTests = data?.jobs.some(job => job.state === 'completed' || job.state === 'interrupted');
   const automationTitle = hasExecutedTests ? 'Consultar Test Automatizados' : 'Ejecutar automatizados';
-  const runner = data?.runners.find(item => item.id === runnerId && item.online);
+  const connections = data?.connections
+    ? data.connections.map(item => ({ ...item, key: `connection:${item.id}` }))
+    : (data?.runners || []).map(item => ({ ...item, key: `runner:${item.id}`, runnerId: item.id, isOwnConnection: false }));
+  const connection = connections.find(item => item.key === connectionKey);
+  const runner = data?.runners.find(item => item.id === connection?.runnerId);
   const active = data?.jobs.find(job => ['pending', 'running'].includes(job.state));
   const problem = (item: RunnerCase) => runnerReferenceProblem(item.reference, runner, data?.duplicateReferences);
   const selectedCases = data?.cases.filter(item => selected.includes(item.caseId)) || [];
@@ -112,11 +116,16 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
           title={refreshError || errorMessage(enqueue.error || inspection.error)} />}
         <Tabs activeKey={section || (jobs.length ? 'history' : 'cases')} onChange={setSection} tabBarGutter={32}
           items={[{ key: 'cases', label: 'Casos automatizados', children: <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <Select aria-label="Ejecutor" placeholder="Selecciona un ejecutor" style={{ width: '100%' }}
-          value={runner?.id} onChange={id => { setRunnerId(id); requestId.current = crypto.randomUUID(); }}
-          options={data?.runners.filter(item => item.online).map(item => ({ value: item.id,
-            label: item.label + (item.busy ? ' · Ocupado' : ' · Disponible'),
-            disabled: item.busy }))} />
+        <Select aria-label="Ejecutor" placeholder="Selecciona una conexión" style={{ width: '100%' }}
+          loading={inspection.isLoading}
+          value={connection?.key} onChange={key => { setConnectionKey(key); setSelected([]); requestId.current = crypto.randomUUID(); }}
+          options={connections.map(item => ({ value: item.key,
+            label: item.label + (item.isOwnConnection ? ' · Tu conexión' : '') +
+              (!item.online ? ' · Ejecutor desconectado' : item.busy ? ' · Ocupado' : ' · Disponible'),
+            disabled: !item.online || item.busy }))} />
+        {data && connections.some(item => !item.online) && <Typography.Paragraph type="secondary">
+          Si tu conexión aparece con el ejecutor desconectado, inicia npm run qa:runner en la carpeta qa-automation de tu equipo.
+        </Typography.Paragraph>}
         {data && !data.runners.some(item => item.online) && <Alert type="info"
           title="No hay ejecutores conectados. Inicia npm run qa:runner en la carpeta qa-automation de tu equipo." />}
         <Card className="rounded-2xl shadow-sm border-slate-100"

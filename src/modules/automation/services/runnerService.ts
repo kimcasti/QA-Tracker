@@ -2,6 +2,9 @@ import { Http } from '../../../config/http';
 
 export interface RunnerCase { resultId: string; caseId: string; reference: string; title: string; module?: string }
 export interface AutomationRunner { id: number; label: string; online: boolean; busy: boolean; catalog: string[] }
+export interface AutomationRunConnection {
+  id: number; label: string; isOwnConnection: boolean; runnerId: number | null; online: boolean; busy: boolean;
+}
 export interface AutomationJob {
   id: number; runId: string; runnerId: number;
   state: 'pending' | 'running' | 'completed' | 'interrupted';
@@ -11,6 +14,7 @@ export interface AutomationJob {
 }
 export interface RunnerInspection {
   runners: AutomationRunner[]; cases: RunnerCase[]; duplicateReferences: string[];
+  connections?: AutomationRunConnection[];
   jobs: AutomationJob[]; canRun: boolean;
 }
 export const runnerService = {

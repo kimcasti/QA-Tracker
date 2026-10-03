@@ -47,13 +47,20 @@ test('automation dialog selects across modules, blocks invalid/offline reference
       { caseId: 'bad', resultId: 'r3', title: 'Caso sin vínculo', module: 'Reportes', reference: 'missing::case' },
     ];
     const inspection = { canRun: true, cases, duplicateReferences: [], jobs: [],
-      runners: [{ id: 1, label: 'Equipo local', online: true, busy: false, catalog: refs }] };
+      runners: [{ id: 1, label: 'Equipo local', online: true, busy: false, catalog: refs },
+        { id: 2, label: 'Mi equipo', online: true, busy: false, catalog: refs }],
+      connections: [
+        { id: 10, label: 'Equipo local', isOwnConnection: false, runnerId: 1, online: true, busy: false },
+        { id: 20, label: 'Mi equipo', isOwnConnection: true, runnerId: 2, online: true, busy: false },
+        { id: 30, label: 'Otra carpeta', isOwnConnection: true, runnerId: null, online: false, busy: false },
+        { id: 40, label: 'Equipo ocupado', isOwnConnection: false, runnerId: 3, online: true, busy: true },
+      ] };
     let posted;
     await page.route('**/api/automation-runs/**', async route => {
       const request = route.request();
       if (request.method() === 'POST') {
         posted = request.postDataJSON().data;
-        inspection.jobs = [{ id: 42, runId: 'existing', runnerId: 1, state: 'running', cases: cases.slice(0, 2), completedCount: 1 }];
+        inspection.jobs = [{ id: 42, runId: 'existing', runnerId: posted.runnerId, state: 'running', cases: cases.slice(0, 2), completedCount: 1 }];
         await route.fulfill({ json: { data: inspection.jobs[0] } });
       } else if (request.url().endsWith('/jobs/40')) {
         await route.fulfill({ json: { data: { ...inspection.jobs.find(job => job.id === 40),
@@ -78,18 +85,29 @@ test('automation dialog selects across modules, blocks invalid/offline reference
     await page.getByRole('tab', { name: 'Casos automatizados', exact: true }).click();
     await expect(guidance).toBeVisible();
     await page.getByRole('combobox', { name: 'Ejecutor' }).click();
+    await expect(page.getByText('Mi equipo · Tu conexión · Disponible', { exact: true })).toBeVisible();
+    await expect(page.getByText('Otra carpeta · Tu conexión · Ejecutor desconectado', { exact: true }).locator('..')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByText('Equipo ocupado · Ocupado', { exact: true }).locator('..')).toHaveAttribute('aria-disabled', 'true');
     await page.getByText('Equipo local · Disponible', { exact: true }).click();
     await expect(page.getByRole('row').filter({ hasText: 'Caso sin vínculo' }).getByRole('checkbox')).toBeDisabled();
+    await page.getByRole('row').filter({ hasText: 'Buscar usuario' }).getByRole('checkbox').check();
+    await page.getByRole('combobox', { name: 'Ejecutor' }).click();
+    await page.getByText('Mi equipo · Tu conexión · Disponible', { exact: true }).click();
+    await expect(page.getByRole('row').filter({ hasText: 'Buscar usuario' }).getByRole('checkbox')).not.toBeChecked();
     await page.getByRole('row').filter({ hasText: 'Buscar usuario' }).getByRole('checkbox').check();
     await page.getByRole('row').filter({ hasText: 'Crear paciente' }).getByRole('checkbox').check();
     const submit = page.getByRole('button', { name: 'Ejecutar 2 casos', exact: true });
     await expect(submit).toBeEnabled();
-    inspection.runners[0].online = false;
+    inspection.runners[1].online = false;
+    inspection.connections[1].online = false;
     await expect(submit).toBeDisabled({ timeout: 10000 });
-    inspection.runners[0].online = true;
+    await expect(page.getByText('Mi equipo · Tu conexión · Ejecutor desconectado', { exact: true })).toBeVisible();
+    inspection.runners[1].online = true;
+    inspection.connections[1].online = true;
     await expect(submit).toBeEnabled({ timeout: 10000 });
     await submit.click();
     assert.deepEqual(posted.caseIds.sort(), ['p', 'u']);
+    assert.equal(posted.runnerId, 2);
     await expect(page.getByText('Ejecución 42 · Ejecutando', { exact: true })).toBeVisible();
     inspection.jobs[0].state = 'completed';
     inspection.jobs[0].completedCount = 2;
