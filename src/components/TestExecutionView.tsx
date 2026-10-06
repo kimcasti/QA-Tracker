@@ -3444,7 +3444,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   members={participantDirectoryMembers}
                   valueField="fullName"
                   multiple={false}
-                  placeholder="Selecciona el tester del workspace"
+                  extraOptions={[{ label: 'Cliente', value: 'Cliente' }]}
+                  placeholder="Selecciona el tester o Cliente"
                   className="h-10 rounded-lg"
                   loading={isParticipantDirectoryLoading}
                 />

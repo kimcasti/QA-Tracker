@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Popover,
+  Progress,
   Radio,
   Row,
   Select,
@@ -1281,7 +1282,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       visibleFunctionalities.reduce((acc, item) => {
         const key = item.module || 'N/A';
         const hasQaClassification = Boolean(item.isCore || item.isRegression || item.isSmoke);
-        const hasTestCases = (testCaseCountByFunctionality.get(item.id) || 0) > 0;
+        const totalCases = testCaseCountByFunctionality.get(item.id) || 0;
+        const automatedCases = automatedCaseCountByFunctionality.get(item.id) || 0;
+        const hasTestCases = totalCases > 0;
         const current = acc.get(key) || {
           module: key,
           total: 0,
@@ -1289,8 +1292,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           tested: 0,
           classifiedAndTested: 0,
           withoutCoverage: 0,
+          totalCases: 0,
+          automatedCases: 0,
         };
         current.total += 1;
+        current.totalCases += totalCases;
+        current.automatedCases += automatedCases;
         if (hasQaClassification) current.qaCovered += 1;
         if (hasTestCases) current.tested += 1;
         if (hasQaClassification && hasTestCases) current.classifiedAndTested += 1;
@@ -1306,12 +1313,16 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
           tested: number;
           classifiedAndTested: number;
           withoutCoverage: number;
+          totalCases: number;
+          automatedCases: number;
         }
       >()),
     )
       .map(([, value]) => ({
         ...value,
         testedPercent: value.total > 0 ? Math.round((value.tested / value.total) * 100) : 0,
+        automatedPercent:
+          value.totalCases > 0 ? Math.round((value.automatedCases / value.totalCases) * 100) : 0,
         classifiedAndTestedPercent:
           value.total > 0 ? Math.round((value.classifiedAndTested / value.total) * 100) : 0,
       }))
@@ -1412,7 +1423,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
       riskCoverageMatrix,
       totalVisible,
     };
-  }, [testCaseCountByFunctionality, visibleFunctionalities]);
+  }, [automatedCaseCountByFunctionality, testCaseCountByFunctionality, visibleFunctionalities]);
 
   const qaStrategyAiInput = React.useMemo<QaStrategyCandidateInput[]>(() => {
     return visibleFunctionalities.map(functionality => {
@@ -4738,7 +4749,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                         <div>
                           <div className="text-sm font-semibold text-slate-800">Cobertura por módulo</div>
                           <div className="mt-1 text-sm text-slate-500">
-                            Compara cobertura mínima con casos y cobertura QA clasificada por módulo.
+                            Compara cobertura con casos, cobertura QA clasificada y casos automatizados por módulo.
                           </div>
                         </div>
                         <Select
@@ -4795,7 +4806,22 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                                 style={{ width: `${item.classifiedAndTestedPercent}%` }}
                               />
                             </div>
-                            <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                            <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
+                              <span className="font-semibold text-slate-600">Casos automatizados</span>
+                              <span className="shrink-0 font-semibold text-slate-700">
+                                {item.automatedPercent}% ({item.automatedCases}/{item.totalCases})
+                              </span>
+                            </div>
+                            <Progress
+                              aria-label={`Casos automatizados de ${item.module}: ${item.automatedCases} de ${item.totalCases}`}
+                              percent={item.automatedPercent}
+                              showInfo={false}
+                              strokeColor={{ from: '#10b981', to: '#14b8a6' }}
+                              railColor="#f1f5f9"
+                              size={{ height: 10 }}
+                              className="!mb-0 !block"
+                            />
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500">
                               <span>
                                 Clasificadas QA: {item.qaCovered} de {item.total}
                               </span>
