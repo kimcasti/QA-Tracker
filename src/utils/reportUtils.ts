@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { stripHtmlToText } from './evidenceRichText';
 import { normalizePdfEvidenceBody } from './pdfEvidenceText';
+import { pdfReportParagraphs, TestRunPdfLayout } from './testRunPdfLayout';
 import {
   PublicUatSessionSummary,
   RegressionCycle,
@@ -570,63 +571,6 @@ function pdfText(pdf: jsPDF, text: string, x: number, y: number, maxWidth: numbe
   return y + lines.length * 6;
 }
 
-function buildPdfRichTextLines(
-  pdf: jsPDF,
-  label: string,
-  content: string | null | undefined,
-  maxWidth: number,
-  options?: { numberedList?: boolean },
-) {
-  const rawContent = String(content || '').trim();
-
-  if (!rawContent) {
-    return pdf.splitTextToSize(`${label}: N/A`, maxWidth);
-  }
-
-  const hasHtmlTags = /<[^>]+>/.test(rawContent);
-
-  if (!hasHtmlTags) {
-    return pdf.splitTextToSize(`${label}: ${rawContent}`, maxWidth);
-  }
-
-  const listItemMatches = Array.from(rawContent.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi))
-    .map((match, index) => {
-      const itemText = stripHtmlToText(match[1] || '').replace(/\s+/g, ' ').trim();
-      if (!itemText) return '';
-      return `${options?.numberedList ? `${index + 1}.` : '•'} ${itemText}`;
-    })
-    .filter(Boolean);
-
-  if (listItemMatches.length > 0) {
-    const lines = pdf.splitTextToSize(`${label}:`, maxWidth);
-    listItemMatches.forEach(item => {
-      lines.push(...pdf.splitTextToSize(item, maxWidth - 2));
-    });
-    return lines;
-  }
-
-  const normalizedText = stripHtmlToText(
-    rawContent
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n')
-      .replace(/<\/div>/gi, '\n'),
-  )
-    .split('\n')
-    .map(line => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  if (normalizedText.length === 0) {
-    return pdf.splitTextToSize(`${label}: N/A`, maxWidth);
-  }
-
-  const [firstLine, ...otherLines] = normalizedText;
-  const lines = pdf.splitTextToSize(`${label}: ${firstLine}`, maxWidth);
-  otherLines.forEach(line => {
-    lines.push(...pdf.splitTextToSize(line, maxWidth));
-  });
-  return lines;
-}
-
 function stripLeadingEvidenceEmoji(value: string) {
   return value
     .replace(/^(?:\u2705|âœ…|Ã¢Å“â€¦)\s*/u, '')
@@ -768,7 +712,7 @@ function parsePdfEvidenceNotesForExport(notes?: string | null) {
   };
 }
 
-export const exportTestRunToPdf = async ({
+export const buildTestRunPdf = async ({
   testRun,
   results,
   functionalities,
@@ -811,212 +755,68 @@ export const exportTestRunToPdf = async ({
       testCaseById.set(item.documentId, item);
     }
   });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 14;
-  const contentWidth = pageWidth - margin * 2;
-  let cursorY = 18;
-
-  const ensureSpace = (requiredHeight: number) => {
-    if (cursorY + requiredHeight <= pageHeight - margin) return;
-    pdf.addPage();
-    cursorY = 18;
-  };
-
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(18);
-  pdf.text(`Reporte de Ejecución - ${testRun.testType || 'QA'}`, margin, cursorY);
-  cursorY += 9;
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(11);
-  cursorY = pdfText(pdf, `Ejecución: ${testRun.title}`, margin, cursorY, contentWidth);
-  cursorY = pdfText(
-    pdf,
-    `Fecha: ${testRun.executionDate || 'N/A'} | Sprint: ${testRun.sprint || 'N/A'} | Tester: ${testRun.tester || 'N/A'}`,
-    margin,
-    cursorY + 2,
-    contentWidth,
-  );
-  cursorY = pdfText(
-    pdf,
-    `Build: ${testRun.buildVersion || 'N/A'} | Environment: ${testRun.environment || 'N/A'} | Estado: ${testRun.status}`,
-    margin,
-    cursorY + 2,
-    contentWidth,
-  );
-
+  const layout = new TestRunPdfLayout(pdf, testRun.title || 'Reporte de pruebas');
+  layout.text(`Reporte de ejecución · ${testRun.testType || 'QA'}`, 18, true);
+  layout.y += 3;
+  layout.text(testRun.title || 'Ejecución de pruebas', 13, true);
+  layout.y += 4;
+  layout.text(`Fecha: ${testRun.executionDate || 'N/A'} | Sprint: ${testRun.sprint || 'N/A'} | Tester: ${testRun.tester || 'N/A'}`, 10);
+  layout.text(`Build: ${testRun.buildVersion || 'N/A'} | Ambiente: ${testRun.environment || 'N/A'} | Estado: ${testRun.status}`, 10);
   if (publicUatSession) {
-    cursorY = pdfText(
-      pdf,
-      `Sesión pública: ${publicUatSession.status} | Participante: ${publicUatSession.participant?.name || 'N/A'} | Correo: ${publicUatSession.participant?.email || 'N/A'}`,
-      margin,
-      cursorY + 2,
-      contentWidth,
-    );
+    layout.text(`Sesión pública: ${publicUatSession.status} | Participante: ${publicUatSession.participant?.name || 'N/A'} | Correo: ${publicUatSession.participant?.email || 'N/A'}`, 10);
   }
-
   const total = orderedResults.length;
   const passed = orderedResults.filter(result => result.result === TestResult.PASSED).length;
   const failed = orderedResults.filter(result => result.result === TestResult.FAILED).length;
   const blocked = orderedResults.filter(result => result.result === TestResult.BLOCKED).length;
   const pending = orderedResults.filter(result => result.result === TestResult.NOT_EXECUTED).length;
-
-  cursorY += 4;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(13);
-  pdf.text('Resumen', margin, cursorY);
-  cursorY += 7;
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(11);
-  cursorY = pdfText(
-    pdf,
+  layout.section('Resumen de resultados', [
     `Total: ${total} | Aprobados: ${passed} | Fallidos: ${failed} | Bloqueados: ${blocked} | No ejecutados: ${pending}`,
-    margin,
-    cursorY,
-    contentWidth,
-  );
+  ]);
 
   for (const [index, result] of orderedResults.entries()) {
     const functionality = functionalityById.get(result.functionalityId);
     const testCase = testCaseById.get(result.testCaseId);
-    const titleText = `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`;
-    const metaText = `Módulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'} | Resultado: ${result.result}`;
-    const innerWidth = contentWidth - 8;
-
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(12);
-    const titleLines = pdf.splitTextToSize(titleText, innerWidth);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    const metaLines = pdf.splitTextToSize(metaText, innerWidth);
-    const preconditionsLines = buildPdfRichTextLines(
-      pdf,
-      'Precondiciones',
-      testCase?.preconditions,
-      innerWidth,
+    layout.startCase(
+      `${index + 1}. ${result.testCaseTitle || testCase?.title || 'Caso de prueba'}`,
+      `Módulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'}`,
+      result.result,
     );
-    const testStepsLines = buildPdfRichTextLines(
-      pdf,
-      'Pasos de prueba',
-      testCase?.testSteps,
-      innerWidth,
-      { numberedList: true },
-    );
-    const expectedLines = buildPdfRichTextLines(
-      pdf,
-      'Resultado esperado',
-      result.expectedResult || testCase?.expectedResult,
-      innerWidth,
-    );
-
-    const cardHeight =
-      6 +
-      titleLines.length * 6 +
-      2 +
-      metaLines.length * 5 +
-      2 +
-      preconditionsLines.length * 5 +
-      2 +
-      testStepsLines.length * 5 +
-      2 +
-      expectedLines.length * 5 +
-      4;
-
-    ensureSpace(cardHeight + 12);
-    cursorY += 6;
-
-    const cardTopY = cursorY;
-    pdf.setDrawColor(226, 232, 240);
-    pdf.roundedRect(margin, cardTopY, contentWidth, cardHeight, 3, 3);
-
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(12);
-    pdf.text(titleLines, margin + 4, cardTopY + 7);
-
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    pdf.text(metaLines, margin + 4, cardTopY + 7 + titleLines.length * 6 + 2);
-    pdf.text(
-      preconditionsLines,
-      margin + 4,
-      cardTopY + 7 + titleLines.length * 6 + 2 + metaLines.length * 5 + 2,
-    );
-    pdf.text(
-      testStepsLines,
-      margin + 4,
-      cardTopY + 7 + titleLines.length * 6 + 2 + metaLines.length * 5 + 2 + preconditionsLines.length * 5 + 2,
-    );
-    pdf.text(
-      expectedLines,
-      margin + 4,
-      cardTopY +
-        7 +
-        titleLines.length * 6 +
-        2 +
-        metaLines.length * 5 +
-        2 +
-        preconditionsLines.length * 5 +
-        2 +
-        testStepsLines.length * 5 +
-        2,
-    );
-
-    cursorY = cardTopY + cardHeight;
+    layout.section('Precondiciones', pdfReportParagraphs(testCase?.preconditions));
+    layout.section('Pasos de prueba', pdfReportParagraphs(testCase?.testSteps, true));
+    layout.section('Resultado esperado', pdfReportParagraphs(result.expectedResult || testCase?.expectedResult));
 
     const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
     if (parsedNotes.icon || parsedNotes.text) {
-      cursorY += 3;
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      const notesLines = pdf.splitTextToSize(
-        `Notas / evidencia registrada: ${parsedNotes.text || 'N/A'}`,
-        contentWidth - (parsedNotes.icon ? 8 : 0),
-      );
-      ensureSpace(14);
-      const notesStartY = cursorY + 5;
-
-      if (parsedNotes.icon) {
-        const iconSize = 4.5;
-        try {
-          const iconDataUrl = buildPdfEvidenceIconDataUrl(parsedNotes.icon);
-          pdf.addImage(iconDataUrl, 'PNG', margin, notesStartY - 3.6, iconSize, iconSize);
-        } catch (error) {
-          console.warn('Falling back to text-only PDF evidence icon.', error);
-        }
-      }
-      cursorY = notesStartY;
-      for (const line of notesLines) {
-        ensureSpace(5);
-        pdf.text(line, margin + (parsedNotes.icon ? 7 : 0), cursorY, { align: 'left', charSpace: 0 });
-        cursorY += 5;
-      }
+      const iconLabel = parsedNotes.icon === 'verified' ? 'Verificado' : parsedNotes.icon === 'warning' ? 'Advertencia' : 'Error';
+      layout.section(`Notas / evidencia registrada${parsedNotes.icon ? ` · ${iconLabel}` : ''}`, pdfReportParagraphs(result.notes));
     }
-
     if (result.evidenceImage) {
       try {
         const imageData = await normalizeImageSourceForPdf(result.evidenceImage);
         const dimensions = pdf.getImageProperties(imageData);
-        const scale = Math.min(contentWidth / dimensions.width, (pageHeight - margin - 24) / dimensions.height);
-        const imageWidth = dimensions.width * scale;
+        const scale = Math.min(layout.width / dimensions.width, (layout.bottom - 45) / dimensions.height);
         const imageHeight = dimensions.height * scale;
-        ensureSpace(imageHeight + 6);
-        pdf.addImage(imageData, 'JPEG', margin, cursorY + 3, imageWidth, imageHeight);
-        cursorY += imageHeight + 6;
+        layout.ensure(imageHeight + 16);
+        layout.section('Evidencia adjunta', []);
+        const fittedScale = Math.min(scale, (layout.bottom - layout.y) / dimensions.height);
+        const fittedWidth = dimensions.width * fittedScale;
+        const fittedHeight = dimensions.height * fittedScale;
+        pdf.addImage(imageData, 'JPEG', layout.margin + (layout.width - fittedWidth) / 2, layout.y, fittedWidth, fittedHeight);
+        layout.y += fittedHeight + 4;
       } catch (error) {
         console.warn('Skipping PDF evidence image because it could not be embedded.', error);
-        cursorY = pdfText(
-          pdf,
-          `Evidencia adjunta: ${result.evidenceImage}`,
-          margin,
-          cursorY + 3,
-          contentWidth,
-        );
+        layout.section('Evidencia adjunta (referencia)', pdfReportParagraphs(result.evidenceImage));
       }
     }
   }
+  layout.finish();
+  return pdf;
+};
 
+export const exportTestRunToPdf = async (data: TestRunPdfExportData) => {
+  const pdf = await buildTestRunPdf(data);
+  const { testRun } = data;
   const safeName = (testRun.title || 'Reporte_UAT').replace(/[\\/:*?"<>|]+/g, '_').trim();
   pdf.save(`${safeName || 'Reporte_UAT'}_${dayjs().format('YYYYMMDD')}.pdf`);
 };
