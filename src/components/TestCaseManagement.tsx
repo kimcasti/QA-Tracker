@@ -58,6 +58,7 @@ import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { downloadCasesText } from '../modules/test-cases/utils/exportCasesText';
+import { ExportAutomationReferencesButton } from '../modules/test-cases/components/ExportAutomationReferencesButton';
 import { BulkPasteCasesModal } from '../modules/test-cases/components/BulkPasteCasesModal';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
@@ -1045,6 +1046,15 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 <Button icon={<DownloadOutlined />} aria-label="Exportar casos en texto plano"
                   disabled={isLoading || isError || !visibleTestCases.length} onClick={exportCasesText} />
               </Tooltip>
+            )}
+            {!isCaseFormVisible && (
+              <ExportAutomationReferencesButton
+                projectId={projectId}
+                cases={visibleTestCases}
+                functionalities={[{ id: functionalityId, name: functionalityName, module: moduleName }]}
+                scopeName={functionalityName}
+                disabled={isLoading || isError}
+              />
             )}
             {onClose ? (
               <Tooltip title="Cerrar casos de prueba">

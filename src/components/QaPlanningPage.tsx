@@ -70,6 +70,7 @@ import { useFunctionalities } from '../modules/functionalities/hooks/useFunction
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
 import { manualCasesForFunctionalities } from '../modules/test-cases/utils/automationCandidates';
 import { AutomationCandidatePicker } from '../modules/test-cases/components/AutomationCandidatePicker';
+import { ExportAutomationReferencesButton } from '../modules/test-cases/components/ExportAutomationReferencesButton';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import ProjectCommentsDrawer from '../modules/project-comments/components/ProjectCommentsDrawer';
 import { useProjectComments } from '../modules/project-comments/hooks/useProjectComments';
@@ -4377,22 +4378,31 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
                         </Text>
                       </div>
-                      {!isViewer ? (
-                        <Tooltip title="Evalúa la cobertura, el riesgo y la prioridad de las funcionalidades para definir el alcance de la planificación de pruebas.">
-                          <Button
-                            icon={<FileSearchOutlined aria-hidden="true" />}
-                            className="self-start rounded-xl border-sky-200 text-sky-700"
-                            disabled={isBulkSaving}
-                            onClick={() => {
-                              setSelectedFunctionality(null);
-                              setBulkFunctionalitySearch('');
-                              setIsBulkDrawerOpen(true);
-                            }}
-                          >
-                            Evaluar candidatas
-                          </Button>
-                        </Tooltip>
-                      ) : null}
+                      <div className="flex self-start items-center gap-2">
+                        <ExportAutomationReferencesButton
+                          projectId={projectId}
+                          cases={testCasesData}
+                          functionalities={functionalities}
+                          scopeName={projectId || 'proyecto'}
+                          disabled={areTestCasesPending || hasTestCasesError || isLoading}
+                        />
+                        {!isViewer ? (
+                          <Tooltip title="Evalúa la cobertura, el riesgo y la prioridad de las funcionalidades para definir el alcance de la planificación de pruebas.">
+                            <Button
+                              icon={<FileSearchOutlined aria-hidden="true" />}
+                              className="rounded-xl border-sky-200 text-sky-700"
+                              disabled={isBulkSaving}
+                              onClick={() => {
+                                setSelectedFunctionality(null);
+                                setBulkFunctionalitySearch('');
+                                setIsBulkDrawerOpen(true);
+                              }}
+                            >
+                              Evaluar candidatas
+                            </Button>
+                          </Tooltip>
+                        ) : null}
+                      </div>
                     </div>
 
 
