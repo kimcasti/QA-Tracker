@@ -1,0 +1,161 @@
+.catalog-comparison .ant-drawer-body { background: #f6f8fb; padding: 24px; }
+.catalog-comparison .ant-drawer-header { padding: 20px 24px; }
+.catalog-comparison .ant-drawer-footer { padding: 16px 88px 16px 24px; background: #fff; }
+.catalog-title { display: flex; align-items: center; gap: 12px; line-height: 1.4; }
+.catalog-title-icon, .catalog-test-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: #eaf4fa; color: #175677; border-radius: 12px; width: 42px; height: 42px; font-size: 20px; }
+.catalog-title-caption { font-size: 13px; font-weight: 400; color: #617187; margin-top: 3px; }
+.catalog-content { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.catalog-intro .ant-typography { color: #526479; margin-bottom: 14px; font-size: 14px; }
+.catalog-steps { display: flex; flex-wrap: wrap; gap: 12px 28px; color: #526479; font-size: 13px; }
+.catalog-steps > span { display: inline-flex; align-items: center; gap: 8px; }
+.catalog-steps b { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: #e5eef5; color: #175677; font-size: 12px; }
+.catalog-source { background: #fff; border: 1px solid #dfe7ef; border-radius: 16px; padding: 20px; }
+.catalog-comparison h3 { margin: 0; font-size: 16px; font-weight: 650; color: #17344e; line-height: 1.5; }
+.catalog-source h3 .anticon { margin-right: 7px; color: #175677; }
+.catalog-help { margin: 6px 0 16px; color: #617187; font-size: 13px; line-height: 1.6; }
+.catalog-controls { display: grid; grid-template-columns: minmax(180px, 1fr) 120px auto; align-items: end; gap: 12px; }
+.catalog-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.catalog-field label, .catalog-case-field label { font-size: 12px; font-weight: 600; color: #44576c; }
+.catalog-field .ant-select { width: 100%; }
+.catalog-comparison .ant-select { min-height: 40px; }
+.catalog-controls > .ant-btn { min-height: 40px; border-radius: 10px; font-size: 13px; }
+.catalog-connection-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: #526479; }
+.catalog-connection-status > span:last-child { margin-left: auto; }
+.catalog-dot { width: 7px; height: 7px; background: #94a3b8; border-radius: 50%; }
+.catalog-dot.is-online { background: #22845a; }
+.catalog-results-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-top: 4px; }
+.catalog-results-heading .catalog-help { margin-bottom: 0; }
+.catalog-results-heading .ant-tag { flex-shrink: 0; margin: 2px 0 0; border-radius: 8px; }
+.catalog-detection-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #edf7f2; border: 1px solid #d6ebdf; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #266446; }
+.catalog-detection-meta > span:last-child { color: #526479; margin-left: auto; overflow-wrap: anywhere; }
+.catalog-comparison .ant-tabs-nav { margin-bottom: 18px; }
+.catalog-comparison .ant-tabs-tab { font-size: 13px; padding: 12px 2px; }
+.catalog-comparison .ant-tabs-tab + .ant-tabs-tab { margin-left: 24px; }
+.catalog-tab-guide { display: flex; align-items: flex-start; gap: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #d7e5ee; border-radius: 12px; background: #f0f6fb; }
+.catalog-tab-guide > div { min-width: 0; }
+.catalog-tab-guide-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px; background: #dfeef8; color: #175677; font-size: 16px; }
+.catalog-tab-guide strong { display: block; color: #17344e; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.catalog-tab-guide p { margin: 4px 0 8px; color: #526479; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.catalog-tab-guide-action { font-size: 12px; line-height: 1.7; color: #44576c; overflow-wrap: anywhere; }
+.catalog-tab-guide-action > span { font-weight: 600; margin-right: 8px; }
+.catalog-tab-guide.is-registered { background: #eff7f3; border-color: #d6e9df; }
+.catalog-tab-guide.is-registered .catalog-tab-guide-icon { background: #deefe5; color: #266446; }
+.catalog-tab-guide.is-missing { background: #fff9ee; border-color: #f0e3c9; }
+.catalog-tab-guide.is-missing .catalog-tab-guide-icon { background: #f8ebd0; color: #855d18; }
+.catalog-tab-guide.is-duplicates { background: #fff4f3; border-color: #eededc; }
+.catalog-tab-guide.is-duplicates .catalog-tab-guide-icon { background: #f6e2df; color: #9b4640; }
+@media (max-width: 540px) {
+  .catalog-tab-guide { padding: 12px; gap: 10px; }
+  .catalog-tab-guide-action > span { display: block; margin-right: 0; }
+}
+
+.catalog-comparison .ant-list-item { border: 1px solid #dfe7ef; border-radius: 14px; background: #fff; padding: 20px; margin-bottom: 14px; }
+.catalog-comparison .catalog-reference-card.is-selected { border-color: #7dbb9e; background: #fcfffd; }
+.catalog-reference-content { width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.catalog-reference-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.catalog-reference-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.catalog-reference-name .ant-typography { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.catalog-test-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 16px; }
+.catalog-reference-heading > .ant-tag { flex-shrink: 0; margin: 3px 0 0; border-radius: 6px; font-size: 11px; }
+.catalog-reference-path { color: #617187; background: #f5f7fa; border-radius: 7px; padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.catalog-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.catalog-suggestions > .ant-typography { font-size: 12px; }
+.catalog-suggestions .ant-space, .catalog-suggestions .ant-space-item { max-width: 100%; }
+.catalog-suggestions .ant-btn { max-width: 100%; height: auto; min-height: 30px; padding: 4px 10px; border-radius: 8px; background: #f0f7fc; border-color: #cddfe9; color: #175677; font-size: 12px; }
+.catalog-suggestions .ant-btn > span:not(.anticon) { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.catalog-case-field { display: flex; flex-direction: column; gap: 7px; }
+.catalog-selection-note { font-size: 12px; color: #266446; }
+.catalog-selection-note .anticon { margin-right: 5px; }
+.catalog-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.catalog-footer strong { font-size: 13px; font-weight: 600; color: #17344e; }
+.catalog-footer-caption { margin-top: 3px; font-size: 12px; color: #617187; }
+.catalog-comparison .ant-btn-primary:disabled,
+.catalog-comparison .ant-btn-primary:disabled:hover,
+.catalog-comparison .ant-btn-primary:disabled:focus { background: #e8edf2 !important; color: #526479; border-color: #dce4ec !important; box-shadow: none; }
+.catalog-footer > .ant-btn { min-height: 40px; border-radius: 10px; flex-shrink: 0; }
+@media (max-width: 760px) {
+  .catalog-controls { grid-template-columns: minmax(0, 1fr) 112px; }
+  .catalog-controls > .ant-btn { grid-column: 1 / -1; width: 100%; white-space: normal; height: auto; }
+  .catalog-connection-status > span:last-child, .catalog-detection-meta > span:last-child { width: 100%; margin-left: 0; }
+}
+@media (max-width: 540px) {
+  .catalog-comparison .ant-drawer-body { padding: 16px; }
+  .catalog-comparison .ant-drawer-header { padding: 16px; }
+  .catalog-title { gap: 8px; font-size: 15px; }
+  .catalog-title-icon { width: 32px; height: 32px; font-size: 16px; }
+  .catalog-title-caption { font-size: 12px; }
+  .catalog-source, .catalog-comparison .ant-list-item { padding: 14px; }
+  .catalog-steps { gap: 8px 14px; font-size: 12px; }
+  .catalog-reference-heading, .catalog-results-heading { flex-direction: column; gap: 8px; }
+  .catalog-reference-name { align-items: flex-start; }
+  .catalog-comparison .ant-drawer-footer { padding: 12px 80px 12px 16px; }
+  .catalog-footer { align-items: stretch; flex-direction: column; gap: 10px; }
+  .catalog-footer-caption { font-size: 11px; }
+}
+
+/* Keep review styles isolated from the underlying drawer. */
+.catalog-review .ant-modal-content, .catalog-review .ant-modal-container { padding: 0; border-radius: 20px; overflow: hidden; }
+.catalog-review .ant-modal-header { margin: 0; padding: 22px 56px 20px 24px; border-bottom: 1px solid #e3eaf1; }
+.catalog-review .ant-modal-close { top: 22px; right: 20px; }
+.catalog-review .ant-modal-body { padding: 20px 24px; max-height: min(65vh, 680px); overflow-y: auto; background: #f6f8fb; }
+.catalog-review .ant-modal-footer { margin: 0; padding: 16px 24px; border-top: 1px solid #e3eaf1; }
+.catalog-review-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.catalog-review-intro .ant-typography { font-size: 13px; line-height: 1.6; color: #526479; margin: 0; }
+.catalog-review-intro .ant-tag { flex-shrink: 0; margin: 2px 0 0; border-radius: 6px; }
+.catalog-review-list { display: flex; flex-direction: column; gap: 16px; }
+.catalog-review-card { padding: 20px; background: #fff; border: 1px solid #dfe7ef; border-radius: 14px; display: flex; flex-direction: column; gap: 18px; }
+.catalog-review-case { display: flex; align-items: center; gap: 12px; }
+.catalog-review-case > div { flex: 1; min-width: 0; }
+.catalog-review-context { font-size: 12px; color: #617187; line-height: 1.5; overflow-wrap: anywhere; }
+.catalog-review-case h3 { color: #17344e; font-size: 15px; font-weight: 650; margin: 3px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.catalog-review-case > .ant-tag { margin: 0; flex-shrink: 0; border-radius: 6px; font-size: 11px; }
+.catalog-review-card .ant-alert { padding: 12px 14px; border-radius: 10px; align-items: flex-start; }
+.catalog-review-card .ant-alert-icon { font-size: 17px; margin-top: 3px; }
+.catalog-review-card .ant-alert-title, .catalog-review-card .ant-alert-message { font-size: 13px; font-weight: 600; }
+.catalog-review-card .ant-alert-description { font-size: 12px; line-height: 1.6; }
+.catalog-review-references { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.catalog-review-reference { min-width: 0; padding: 14px; border-radius: 10px; border: 1px solid #e0e6ed; background: #f6f8fb; }
+.catalog-review-reference.is-after { background: #eff8fc; border-color: #bfdfed; }
+.catalog-review-reference-label { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: #44576c; }
+.catalog-review-reference-label .ant-tag { margin: 0; border-radius: 5px; font-size: 10px; line-height: 18px; }
+.catalog-review-reference code { display: block; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.7; color: #526479; overflow-wrap: anywhere; }
+.catalog-review-reference p { font-size: 13px; line-height: 1.6; margin: 8px 0 0; color: #17344e; overflow-wrap: anywhere; }
+.catalog-review-reference .catalog-review-empty { color: #617187; font-style: italic; }
+.catalog-review-arrow { display: flex; align-items: center; justify-content: center; color: #7c91a6; }
+.catalog-review-summary h4 { color: #44576c; font-size: 12px; font-weight: 600; margin: 0 0 10px; }
+.catalog-review-properties { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, .7fr); border: 1px solid #e3eaf1; border-radius: 10px; overflow: hidden; }
+.catalog-review-properties > div { padding: 12px 14px; min-width: 0; }
+.catalog-review-properties > div + div { border-left: 1px solid #e3eaf1; }
+.catalog-review-property-label { display: block; color: #617187; font-size: 11px; margin-bottom: 6px; }
+.catalog-review-properties > div > div { color: #526479; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.catalog-review-properties strong { color: #175677; font-weight: 600; }
+.catalog-review-history { display: flex; align-items: flex-start; gap: 9px; color: #617187; }
+.catalog-review-history > .anticon { margin-top: 2px; font-size: 16px; color: #526479; }
+.catalog-review-history strong { font-size: 12px; font-weight: 600; color: #44576c; }
+.catalog-review-history p { margin: 3px 0 0; font-size: 12px; line-height: 1.6; }
+.catalog-review-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; text-align: left; }
+.catalog-review-footer > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.catalog-review-footer strong { font-size: 13px; font-weight: 600; color: #17344e; }
+.catalog-review-footer > div:first-child > span { font-size: 12px; color: #617187; }
+.catalog-review-footer .ant-btn { border-radius: 10px; min-height: 40px; box-shadow: none; }
+@media (max-width: 600px) {
+  .catalog-review .ant-modal { max-width: calc(100vw - 24px); padding-bottom: 0; }
+  .catalog-review .ant-modal-header { padding: 16px 42px 16px 16px; }
+  .catalog-review .ant-modal-close { top: 16px; right: 10px; }
+  .catalog-review .ant-modal-body { padding: 14px; max-height: 56vh; }
+  .catalog-review .ant-modal-footer { padding: 14px; }
+  .catalog-review .catalog-title { align-items: flex-start; font-size: 14px; }
+  .catalog-review .catalog-title-caption { font-size: 12px; }
+  .catalog-review-card { padding: 14px; gap: 14px; }
+  .catalog-review-case { flex-wrap: wrap; align-items: flex-start; }
+  .catalog-review-case > .ant-tag { margin-left: 44px; }
+  .catalog-review-references { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .catalog-review-arrow { transform: rotate(90deg); height: 18px; }
+  .catalog-review-properties { grid-template-columns: minmax(0, 1fr); }
+  .catalog-review-properties > div + div { border-left: none; border-top: 1px solid #e3eaf1; }
+  .catalog-review-properties > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .catalog-review-property-label { margin-bottom: 0; flex-shrink: 0; }
+  .catalog-review-footer { flex-direction: column; align-items: stretch; gap: 12px; }
+  .catalog-review-footer .ant-space { justify-content: flex-end; }
+}
+

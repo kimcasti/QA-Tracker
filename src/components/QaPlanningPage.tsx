@@ -109,6 +109,7 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 const { Title, Text, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
 const TestCaseManagement = React.lazy(() => import('./TestCaseManagement'));
+const CatalogComparisonDrawer = React.lazy(() => import('../modules/automation/components/CatalogComparisonDrawer'));
 const INFO_TOOLTIP_OVERLAY_STYLE = { maxWidth: 320 };
 const INFO_TOOLTIP_INNER_STYLE: React.CSSProperties = {
   whiteSpace: 'normal',
@@ -831,7 +832,8 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const openedCaseLink = React.useRef<string | null>(null);
   const { t } = useTranslation();
   const screens = useBreakpoint();
-  const { isViewer } = useWorkspaceAccess();
+  const { isViewer, activeRoleCode } = useWorkspaceAccess();
+  const canCompareReferences = ['owner', 'qa-lead', 'qa-engineer'].includes(activeRoleCode);
   const { data: projectComments = [] } = useProjectComments(projectId);
   const {
     data: functionalitiesData,
@@ -852,6 +854,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [isRecommendationsExpanded, setIsRecommendationsExpanded] = React.useState(false);
   const [isProjectCommentsOpen, setIsProjectCommentsOpen] = React.useState(false);
+  const [isCatalogComparisonOpen, setIsCatalogComparisonOpen] = React.useState(false);
   const [activePlanningTab, setActivePlanningTab] = React.useState('table');
   const [isClassificationExpanded, setIsClassificationExpanded] = React.useState(false);
   const [savingIds, setSavingIds] = React.useState<string[]>([]);
@@ -4378,7 +4381,12 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                           Clasifica cobertura, riesgo y prioridad directamente sobre cada funcionalidad.
                         </Text>
                       </div>
-                      <div className="flex self-start items-center gap-2">
+                      <div className="flex max-w-full flex-wrap self-start items-center gap-2">
+                        {canCompareReferences && projectId && (
+                          <Button icon={<FileSearchOutlined />} onClick={() => setIsCatalogComparisonOpen(true)}>
+                            Comparar referencias
+                          </Button>
+                        )}
                         <ExportAutomationReferencesButton
                           projectId={projectId}
                           cases={testCasesData}
@@ -5153,6 +5161,11 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
         open={isProjectCommentsOpen}
         onClose={() => setIsProjectCommentsOpen(false)}
       />
+      {isCatalogComparisonOpen && projectId && canCompareReferences && (
+        <React.Suspense fallback={<Spin />}>
+          <CatalogComparisonDrawer key={projectId} projectId={projectId} onClose={() => setIsCatalogComparisonOpen(false)} />
+        </React.Suspense>
+      )}
 
     </div>
   );

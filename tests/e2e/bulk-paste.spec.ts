@@ -16,11 +16,10 @@ async function mount(page: Page, failAt = 0, ambiguous = false, pauseSave = fals
       window.$RefreshSig$ = () => (type) => type;
       window.__vite_plugin_react_preamble_installed__ = true;
       await import('/src/index.css');
-      const { default: React } = await import('/node_modules/.vite/deps/react.js');
-      const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
+      const { React, createRoot } = await import('/tests/e2e/support/browserRuntime.ts');
       const { BulkPasteCasesModal } = await import('/src/modules/test-cases/components/BulkPasteCasesModal.tsx');
       window.saved = []; window.calls = 0;
-      const root = ReactDOM.createRoot(document.getElementById('root'));
+      const root = createRoot(document.getElementById('root'));
       root.render(React.createElement(BulkPasteCasesModal, {
         projectId: 'p', functionalityId: 'f', functionalityName: 'Instituciones',
         existingCases: [{ functionalityId: 'f', sortOrder: 90 }],

@@ -39,11 +39,7 @@ test.beforeEach(async ({ page }) => {
       window.$RefreshReg$ = () => {};
       window.$RefreshSig$ = () => type => type;
       window.__vite_plugin_react_preamble_installed__ = true;
-      const { default: React } = await import('/node_modules/.vite/deps/react.js');
-      const domModule = await import('/node_modules/.vite/deps/react-dom_client.js');
-      const { createRoot } = domModule.default || domModule;
-      const antdModule = await import('/node_modules/.vite/deps/antd.js');
-      const { Form } = antdModule.default || antdModule;
+      const { React, createRoot, Form } = await import('/tests/e2e/support/browserRuntime.ts');
       const { default: Evidence } = await import('/src/components/EvidenceRichEditor.tsx');
       const { default: Basic } = await import('/src/components/BasicRichTextEditor.tsx');
       const { default: TextArea } = await import('/src/components/VoiceTextArea.tsx');
