@@ -1548,7 +1548,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   // Step 2 State (Execution View)
   const [executionResults, setExecutionResults] = useState<TestRunResult[]>([]);
   const [executionSearchText, setExecutionSearchText] = useState('');
-  const [filterOnlyFailed, setFilterOnlyFailed] = useState(false);
+  const [executionResultFilter, setExecutionResultFilter] = useState<
+    'all' | TestResult.FAILED | TestResult.NOT_EXECUTED
+  >('all');
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [reorderDraft, setReorderDraft] = useState<TestRunResult[]>([]);
   const [draggedResultId, setDraggedResultId] = useState<string | null>(null);
@@ -4419,9 +4421,9 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         testCase?.title.toLowerCase().includes(searchLower) ||
         func?.module.toLowerCase().includes(searchLower) ||
         func?.name.toLowerCase().includes(searchLower);
-      const matchesFailed = !filterOnlyFailed || result.result === TestResult.FAILED;
+      const matchesResult = executionResultFilter === 'all' || result.result === executionResultFilter;
 
-      return matchesSearch && matchesFailed;
+      return matchesSearch && matchesResult;
     });
 
     const orderedFilteredExecutionResults = [...filteredExecutionResults].sort(
@@ -4442,7 +4444,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     compareExecutionResults,
     executionResults,
     executionSearchText,
-    filterOnlyFailed,
+    executionResultFilter,
     functionalityById,
     testCaseById,
   ]);
@@ -4730,28 +4732,36 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </Row>
 
         <Card className="rounded-2xl shadow-sm border-slate-100 overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+          <div className="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4 bg-white">
             <Input
               placeholder="Search by Module or Functionality..."
               prefix={<SearchOutlined className="text-slate-400" />}
-              className="w-80 rounded-lg h-10 border-slate-200"
+              className="rounded-lg h-10 border-slate-200"
+              style={{ flex: '1 1 320px', minWidth: 0 }}
               value={executionSearchText}
               onChange={e => setExecutionSearchText(e.target.value)}
             />
-            <Space>
+            <Space size={12} wrap>
               <Button
-                type={!filterOnlyFailed ? 'primary' : 'default'}
+                type={executionResultFilter === 'all' ? 'primary' : 'default'}
                 className="rounded-lg px-6"
-                onClick={() => setFilterOnlyFailed(false)}
+                onClick={() => setExecutionResultFilter('all')}
               >
                 All
               </Button>
               <Button
-                type={filterOnlyFailed ? 'primary' : 'default'}
+                type={executionResultFilter === TestResult.FAILED ? 'primary' : 'default'}
                 className="rounded-lg px-6"
-                onClick={() => setFilterOnlyFailed(true)}
+                onClick={() => setExecutionResultFilter(TestResult.FAILED)}
               >
                 Failed Only
+              </Button>
+              <Button
+                type={executionResultFilter === TestResult.NOT_EXECUTED ? 'primary' : 'default'}
+                className="rounded-lg px-6"
+                onClick={() => setExecutionResultFilter(TestResult.NOT_EXECUTED)}
+              >
+                Pending Only
               </Button>
             </Space>
           </div>
