@@ -16,7 +16,6 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  CopyOutlined,
   EditOutlined,
   MailOutlined,
   ReloadOutlined,
@@ -110,17 +109,6 @@ function StatusTag({
       {meta.label}
     </Tag>
   );
-}
-
-function buildInvitationUrl(invitationDocumentId: string) {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  const invitationUrl = new URL(window.location.origin);
-  invitationUrl.searchParams.set('invitation', invitationDocumentId);
-  invitationUrl.searchParams.set('mode', 'signup');
-  return invitationUrl.toString();
 }
 
 export function OrganizationTeamModal({
@@ -297,26 +285,6 @@ export function OrganizationTeamModal({
       message.success(`Invitacion cancelada para ${invitation.email}`);
     } catch (cancelError) {
       message.error(toApiError(cancelError).message);
-    }
-  };
-
-  const handleCopyInvitationLink = async (invitation: OrganizationTeamInvitation) => {
-    const invitationUrl = invitation.acceptUrl || buildInvitationUrl(invitation.documentId);
-
-    if (!invitationUrl) {
-      message.error('No fue posible generar el enlace de invitacion.');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(invitationUrl);
-      message.success(`Enlace copiado para ${invitation.email}`);
-    } catch (copyError) {
-      message.error(
-        copyError instanceof Error
-          ? copyError.message
-          : 'No fue posible copiar el enlace de invitacion.',
-      );
     }
   };
 
@@ -499,13 +467,7 @@ export function OrganizationTeamModal({
       render: (_, invitation) => {
         return (
           <Space size="small">
-            <Button
-              type="text"
-              icon={<CopyOutlined />}
-              onClick={() => handleCopyInvitationLink(invitation)}
-            >
-              Copiar enlace
-            </Button>
+            <Text type="secondary">Enlace seguro solo por correo</Text>
             {!canManage ? <Text type="secondary">Sin mas acciones</Text> : null}
             {canManage ? (
               <Button
@@ -771,7 +733,7 @@ export function OrganizationTeamModal({
             </Text>
             <div className="mt-2">
               <Text type="secondary">
-                Si el correo no llega, copia el enlace publico y compartelo manualmente.
+                El enlace seguro se entrega solo por correo y vence en 48 horas. Si no llega, revisa la configuración de correo y reenvía la invitación.
               </Text>
             </div>
           </div>

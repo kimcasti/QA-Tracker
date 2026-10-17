@@ -10,11 +10,11 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { appBranding } from '../../../assets/branding';
-import { PublicHttp, toApiError } from '../../../config/http';
+import { toApiError } from '../../../config/http';
 import { qaBrand, qaPalette } from '../../../theme/palette';
 import { PublicSiteFooter } from '../../public/components/PublicSiteFooter';
 import { useAuthSession } from '../context/AuthSessionProvider';
-import { requestPasswordReset, resetPassword } from '../services/authService';
+import { requestPasswordReset, resetPassword, fetchPublicInvitation, readInvitationToken, invitationProofForSubmit, authNavigationTarget } from '../services/authService';
 
 const { Title, Text } = Typography;
 
@@ -102,6 +102,7 @@ export default function AuthPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const invitationId = searchParams.get('invitation')?.trim() || '';
+  const invitationToken = readInvitationToken(location.hash);
   const requestedMode = searchParams.get('mode');
   const resetCode = searchParams.get('code')?.trim() || '';
   const isResetPasswordRoute = location.pathname === '/reset-password';
@@ -132,10 +133,11 @@ export default function AuthPage() {
     }
 
     let isCurrent = true;
+    setInvitationContext(null);
     setIsInvitationLoading(true);
     setErrorMessage(null);
 
-    PublicHttp.get(`/api/organization-team/invitations/${encodeURIComponent(invitationId)}/public`)
+    fetchPublicInvitation(invitationId, invitationToken)
       .then(response => {
         if (!isCurrent) return;
 
@@ -154,7 +156,7 @@ export default function AuthPage() {
           email: nextInvitation.email,
           organizationName: nextInvitation.organizationName,
         });
-        setMode(searchMode === 'login' ? 'login' : 'signup');
+        setMode(isResetPasswordRoute ? 'reset-password' : searchMode || 'signup');
       })
       .catch(error => {
         if (!isCurrent) return;
@@ -173,7 +175,7 @@ export default function AuthPage() {
     return () => {
       isCurrent = false;
     };
-  }, [invitationId, isResetPasswordRoute, loginForm, requestedMode, signupForm]);
+  }, [invitationId, invitationToken, isResetPasswordRoute, loginForm, requestedMode, signupForm]);
 
   useEffect(() => {
     if (!invitationContext) return;
@@ -213,7 +215,7 @@ export default function AuthPage() {
         description: 'Te enviaremos un enlace de recuperación al correo asociado a tu cuenta.',
         submitLabel: 'Enviar enlace de recuperación',
         helper:
-          'Si el correo existe en QA Tracker, recibirás instrucciones para restablecer tu contraseña.',
+          'Si el correo existe en QA Tracker, recibirás instrucciones para restablecer tu contraseña. Después, vuelve a abrir el enlace original de invitación del correo para aceptar el acceso; otra pestaña no conserva esta invitación.',
       };
     }
 
@@ -225,7 +227,7 @@ export default function AuthPage() {
           'Crea una contraseña nueva para volver a entrar a tu workspace de forma segura.',
         submitLabel: 'Guardar nueva contraseña',
         helper:
-          'Cuando la actualices, podrás iniciar sesión con tu nueva contraseña desde la pantalla principal.',
+          'Cuando la actualices, podrás iniciar sesión con tu nueva contraseña. Para aceptar una invitación, vuelve a abrir el enlace original de invitación del correo.',
       };
     }
 
@@ -333,7 +335,8 @@ export default function AuthPage() {
       setIsSubmitting(true);
       setErrorMessage(null);
       setSuccessMessage(null);
-      await login(values);
+      await login({ ...values, ...invitationProofForSubmit(invitationId, invitationToken, Boolean(hasPendingInvitation)) });
+      navigate('/', { replace: true });
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       setErrorMessage(toApiError(error).message);
@@ -347,7 +350,8 @@ export default function AuthPage() {
       setIsSubmitting(true);
       setErrorMessage(null);
       setSuccessMessage(null);
-      await signup(values);
+      await signup({ ...values, ...invitationProofForSubmit(invitationId, invitationToken, Boolean(hasPendingInvitation)) });
+      navigate('/', { replace: true });
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       setErrorMessage(toApiError(error).message);
@@ -393,7 +397,7 @@ export default function AuthPage() {
 
       setSuccessMessage('Tu contraseña fue actualizada. Ahora puedes iniciar sesión con la nueva.');
       resetPasswordForm.resetFields();
-      navigate('/auth?mode=login', { replace: true });
+      navigate(authNavigationTarget('login', invitationId, invitationToken), { replace: true });
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       setErrorMessage(toApiError(error).message);
@@ -532,7 +536,7 @@ export default function AuthPage() {
                     if (!successMessage) {
                       setSuccessMessage(null);
                     }
-                    navigate('/auth?mode=login', { replace: true });
+                    navigate(authNavigationTarget('login', invitationId, invitationToken), { replace: true });
                   }}
                 >
                   <ArrowLeftOutlined />
@@ -633,7 +637,7 @@ export default function AuthPage() {
                         forgotPasswordForm.setFieldsValue({
                           email: String(loginForm.getFieldValue('identifier') || ''),
                         });
-                        navigate('/auth?mode=forgot-password', { replace: true });
+                        navigate(authNavigationTarget('forgot-password', invitationId, invitationToken), { replace: true });
                       }}
                     >
                       Olvidé mi contraseña

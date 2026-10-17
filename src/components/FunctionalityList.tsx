@@ -2122,7 +2122,7 @@ export default function FunctionalityList({
       if (Object.keys(updates).length > 0) {
         await bulkUpdate({
           functionalities: allFunctionalities.filter(item =>
-            selectedRowKeys.includes(item.documentId || item.id),
+            selectedRowKeys.includes(item.id),
           ),
           updates,
         });
@@ -2141,7 +2141,7 @@ export default function FunctionalityList({
     try {
       await bulkUpdate({
         functionalities: allFunctionalities.filter(item =>
-          selectedRowKeys.includes(item.documentId || item.id),
+          selectedRowKeys.includes(item.id),
         ),
         updates,
       });

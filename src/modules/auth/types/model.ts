@@ -6,11 +6,15 @@ export interface AuthUser {
 }
 
 export interface LoginInput {
+  invitationDocumentId?: string;
+  invitationToken?: string;
   identifier: string;
   password: string;
 }
 
 export interface SignupInput {
+  invitationDocumentId?: string;
+  invitationToken?: string;
   username: string;
   email: string;
   password: string;

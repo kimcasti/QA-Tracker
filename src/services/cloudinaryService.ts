@@ -4,11 +4,11 @@ function getEnvValue(value: unknown) {
 
 export const getCloudinaryCloudName = () =>
   getEnvValue(import.meta.env.VITE_CLOUDINARY_CLOUD_NAME) ||
-  getEnvValue(process.env.CLOUDINARY_CLOUD_NAME);
+  getEnvValue(typeof process !== 'undefined' ? process.env?.CLOUDINARY_CLOUD_NAME : undefined);
 
 export const getCloudinaryUploadPreset = () =>
   getEnvValue(import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET) ||
-  getEnvValue(process.env.CLOUDINARY_UPLOAD_PRESET);
+  getEnvValue(typeof process !== 'undefined' ? process.env?.CLOUDINARY_UPLOAD_PRESET : undefined);
 
 export const hasCloudinaryConfigured = () =>
   Boolean(getCloudinaryCloudName() && getCloudinaryUploadPreset());

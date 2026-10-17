@@ -228,6 +228,9 @@ export default function App() {
   const location = useLocation();
   const { status, isAuthenticated, user, logout } = useAuthSession();
   const hideWhatsAppSupportButton = location.pathname === '/superadmin';
+  const hasInvitationFlow = Boolean(new URLSearchParams(location.search).get('invitation'));
+  const hasPasswordRecoveryFlow = location.pathname === '/reset-password' ||
+    (location.pathname === '/auth' && new URLSearchParams(location.search).get('mode') === 'forgot-password');
   const publicView = useMemo<PublicView>(() => {
     const normalizedPath = normalizePublicPathname(location.pathname);
 
@@ -238,7 +241,6 @@ export default function App() {
     if (normalizedPath !== '/') return 'auth';
 
     const searchParams = new URLSearchParams(location.search);
-    const hasInvitationFlow = Boolean(searchParams.get('invitation'));
     const requestedMode = searchParams.get('mode');
     const hasAuthMode =
       requestedMode === 'login' ||
@@ -247,7 +249,7 @@ export default function App() {
     const hasResetCode = Boolean(searchParams.get('code'));
 
     return !hasInvitationFlow && !hasAuthMode && !hasResetCode ? 'landing' : 'auth';
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, hasInvitationFlow]);
 
   if (status === 'loading') {
     return (
@@ -273,7 +275,7 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated || !user) {
+  if (!isAuthenticated || !user || (publicView === 'auth' && (hasInvitationFlow || hasPasswordRecoveryFlow))) {
     return (
       <Suspense fallback={<PageLoader />}>
         {publicView === 'landing' ? <PublicLandingPage /> : null}
