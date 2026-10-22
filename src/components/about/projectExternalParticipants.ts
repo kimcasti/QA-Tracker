@@ -56,6 +56,51 @@ export function canManageProjectExternalContacts(scope: ExternalContactScope) {
     ['owner', 'qa-lead', 'qa-engineer', 'manager'].includes(scope.roleCode));
 }
 
+export class ExternalContactDeletionUnverifiedError extends Error {
+  constructor() {
+    super('No pudimos verificar el resultado de la eliminación. Actualiza la lista antes de reintentar.');
+    this.name = 'ExternalContactDeletionUnverifiedError';
+  }
+}
+
+/** Delete only project-owned contacts; verify absence before reporting success. */
+export async function deleteProjectExternalContact(
+  scope: ExternalContactScope, documentId: string,
+  boundary: { load: () => Promise<ExternalContactSnapshot>; remove: (documentId: string) => Promise<unknown> },
+) {
+  if (!canManageProjectExternalContacts(scope)) throw new Error('Sin permiso o contexto del proyecto.');
+  const snapshot = await boundary.load();
+  if (snapshot.organizationDocumentId !== scope.organizationDocumentId) {
+    throw new Error('La organización del proyecto no coincide con el espacio activo.');
+  }
+  if (!snapshot.contacts.some(contact => contact.documentId === documentId &&
+    contact.organization?.documentId === scope.organizationDocumentId &&
+    contact.sourceProject?.documentId === scope.projectDocumentId)) {
+    throw new Error('Solo se pueden eliminar contactos propios de este proyecto.');
+  }
+  let removalFailed = false;
+  let removalError: unknown;
+  try {
+    await boundary.remove(documentId);
+  } catch (error) {
+    // A lost response does not prove the server rejected the DELETE.
+    removalFailed = true;
+    removalError = error;
+  }
+  let verified: ExternalContactSnapshot;
+  try {
+    verified = await boundary.load();
+    if (verified.organizationDocumentId !== scope.organizationDocumentId) throw new Error('Unverified deletion');
+  } catch {
+    throw new ExternalContactDeletionUnverifiedError();
+  }
+  if (verified.contacts.some(contact => contact.documentId === documentId)) {
+    if (removalFailed) throw removalError;
+    throw new ExternalContactDeletionUnverifiedError();
+  }
+  return verified;
+}
+
 const identity = (value?: string) => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 
 /** Only contact writes: never users, invitations, membership roles or provenance updates. */

@@ -33,7 +33,8 @@ const bundle = buildSync({
       import { loadProjectExternalContacts } from './src/components/about/projectExternalParticipants';
       export { saveProjectExternalContact } from './src/components/about/projectExternalParticipants';
       export { createExternalParticipant, getExternalParticipants } from './src/modules/participant-directory/services/participantDirectoryService';
-      export { Http } from './src/config/http';
+      import { Http } from './src/config/http';
+      export { Http };
       export { listDocuments, updateDocument };
       export function componentLoad(scope) { ${loadStatement.getText(source)} return load; }`,
     resolveDir: process.cwd(), loader: 'ts',
@@ -74,9 +75,15 @@ function controllerBoundary(rows: ExternalContact[], projectOrganization = 'org-
     requests.push(request);
     const respond = (data: unknown) => ({ config, status: 200, statusText: 'OK', headers: {}, data });
     if (config.method === 'get' && config.url === '/api/projects/project-a') {
-      listSinceProjectRead = 0;
+      // Installed Strapi strips this relation when organization.find is not granted.
       assert.deepEqual(config.params, { 'populate[0]': 'organization' });
-      return respond({ data: { organization: { documentId: projectOrganization } } });
+      return respond({ data: { documentId: 'project-a', key: 'SYNTHETIC' } });
+    }
+    if (config.method === 'get' && config.url === '/api/me/project-contexts') {
+      listSinceProjectRead = 0;
+      assert.equal(config.params, undefined);
+      return respond({ projects: [{ documentId: 'project-a', key: 'SYNTHETIC',
+        organization: { documentId: projectOrganization } }] });
     }
     if (config.method === 'get' && config.url === '/api/external-participants') {
       // The real controller ignores pagination and returns ALL matches, without meta.
@@ -119,7 +126,7 @@ for (const count of [99, 100, 137]) {
     const snapshot = await service.componentLoad(scope)();
     assert.deepEqual(snapshot.contacts, rows);
     assert.equal(new Set(snapshot.contacts.map(row => row.documentId)).size, count);
-    assert.deepEqual(requests, [{ method: 'get', url: '/api/projects/project-a' },
+    assert.deepEqual(requests, [{ method: 'get', url: '/api/me/project-contexts' },
       { method: 'get', url: '/api/external-participants', page: 1 }]);
     t.diagnostic(JSON.stringify({ count, requests, returned: snapshot.contacts.length }));
   });
@@ -147,10 +154,10 @@ test('create and edit reread all >100 contacts before writing, with no accounts 
   assert.equal(snapshot.contacts.length, 138);
   assert.equal(snapshot.contacts.find(row => row.documentId === 'contact-136')?.name, 'Edited last contact');
   assert.deepEqual(requests.map(request => `${request.method} ${request.url}`), [
-    'get /api/projects/project-a', 'get /api/external-participants',
-    'get /api/projects/project-a', 'get /api/external-participants', 'post /api/external-participants',
-    'get /api/projects/project-a', 'get /api/external-participants', 'put /api/external-participants/contact-136',
-    'get /api/projects/project-a', 'get /api/external-participants',
+    'get /api/me/project-contexts', 'get /api/external-participants',
+    'get /api/me/project-contexts', 'get /api/external-participants', 'post /api/external-participants',
+    'get /api/me/project-contexts', 'get /api/external-participants', 'put /api/external-participants/contact-136',
+    'get /api/me/project-contexts', 'get /api/external-participants',
   ]);
   assert.deepEqual(requests[4].data, { data: { name: 'New contact', email: 'new@example.test', role: 'Cliente UAT',
     organization: { documentId: 'org-a' }, sourceProject: { documentId: 'project-a' } } });
@@ -174,7 +181,7 @@ test('reread catches duplicates beyond row 100 and preserves sourceProject and t
   assert.ok(requests.every(request => request.method === 'get'));
   const mismatchRequests = controllerBoundary(rows, 'org-b');
   await assert.rejects(load(), /organización/i);
-  assert.deepEqual(mismatchRequests, [{ method: 'get', url: '/api/projects/project-a' }]);
+  assert.deepEqual(mismatchRequests, [{ method: 'get', url: '/api/me/project-contexts' }]);
 });
 
 for (const count of [100, 137]) {

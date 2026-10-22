@@ -3,14 +3,37 @@ import { normalizePdfEvidenceBody } from './pdfEvidenceText';
 
 import { loadPdfInlineImage, validatePdfImageDimensions } from './pdfInlineImage';
 
-export type PdfReportBlock = { kind: 'text'; text: string } | { kind: 'image'; source: string; alt: string };
+export type PdfReportCell = { text: string; header: boolean };
+export type PdfReportBlock = { kind: 'text'; text: string } | { kind: 'image'; source: string; alt: string }
+  | { kind: 'table'; rows: PdfReportCell[][] };
+
+const normalizeReportText = (text: string) => normalizePdfEvidenceBody(text
+  .replace(/\u2260/g, ' != ').replace(/\u2264/g, ' <= ').replace(/\u2265/g, ' >= ')
+  .replace(/[\u2192\u2794]/g, ' -> ').replace(/\u2190/g, ' <- '));
+
+/** Extract only inert text; preserve paragraph/line boundaries inside cells. */
+function tableCellText(cell: Element): string {
+  const parts: string[] = [];
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) { parts.push(node.textContent || ''); return; }
+    if (!(node instanceof HTMLElement)) return;
+    if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE'].includes(node.tagName)) return;
+    const block = ['P', 'DIV', 'LI', 'BR', 'TR'].includes(node.tagName);
+    if (block) parts.push('\n');
+    if (node.tagName === 'IMG') parts.push('[Imagen en celda no disponible]');
+    node.childNodes.forEach(visit);
+    if (block) parts.push('\n');
+  };
+  cell.childNodes.forEach(visit);
+  return parts.join('').split('\n').map(line => normalizeReportText(line.trim())).filter(Boolean).join('\n');
+}
 
 /** Preserve editor image positions in the same flow as paragraphs and lists. */
 export function pdfReportBlocks(value?: string | null, numbered = false): PdfReportBlock[] {
   const raw = String(value || '').trim();
   if (!raw) return [{ kind: 'text', text: 'Sin información registrada.' }];
   const blocks: PdfReportBlock[] = [];
-  if (/<\/?(?:p|div|ol|ul|li|br|strong|span|b|em|img)\b/i.test(raw)) {
+  if (/<\/?(?:p|div|ol|ul|li|br|strong|span|b|em|img|table)\b/i.test(raw)) {
     // An inert document avoids requesting editor image URLs before validation.
     const root = new DOMParser().parseFromString(raw, 'text/html').body;
     let buffer = '';
@@ -22,6 +45,39 @@ export function pdfReportBlocks(value?: string | null, numbered = false): PdfRep
       if (node.nodeType === Node.TEXT_NODE) { buffer += node.textContent || ''; return; }
       if (!(node instanceof HTMLElement)) return;
       if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE'].includes(node.tagName)) return;
+      if (node.tagName === 'TABLE') {
+        flush();
+        const sourceRows = Array.from(node.querySelectorAll('tr')).filter(row => row.closest('table') === node);
+        const caption = Array.from(node.children).find(child => child.tagName === 'CAPTION');
+        const cells = Array.from(node.querySelectorAll('th,td')).filter(cell => cell.closest('table') === node);
+        const merged = cells.some(cell => Number(cell.getAttribute('colspan') || 1) !== 1 || Number(cell.getAttribute('rowspan') || 1) !== 1);
+        if (node.querySelector('img')) {
+          // Text-only cells cannot carry images. Retain their ordered rich flow
+          // and source-cell context; richSection still validates every source.
+          blocks.push({ kind: 'text', text: merged
+            ? '[Tabla con celdas combinadas e imágenes: vista por filas; distribución simplificada.]'
+            : '[Tabla con imágenes: vista por filas y celdas; distribución simplificada.]' });
+          if (caption) { caption.childNodes.forEach(visit); flush(); }
+          sourceRows.forEach((row, rowIndex) => {
+            Array.from(row.children).filter(cell => ['TD', 'TH'].includes(cell.tagName)).forEach((cell, columnIndex) => {
+              blocks.push({ kind: 'text', text: `Fila ${rowIndex + 1}, columna ${columnIndex + 1}:` });
+              cell.childNodes.forEach(visit);
+              flush();
+            });
+          });
+          return;
+        }
+        const rows = sourceRows.map(row => Array.from(row.children).filter(cell => ['TD', 'TH'].includes(cell.tagName))
+          .map(cell => ({ text: tableCellText(cell), header: cell.tagName === 'TH' })));
+        if (caption) blocks.push({ kind: 'text', text: tableCellText(caption) });
+        if (merged) {
+          // Do not invent associations when a pasted grid merges cells. Retain
+          // every cell in source-row order with an explicit searchable warning.
+          blocks.push({ kind: 'text', text: '[Tabla con celdas combinadas: vista por filas; distribución simplificada.]' });
+          rows.forEach((row, index) => blocks.push({ kind: 'text', text: `Fila ${index + 1}: ${row.map(cell => cell.text).join(' | ')}` }));
+        } else blocks.push({ kind: 'table', rows });
+        return;
+      }
       if (node.tagName === 'IMG') {
         flush();
         blocks.push({ kind: 'image', source: node.getAttribute('src') || '', alt: node.getAttribute('alt') || '' });
@@ -47,15 +103,14 @@ export function pdfReportBlocks(value?: string | null, numbered = false): PdfRep
     decoder.innerHTML = raw;
     blocks.push(...decoder.value.split(/\r?\n/).filter(line => line.trim()).map(text => ({ kind: 'text' as const, text })));
   }
-  return blocks.map(block => block.kind === 'image' ? block : { kind: 'text' as const, text: normalizePdfEvidenceBody(block.text
-    .replace(/\u2260/g, ' != ').replace(/\u2264/g, ' <= ').replace(/\u2265/g, ' >= ')
-    .replace(/[\u2192\u2794]/g, ' -> ').replace(/\u2190/g, ' <- ')) })
-    .filter(block => block.kind === 'image' || Boolean(block.text));
+  return blocks.map(block => block.kind !== 'text' ? block : { kind: 'text' as const, text: normalizeReportText(block.text) })
+    .filter(block => block.kind !== 'text' || Boolean(block.text));
 }
 
 /** Backward-compatible text-only API for other report consumers. */
 export function pdfReportParagraphs(value?: string | null, numbered = false): string[] {
-  return pdfReportBlocks(value, numbered).flatMap(block => block.kind === 'text' ? [block.text] : []);
+  return pdfReportBlocks(value, numbered).flatMap(block => block.kind === 'text' ? [block.text]
+    : block.kind === 'table' ? block.rows.map(row => row.map(cell => cell.text).join(' | ')) : []);
 }
 
 /** All coordinates use the same explicit line height, including page checks. */
@@ -134,6 +189,82 @@ export class TestRunPdfLayout {
       this.y += 1.2;
     }
   }
+  private table(rows: PdfReportCell[][]) {
+    const columns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    if (!columns) return;
+    // Keep even extreme pasted grids legible without shrinking fonts or losing
+    // columns. Each equal-width panel carries its explicit source-column range.
+    if (columns > 12) {
+      for (let start = 0; start < columns; start += 12) {
+        this.text(`Tabla: columnas ${start + 1}-${Math.min(start + 12, columns)} de ${columns}`, 9, true);
+        this.y += 2;
+        this.table(rows.map(row => Array.from({ length: Math.min(12, columns - start) }, (_, index) =>
+          row[start + index] || { text: '', header: row.length > 0 && row.every(cell => cell.header) })));
+      }
+      return;
+    }
+    const cellWidth = this.width / columns;
+    const lineHeight = 4.2;
+    const prepared = rows.map(row => ({ row, lines: Array.from({ length: columns }, (_, index) => {
+      this.style(9, row[index]?.header);
+      return this.pdf.splitTextToSize(row[index]?.text || '', cellWidth - 4) as string[];
+    }) }));
+    const count = (lines: string[][]) => Math.max(1, ...lines.map(cell => cell.length));
+    const draw = (row: PdfReportCell[], lines: string[][], offset: number, length: number) => {
+      const height = length * lineHeight + 4;
+      for (let column = 0; column < columns; column++) {
+        const x = this.margin + column * cellWidth;
+        this.pdf.setDrawColor(180, 191, 205);
+        this.pdf.setLineWidth(0.2);
+        this.pdf.rect(x, this.y, cellWidth, height);
+        this.style(9, row[column]?.header);
+        lines[column].slice(offset, offset + length).forEach((line, index) =>
+          this.pdf.text(line, x + 2, this.y + 5.2 + index * lineHeight, { charSpace: 0 }));
+      }
+      this.y += height;
+    };
+    // Repeat leading header rows, but bound repeated furniture. Original header
+    // content is always rendered in full, even when it alone spans pages.
+    let headerRows = 0;
+    while (headerRows < prepared.length && prepared[headerRows].row.length && prepared[headerRows].row.every(cell => cell.header)) headerRows++;
+    let headers = prepared.slice(0, headerRows);
+    let headerHeight = headers.reduce((sum, item) => sum + count(item.lines) * lineHeight + 4, 0);
+    if (headerHeight > 60) {
+      const first = headers[0];
+      headers = [{ row: first.row, lines: first.lines.map((cell, column) => {
+        this.style(9, first.row[column]?.header);
+        return [...cell.slice(0, 2), ...this.pdf.splitTextToSize('[Encabezado resumido]', cellWidth - 4)];
+      }) }];
+      headerHeight = count(headers[0].lines) * lineHeight + 4;
+    }
+    const nextPage = (repeat: boolean) => {
+      this.ensure(this.bottom - this.y + 1);
+      if (repeat) for (const header of headers) draw(header.row, header.lines, 0, count(header.lines));
+    };
+    for (let index = 0; index < prepared.length; index++) {
+      const { row, lines } = prepared[index];
+      const total = count(lines);
+      let offset = 0;
+      const repeat = index >= headerRows || total * lineHeight + 4 > 60;
+      // Keep ordinary rows together where possible; split oversized rows into
+      // bordered fragments, advancing every cell by the same line offset.
+      const availableOnFreshPage = this.bottom - 50 - (repeat ? headerHeight : 0);
+      if (total * lineHeight + 4 <= availableOnFreshPage && this.y + total * lineHeight + 4 > this.bottom) nextPage(repeat);
+      while (offset < total) {
+        let capacity = Math.floor((this.bottom - this.y - 4) / lineHeight);
+        if (capacity < 1) {
+          nextPage(repeat);
+          capacity = Math.floor((this.bottom - this.y - 4) / lineHeight);
+          if (capacity < 1) throw new Error('PDF_TABLE_NO_PAGE_SPACE');
+        }
+        const length = Math.min(total - offset, capacity);
+        draw(row, lines, offset, length);
+        offset += length;
+        if (offset < total) nextPage(repeat);
+      }
+    }
+    this.y += 3;
+  }
   /** Images remain atomic; scale to one content page, never into the footer. */
   async richSection(label: string, blocks: PdfReportBlock[]) {
     let headingPending = true;
@@ -141,6 +272,11 @@ export class TestRunPdfLayout {
       if (block.kind === 'text') {
         if (headingPending) { this.section(label, [block.text]); headingPending = false; }
         else { this.text(block.text, 10.5, false, 2); this.y += 1.2; }
+        continue;
+      }
+      if (block.kind === 'table') {
+        if (headingPending) { this.section(label, []); headingPending = false; }
+        this.table(block.rows);
         continue;
       }
       try {

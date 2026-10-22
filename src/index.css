@@ -584,6 +584,69 @@
   margin-bottom: 0.25rem;
 }
 
+.qa-rich-text-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.qa-table-dimension-input {
+  box-sizing: border-box;
+  width: 96px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--qa-color-border, #cbd5e1);
+  border-radius: 8px;
+  background: var(--qa-color-surface, #fff);
+  color: var(--qa-color-text, #102a43);
+}
+
+.qa-table-dimension-input:focus-visible {
+  outline: 2px solid var(--qa-color-primary, #0284c7);
+  outline-offset: 2px;
+}
+
+.qa-rich-text-content .tableWrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.qa-rich-text-content table {
+  width: 100%;
+  min-width: 320px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.qa-rich-text-content th,
+.qa-rich-text-content td {
+  border: 1px solid var(--qa-color-border, #cbd5e1);
+  padding: 0.5rem 0.625rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  position: relative;
+}
+
+.qa-rich-text-content th {
+  background: var(--qa-color-surface-muted, #f1f5f9);
+  font-weight: 600;
+  text-align: left;
+}
+
+.qa-rich-text-content td > p:last-child,
+.qa-rich-text-content th > p:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-rich-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(14 165 233 / 12%);
+  pointer-events: none;
+}
+
 .qa-rich-text-content ul[data-type='taskList'] {
   list-style: none;
   margin-left: 0;

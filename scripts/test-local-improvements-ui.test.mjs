@@ -150,7 +150,8 @@ try {
     fs.writeFileSync(path.join(process.env.QA_SECURITY_SCRATCH, 'browser-baseline-warnings.json'), JSON.stringify(baseline, null, 2));
     console.log(JSON.stringify(baseline));
   } else {
-  await page.getByText('Miembros con cuenta', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /^Miembros con cuenta \(/ }).click();
+  await page.getByRole('button', { name: /^Participantes externos \(sin cuenta\) \(/ }).click();
   await page.getByText('Miembro con cuenta de prueba', { exact: true }).waitFor();
   await page.getByText('Contacto externo existente', { exact: true }).waitFor({ timeout: 15000 });
   const addExternal = page.getByRole('button', { name: /(?:Agregar|Añadir|Nuevo|Nueva).*extern/i });
@@ -261,6 +262,50 @@ try {
     fs.writeFileSync(path.join(output, filename), buffer);
     cases.push(`Real PDF generated: ${filename}`);
   }
+  // Regression executions can test functionality delivered in an earlier sprint.
+  await page.goto(origin + '/__qa_local?view=reports', { waitUntil: 'networkidle' });
+  await page.evaluate(() => {
+    const { query, project } = window.__qaLocalImprovements;
+    const functions = query.getQueryData(['functionalities', project.id]);
+    const originalCases = query.getQueryData(['test-cases', project.id, 'all']);
+    const originalRun = query.getQueryData(['test-runs', project.id])[0];
+    const originalImport = query.getQueryData(['automation-import-history', project.id])[0];
+    const earlierFunction = functions[0].id;
+    const updatedFunctions = functions.map((item, index) => ({ ...item, sprint: index === 0 ? '2' : '6' }));
+    const updatedCases = originalCases.map(item => {
+      const automated = item.functionalityId === earlierFunction;
+      return { ...item, isAutomated: automated,
+        automationStatus: automated ? originalCases[0].automationStatus : originalCases[1].automationStatus,
+        automationTool: automated ? originalCases[0].automationTool : undefined, lastAutomationStatus: undefined };
+    });
+    const earlierCases = updatedCases.filter(item => item.functionalityId === earlierFunction);
+    const updatedRun = { ...originalRun, results: earlierCases.map((item, index) => ({
+      id: `CROSS-RESULT-${index}`, functionalityId: item.functionalityId, testCaseId: item.id,
+      result: originalRun.results[0].result })), totalResults: earlierCases.length };
+    query.setQueryData(['functionalities', project.id], updatedFunctions);
+    query.setQueryData(['test-cases', project.id, 'all'], updatedCases);
+    query.setQueryData(['test-runs', project.id], [updatedRun]);
+    query.setQueryData(['test-runs', 'summary', project.id], [updatedRun]);
+    query.setQueryData(['automation-import-history', project.id], [{ ...originalImport,
+      matchedCount: earlierCases.length, matchedCases: earlierCases.map((item, index) => ({
+        testCaseId: item.id, testCaseTitle: item.title, reference: `cross-${index}`,
+        status: originalImport.matchedCases[0].status })) }]);
+  });
+  await page.getByText('Estado del Proyecto', { exact: true }).first().click();
+  await page.getByRole('combobox').first().click();
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({ hasText: /^6$/ }).click();
+  await page.getByRole('button', { name: /Generar Reporte/i }).click();
+  const crossTitle = page.getByText(/M[eé]tricas de automatizaci[oó]n/i).first();
+  await crossTitle.waitFor();
+  const crossCard = crossTitle.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ant-card ")][1]');
+  await crossCard.getByText('100%', { exact: true }).waitFor();
+  assert.match(await crossCard.getByTestId('automation-module-coverage').innerText(), /0%/);
+  assert.match(await crossCard.getByText('Casos automatizados por funcionalidad', { exact: true }).locator('xpath=ancestor::div[1]').innerText(), /0%\s*\(0\/2\)/);
+  assert.match(await crossCard.innerText(), /Playwright\s+100%/);
+  assert.doesNotMatch(await crossCard.innerText(), /Sin resultados automáticos/);
+  await crossCard.screenshot({ path: path.join(output, 'automation-cross-delivery-sprint.png'), animations: 'disabled' });
+  cases.push('Sprint 6 execution includes earlier-delivery imports while current-delivery coverage stays zero');
+
   for (const source of ['runner-only', 'runner-newer', 'read-error']) {
     automationSource = source;
     await page.goto(origin + '/__qa_local?view=reports&source=' + source, { waitUntil: 'networkidle' });

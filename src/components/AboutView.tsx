@@ -1,3 +1,4 @@
+import { ProjectExternalContactsDisclosure } from './about/ProjectExternalContactsDisclosure';
 import { ProjectExternalContacts } from './about/ProjectExternalContacts';
 import VoiceTextArea from './VoiceTextArea';
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
@@ -1863,7 +1864,8 @@ export default function AboutView({ project }: AboutViewProps) {
                     icon={<TeamOutlined className="text-2xl" />}
                     accent={qaPalette.functionalityStatus.completed}
                   >
-                    <Text strong className="mb-2 block">Miembros con cuenta</Text>
+                    <ProjectExternalContactsDisclosure key={project.documentId || project.id}
+                      title="Miembros con cuenta" count={projectAccessMembers.length}>
                     <Text className="mb-3 block text-slate-400">
                       {projectAccessMembers.length} miembros con acceso a este proyecto
                     </Text>
@@ -1883,6 +1885,7 @@ export default function AboutView({ project }: AboutViewProps) {
                     ) : (
                       <Empty description="No hay miembros con acceso definidos para este proyecto." />
                     )}
+                    </ProjectExternalContactsDisclosure>
                     <Text className="mt-5 block text-slate-400">
                       {stats.participants} participantes base asociados al proyecto
                     </Text>

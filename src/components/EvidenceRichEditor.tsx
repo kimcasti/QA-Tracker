@@ -1,4 +1,6 @@
 import EditorDictation from './EditorDictation';
+import EditorTableToolbar from './EditorTableToolbar';
+import { TableKit } from '@tiptap/extension-table';
 import { Button, Modal, Tooltip, message } from 'antd';
 import {
   BoldOutlined,
@@ -37,6 +39,7 @@ type EvidenceRichEditorProps = {
   autoSize?: boolean;
   showMarkers?: boolean;
   showImageUpload?: boolean;
+  showTables?: boolean;
   projectId?: string;
   aiContext?: string;
   aiRecordId?: string;
@@ -112,6 +115,7 @@ export default function EvidenceRichEditor({
   autoSize = false,
   showMarkers = true,
   showImageUpload = true,
+  showTables = false,
   projectId,
   aiContext,
   aiRecordId,
@@ -138,6 +142,7 @@ export default function EvidenceRichEditor({
         placeholder,
       }),
       TaskList,
+      TableKit.configure({ table: { resizable: false } }),
       TaskItem.configure({
         a11y: { checkboxLabel: node => `Completar tarea: ${node.textContent || 'Nueva tarea'}` },
       }),
@@ -357,6 +362,7 @@ export default function EvidenceRichEditor({
           >
             Checklist
           </Button>
+          {showTables && <EditorTableToolbar editor={editor} disabled={disabled} />}
           {showImageUpload && (
             <Button
               icon={<FileImageOutlined />}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportHasAutomatedCoverage, reportIdentityMap } from '../utils/reportAutomationMetrics';
 import { useLocation } from 'react-router-dom';
 import {
   Alert,
@@ -933,57 +934,64 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
     : undefined;
 
   const testCasesByFunctionality = React.useMemo(() => {
+    const identities = reportIdentityMap(functionalities);
     return testCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
-      const current = acc.get(testCase.functionalityId) || [];
+      const functionality = identities.get(testCase.functionalityId);
+      if (!functionality || testCase.projectId !== functionality.projectId) return acc;
+      const current = acc.get(functionality.id) || [];
       current.push(testCase);
-      acc.set(testCase.functionalityId, current);
+      acc.set(functionality.id, current);
       return acc;
     }, new Map<string, TestCase[]>());
-  }, [testCases]);
+  }, [testCases, functionalities]);
 
   const testCaseCountByFunctionality = React.useMemo(() => {
+    const identities = reportIdentityMap(functionalities);
     return testCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
-      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      const functionality = identities.get(testCase.functionalityId);
+      if (!functionality || testCase.projectId !== functionality.projectId) return acc;
+      acc.set(functionality.id, (acc.get(functionality.id) || 0) + 1);
       return acc;
     }, new Map<string, number>());
-  }, [testCases]);
+  }, [testCases, functionalities]);
 
   const automatedCaseCountByFunctionality = React.useMemo(() => {
+    const identities = reportIdentityMap(functionalities);
     return testCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
-      if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) return acc;
-
-      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      const functionality = identities.get(testCase.functionalityId);
+      if (!functionality || testCase.projectId !== functionality.projectId || !reportHasAutomatedCoverage(testCase)) return acc;
+      acc.set(functionality.id, (acc.get(functionality.id) || 0) + 1);
       return acc;
     }, new Map<string, number>());
-  }, [testCases]);
+  }, [testCases, functionalities]);
 
   const automatedToolsByFunctionality = React.useMemo(() => {
+    const identities = reportIdentityMap(functionalities);
     return testCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
-      if (deriveAutomationStatus(testCase) !== AutomationStatus.AUTOMATED) return acc;
+      const functionality = identities.get(testCase.functionalityId);
+      if (!functionality || testCase.projectId !== functionality.projectId || !reportHasAutomatedCoverage(testCase)) return acc;
 
-      const currentTools = acc.get(testCase.functionalityId) || new Set<string>();
+      const currentTools = acc.get(functionality.id) || new Set<string>();
       if (testCase.automationTool) {
         currentTools.add(testCase.automationTool);
       }
 
-      acc.set(testCase.functionalityId, currentTools);
+      acc.set(functionality.id, currentTools);
       return acc;
     }, new Map<string, Set<string>>());
-  }, [testCases]);
+  }, [testCases, functionalities]);
 
   const candidateCaseCountByFunctionality = React.useMemo(() => {
+    const identities = reportIdentityMap(functionalities);
     return testCases.reduce((acc, testCase: TestCase) => {
-      if (!testCase.functionalityId) return acc;
+      const functionality = identities.get(testCase.functionalityId);
+      if (!functionality || testCase.projectId !== functionality.projectId) return acc;
       if (deriveAutomationStatus(testCase) !== AutomationStatus.CANDIDATE) return acc;
 
-      acc.set(testCase.functionalityId, (acc.get(testCase.functionalityId) || 0) + 1);
+      acc.set(functionality.id, (acc.get(functionality.id) || 0) + 1);
       return acc;
     }, new Map<string, number>());
-  }, [testCases]);
+  }, [testCases, functionalities]);
 
   const openTestCaseDrawer = React.useCallback((record: Functionality) => {
     setSelectedFunctionality(record);
@@ -4765,9 +4773,9 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                     <Card className="rounded-2xl border-slate-100 shadow-sm">
                       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-slate-800">Cobertura por módulo</div>
+                          <div className="text-sm font-semibold text-slate-800">Pruebas y automatización por módulo</div>
                           <div className="mt-1 text-sm text-slate-500">
-                            Compara cobertura con casos, cobertura QA clasificada y casos automatizados por módulo.
+                            Funcionalidades del alcance visible · Estado actual. Distingue funcionalidades con casos, clasificación QA y casos automatizados.
                           </div>
                         </div>
                         <Select
@@ -4799,7 +4807,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                               </span>
                             </div>
                             <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
-                              <span className="font-semibold text-slate-600">Cobertura con casos</span>
+                              <span className="font-semibold text-slate-600">Funcionalidades con casos</span>
                               <span className="font-semibold text-slate-700">
                                 {item.testedPercent}% ({item.tested}/{item.total})
                               </span>
@@ -4812,7 +4820,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                             </div>
                             <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
                               <span className="font-semibold text-slate-600">
-                                Cobertura QA clasificada
+                                Funcionalidades con clasificación QA y casos
                               </span>
                               <span className="font-semibold text-slate-700">
                                 {item.classifiedAndTestedPercent}% ({item.classifiedAndTested}/{item.total})
@@ -4827,7 +4835,7 @@ export default function QaPlanningPage({ projectId }: { projectId?: string }) {
                             <div className="mb-2 mt-3 flex items-center justify-between gap-3 text-[11px]">
                               <span className="font-semibold text-slate-600">Casos automatizados</span>
                               <span className="shrink-0 font-semibold text-slate-700">
-                                {item.automatedPercent}% ({item.automatedCases}/{item.totalCases})
+                                {item.totalCases === 0 ? 'Sin casos' : `${item.automatedPercent}% (${item.automatedCases}/${item.totalCases})`}
                               </span>
                             </div>
                             <Progress

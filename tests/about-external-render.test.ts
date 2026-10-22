@@ -11,7 +11,7 @@ test('external section labels non-login contacts, separates project/directory, a
   const props = { projectDocumentId: 'project-a', canManage: true,
     contacts: [{ documentId: 'owned', name: 'Cliente UAT', sourceProject: { documentId: 'project-a' } },
       { documentId: 'shared', name: 'Contacto compartido', sourceProject: null }],
-    onAdd() {}, onEdit() {} };
+    onAdd() {}, onEdit() {}, onDelete() {} };
   const editable = renderToStaticMarkup(React.createElement(ProjectExternalContactsSection, props));
   assert.match(editable, /Participantes externos \(sin cuenta\)/);
   assert.match(editable, /No conceden acceso|No concede acceso/);
@@ -22,7 +22,14 @@ test('external section labels non-login contacts, separates project/directory, a
   assert.doesNotMatch(editable, /Editar contacto Contacto compartido/);
   const readonly = renderToStaticMarkup(React.createElement(ProjectExternalContactsSection, { ...props, canManage: false }));
   assert.match(readonly, /Cliente UAT/);
-  assert.doesNotMatch(readonly, /<button/);
+  assert.match(editable, /Eliminar contacto Cliente UAT/);
+  assert.doesNotMatch(editable, /Eliminar contacto Contacto compartido/);
+  assert.match(editable, /aria-expanded="false"/);
+  assert.match(editable, /aria-controls="([^"]+)"/);
+  assert.match(editable, /<div id="[^"]+" hidden=""/);
+  assert.match(editable, /Participantes externos \(sin cuenta\) \(2\)/);
+  assert.doesNotMatch(readonly, /aria-label="(?:Agregar externo|Editar contacto|Eliminar contacto)/);
+  assert.equal((readonly.match(/<button/g) || []).length, 1, 'Viewer retains the accessible disclosure button only');
 });
 
 test('About keeps authenticated members separate and mounts scoped external management', () => {

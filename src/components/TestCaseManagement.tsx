@@ -1855,6 +1855,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 rules={[{ required: true, message: 'Por favor ingresa los pasos' }]}
               >
                 <TestCaseRichTextEditorField
+                  showTables
                   voiceSessionKey={editingTestCase?.id || "new-case"}
                   placeholder="1. Ingresar a la URL...&#10;2. Escribir usuario...&#10;3. Clic en botón..."
                   minHeightClassName="min-h-[160px]"

@@ -84,6 +84,7 @@ import { exportDeliveryUnitProgressToDocx } from '../utils/reportUtils';
 import { reportRunAutomationMetrics, reportAutomationPortfolio, reportEntityAliases, reportIdentityMap } from '../utils/reportAutomationMetrics';
 import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
 import { useReportAutomationJobs } from '../modules/automation/hooks/useReportAutomationJobs';
+import { AutomationModuleCoverage } from './AutomationModuleCoverage';
 import {
   BugStatus,
   DeliveryUnit,
@@ -2144,44 +2145,37 @@ const ProjectStatusReport: React.FC<{
       </Card>
 
       <Card title="Métricas de automatización" className="rounded-2xl border-slate-100">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Tag>{sprint ? `Funcionalidades entregadas en Sprint ${sprint.replace(/^sprint\s*/i, '').trim()}` : 'Todo el proyecto · Estado actual'}</Tag>
+          <Tag>{sprint ? `Ejecuciones finalizadas en Sprint ${sprint.replace(/^sprint\s*/i, '').trim()}` : 'Resultados automáticos registrados · Todo el proyecto'}</Tag>
+        </div>
         <Paragraph type="secondary" className="text-sm">
           La cobertura refleja el estado actual de los casos, no el modo de ejecución.
           {sprint
-            ? ' La aprobación usa el último resultado automático importado o publicado por el ejecutor, por caso y herramienta, vinculado a una ejecución finalizada del sprint.'
+            ? ' La aprobación usa el último resultado automático importado o publicado por el ejecutor, por caso y herramienta, vinculado a una ejecución finalizada del sprint. Puede incluir funcionalidades de sprints anteriores, sin cambiar la cobertura de las funcionalidades del sprint seleccionado.'
             : ' La aprobación usa el último resultado automático registrado por caso y herramienta.'}
           {' '}Solo cuentan resultados aprobados o fallidos; las pruebas omitidas o sin datos no se consideran fallos.
         </Paragraph>
         <Row gutter={[20, 20]}>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Cobertura por módulo</Text>
-              <div className="mt-4 space-y-3">
-                {stats.automationPortfolio.moduleCoverage.slice(0, 5).length > 0 ? (
-                  stats.automationPortfolio.moduleCoverage.slice(0, 5).map(item => (
-                    <div key={item.name}>
-                      <div className="flex justify-between gap-3 text-sm">
-                        <Text>{item.name}</Text>
-                        <Text strong>{item.coverage}%</Text>
-                      </div>
-                      <Progress percent={item.coverage} showInfo={false} strokeColor="#2563eb" />
-                    </div>
-                  ))
-                ) : (
-                  <Text type="secondary">Sin casos vinculados a módulos dentro del alcance.</Text>
-                )}
-              </div>
+              <AutomationModuleCoverage
+                functionalities={stats.automationPortfolio.scopedFunctionalities}
+                testCases={stats.automationPortfolio.scopedTestCases}
+                scopeLabel={sprint ? `Funcionalidades entregadas en Sprint ${sprint.replace(/^sprint\s*/i, '').trim()}` : 'Todo el proyecto · Estado actual'}
+              />
             </div>
           </Col>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Cobertura por funcionalidad</Text>
+              <Text strong>Casos automatizados por funcionalidad</Text>
               <div className="mt-4 space-y-3">
-                {stats.automationPortfolio.functionalityCoverage.slice(0, 5).length > 0 ? (
-                  stats.automationPortfolio.functionalityCoverage.slice(0, 5).map(item => (
+                {stats.automationPortfolio.functionalityCoverage.length > 0 ? (
+                  stats.automationPortfolio.functionalityCoverage.map(item => (
                     <div key={item.id}>
                       <div className="flex justify-between gap-3 text-sm">
                         <Text>{item.name}</Text>
-                        <Text strong>{item.coverage}%</Text>
+                        <Text strong>{item.coverage}% ({item.automatedCases}/{item.totalCases})</Text>
                       </div>
                       <Progress percent={item.coverage} showInfo={false} strokeColor="#14b8a6" />
                     </div>
@@ -2194,7 +2188,7 @@ const ProjectStatusReport: React.FC<{
           </Col>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Tasa de aprobación por herramienta</Text>
+              <Text strong>Aprobación de resultados automáticos</Text>
               <div className="mt-4 space-y-3">
                 {automationJobs.isError || historiesError || testRunsError ? (
                   <Text type="danger">No se pudieron cargar los resultados automáticos. La tasa de aprobación no está disponible; vuelve a generar el reporte.</Text>

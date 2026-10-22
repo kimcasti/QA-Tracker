@@ -41,6 +41,107 @@ test('scoped loader verifies the real project organization before fetching conta
   assert.deepEqual(calls, [['project', 'project-a']]);
 });
 
+test('deleting an owned contact rereads scope, deletes exactly once and verifies exact target absence', async () => {
+  const calls: string[] = [];
+  let contacts = [contact('owned'), contact('other')];
+  const remove = (externalContacts as any).deleteProjectExternalContact;
+  assert.equal(typeof remove, 'function', 'scoped contact delete workflow must exist');
+  await remove(scope, 'owned', {
+    load: async () => { calls.push('load'); return { organizationDocumentId: 'org-a', contacts }; },
+    remove: async (id: string) => { calls.push(`DELETE ${id}`); contacts = contacts.filter(c => c.documentId !== id); },
+  });
+  assert.deepEqual(calls, ['load', 'DELETE owned', 'load']);
+  assert.deepEqual(contacts.map(c => c.documentId), ['other']);
+});
+
+test('lost DELETE response after commit reconciles fresh absence instead of leaving a stale editable contact', async () => {
+  let contacts = [contact('owned'), contact('other')];
+  const calls: string[] = [];
+  const verified = await externalContacts.deleteProjectExternalContact(scope, 'owned', {
+    load: async () => { calls.push('load'); return { organizationDocumentId: 'org-a', contacts }; },
+    remove: async id => {
+      calls.push(`DELETE ${id}`);
+      contacts = contacts.filter(c => c.documentId !== id);
+      throw new Error('DELETE response lost after server commit');
+    },
+  });
+  assert.deepEqual(calls, ['load', 'DELETE owned', 'load']);
+  assert.deepEqual(verified.contacts.map(c => c.documentId), ['other']);
+});
+
+test('lost DELETE response with failed reconciliation enters an honest unknown-outcome lock', async () => {
+  let contacts = [contact('owned')];
+  let loads = 0; let deletes = 0;
+  await assert.rejects(externalContacts.deleteProjectExternalContact(scope, 'owned', {
+    load: async () => {
+      if (++loads > 1) throw new Error('Reconciliation offline');
+      return { organizationDocumentId: 'org-a', contacts };
+    },
+    remove: async () => {
+      deletes++;
+      contacts = [];
+      throw new Error('DELETE response lost after server commit');
+    },
+  }), (error: unknown) => {
+    assert.ok(error instanceof externalContacts.ExternalContactDeletionUnverifiedError);
+    assert.equal(error.message, 'No pudimos verificar el resultado de la eliminación. Actualiza la lista antes de reintentar.');
+    assert.doesNotMatch(error.message, /aceptada|eliminado/i);
+    return true;
+  });
+  assert.equal(loads, 2);
+  assert.equal(deletes, 1);
+  assert.deepEqual(contacts, []);
+});
+
+test('delete denies viewer/inactive/missing context and fresh shared, foreign, missing or moved targets without any DELETE', async () => {
+  const remove = (externalContacts as any).deleteProjectExternalContact;
+  for (const denied of [{ ...scope, roleCode: 'viewer' }, { ...scope, membershipStatus: 'inactive' },
+    { ...scope, projectDocumentId: '' }, { ...scope, roleCode: '' }]) {
+    let loads = 0; const writes: string[] = [];
+    await assert.rejects(remove(denied, 'owned', {
+      load: async () => { loads++; return { organizationDocumentId: 'org-a', contacts: [contact('owned')] }; },
+      remove: async (id: string) => { writes.push(id); },
+    }), /permiso|contexto/i);
+    assert.equal(loads, 0); assert.deepEqual(writes, []);
+  }
+  for (const snapshot of [
+    { organizationDocumentId: 'org-b', contacts: [contact('owned')] },
+    { organizationDocumentId: 'org-a', contacts: [contact('owned', 'org-a', null)] },
+    { organizationDocumentId: 'org-a', contacts: [contact('owned', 'org-b')] },
+    { organizationDocumentId: 'org-a', contacts: [contact('owned', 'org-a', 'project-b')] },
+    { organizationDocumentId: 'org-a', contacts: [] },
+  ]) {
+    const writes: string[] = [];
+    await assert.rejects(remove(scope, 'owned', { load: async () => snapshot,
+      remove: async (id: string) => { writes.push(id); } }), /organización|proyecto/i);
+    assert.deepEqual(writes, []);
+  }
+});
+
+test('delete failures propagate; unverified completed DELETE has a distinct warning and never reports success', async () => {
+  const remove = (externalContacts as any).deleteProjectExternalContact;
+  for (const after of ['read-fails', 'still-present', 'foreign-snapshot']) {
+    let loads = 0; let deletes = 0;
+    await assert.rejects(remove(scope, 'owned', {
+      load: async () => {
+        if (++loads === 1) return { organizationDocumentId: 'org-a', contacts: [contact('owned')] };
+        if (after === 'read-fails') throw new Error('Transport offline');
+        return { organizationDocumentId: after === 'foreign-snapshot' ? 'org-b' : 'org-a',
+          contacts: after === 'still-present' ? [contact('owned')] : [] };
+      },
+      remove: async () => { deletes++; },
+    }), /No pudimos verificar el resultado de la eliminación/i);
+    assert.equal(deletes, 1);
+  }
+  let reads = 0;
+  const rejected = new Error('DELETE forbidden');
+  await assert.rejects(remove(scope, 'owned', {
+    load: async () => { reads++; return { organizationDocumentId: 'org-a', contacts: [contact('owned')] }; },
+    remove: async () => { throw rejected; },
+  }), error => error === rejected);
+  assert.equal(reads, 2, 'Even a rejected DELETE is reconciled before restoring edit controls');
+});
+
 const scope = { organizationDocumentId: 'org-a', projectDocumentId: 'project-a',
   roleCode: 'manager', membershipStatus: 'active' };
 function boundary(contacts: externalContacts.ExternalContact[] = []) {

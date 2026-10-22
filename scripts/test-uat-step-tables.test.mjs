@@ -1,0 +1,50 @@
+// Offline browser check of the real public UAT rich-text renderer and shared styles.
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import ts from 'typescript';
+import { build } from 'esbuild';
+import { chromium } from '@playwright/test';
+const scratch = process.env.QA_SECURITY_SCRATCH;
+assert.ok(scratch && !path.resolve(scratch).toLowerCase().startsWith(path.resolve('.').toLowerCase()), 'Use scratch outside Git');
+await fs.mkdir(scratch, { recursive: true });
+const file = 'src/modules/test-runs/components/PublicUatSessionPage.tsx';
+const source = await fs.readFile(file, 'utf8');
+const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const renderer = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'renderRichText');
+assert.ok(renderer, 'Exercise actual UAT renderer, not a rewritten copy');
+const serviceFile = 'src/modules/test-runs/services/publicUatSessionsService.ts';
+const serviceAst = ts.createSourceFile(serviceFile, await fs.readFile(serviceFile, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const mapper = serviceAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'mapPublicResult');
+assert.ok(mapper, 'Exercise actual UAT DTO mapping');
+const bundle = await build({ stdin: { contents: `import React from 'react'; import { createRoot } from 'react-dom/client'; import { normalizeEvidenceHtml, stripHtmlToText } from './src/utils/evidenceRichText'; import { testResultFromApi } from './src/modules/shared/services/enumMappers'; ${mapper.getText(serviceAst)}; ${renderer.getText(ast)}; window.renderFixture = value => { const mapped = mapPublicResult({ documentId: 'synthetic-result', testCase: { documentId: 'synthetic-case', testSteps: value } }); if (mapped.testSteps !== value) throw new Error('UAT mapper lost table HTML'); createRoot(document.getElementById('root')).render(renderRichText(mapped.testSteps)); };`, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser', define: { 'process.env.NODE_ENV': '"production"' } });
+const css = (await fs.readFile('src/index.css', 'utf8')).replace(/@import[^;]+;/g, '');
+const fixture = '<p>Antes de la tabla</p><table><tbody><tr><th><p>Campo</p></th><th><p>Valor</p></th><th><p>Resultado</p></th><th><p>Detalle</p></th></tr><tr><td><p>Idioma</p></td><td><p>Inglés</p></td><td><p>Cambio guardado</p></td><td><p>' + 'DatoExtensoSinEspacios'.repeat(12) + '</p></td></tr></tbody></table><p>Después de la tabla</p>';
+const browser = await chromium.launch({ headless: true });
+try {
+ const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+ await page.route('**/*', route => route.request().isNavigationRequest() ? route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><div id="root" style="width:100%;min-width:0"></div>' }) : route.abort());
+ await page.goto('https://uat-table-fixture.invalid/');
+ await page.addStyleTag({ content: css });
+ await page.addScriptTag({ content: bundle.outputFiles[0].text });
+ await page.evaluate(value => window.renderFixture(value), fixture);
+ await page.locator('table').waitFor();
+ assert.equal(await page.locator('th').count(), 4);
+ assert.equal(await page.locator('td').count(), 4);
+ const geometry = await page.locator('.qa-rich-text-content').evaluate(element => {
+  const cell = element.querySelector('td'); const table = element.querySelector('table');
+  return { width: element.clientWidth, scrollWidth: element.scrollWidth, viewport: innerWidth, documentWidth: document.documentElement.scrollWidth, overflow: getComputedStyle(element).overflowX, border: getComputedStyle(cell).borderTopWidth, layout: getComputedStyle(table).tableLayout };
+ });
+ assert.notEqual(geometry.border, '0px', 'UAT table needs visible cell borders');
+ assert.equal(geometry.layout, 'fixed', 'Long words must not expand the whole page');
+ assert.equal(geometry.overflow, 'auto', 'Table overflow remains inside its container');
+ assert.ok(geometry.documentWidth <= geometry.viewport, 'Mobile UAT must not overflow the document');
+ const text = await page.locator('#root').innerText();
+ assert.ok(text.indexOf('Antes de la tabla') < text.indexOf('Idioma') && text.indexOf('Idioma') < text.indexOf('Después de la tabla'));
+ await page.screenshot({ path: path.join(scratch, 'uat-table-mobile.png'), fullPage: true });
+ await page.setViewportSize({ width: 1280, height: 900 });
+ await page.screenshot({ path: path.join(scratch, 'uat-table-desktop.png'), fullPage: true });
+ const management = await fs.readFile('src/components/TestCaseManagement.tsx', 'utf8');
+ assert.match(management, /showTables\s+(?:voiceSessionKey[^]*?)?placeholder="1\. Ingresar/, 'Enable tables in the test steps editor');
+ console.log(JSON.stringify({ ok: true, scope: 'actual UAT renderer/shared CSS; synthetic HTML round trip, no database', geometry }));
+} finally { await browser.close(); }

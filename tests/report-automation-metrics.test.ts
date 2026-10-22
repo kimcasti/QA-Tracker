@@ -46,7 +46,7 @@ async function reportsCalculations(extra: Record<string, unknown> = {}) {
 }
 test('Estado del Proyecto generado usa los casos y el historial del sprint, no snapshots globales', async () => {
   const element = (type: unknown, props: any, ...children: any[]) => ({ type, props: props || {}, children });
-  const primitives = Object.fromEntries(['Card', 'Col', 'Row', 'Title', 'Text', 'Paragraph', 'Tag', 'Progress', 'Divider', 'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Bar', 'SafetyCertificateOutlined', 'ClockCircleOutlined', 'BugOutlined', 'TechnicalReportAnalysisCard'].map(name => [name, name]));
+  const primitives = Object.fromEntries(['Card', 'Col', 'Row', 'Title', 'Text', 'Paragraph', 'Tag', 'Progress', 'Divider', 'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Bar', 'SafetyCertificateOutlined', 'ClockCircleOutlined', 'BugOutlined', 'TechnicalReportAnalysisCard', 'AutomationModuleCoverage'].map(name => [name, name]));
   const { ProjectStatusReport } = await reportsCalculations({
     ...primitives, React: { createElement: element }, useMemo: (fn: () => unknown) => fn(),
     useFunctionalities: () => ({ data: [functionality] }),
@@ -65,7 +65,7 @@ test('Estado del Proyecto generado usa los casos y el historial del sprint, no s
 
 async function renderRunnerReport(query: Record<string, unknown>) {
   const element = (type: unknown, props: any, ...children: any[]) => ({ type, props: props || {}, children });
-  const primitives = Object.fromEntries(['Card', 'Col', 'Row', 'Title', 'Text', 'Paragraph', 'Tag', 'Progress', 'Divider', 'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Bar', 'SafetyCertificateOutlined', 'ClockCircleOutlined', 'BugOutlined', 'TechnicalReportAnalysisCard'].map(name => [name, name]));
+  const primitives = Object.fromEntries(['Card', 'Col', 'Row', 'Title', 'Text', 'Paragraph', 'Tag', 'Progress', 'Divider', 'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Bar', 'SafetyCertificateOutlined', 'ClockCircleOutlined', 'BugOutlined', 'TechnicalReportAnalysisCard', 'AutomationModuleCoverage'].map(name => [name, name]));
   let requested = false;
   const { ProjectStatusReport } = await reportsCalculations({
     ...primitives, React: { createElement: element }, useMemo: (fn: () => unknown) => fn(),

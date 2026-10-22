@@ -37,6 +37,8 @@ type ReportAutomationOptions = { sprint?: string | null; runs?: TestRun[]; histo
 const sprintKey = (value?: string | null) => (value || '').trim().toLowerCase().replace(/^sprint\s*/i, '');
 
 export function reportAutomationPortfolio(functionalities: Functionality[], testCases: TestCase[], options: ReportAutomationOptions = {}) {
+  const projectFunctionalities = reportIdentityMap(functionalities);
+  const executionCases = testCases.filter(item => projectFunctionalities.has(item.functionalityId));
   const scopedFunctionalities = options.sprint
     ? functionalities.filter(item => sprintKey(item.sprint) === sprintKey(options.sprint)) : functionalities;
   const identities = reportIdentityMap(scopedFunctionalities);
@@ -62,7 +64,8 @@ export function reportAutomationPortfolio(functionalities: Functionality[], test
   });
   // Never infer execution provenance from a case's coverage flag or a manual run result.
   // A sprint needs persisted automation provenance linked to the exact finalized run and case.
-  const casesById = reportIdentityMap(testCases);
+  // Execution provenance belongs to the run's sprint, not the functionality's delivery sprint.
+  const casesById = reportIdentityMap(options.sprint ? executionCases : testCases);
   const runsById = reportIdentityMap((options.runs || []).filter(item =>
     item.status === ExecutionStatus.FINAL && [TestType.SMOKE, TestType.REGRESSION].includes(item.testType) &&
     (!options.sprint || sprintKey(item.sprint) === sprintKey(options.sprint)),
