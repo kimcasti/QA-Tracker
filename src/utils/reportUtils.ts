@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { stripHtmlToText } from './evidenceRichText';
 import { normalizePdfEvidenceBody } from './pdfEvidenceText';
-import { pdfReportParagraphs, TestRunPdfLayout } from './testRunPdfLayout';
+import { pdfReportBlocks, pdfReportParagraphs, TestRunPdfLayout } from './testRunPdfLayout';
 import {
   PublicUatSessionSummary,
   RegressionCycle,
@@ -782,9 +782,9 @@ export const buildTestRunPdf = async ({
       `Módulo: ${result.moduleName || functionality?.module || 'N/A'} | Funcionalidad: ${result.functionalityName || functionality?.name || 'N/A'}`,
       result.result,
     );
-    layout.section('Precondiciones', pdfReportParagraphs(testCase?.preconditions));
-    layout.section('Pasos de prueba', pdfReportParagraphs(testCase?.testSteps, true));
-    layout.section('Resultado esperado', pdfReportParagraphs(result.expectedResult || testCase?.expectedResult));
+    await layout.richSection('Precondiciones', pdfReportBlocks(testCase?.preconditions));
+    await layout.richSection('Pasos de prueba', pdfReportBlocks(testCase?.testSteps, true));
+    await layout.richSection('Resultado esperado', pdfReportBlocks(result.expectedResult || testCase?.expectedResult));
 
     const parsedNotes = parsePdfEvidenceNotesForExport(result.notes || '');
     if (parsedNotes.icon || parsedNotes.text) {

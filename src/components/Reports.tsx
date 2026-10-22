@@ -81,9 +81,10 @@ import {
   type TechnicalReportAnalysisInput,
 } from '../services/geminiService';
 import { exportDeliveryUnitProgressToDocx } from '../utils/reportUtils';
+import { reportRunAutomationMetrics, reportAutomationPortfolio, reportEntityAliases, reportIdentityMap } from '../utils/reportAutomationMetrics';
+import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
+import { useReportAutomationJobs } from '../modules/automation/hooks/useReportAutomationJobs';
 import {
-  AutomationResultStatus,
-  AutomationTool,
   BugStatus,
   DeliveryUnit,
   DeliveryUnitType,
@@ -91,12 +92,10 @@ import {
   ExecutionStatus,
   Functionality,
   RiskLevel,
-  TestCase,
   TestRun,
   TestResult,
   TestType,
   TestStatus,
-  isAutomatedCoverageStatus,
 } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -234,157 +233,8 @@ const getTestRunSummary = (testRun?: TestRun | null) => {
   };
 };
 
-const getTestRunAutomationMetrics = (
-  testRun: TestRun | null,
-  testCaseMap: Map<
-    string,
-    Pick<
-      TestCase,
-      | 'isAutomated'
-      | 'automationStatus'
-      | 'automationTool'
-      | 'lastAutomationStatus'
-      | 'lastAutomationRunAt'
-    >
-  >,
-) => {
-  const totalTests = testRun?.results.length || 0;
-  const relatedTestCases =
-    testRun?.results
-      .map(result => testCaseMap.get(result.testCaseId))
-      .filter((item): item is NonNullable<typeof item> => Boolean(item)) || [];
-  const automatedCount = relatedTestCases.filter(
-    testCase =>
-      isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
-  ).length;
-  const leadingAutomationTool =
-    [
-      ...relatedTestCases
-        .reduce<Map<AutomationTool, number>>((acc, testCase) => {
-          if (testCase.automationTool) {
-            acc.set(testCase.automationTool, (acc.get(testCase.automationTool) || 0) + 1);
-          }
-          return acc;
-        }, new Map())
-        .entries(),
-    ].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
-  const latestAutomationResult =
-    [...relatedTestCases]
-      .filter(testCase => testCase.lastAutomationStatus)
-      .sort(
-        (left, right) =>
-          new Date(right.lastAutomationRunAt || 0).getTime() -
-          new Date(left.lastAutomationRunAt || 0).getTime(),
-      )[0]?.lastAutomationStatus || null;
-
-  return {
-    automatedCount,
-    manualCount: Math.max(totalTests - automatedCount, 0),
-    automationRate: getPercent(automatedCount, totalTests),
-    leadingAutomationTool,
-    latestAutomationResult,
-  };
-};
-
-const getAutomationPortfolioMetrics = (
-  functionalities: Functionality[],
-  testCases: TestCase[],
-) => {
-  const moduleCoverage = Array.from(
-    functionalities.reduce<
-      Map<
-        string,
-        {
-          name: string;
-          totalCases: number;
-          automatedCases: number;
-        }
-      >
-    >((acc, functionality) => {
-      const moduleName = functionality.module || 'Sin modulo';
-      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
-      if (relatedCases.length === 0) return acc;
-
-      const current = acc.get(moduleName) || {
-        name: moduleName,
-        totalCases: 0,
-        automatedCases: 0,
-      };
-
-      current.totalCases += relatedCases.length;
-      current.automatedCases += relatedCases.filter(testCase =>
-        isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
-      ).length;
-
-      acc.set(moduleName, current);
-      return acc;
-    }, new Map()),
-  )
-    .map(([, value]) => ({
-      ...value,
-      coverage: getPercent(value.automatedCases, value.totalCases),
-    }))
-    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases);
-
-  const functionalityCoverage = functionalities
-    .map(functionality => {
-      const relatedCases = testCases.filter(testCase => testCase.functionalityId === functionality.id);
-      const automatedCases = relatedCases.filter(testCase =>
-        isAutomatedCoverageStatus(testCase.automationStatus || null) || Boolean(testCase.isAutomated),
-      ).length;
-
-      return {
-        id: functionality.id,
-        name: functionality.name,
-        totalCases: relatedCases.length,
-        automatedCases,
-        coverage: getPercent(automatedCases, relatedCases.length),
-      };
-    })
-    .filter(item => item.totalCases > 0)
-    .sort((left, right) => right.coverage - left.coverage || right.automatedCases - left.automatedCases);
-
-  const successByTool = Array.from(
-    testCases.reduce<
-      Map<
-        string,
-        {
-          tool: string;
-          total: number;
-          passed: number;
-        }
-      >
-    >((acc, testCase) => {
-      if (!testCase.automationTool || !testCase.lastAutomationStatus) return acc;
-      if (testCase.lastAutomationStatus === AutomationResultStatus.UNKNOWN) return acc;
-
-      const current = acc.get(testCase.automationTool) || {
-        tool: testCase.automationTool,
-        total: 0,
-        passed: 0,
-      };
-
-      current.total += 1;
-      if (testCase.lastAutomationStatus === AutomationResultStatus.PASSED) {
-        current.passed += 1;
-      }
-
-      acc.set(testCase.automationTool, current);
-      return acc;
-    }, new Map()),
-  )
-    .map(([, value]) => ({
-      ...value,
-      successRate: getPercent(value.passed, value.total),
-    }))
-    .sort((left, right) => right.successRate - left.successRate || right.total - left.total);
-
-  return {
-    moduleCoverage,
-    functionalityCoverage,
-    successByTool,
-  };
-};
+const getTestRunAutomationMetrics = reportRunAutomationMetrics;
+const getAutomationPortfolioMetrics = reportAutomationPortfolio;
 
 const getDeliveryUnitStatusTag = (status?: string) => {
   const value = String(status || '').toLowerCase();
@@ -1386,13 +1236,13 @@ const QAStatusSummary: React.FC<{
         <Col span={6}>
           <Card className="rounded-2xl border-slate-100 bg-slate-50/50">
             <Statistic
-              title="Ejecución automatizada"
+              title="Cobertura automatizada de casos"
               value={automationRate}
               suffix="%"
               valueStyle={{ color: '#2563eb', fontWeight: 800 }}
             />
             <Text type="secondary" className="text-xs">
-              {automatedCount} automatizadas / {manualCount} manuales
+              {automatedCount} con cobertura automática / {manualCount} sin cobertura automática
             </Text>
           </Card>
         </Col>
@@ -1859,7 +1709,7 @@ const QAProgressReport: React.FC<{
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <Text strong>Promedio automatizado</Text>
+                  <Text strong>Cobertura automatizada promedio</Text>
                   <Text>{evolutionMetrics.averageAutomationRate}%</Text>
                 </div>
                 <Progress percent={evolutionMetrics.averageAutomationRate} strokeColor="#2563eb" />
@@ -1939,30 +1789,23 @@ const ProjectStatusReport: React.FC<{
   const { data: functionalities = [] } = useFunctionalities(projectId);
   const { data: testCases = [] } = useTestCases(projectId);
   const { data: bugs = [] } = useBugs(projectId);
-  const { data: testRuns = [] } = useTestRuns(projectId);
+  const { data: testRuns = [], isLoading: testRunsLoading, isError: testRunsError } = useTestRuns(projectId);
 
+  const { data: automationHistories = [], isLoading: historiesLoading, isError: historiesError } = useAutomationImportHistories(projectId);
+  const automationJobs = useReportAutomationJobs(projectId, testRuns, sprint);
   const selectedSprintKey = normalizeSprintKey(sprint);
-  const filteredFunctionalities = useMemo(
-    () =>
-      sprint
-        ? functionalities.filter(item => normalizeSprintKey(item.sprint) === selectedSprintKey)
-        : functionalities,
-    [functionalities, selectedSprintKey, sprint],
+  const automationPortfolio = useMemo(
+    () => getAutomationPortfolioMetrics(functionalities, testCases, { sprint, runs: testRuns, histories: automationHistories, jobs: automationJobs.data || [] }),
+    [functionalities, testCases, sprint, testRuns, automationHistories, automationJobs.data],
   );
-
+  const filteredFunctionalities = automationPortfolio.scopedFunctionalities;
+  const filteredTestCases = automationPortfolio.scopedTestCases;
   const functionalityIds = useMemo(
-    () => new Set(filteredFunctionalities.map(item => item.id)),
+    () => new Set(filteredFunctionalities.flatMap(reportEntityAliases)),
     [filteredFunctionalities],
   );
-
-  const filteredTestCases = useMemo(
-    () =>
-      sprint ? testCases.filter(item => functionalityIds.has(item.functionalityId)) : testCases,
-    [functionalityIds, sprint, testCases],
-  );
-
   const filteredTestCaseMap = useMemo(
-    () => new Map(filteredTestCases.map(testCase => [testCase.id, testCase])),
+    () => reportIdentityMap(filteredTestCases),
     [filteredTestCases],
   );
 
@@ -2012,10 +1855,6 @@ const ProjectStatusReport: React.FC<{
     const regression = filteredFunctionalities.filter(item => item.isRegression).length;
     const smoke = filteredFunctionalities.filter(item => item.isSmoke).length;
     const riskTone = getProjectRiskTone(activeBugs.length, highRisk, averagePassRate);
-    const automationPortfolio = getAutomationPortfolioMetrics(
-      filteredFunctionalities,
-      filteredTestCases,
-    );
 
     return {
       total: filteredFunctionalities.length,
@@ -2037,7 +1876,7 @@ const ProjectStatusReport: React.FC<{
       smoke,
       automationPortfolio,
     };
-  }, [bugs, filteredFunctionalities, filteredRuns, filteredTestCaseMap, filteredTestCases, functionalityIds, selectedSprintKey, sprint]);
+  }, [automationPortfolio, bugs, filteredFunctionalities, filteredRuns, filteredTestCaseMap, filteredTestCases, functionalityIds, selectedSprintKey, sprint]);
 
   const barData = [
     { name: 'Total', value: stats.total, fill: '#3b82f6' },
@@ -2241,7 +2080,7 @@ const ProjectStatusReport: React.FC<{
                   <Text strong>{stats.averagePassRate}%</Text>
                 </div>
                 <div className="flex justify-between">
-                  <Text type="secondary">Promedio automatizado:</Text>
+                  <Text type="secondary">Cobertura automatizada promedio:</Text>
                   <Text strong>{stats.averageAutomationRate}%</Text>
                 </div>
                 <div className="flex justify-between">
@@ -2304,11 +2143,18 @@ const ProjectStatusReport: React.FC<{
         </div>
       </Card>
 
-      <Card title="Metricas de automatizacion" className="rounded-2xl border-slate-100">
+      <Card title="Métricas de automatización" className="rounded-2xl border-slate-100">
+        <Paragraph type="secondary" className="text-sm">
+          La cobertura refleja el estado actual de los casos, no el modo de ejecución.
+          {sprint
+            ? ' La aprobación usa el último resultado automático importado o publicado por el ejecutor, por caso y herramienta, vinculado a una ejecución finalizada del sprint.'
+            : ' La aprobación usa el último resultado automático registrado por caso y herramienta.'}
+          {' '}Solo cuentan resultados aprobados o fallidos; las pruebas omitidas o sin datos no se consideran fallos.
+        </Paragraph>
         <Row gutter={[20, 20]}>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Cobertura por modulo</Text>
+              <Text strong>Cobertura por módulo</Text>
               <div className="mt-4 space-y-3">
                 {stats.automationPortfolio.moduleCoverage.slice(0, 5).length > 0 ? (
                   stats.automationPortfolio.moduleCoverage.slice(0, 5).map(item => (
@@ -2321,7 +2167,7 @@ const ProjectStatusReport: React.FC<{
                     </div>
                   ))
                 ) : (
-                  <Text type="secondary">Sin cobertura automatizada registrada por modulo.</Text>
+                  <Text type="secondary">Sin casos vinculados a módulos dentro del alcance.</Text>
                 )}
               </div>
             </div>
@@ -2348,20 +2194,25 @@ const ProjectStatusReport: React.FC<{
           </Col>
           <Col xs={24} lg={8}>
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4 h-full">
-              <Text strong>Tasa de aprobacion por herramienta</Text>
+              <Text strong>Tasa de aprobación por herramienta</Text>
               <div className="mt-4 space-y-3">
-                {stats.automationPortfolio.successByTool.length > 0 ? (
+                {automationJobs.isError || historiesError || testRunsError ? (
+                  <Text type="danger">No se pudieron cargar los resultados automáticos. La tasa de aprobación no está disponible; vuelve a generar el reporte.</Text>
+                ) : automationJobs.isLoading || historiesLoading || testRunsLoading ? (
+                  <Text type="secondary">Cargando resultados automáticos…</Text>
+                ) : stats.automationPortfolio.successByTool.length > 0 ? (
                   stats.automationPortfolio.successByTool.map(item => (
                     <div key={item.tool}>
                       <div className="flex justify-between gap-3 text-sm">
                         <Text>{item.tool}</Text>
-                        <Text strong>{item.successRate}%</Text>
+                        <Text strong>{item.successRate === null ? 'Sin resultados' : `${item.successRate}%`}</Text>
                       </div>
-                      <Progress percent={item.successRate} showInfo={false} strokeColor="#10b981" />
+                      {item.successRate !== null && <Progress percent={item.successRate} showInfo={false} strokeColor="#10b981" />}
+                      <Text type="secondary" className="text-xs">{item.passed}/{item.total} resultados automáticos concluyentes</Text>
                     </div>
                   ))
                 ) : (
-                  <Text type="secondary">Sin resultados automaticos suficientes por herramienta.</Text>
+                  <Text type="secondary">Sin resultados automáticos con herramienta dentro del alcance.</Text>
                 )}
               </div>
             </div>

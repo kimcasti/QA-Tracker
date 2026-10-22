@@ -1,23 +1,32 @@
 import { jsPDF } from 'jspdf';
 import { normalizePdfEvidenceBody } from './pdfEvidenceText';
 
-/** Decode editor markup without dropping paragraphs surrounding lists. */
-export function pdfReportParagraphs(value?: string | null, numbered = false): string[] {
+import { loadPdfInlineImage, validatePdfImageDimensions } from './pdfInlineImage';
+
+export type PdfReportBlock = { kind: 'text'; text: string } | { kind: 'image'; source: string; alt: string };
+
+/** Preserve editor image positions in the same flow as paragraphs and lists. */
+export function pdfReportBlocks(value?: string | null, numbered = false): PdfReportBlock[] {
   const raw = String(value || '').trim();
-  if (!raw) return ['Sin información registrada.'];
-  const paragraphs: string[] = [];
-  if (/<\/?(?:p|div|ol|ul|li|br|strong|span|b|em)\b/i.test(raw)) {
-    const root = document.createElement('div');
-    root.innerHTML = raw;
+  if (!raw) return [{ kind: 'text', text: 'Sin información registrada.' }];
+  const blocks: PdfReportBlock[] = [];
+  if (/<\/?(?:p|div|ol|ul|li|br|strong|span|b|em|img)\b/i.test(raw)) {
+    // An inert document avoids requesting editor image URLs before validation.
+    const root = new DOMParser().parseFromString(raw, 'text/html').body;
     let buffer = '';
     const flush = () => {
-      if (buffer.trim()) paragraphs.push(buffer.trim());
+      if (buffer.trim()) blocks.push({ kind: 'text', text: buffer.trim() });
       buffer = '';
     };
     const visit = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) { buffer += node.textContent || ''; return; }
       if (!(node instanceof HTMLElement)) return;
-      if (['SCRIPT', 'STYLE', 'IMG'].includes(node.tagName)) return;
+      if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE'].includes(node.tagName)) return;
+      if (node.tagName === 'IMG') {
+        flush();
+        blocks.push({ kind: 'image', source: node.getAttribute('src') || '', alt: node.getAttribute('alt') || '' });
+        return;
+      }
       if (node.tagName === 'BR') { flush(); return; }
       const block = ['P', 'DIV', 'OL', 'UL', 'LI'].includes(node.tagName);
       // TipTap wraps each list item's text in a paragraph. Keep its marker
@@ -36,12 +45,17 @@ export function pdfReportParagraphs(value?: string | null, numbered = false): st
   } else {
     const decoder = document.createElement('textarea');
     decoder.innerHTML = raw;
-    paragraphs.push(...decoder.value.split(/\r?\n/).filter(line => line.trim()));
+    blocks.push(...decoder.value.split(/\r?\n/).filter(line => line.trim()).map(text => ({ kind: 'text' as const, text })));
   }
-  return paragraphs.map(text => normalizePdfEvidenceBody(text
+  return blocks.map(block => block.kind === 'image' ? block : { kind: 'text' as const, text: normalizePdfEvidenceBody(block.text
     .replace(/\u2260/g, ' != ').replace(/\u2264/g, ' <= ').replace(/\u2265/g, ' >= ')
-    .replace(/[\u2192\u2794]/g, ' -> ').replace(/\u2190/g, ' <- ')))
-    .filter(Boolean);
+    .replace(/[\u2192\u2794]/g, ' -> ').replace(/\u2190/g, ' <- ')) })
+    .filter(block => block.kind === 'image' || Boolean(block.text));
+}
+
+/** Backward-compatible text-only API for other report consumers. */
+export function pdfReportParagraphs(value?: string | null, numbered = false): string[] {
+  return pdfReportBlocks(value, numbered).flatMap(block => block.kind === 'text' ? [block.text] : []);
 }
 
 /** All coordinates use the same explicit line height, including page checks. */
@@ -119,6 +133,42 @@ export class TestRunPdfLayout {
       this.text(paragraph, 10.5, false, 2);
       this.y += 1.2;
     }
+  }
+  /** Images remain atomic; scale to one content page, never into the footer. */
+  async richSection(label: string, blocks: PdfReportBlock[]) {
+    let headingPending = true;
+    for (const block of blocks) {
+      if (block.kind === 'text') {
+        if (headingPending) { this.section(label, [block.text]); headingPending = false; }
+        else { this.text(block.text, 10.5, false, 2); this.y += 1.2; }
+        continue;
+      }
+      try {
+        const data = await loadPdfInlineImage(block.source);
+        const dimensions = this.pdf.getImageProperties(data);
+        validatePdfImageDimensions(dimensions.width, dimensions.height);
+        // Reserve enough room for continuation headings and section labels.
+        const scale = Math.min((this.width - 4) / dimensions.width, (this.bottom - 70) / dimensions.height, 25.4 / 96);
+        const height = dimensions.height * scale;
+        this.ensure(height + (headingPending ? 16 : 4));
+        if (headingPending) { this.section(label, []); headingPending = false; }
+        // ensure() may draw a multi-line case continuation. Fit once more to
+        // its actual remaining space, not an assumed fixed heading height.
+        const fittedScale = Math.min(scale, (this.bottom - this.y - 4) / dimensions.height);
+        if (fittedScale <= 0) throw new Error('PDF_IMAGE_NO_PAGE_SPACE');
+        const fittedWidth = dimensions.width * fittedScale;
+        const fittedHeight = dimensions.height * fittedScale;
+        this.pdf.addImage(data, dimensions.fileType, this.margin + (this.width - fittedWidth) / 2, this.y, fittedWidth, fittedHeight);
+        this.y += fittedHeight + 4;
+      } catch {
+        // Do not expose signed URLs/base64 payloads. A visible, searchable
+        // placeholder makes incomplete exports explicit, without losing text.
+        const warning = '[Imagen no disponible: origen no permitido, datos inválidos o carga/CORS fallida.]';
+        if (headingPending) { this.section(label, [warning]); headingPending = false; }
+        else { this.text(warning, 10.5, false, 2); this.y += 1.2; }
+      }
+    }
+    if (headingPending) this.section(label, []);
   }
   finish() {
     const count = this.pdf.getNumberOfPages();

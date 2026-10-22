@@ -1,3 +1,4 @@
+import { ProjectExternalContacts } from './about/ProjectExternalContacts';
 import VoiceTextArea from './VoiceTextArea';
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -597,7 +598,6 @@ function MetricPill({
   className?: string;
 }) {
   const compactLabelLength = label.replace(/\s+/g, '').length;
-  const isSingleWord = !/\s/.test(label.trim());
 
   const labelStyle: React.CSSProperties =
     compactLabelLength >= 15
@@ -610,15 +610,14 @@ function MetricPill({
     <div
       className={`rounded-[22px] border px-4 py-3 ${className}`.trim()}
       style={{
+        minWidth: 0,
         borderColor: softSurface(accent),
         background: `linear-gradient(135deg, ${softSurface(accent)} 0%, rgba(255,255,255,0.96) 100%)`,
       }}
     >
       <Text
-        className={`block min-h-[2.4em] font-bold uppercase text-slate-400 ${
-          isSingleWord ? 'whitespace-nowrap' : 'whitespace-normal'
-        }`}
-        style={labelStyle}
+        className="block min-h-[2.4em] font-bold uppercase text-slate-400"
+        style={{ ...labelStyle, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
       >
         {label}
       </Text>
@@ -1864,6 +1863,7 @@ export default function AboutView({ project }: AboutViewProps) {
                     icon={<TeamOutlined className="text-2xl" />}
                     accent={qaPalette.functionalityStatus.completed}
                   >
+                    <Text strong className="mb-2 block">Miembros con cuenta</Text>
                     <Text className="mb-3 block text-slate-400">
                       {projectAccessMembers.length} miembros con acceso a este proyecto
                     </Text>
@@ -1886,6 +1886,17 @@ export default function AboutView({ project }: AboutViewProps) {
                     <Text className="mt-5 block text-slate-400">
                       {stats.participants} participantes base asociados al proyecto
                     </Text>
+                    <ProjectExternalContacts
+                      key={`${activeMembership?.organization?.documentId || ''}:${project.documentId || ''}`}
+                      scope={{
+                        organizationDocumentId: activeMembership?.organization?.documentId || '',
+                        projectDocumentId: project.documentId || '',
+                        roleCode: activeMembership?.role?.code || '',
+                        // Workspace exposes only active memberships, not a status field.
+                        membershipStatus: activeMembership?.documentId && activeMembership.organization?.status !== 'inactive'
+                          ? 'active' : 'inactive',
+                      }}
+                    />
                   </SurfaceCard>
                 </Col>
 
@@ -1990,10 +2001,10 @@ export default function AboutView({ project }: AboutViewProps) {
                 </Text>
 
                 <Row gutter={[12, 12]} className="mb-4">
-                  <Col span={12}>
+                  <Col flex="1 0 144px">
                     <MetricPill label="Minutas" value={stats.notes} accent={qaPalette.primary} />
                   </Col>
-                  <Col span={12}>
+                  <Col flex="1 0 144px">
                     <MetricPill
                       label="Participantes"
                       value={stats.participants}

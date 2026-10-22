@@ -39,8 +39,11 @@ export async function markManualCasesAsCandidates(projectId: string, functionali
   });
 }
 
-function automationStatusFromApi(value?: string) {
+function automationStatusFromApi(value?: string | null) {
   switch (value) {
+    case undefined:
+    case null:
+      return undefined;
     case 'candidate':
       return AutomationStatus.CANDIDATE;
     case 'automated':

@@ -27,7 +27,7 @@ export async function createExternalParticipant(input: {
 }
 
 export async function getExternalParticipants(sourceProjectDocumentId?: string) {
-  const documents = await listDocuments<ExternalParticipantRecord>('/api/external-participants');
+  const documents = await listDocuments<ExternalParticipantRecord>('/api/external-participants', undefined, { paginateAll: false });
 
   return sourceProjectDocumentId
     ? documents.filter(
