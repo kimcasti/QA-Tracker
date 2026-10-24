@@ -1,0 +1,153 @@
+// Offline real forms, synthetic hook state; no listener, dotenv or backend.
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import { chromium, expect } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+const scratch = process.env.QA_SECURITY_SCRATCH;
+assert.ok(scratch && !resolve(scratch).toLowerCase().startsWith(resolve('.').toLowerCase()));
+await mkdir(scratch, {recursive:true});
+const tools = process.env.QA_CASE_TYPES_ONLY !== '1';
+const results = [], blocked = [], errors = [];
+const bundle = await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`
+import React from 'react'; import {createRoot} from 'react-dom/client';
+import {ConfigProvider} from 'antd';
+import TestCaseManagement from './src/components/TestCaseManagement';
+import Settings from './src/components/Settings';
+import './src/i18n/i18n';
+const root=createRoot(document.getElementById('root')); let revision=0;
+const historic={id:'historic-case',projectId:'P',functionalityId:'F',title:'Synthetic historic case',testType:'Smoke',priority:'Media',testSteps:'<p>Step</p>',expectedResult:'<p>Expected</p>',automationStatus:'Automatizada',isAutomated:true,automationTool:'Cypress',automationReference:'synthetic.spec.ts'};
+window.fixture={cases:[historic,...['Candidata','Obsoleta','No automatizado'].map((status,i)=>({...historic,id:'other-'+i,title:'Synthetic '+status,automationStatus:status,automationTool:['k6','Postman','Playwright'][i],lastAutomationStatus:['Fallida','Aprobada','Omitida'][i],sortOrder:i+1}))],templates:[{...historic,id:'historic-template',name:'Synthetic historic template',moduleId:'M',moduleName:'Synthetic module'}]};
+window.mount=(settings=false)=>{window.writes=[];root.render(<ConfigProvider key={++revision} theme={{token:{motion:false}}}>{settings?<Settings projectId="P"/>:<TestCaseManagement projectId="P" functionalityId="F" functionalityName="Synthetic functionality" moduleName="Synthetic module"/>}</ConfigProvider>)};
+`},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',logLevel:'silent',
+  define:{'import.meta.env':JSON.stringify({VITE_API_URL:'https://case-authoring.invalid',DEV:false})},
+  plugins:[{name:'synthetic-state',setup(b){
+    b.onLoad({filter:/[\\/]hooks[\\/]useTestCases\.ts$/},()=>({loader:'ts',contents:`export function useTestCases(){return {data:window.fixture.cases,refetch:async()=>{},save:(v,o)=>{window.writes.push(v);o?.onSuccess?.()},reorder:async()=>{},saveManyWithSingleRefresh:async v=>window.writes.push(...v),savePastedCases:async()=>{},delete:()=>{}}}`}));
+    b.onLoad({filter:/[\\/]hooks[\\/]useTestCaseTemplates\.ts$/},()=>({loader:'ts',contents:`export function useTestCaseTemplates(){return {data:window.fixture.templates,save:async v=>window.writes.push(v),delete:async()=>{}}}`}));
+    b.onLoad({filter:/[\\/]hooks[\\/]useWorkspaceAccess\.ts$/},()=>({loader:'ts',contents:`export function useWorkspaceAccess(){return {isViewer:false,projectQuota:{aiUsage:{canUse:true},plan:'growth'}}}`}));
+    b.onLoad({filter:/[\\/]hooks[\\/]use(Modules|Roles|Sprints|DeliveryUnits|DeliveryActivityTemplates|ProjectProposals)\.ts$/},args=>({loader:'ts',contents:`export function ${args.path.match(/(use\w+)\.ts$/)[1]}(){return {data:${args.path.endsWith('useModules.ts')?`[{id:'M',name:'Synthetic module'}]`:'[]'},save:async()=>{},delete:async()=>{}}}`}));
+    b.onLoad({filter:/[\\/]services[\\/]geminiService\.ts$/},()=>({loader:'ts',contents:`export async function generateTestCasesWithAI(){return [{title:'Synthetic AI',testType:'Regresión'}]}`}));
+  }}]});
+const browser=await chromium.launch({channel:'msedge',headless:true});
+try {
+  const page=await browser.newPage({viewport:{width:1280,height:1000},reducedMotion:'reduce'});
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/*',route=>{
+    if(route.request().isNavigationRequest()&&route.request().url()==='https://case-authoring.invalid/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><div id="root"></div>'});
+    blocked.push(route.request().url());return route.abort();
+  });
+  await page.goto('https://case-authoring.invalid/');
+  await page.addScriptTag({content:bundle.outputFiles[0].text});
+  const mount=async(settings=false)=>page.evaluate(x=>window.mount(x),settings);
+  const field=name=>page.locator('.ant-form-item').filter({has:page.locator('label').filter({hasText:new RegExp(`^${name}$`)})});
+  const options=async(name)=>{const control=field(name).getByRole('combobox');await field(name).locator('.ant-select').click();const listId=await control.getAttribute('aria-controls');const visible=page.locator(`[id="${listId}"]`).locator('xpath=ancestor::div[contains(@class,"ant-select-dropdown")][1]').locator('.ant-select-item-option-content');await expect(visible.first()).toBeVisible();const labels=await visible.allTextContents();await control.press('Escape');await page.waitForTimeout(350);return labels;};
+  const choose=async(name,label)=>{await field(name).locator('.ant-select').click();const id=await field(name).getByRole('combobox').getAttribute('aria-controls');await page.locator(`[id="${id}"]`).locator('xpath=ancestor::div[contains(@class,"ant-select-dropdown")][1]').locator('.ant-select-item-option-content').getByText(label,{exact:true}).click();};
+  await mount();
+  await expect(page.getByText('Resultado: Todos',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('Herramienta: Todas',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('Estado: Todos',{exact:true})).toBeVisible();
+  await expect(page.getByRole('combobox')).toHaveCount(1);
+  const caseRows=page.locator('tr[data-row-key]');
+  await expect(caseRows).toHaveCount(4);
+  await page.getByRole('combobox').click();
+  const statusList=await page.getByRole('combobox').getAttribute('aria-controls');
+  await page.locator(`[id="${statusList}"]`).locator('xpath=ancestor::div[contains(@class,"ant-select-dropdown")][1]').getByText('Estado: Manuales',{exact:true}).click();
+  await expect(caseRows).toHaveCount(1);
+  await expect(page.locator('tr[data-row-key="other-2"]')).toBeVisible();
+  await page.getByRole('button',{name:'Limpiar filtros',exact:true}).click();
+  await expect(caseRows).toHaveCount(4);
+  for(const [label,id] of [['Automatizados','historic-case'],['Candidatos','other-0'],['Obsoletos','other-1']]) {
+    await page.getByRole('button',{name:new RegExp(label)}).click();
+    await expect(caseRows).toHaveCount(1);
+    await expect(page.locator(`tr[data-row-key="${id}"]`)).toBeVisible();
+  }
+  await page.getByRole('button',{name:/Todos/}).click();
+  await expect(caseRows).toHaveCount(4);
+  await page.getByPlaceholder('Buscar caso de prueba').fill('No automatizado');
+  await expect(caseRows).toHaveCount(1);
+  await page.getByRole('button',{name:'Limpiar filtros',exact:true}).click();
+  await expect(caseRows).toHaveCount(4);
+  await expect(page.getByPlaceholder('Buscar caso de prueba')).toHaveValue('');
+  await expect(page.getByRole('button',{name:'Limpiar filtros',exact:true})).toBeDisabled();
+  results.push('toolbar removes result/tool only; search, Estado, all quick filters and Clear retained without hidden tool/result filtering');
+  await page.getByRole('button',{name:/Generar con IA/}).click();
+  await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+  assert.equal(await page.evaluate(()=>window.writes[0].testType),'Funcional','historic AI output must normalize on client creation');
+  results.push('AI creation normalizes historic provider output offline');
+  await mount();await page.getByRole('button',{name:/Nuevo caso de prueba/}).click();
+  assert.deepEqual(await options('Tipo de Prueba'),['Funcional','UAT']);
+  results.push('new case picker only Funcional/UAT');
+  if(tools) {
+    await choose('Plantilla','Synthetic historic template');
+    await expect(field('Tipo de Prueba').locator('.ant-select')).toContainText('Funcional');
+    assert.deepEqual(await options('Herramienta'),['Playwright']);
+    await expect(field('Herramienta').locator('.ant-select')).toContainText('Selecciona la herramienta');
+    await expect(field('Herramienta').locator('.ant-select')).not.toContainText('Cypress');
+    await field('Título').locator('input').fill('Synthetic new case');
+    await page.getByRole('button',{name:'Crear',exact:true}).click();
+    await expect(field('Herramienta')).toContainText('Selecciona Playwright');
+    assert.equal(await page.evaluate(()=>window.writes.length),0);
+    await choose('Herramienta','Playwright');
+    await page.getByRole('button',{name:'Crear',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+    assert.equal(await page.evaluate(()=>window.writes[0].testType),'Funcional');
+    assert.equal(await page.evaluate(()=>window.writes[0].automationTool),'Playwright');
+    results.push('historic template applied to NEW case normalizes type, clears Cypress, and requires active tool choice');
+    await mount();
+  } else await page.getByRole('button',{name:'Volver a los casos'}).click();
+  await page.locator('tr[data-row-key="historic-case"]').getByRole('button').filter({has:page.locator('.anticon-edit')}).click();
+  assert.deepEqual(await options('Tipo de Prueba'),['Funcional','UAT','Smoke (histórico)']);
+  if(tools) assert.deepEqual(await options('Herramienta'),['Playwright','Cypress (histórico)']);
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+  assert.equal(await page.evaluate(()=>window.writes[0].testType),'Smoke');
+  if(tools)assert.equal(await page.evaluate(()=>window.writes[0].automationTool),'Cypress');
+  results.push('unrelated edit preserves original historic values');
+  await mount(true);await page.locator('.ant-select').first().click();await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({hasText:'Plantillas'}).click();
+  await page.getByRole('button',{name:/Nueva plantilla/i}).click();
+  assert.deepEqual(await options('Tipo de prueba'),['Funcional','UAT']);
+  if(tools)assert.deepEqual(await options('Herramienta'),['Playwright']);
+  results.push('Settings new template picker uses authoring policy');
+  await page.getByRole('button',{name:'Cancelar',exact:true}).click();
+  await page.locator('tr[data-row-key="historic-template"]').getByRole('button').filter({has:page.locator('.anticon-edit')}).click();
+  assert.deepEqual(await options('Tipo de prueba'),['Funcional','UAT','Smoke (histórico)']);
+  if(tools)assert.deepEqual(await options('Herramienta'),['Playwright','Cypress (histórico)']);
+  results.push('Settings historic template labels legacy values');
+  if(tools) {
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+    assert.equal(await page.evaluate(()=>window.writes[0].automationTool),'Cypress');
+    await page.getByRole('button',{name:/Nueva plantilla/i}).click();
+    await field('Nombre de la plantilla').locator('input').fill('Synthetic new automated');
+    await choose('Módulo','Synthetic module');
+    await choose('Estado de automatizacion','Automatizada');
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect(field('Herramienta')).toContainText('Selecciona Playwright');
+    assert.equal(await page.evaluate(()=>window.writes.length),1,'automated template without active tool must not save');
+    await choose('Herramienta','Playwright');
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(2);
+    assert.equal(await page.evaluate(()=>window.writes[1].automationTool),'Playwright');
+    results.push('automated new template requires active Playwright choice; historic template save retains Cypress');
+  }
+  // Exercise actual Ant Form validation, not only extracted onFinish callbacks.
+  await page.evaluate(()=>{window.fixture.cases[0]={...window.fixture.cases[0],automationTool:undefined};window.fixture.templates[0]={...window.fixture.templates[0],automationTool:undefined};});
+  await mount();
+  await page.locator('tr[data-row-key="historic-case"]').getByRole('button').filter({has:page.locator('.anticon-edit')}).click();
+  await field('Título').locator('input').fill('Synthetic legacy without tool edited');
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+  assert.equal(await page.evaluate(()=>window.writes[0].automationTool),undefined);
+  assert.equal(await page.evaluate(()=>window.writes[0].automationStatus),'Automatizada');
+  await mount(true);await page.locator('.ant-select').first().click();await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({hasText:'Plantillas'}).click();
+  await page.locator('tr[data-row-key="historic-template"]').getByRole('button').filter({has:page.locator('.anticon-edit')}).click();
+  await field('Nombre de la plantilla').locator('input').fill('Synthetic legacy template without tool edited');
+  await page.getByRole('button',{name:'Guardar',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.writes.length)).toBe(1);
+  assert.equal(await page.evaluate(()=>window.writes[0].automationTool),undefined);
+  assert.equal(await page.evaluate(()=>window.writes[0].automationStatus),'Automatizada');
+  results.push('actual case/template Save preserves missing historic tool without reclassification');
+  assert.deepEqual(errors,[]);assert.deepEqual(blocked,[]);
+  console.log(JSON.stringify({results,blocked,errors},null,2));
+  await page.screenshot({path:join(scratch,'case-authoring-template.png'),fullPage:true});
+}finally{await browser.close();await writeFile(join(scratch,'case-authoring-ui-results.json'),JSON.stringify({results,blocked,errors},null,2));}

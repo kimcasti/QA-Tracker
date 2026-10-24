@@ -74,7 +74,8 @@ test('recognizes accents, case, both bold styles, inline and multiline values an
   );
   assert.equal(drafts[0].title, 'Caso');
   assert.equal(drafts[0].description, 'Primera\nSegunda\n\nTercera');
-  assert.equal(drafts[0].testType, TestType.INTEGRATION);
+  assert.equal(drafts[0].testType, TestType.FUNCTIONAL);
+  assert.match(drafts[0].warnings.join(' '), /histórico.*Funcional/);
   assert.equal(drafts[0].priority, Priority.HIGH);
   assert.equal(countSteps(drafts[0].testSteps), 2);
 });

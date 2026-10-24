@@ -41,10 +41,10 @@ import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
 import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTestCaseTemplates';
+import { caseTypeOptions, normalizeCaseType, caseToolOptions, validatedCaseTool } from '../modules/test-cases/utils/caseAuthoring';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
   AutomationStatus,
-  AutomationTool,
   AutomationType,
   DeliveryUnitStatus,
   DeliveryUnitType,
@@ -71,11 +71,9 @@ interface SettingsProps {
 type SettingsTabKey = 'sprints' | 'roles' | 'modules' | 'templates' | 'proposal' | 'integrations';
 type SettingsItem = Sprint | Role | Module | TestCaseTemplate | null;
 
-const templateTypeOptions = Object.values(TestType);
 const templatePriorityOptions = Object.values(Priority);
 const templateAutomationStatusOptions = Object.values(AutomationStatus);
 const templateAutomationTypeOptions = Object.values(AutomationType);
-const templateAutomationToolOptions = Object.values(AutomationTool);
 const deliveryUnitTypeOptions = Object.values(DeliveryUnitType);
 const deliveryUnitStatusOptions = Object.values(DeliveryUnitStatus);
 
@@ -291,6 +289,10 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
     if (activeTab === 'templates') {
       payload.automationStatus = values.automationStatus || AutomationStatus.NOT_AUTOMATED;
       payload.isAutomated = isAutomatedCoverageStatus(payload.automationStatus);
+      payload.testType = normalizeCaseType(values.testType, (editingItem as TestCaseTemplate | null)?.testType);
+      payload.automationTool = validatedCaseTool(values.automationTool, payload.automationStatus,
+        (editingItem as TestCaseTemplate | null)?.automationTool,
+        editingItem ? { originalAutomationStatus: deriveAutomationStatus(editingItem as TestCaseTemplate) } : undefined);
     }
 
     try {
@@ -1002,7 +1004,7 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
                 <Select placeholder="Selecciona un módulo" options={modules.map(module => ({ label: module.name, value: module.id }))} />
               </Form.Item>
               <Form.Item name="testType" label="Tipo de prueba" rules={[{ required: true, message: 'Campo requerido' }]}>
-                <Select options={templateTypeOptions.map(type => ({ label: type, value: type }))} />
+                <Select options={caseTypeOptions((editingItem as TestCaseTemplate | null)?.testType)} />
               </Form.Item>
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true, message: 'Campo requerido' }]}>
                 <Select options={templatePriorityOptions.map(priority => ({ label: priority, value: priority }))} />
@@ -1013,8 +1015,15 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
               <Form.Item name="automationType" label="Tipo de automatizacion">
                 <Select allowClear options={templateAutomationTypeOptions.map(type => ({ label: type, value: type }))} />
               </Form.Item>
-              <Form.Item name="automationTool" label="Herramienta">
-                <Select allowClear options={templateAutomationToolOptions.map(tool => ({ label: tool, value: tool }))} />
+              <Form.Item name="automationTool" label="Herramienta" dependencies={['automationStatus']}
+                rules={[({ getFieldValue }) => ({
+                  validator: async (_, value) => {
+                    validatedCaseTool(value, getFieldValue('automationStatus'),
+                      (editingItem as TestCaseTemplate | null)?.automationTool,
+                      editingItem ? { originalAutomationStatus: deriveAutomationStatus(editingItem as TestCaseTemplate) } : undefined);
+                  },
+                })]}>
+                <Select allowClear options={caseToolOptions((editingItem as TestCaseTemplate | null)?.automationTool)} />
               </Form.Item>
               <Form.Item name="automationOwner" label="Owner">
                 <Input placeholder="Ej: QA Automation Team" />

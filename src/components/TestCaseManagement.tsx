@@ -57,6 +57,7 @@ import { useTranslation } from 'react-i18next';
 import { toApiError } from '../config/http';
 import { labelPriority } from '../i18n/labels';
 import { useTestCases } from '../modules/test-cases/hooks/useTestCases';
+import { caseTypeOptions, normalizeCaseType, caseToolOptions, normalizeCaseTool, validatedCaseTool } from '../modules/test-cases/utils/caseAuthoring';
 import { downloadCasesText } from '../modules/test-cases/utils/exportCasesText';
 import { ExportAutomationReferencesButton } from '../modules/test-cases/components/ExportAutomationReferencesButton';
 import { BulkPasteCasesModal } from '../modules/test-cases/components/BulkPasteCasesModal';
@@ -296,10 +297,6 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   const [editingTestCase, setEditingTestCase] = useState<TestCase | null>(null);
   const [automationFilter, setAutomationFilter] =
     useState<(typeof automationFilterOptions)[number]['value']>('all');
-  const [automationResultFilter, setAutomationResultFilter] = useState<
-    AutomationResultStatus | 'all'
-  >('all');
-  const [automationToolFilter, setAutomationToolFilter] = useState<AutomationTool | 'all'>('all');
   const [testCaseSearch, setTestCaseSearch] = useState('');
   const [isAutomationSectionExpanded, setIsAutomationSectionExpanded] = useState(true);
   const [form] = Form.useForm();
@@ -423,26 +420,16 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 ? status === AutomationStatus.OBSOLETE
                 : status === AutomationStatus.NOT_AUTOMATED;
 
-      const matchesResult =
-        automationResultFilter === 'all'
-          ? true
-          : testCase.lastAutomationStatus === automationResultFilter;
-
-      const matchesTool =
-        automationToolFilter === 'all' ? true : testCase.automationTool === automationToolFilter;
-
       const matchesSearch =
         normalizedSearch.length === 0 ||
         [testCase.title, testCase.id, testCase.automationReference]
           .filter(Boolean)
           .some(value => String(value).toLocaleLowerCase().includes(normalizedSearch));
 
-      return matchesStatus && matchesResult && matchesTool && matchesSearch;
+      return matchesStatus && matchesSearch;
     });
   }, [
     automationFilter,
-    automationResultFilter,
-    automationToolFilter,
     testCaseSearch,
     visibleTestCases,
   ]);
@@ -533,6 +520,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       const nextSortOrder = visibleTestCases.length;
       const generatedTestCases: TestCase[] = generated.map((tc, index) => ({
         ...tc,
+        testType: normalizeCaseType(tc.testType),
+        automationTool: normalizeCaseTool(tc.automationTool),
         id: `TC-AI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         projectId,
         functionalityId,
@@ -621,12 +610,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       preconditions: template.preconditions,
       testSteps: template.testSteps,
       expectedResult: template.expectedResult,
-      testType: template.testType,
+      testType: normalizeCaseType(template.testType, editingTestCase?.testType),
       priority: template.priority,
       isAutomated: template.isAutomated,
       automationStatus: deriveAutomationStatus(template),
       automationType: template.automationType,
-      automationTool: template.automationTool,
+      automationTool: normalizeCaseTool(template.automationTool, editingTestCase?.automationTool),
       automationReference: template.automationReference,
       automationOwner: template.automationOwner,
     });
@@ -643,14 +632,23 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         ? Math.max(...visibleTestCases.map(testCase => getStableSortOrder(testCase))) + 1
         : 0;
     const automationStatus = mergedValues.automationStatus || AutomationStatus.NOT_AUTOMATED;
+    let automationTool: AutomationTool | undefined;
+    try {
+      automationTool = validatedCaseTool(mergedValues.automationTool, automationStatus, editingTestCase?.automationTool,
+        editingTestCase ? { originalAutomationStatus: deriveAutomationStatus(editingTestCase) } : undefined);
+    } catch (error) {
+      form.setFields([{ name: 'automationTool', errors: [(error as Error).message] }]);
+      return;
+    }
     const newTestCase: TestCase = {
       ...mergedValues,
+      testType: normalizeCaseType(mergedValues.testType, editingTestCase?.testType),
       id: editingTestCase?.id || `TC-${Date.now()}`,
       projectId,
       functionalityId,
       automationStatus,
       automationType: mergedValues.automationType,
-      automationTool: mergedValues.automationTool,
+      automationTool,
       automationReference: mergedValues.automationReference || '',
       automationOwner: mergedValues.automationOwner || '',
       lastAutomationStatus:
@@ -697,6 +695,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     const duplicatedTestCase: TestCase = {
       ...testCase,
       documentId: undefined,
+      testType: normalizeCaseType(testCase.testType),
+      automationTool: normalizeCaseTool(testCase.automationTool),
       id: `TC-${Date.now()}`,
       title: buildDuplicatedTestCaseTitle(
         testCase.title,
@@ -704,6 +704,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       ),
       sortOrder: nextSortOrder,
     };
+
+    if (deriveAutomationStatus(duplicatedTestCase) === AutomationStatus.AUTOMATED && !duplicatedTestCase.automationTool) {
+      openCaseForm();
+      form.setFieldsValue(duplicatedTestCase);
+      return;
+    }
 
     save(duplicatedTestCase, {
       onSuccess: () => {
@@ -1168,7 +1174,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
             children: (
               <>
                 <div className="mb-5 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1fr)_minmax(150px,0.55fr)_minmax(150px,0.55fr)_minmax(150px,0.55fr)_auto]">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1fr)_minmax(150px,0.55fr)_auto]">
                     <Input
                       size="small"
                       allowClear
@@ -1193,52 +1199,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                         setCurrentPage(1);
                       }}
                     />
-                    <Select
-                      size="small"
-                      className="w-full"
-                      value={automationResultFilter}
-                      options={[
-                        { label: 'Resultado: Todos', value: 'all' },
-                        ...automationResultStatusOptions.map(option => ({
-                          label: `Resultado: ${option}`,
-                          value: option,
-                        })),
-                      ]}
-                      onChange={value => {
-                        setAutomationResultFilter(value);
-                        setCurrentPage(1);
-                      }}
-                    />
-                    <Select
-                      size="small"
-                      className="w-full"
-                      value={automationToolFilter}
-                      options={[
-                        { label: 'Herramienta: Todas', value: 'all' },
-                        ...automationToolOptions.map(option => ({
-                          label: `Herramienta: ${option}`,
-                          value: option,
-                        })),
-                      ]}
-                      onChange={value => {
-                        setAutomationToolFilter(value);
-                        setCurrentPage(1);
-                      }}
-                    />
+
                     <Button
                       size="small"
                       className="w-full xl:w-auto"
                       disabled={
                         testCaseSearch.length === 0 &&
-                        automationFilter === 'all' &&
-                        automationResultFilter === 'all' &&
-                        automationToolFilter === 'all'
+                        automationFilter === 'all'
                       }
                       onClick={() => {
                         setTestCaseSearch('');
                         setAutomationFilter('all');
-                        setAutomationResultFilter('all');
-                        setAutomationToolFilter('all');
                         setCurrentPage(1);
                       }}
                     >
@@ -1326,7 +1297,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                 ) : null}
 
                 <Table
-                  key={`${testCaseSearch}-${automationFilter}-${automationResultFilter}-${automationToolFilter}-${filteredTestCases.length}`}
+                  key={`${testCaseSearch}-${automationFilter}-${filteredTestCases.length}`}
                   className="qa-test-case-table"
                   columns={columns}
                   dataSource={filteredTestCases}
@@ -1684,20 +1655,18 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                     <Form.Item
                       name="automationTool"
                       label="Herramienta"
-                      rules={
-                        isAutomationConfigured
-                          ? [{ required: true, message: 'Selecciona la herramienta utilizada' }]
-                          : undefined
-                      }
+                      rules={[
+                        { validator: async (_, value) => {
+                          validatedCaseTool(value, effectiveAutomationStatus, editingTestCase?.automationTool,
+                            editingTestCase ? { originalAutomationStatus: deriveAutomationStatus(editingTestCase) } : undefined);
+                        } },
+                      ]}
                     >
                       <Select
                         allowClear
                         disabled={isAutomationObsolete}
                         placeholder="Selecciona la herramienta"
-                        options={automationToolOptions.map(option => ({
-                          label: option,
-                          value: option,
-                        }))}
+                        options={caseToolOptions(editingTestCase?.automationTool)}
                       />
                     </Form.Item>
                   ) : null}
@@ -1789,13 +1758,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               </Form.Item>
 
               <Form.Item name="testType" label="Tipo de Prueba" rules={[{ required: true }]}>
-                <Select>
-                  {Object.values(TestType).map(type => (
-                    <Select.Option key={type} value={type}>
-                      {type}
-                    </Select.Option>
-                  ))}
-                </Select>
+                <Select options={caseTypeOptions(editingTestCase?.testType)} />
               </Form.Item>
 
               <Form.Item name="priority" label="Prioridad" rules={[{ required: true }]}>

@@ -1,4 +1,5 @@
 import { AutomationStatus, Priority, TestType, type TestCase } from '../../../types';
+import { normalizeCaseType } from './caseAuthoring';
 import { stripHtmlToText } from '../../../utils/evidenceRichText';
 
 export type RichDraftField = 'description' | 'preconditions' | 'testSteps' | 'expectedResult';
@@ -66,6 +67,8 @@ export function parseBulkPaste(text: string): { drafts: Draft[]; warnings: strin
       caseWarnings.push(
         `Prioridad no reconocida: ${current.priority}. Revisa el valor Media asignado.`,
       );
+    if (type && normalizeCaseType(type) !== type)
+      caseWarnings.push(`Tipo histórico ${type}: se asignó Funcional para el caso nuevo.`);
     drafts.push({
       id: `TC-PASTE-${crypto.randomUUID()}`,
       number: drafts.length + 1,
@@ -74,7 +77,7 @@ export function parseBulkPaste(text: string): { drafts: Draft[]; warnings: strin
       preconditions: current.preconditions?.trim() || '',
       testSteps: current.testSteps?.trim() || '',
       expectedResult: current.expectedResult?.trim() || '',
-      testType: type || TestType.FUNCTIONAL,
+      testType: normalizeCaseType(type),
       priority: priority || Priority.MEDIUM,
       selected: true,
       created: false,
@@ -173,7 +176,7 @@ export function draftToTestCase(
     preconditions: draftFieldHtml(draft, 'preconditions'),
     testSteps: draftFieldHtml(draft, 'testSteps'),
     expectedResult: draftFieldHtml(draft, 'expectedResult'),
-    testType: draft.testType,
+    testType: normalizeCaseType(draft.testType),
     priority: draft.priority,
     isAutomated: false,
     automationStatus: AutomationStatus.NOT_AUTOMATED,

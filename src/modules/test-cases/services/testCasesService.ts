@@ -15,6 +15,7 @@ import {
 } from '../../shared/services/enumMappers';
 import {
   deleteDocument,
+  getDocument,
   listDocuments,
   relation,
   upsertDocument,
@@ -25,6 +26,7 @@ import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseDto } from '../types/api';
 import { manualCasesForFunctionalities } from '../utils/automationCandidates';
 import { saveBatch } from '../utils/saveBatch';
+import { normalizeCaseType, validatedCaseTool } from '../utils/caseAuthoring';
 
 export async function markManualCasesAsCandidates(projectId: string, functionalityIds: string[], caseIds: string[]) {
   // Re-read before writing so a stale planning view does not reset existing automation.
@@ -227,6 +229,7 @@ export async function saveTestCase(testCase: TestCase) {
   const functionality = functionalities.find(item => item.id === testCase.functionalityId);
   const documentId =
     testCase.id.startsWith('TC-') || testCase.id.startsWith('TC-AI-') ? null : testCase.id;
+  const original = documentId ? await getDocument<TestCaseDto>('/api/test-cases', documentId) : undefined;
 
   const saved = await upsertDocument<TestCaseDto>('/api/test-cases', documentId, {
     title: testCase.title,
@@ -234,12 +237,17 @@ export async function saveTestCase(testCase: TestCase) {
     preconditions: testCase.preconditions,
     testSteps: testCase.testSteps,
     expectedResult: testCase.expectedResult,
-    testType: testTypeToApi(testCase.testType),
+    testType: testTypeToApi(normalizeCaseType(testCase.testType,
+      original ? testTypeFromApi(original.testType) : undefined)),
     priority: priorityToApi(testCase.priority),
     isAutomated: isAutomatedCoverageStatus(deriveAutomationStatus(testCase)),
     automationStatus: automationStatusToApi(deriveAutomationStatus(testCase)),
     automationType: automationTypeToApi(testCase.automationType),
-    automationTool: automationToolToApi(testCase.automationTool),
+    automationTool: automationToolToApi(validatedCaseTool(testCase.automationTool, deriveAutomationStatus(testCase),
+      original ? automationToolFromApi(original.automationTool) : undefined,
+      original ? { originalAutomationStatus: deriveAutomationStatus({
+        automationStatus: automationStatusFromApi(original.automationStatus), isAutomated: original.isAutomated,
+      }) } : undefined)),
     automationReference: testCase.automationReference?.trim() || null,
     automationOwner: testCase.automationOwner?.trim() || null,
     lastAutomationStatus: automationResultStatusToApi(testCase.lastAutomationStatus),

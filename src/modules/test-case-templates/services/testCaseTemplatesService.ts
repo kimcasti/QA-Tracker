@@ -18,6 +18,7 @@ import {
   relation,
   upsertDocument,
 } from '../../shared/services/strapi';
+import { normalizeCaseType, validatedCaseTool } from '../../test-cases/utils/caseAuthoring';
 import { getModules } from '../../settings/services/settingsService';
 import { findProjectContext } from '../../workspace/services/workspaceService';
 import type { TestCaseTemplateDto } from '../types/api';
@@ -198,12 +199,17 @@ export async function saveTestCaseTemplate(template: TestCaseTemplate) {
     preconditions: template.preconditions,
     testSteps: template.testSteps,
     expectedResult: template.expectedResult,
-    testType: testTypeToApi(template.testType),
+    testType: testTypeToApi(normalizeCaseType(template.testType,
+      documentId ? testTypeFromApi(existingDocuments[0].testType) : undefined)),
     priority: priorityToApi(template.priority),
     isAutomated: isAutomatedCoverageStatus(deriveAutomationStatus(template)),
     automationStatus: automationStatusToApi(deriveAutomationStatus(template)),
     automationType: automationTypeToApi(template.automationType),
-    automationTool: automationToolToApi(template.automationTool),
+    automationTool: automationToolToApi(validatedCaseTool(template.automationTool, deriveAutomationStatus(template),
+      documentId ? automationToolFromApi(existingDocuments[0].automationTool) : undefined,
+      documentId ? { originalAutomationStatus: deriveAutomationStatus({
+        automationStatus: automationStatusFromApi(existingDocuments[0].automationStatus), isAutomated: existingDocuments[0].isAutomated,
+      }) } : undefined)),
     automationReference: template.automationReference?.trim() || null,
     automationOwner: template.automationOwner?.trim() || null,
     organization: relation(context.organizationDocumentId),

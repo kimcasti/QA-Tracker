@@ -1,3 +1,4 @@
+import { caseTypeOptions } from '../utils/caseAuthoring';
 import { useRef, useState } from 'react';
 import { CheckOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
@@ -459,7 +460,7 @@ export function BulkPasteCasesModal({
                         disabled={disabled}
                         value={draft.testType}
                         style={{ minWidth: 150 }}
-                        options={Object.values(TestType).map(value => ({ value, label: value }))}
+                        options={caseTypeOptions()}
                         onChange={testType => patch(draft.id, { testType })}
                       />
                       <span>Prioridad</span>
