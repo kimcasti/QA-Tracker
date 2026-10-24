@@ -49,6 +49,7 @@ import { runTrackedExport } from '../modules/plans/services/planAccessService';
 import { useModules } from '../modules/settings/hooks/useModules';
 import { useRoles } from '../modules/settings/hooks/useRoles';
 import { useSprints } from '../modules/settings/hooks/useSprints';
+import { syncImportedSprints } from '../modules/settings/services/importedSprints';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import { toApiError } from '../config/http';
 import {
@@ -110,6 +111,8 @@ type FunctionalityTableToolbarProps = {
   onPresetChange: (value: QaPlanningPreset) => void;
   onOpenReorder: () => void;
   onTogglePlanningMode: () => void;
+  onOpenBulkDelete: () => void;
+  isBulkDeleting: boolean;
 };
 
 type FunctionalityColumnFilters = NonNullable<ColumnsType<Functionality>[number]['filters']>;
@@ -615,7 +618,10 @@ function FunctionalityTableToolbar({
   onPresetChange,
   onOpenReorder,
   onTogglePlanningMode,
+  onOpenBulkDelete,
+  isBulkDeleting,
 }: FunctionalityTableToolbarProps) {
+  const { t } = useTranslation();
   return (
     <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
       {planningMode ? (
@@ -685,6 +691,11 @@ function FunctionalityTableToolbar({
           className="rounded-lg h-9 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-2"
         >
           <EditOutlined /> Edición Masiva
+        </Button>
+      )}
+      {!isViewer && selectedCount > 0 && (
+        <Button danger loading={isBulkDeleting} icon={<DeleteOutlined aria-hidden="true" />} onClick={onOpenBulkDelete}>
+          {t('functionalities.bulkDelete.action')}
         </Button>
       )}
     </div>
@@ -1531,10 +1542,11 @@ export default function FunctionalityList({
     bulkAdd,
     reorder,
     saveManyWithSingleRefresh,
+    refetch: refetchFunctionalities,
   } = useFunctionalities(projectId);
   const { data: modulesData = [] } = useModules(projectId);
   const { data: rolesData = [] } = useRoles(projectId);
-  const { data: sprintsData = [] } = useSprints(projectId);
+  const { data: sprintsData = [], refetch: refetchSprints, save: saveImportedSprint } = useSprints(projectId);
   const { data: deliveryUnitsData = [] } = useDeliveryUnits(projectId);
   const { isViewer } = useWorkspaceAccess();
 
@@ -1704,6 +1716,44 @@ export default function FunctionalityList({
   const selectedModule = Form.useWatch('module', form);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Functionality[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const bulkDeleteLock = useRef(false);
+
+  const openBulkDelete = () => {
+    if (isViewer || bulkDeleteLock.current) return;
+    // Ant Table rowKey is the business id, not the persistence documentId.
+    setBulkDeleteTargets(allFunctionalities.filter(item => selectedRowKeys.includes(item.id)));
+  };
+
+  const confirmBulkDelete = async () => {
+    if (isViewer || bulkDeleteLock.current || !bulkDeleteTargets.length) return;
+    bulkDeleteLock.current = true;
+    setIsBulkDeleting(true);
+    try {
+      // Wait for every attempt: one rejection must not unlock an unfinished batch.
+      await Promise.allSettled(bulkDeleteTargets.map(item => deleteFunc(item.id)));
+      // Reconcile even rejected/lost responses against the final scoped list.
+      const refreshed = await refetchFunctionalities();
+      if (refreshed.error || !refreshed.data) {
+        message.error(t('functionalities.bulkDelete.unverified'));
+        setBulkDeleteTargets([]);
+        return;
+      }
+      const remaining = bulkDeleteTargets.filter(target => refreshed.data.some(item =>
+        target.documentId ? item.documentId === target.documentId : item.id === target.id,
+      ));
+      setSelectedRowKeys(remaining.map(item => item.id));
+      const deleted = bulkDeleteTargets.length - remaining.length;
+      const summary = t('functionalities.bulkDelete.result', { deleted, failed: remaining.length });
+      if (remaining.length) message.warning(summary);
+      else message.success(summary);
+      setBulkDeleteTargets([]);
+    } finally {
+      bulkDeleteLock.current = false;
+      setIsBulkDeleting(false);
+    }
+  };
 
   const selectedModuleForReorder =
     tableFilters.module?.length === 1 ? String(tableFilters.module[0]) : null;
@@ -2259,10 +2309,19 @@ export default function FunctionalityList({
           return;
         }
 
+        const sprintSync = await syncImportedSprints(importedData, projectId, {
+          list: async () => {
+            const result = await refetchSprints();
+            if (result.error) throw result.error;
+            if (!result.data) throw new Error('No se pudieron consultar los sprints del proyecto.');
+            return result.data;
+          },
+          save: saveImportedSprint,
+        });
         const preparedImport = mapImportedRowsToFunctionalities(
           importedData as ImportedFunctionalityRow[],
           projectId,
-          configuredSprintNames,
+          sprintSync.sprintNames,
         );
 
         const reservedFunctionalities: Array<Pick<Functionality, 'id' | 'module'>> =
@@ -2305,6 +2364,9 @@ export default function FunctionalityList({
               <div className="space-y-3 pt-2">
                 <p className="m-0 text-slate-600">
                   {count} funcionalidades importadas.{' '}
+                  {sprintSync.createdSprintNames.length > 0
+                    ? `${sprintSync.createdSprintNames.length} sprints creados automáticamente, con fechas pendientes de configurar. `
+                    : ''}
                   {skippedCount > 0 ? `${skippedCount} omitidas por ID existente. ` : ''}
                   {preparedImport.reviewRows.length > 0
                     ? `${preparedImport.reviewRows.length} requieren revisión manual.`
@@ -2329,7 +2391,7 @@ export default function FunctionalityList({
       } catch (err) {
         console.error('Import error:', err);
         message.destroy('functionality-import');
-        message.error('Error al procesar el archivo. Verifica el formato.');
+        message.error(toApiError(err).message || 'Error al procesar el archivo. Verifica el formato.');
       } finally {
         setIsImporting(false);
       }
@@ -2618,6 +2680,8 @@ export default function FunctionalityList({
             planningMode={isQaPlanningMode}
             selectedCount={selectedRowKeys.length}
             selectedPreset={qaPlanningPreset}
+            onOpenBulkDelete={openBulkDelete}
+            isBulkDeleting={isBulkDeleting}
             isReorderAvailable={isReorderAvailable}
             isReorderBlocked={isReorderBlocked}
             onOpenBulkEdit={() => setIsBulkModalOpen(true)}
@@ -2653,6 +2717,24 @@ export default function FunctionalityList({
           onChange={(_, filters) => handleNativeTableChange(filters)}
         />
       </Card>
+
+      <Modal
+        title={t('functionalities.bulkDelete.title', { count: bulkDeleteTargets.length })}
+        open={bulkDeleteTargets.length > 0 && !isViewer}
+        onCancel={() => { if (!bulkDeleteLock.current) setBulkDeleteTargets([]); }}
+        onOk={confirmBulkDelete}
+        confirmLoading={isBulkDeleting}
+        cancelButtonProps={{ disabled: isBulkDeleting }}
+        closable={!isBulkDeleting}
+        maskClosable={!isBulkDeleting}
+        keyboard={!isBulkDeleting}
+        okText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ danger: true }}
+        centered
+      >
+        <p>{t('functionalities.bulkDelete.consequence')}</p>
+      </Modal>
 
       <Modal
         title={`Ordenar funcionalidades${selectedModuleForReorder ? ` - ${selectedModuleForReorder}` : ''}`}

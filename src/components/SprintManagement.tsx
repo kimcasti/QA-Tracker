@@ -53,7 +53,7 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
         endDate: endDate.toISOString(),
       };
 
-      saveSprint(sprint);
+      await saveSprint(sprint);
       message.success(`Sprint ${editingSprint ? 'actualizado' : 'creado'} exitosamente`);
       setIsModalOpen(false);
       setEditingSprint(null);
@@ -102,8 +102,9 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
         <Space>
           <CalendarOutlined className="text-slate-400" />
           <Text className="text-xs">
-            {dayjs(record.startDate).format('DD/MM/YYYY')} -{' '}
-            {dayjs(record.endDate).format('DD/MM/YYYY')}
+            {record.startDate && record.endDate
+              ? `${dayjs(record.startDate).format('DD/MM/YYYY')} - ${dayjs(record.endDate).format('DD/MM/YYYY')}`
+              : 'Fechas pendientes'}
           </Text>
         </Space>
       ),
@@ -127,7 +128,9 @@ export default function SprintManagement({ projectId }: SprintManagementProps) {
               setEditingSprint(record);
               form.setFieldsValue({
                 ...record,
-                dates: [dayjs(record.startDate), dayjs(record.endDate)],
+                dates: record.startDate && record.endDate
+                  ? [dayjs(record.startDate), dayjs(record.endDate)]
+                  : undefined,
               });
               setIsModalOpen(true);
             }}

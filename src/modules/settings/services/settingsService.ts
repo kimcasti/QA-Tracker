@@ -40,8 +40,8 @@ function mapSprint(document: SprintDto): Sprint {
     id: document.documentId,
     projectId: document.project?.key || '',
     name: document.name,
-    startDate: document.startDate,
-    endDate: document.endDate,
+    startDate: document.startDate || '',
+    endDate: document.endDate || '',
     status: sprintStatusFromApi(document.status),
     objective: document.objective || '',
   };
@@ -165,8 +165,8 @@ export async function saveSprint(sprint: Sprint) {
 
   const saved = await upsertDocument<SprintDto>('/api/sprints', documentId, {
     name: sprint.name,
-    startDate: sprint.startDate,
-    endDate: sprint.endDate,
+    ...(sprint.startDate ? { startDate: sprint.startDate } : {}),
+    ...(sprint.endDate ? { endDate: sprint.endDate } : {}),
     status: sprintStatusToApi(sprint.status),
     objective: sprint.objective,
     organization: relation(context.organizationDocumentId),

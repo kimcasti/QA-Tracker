@@ -1,4 +1,9 @@
 {
+  "functionalities.bulkDelete.action": "Delete selected",
+  "functionalities.bulkDelete.result": "Deleted: {{deleted}}. Not deleted: {{failed}}.",
+  "functionalities.bulkDelete.unverified": "We could not verify the outcome. Refresh the list before trying again.",
+  "functionalities.bulkDelete.title": "Delete {{count}} functionalities selected?",
+  "functionalities.bulkDelete.consequence": "The selected functionalities will be deleted. This action cannot be undone and may affect their links to test cases and test executions.",
   "language.es": "Spanish",
   "language.en": "English",
 

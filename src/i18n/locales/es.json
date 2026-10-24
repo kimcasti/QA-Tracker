@@ -1,4 +1,9 @@
 {
+  "functionalities.bulkDelete.action": "Eliminar seleccionadas",
+  "functionalities.bulkDelete.result": "Eliminadas: {{deleted}}. No eliminadas: {{failed}}.",
+  "functionalities.bulkDelete.unverified": "No pudimos verificar el resultado. Actualiza la lista antes de volver a intentarlo.",
+  "functionalities.bulkDelete.title": "¿Eliminar {{count}} funcionalidades seleccionadas?",
+  "functionalities.bulkDelete.consequence": "Se eliminarán las funcionalidades seleccionadas. Esta acción no se puede deshacer y puede afectar sus relaciones con casos y ejecuciones de prueba.",
   "language.es": "Español",
   "language.en": "Inglés",
 

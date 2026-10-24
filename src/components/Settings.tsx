@@ -202,7 +202,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
         const sprint = item as Sprint;
         form.setFieldsValue({
           ...sprint,
-          period: [dayjs(sprint.startDate), dayjs(sprint.endDate)],
+          period: sprint.startDate && sprint.endDate
+            ? [dayjs(sprint.startDate), dayjs(sprint.endDate)]
+            : undefined,
         });
       } else if (activeTab === 'templates') {
         const template = item as TestCaseTemplate;
@@ -425,7 +427,9 @@ const Settings: React.FC<SettingsProps> = ({ projectId }) => {
       key: 'period',
       render: (_: unknown, record: Sprint) => (
         <Text type="secondary">
-          {dayjs(record.startDate).format('DD/MM/YYYY')} - {dayjs(record.endDate).format('DD/MM/YYYY')}
+          {record.startDate && record.endDate
+            ? `${dayjs(record.startDate).format('DD/MM/YYYY')} - ${dayjs(record.endDate).format('DD/MM/YYYY')}`
+            : 'Fechas pendientes'}
         </Text>
       ),
     },

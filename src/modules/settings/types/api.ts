@@ -21,8 +21,8 @@ export interface ProjectRoleDto {
 export interface SprintDto {
   documentId: string;
   name: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string | null;
+  endDate?: string | null;
   status?: string;
   objective?: string;
   project?: {
