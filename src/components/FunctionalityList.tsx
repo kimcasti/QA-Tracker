@@ -2851,7 +2851,19 @@ export default function FunctionalityList({
       </Modal>
 
       <Modal
-        title={<span className="text-lg font-bold text-slate-800">Detalle de Funcionalidad</span>}
+        title={
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <span className="min-w-0 text-base font-bold text-slate-800 sm:text-lg">
+              Detalle de Funcionalidad
+            </span>
+            {!isViewer && detailFunctionality ? (
+              <Button className="shrink-0" type="primary" aria-label="Editar funcionalidad" icon={<EditOutlined aria-hidden="true" />} onClick={handleEditFromDetail}>
+                <span className="hidden sm:inline">Editar funcionalidad</span>
+                <span className="sm:hidden">Editar</span>
+              </Button>
+            ) : null}
+          </div>
+        }
         open={isDetailModalOpen}
         onCancel={() => setIsDetailModalOpen(false)}
         centered
@@ -2859,11 +2871,6 @@ export default function FunctionalityList({
         footer={
           <div className="flex justify-end gap-3">
             <Button onClick={() => setIsDetailModalOpen(false)}>Cerrar</Button>
-            {!isViewer && detailFunctionality ? (
-              <Button type="primary" icon={<EditOutlined />} onClick={handleEditFromDetail}>
-                Editar funcionalidad
-              </Button>
-            ) : null}
           </div>
         }
       >
@@ -2936,64 +2943,6 @@ export default function FunctionalityList({
                           {detailFunctionality.jiraTaskUrl}
                         </a>
                       ) : undefined
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-4 flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
-                    <SafetyCertificateOutlined className="text-lg" />
-                  </div>
-                  <div className="text-sm text-slate-500">
-                    Estado funcional, cobertura y se&ntilde;ales de riesgo para seguimiento.
-                  </div>
-                </div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  QA
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <FunctionalityDetailValue
-                    label="Estado"
-                    value={labelTestStatus(detailFunctionality.status, t)}
-                  />
-                  <FunctionalityDetailValue
-                    label="Prioridad"
-                    value={labelPriority(detailFunctionality.priority, t)}
-                  />
-                  <FunctionalityDetailValue
-                    label="Impacto"
-                    value={labelImpact(detailFunctionality.impactLevel)}
-                  />
-                  <FunctionalityDetailValue
-                    label="Probabilidad"
-                    value={labelProbability(detailFunctionality.probabilityLevel)}
-                  />
-                  <FunctionalityDetailValue
-                    label="Riesgo"
-                    value={labelRisk(detailFunctionality.riskLevel, t)}
-                  />
-                  <FunctionalityDetailValue label="Sprint" value={detailFunctionality.sprint} />
-                </div>
-                <div className="mt-3">
-                  <FunctionalityDetailValue
-                    label="Cobertura QA"
-                    value={
-                      <div className="flex flex-wrap gap-2">
-                        {getCoverageTags(detailFunctionality).length > 0 ? (
-                          getCoverageTags(detailFunctionality).map(tag => (
-                            <Tag
-                              key={tag.key}
-                              className={`m-0 rounded-full border-0 ${tag.className}`}
-                            >
-                              {tag.label}
-                            </Tag>
-                          ))
-                        ) : (
-                          <span>N/A</span>
-                        )}
-                      </div>
                     }
                   />
                 </div>

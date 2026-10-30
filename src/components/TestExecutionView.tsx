@@ -33,6 +33,8 @@ import {
   CloseCircleOutlined,
   CloseOutlined,
   ClockCircleOutlined,
+  CalendarOutlined,
+  ReloadOutlined,
   DeleteOutlined,
   EyeOutlined,
   EditOutlined,
@@ -74,7 +76,9 @@ import { getTestRunById, removeTestRunResult } from '../modules/test-runs/servic
 import { RunAutomationButton } from '../modules/automation/components/RunAutomationButton';
 import { useAutomationImportHistories } from '../modules/automation-import-history/hooks/useAutomationImportHistories';
 import { useBugs } from '../modules/bugs/hooks/useBugs';
-import { usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
+import { usePublicUatManagementAccess, usePublicUatSessionActions } from '../modules/test-runs/hooks/usePublicUatSession';
+import { canReopenPublicUatSession, describePublicUatSession, isPublicUatSessionExpired } from '../modules/test-runs/utils/publicUatSessionLifecycle';
+import { PublicUatLifecycleDialog, type PublicUatLifecycleTarget } from "../modules/test-runs/components/PublicUatLifecycleDialog";
 import { getPublicUatSessionStatus } from '../modules/test-runs/services/publicUatSessionsService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
 import {
@@ -577,7 +581,7 @@ function formatPublicSessionDate(value?: string | null, fallback = 'No disponibl
   }
 
   return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'short',
+    dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
 }
@@ -651,40 +655,6 @@ function formatCompactId(value?: string | null, startLength = 6, endLength = 5) 
   }
 
   return `${normalizedValue.slice(0, startLength)}...${normalizedValue.slice(-endLength)}`;
-}
-
-function labelPublicUatSessionStatus(status?: PublicUatSessionSummary['status'] | null) {
-  switch (status) {
-    case 'active':
-      return 'Sesión activa';
-    case 'completed':
-      return 'Sesión completada';
-    case 'expired':
-      return 'Sesión expirada';
-    case 'revoked':
-      return 'Sesión cerrada';
-    case 'draft':
-      return 'Borrador público';
-    default:
-      return 'Sin sesión pública';
-  }
-}
-
-function publicUatStatusColor(status?: PublicUatSessionSummary['status'] | null) {
-  switch (status) {
-    case 'active':
-      return 'processing';
-    case 'completed':
-      return 'success';
-    case 'expired':
-      return 'warning';
-    case 'revoked':
-      return 'default';
-    case 'draft':
-      return 'orange';
-    default:
-      return 'default';
-  }
 }
 
 function matchesFunctionalityToExecutionType(
@@ -1405,6 +1375,7 @@ function extractAutomationImportResults(
 export default function TestExecutionView({ projectId }: { projectId?: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const canManagePublicUat = usePublicUatManagementAccess(projectId);
   const {
     data: workspace,
     activeMembership,
@@ -1523,6 +1494,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [activeTestRun, setActiveTestRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm();
   const [evidenceForm] = Form.useForm();
+  const [publicUatLifecycleTarget, setPublicUatLifecycleTarget] = useState<PublicUatLifecycleTarget | null>(null);
   const [publicUatForm] = Form.useForm();
   const [isPublicUatModalOpen, setIsPublicUatModalOpen] = useState(false);
   const [selectedPublicUatRun, setSelectedPublicUatRun] = useState<TestRun | null>(null);
@@ -2338,11 +2310,11 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       const session = await getPublicUatSessionStatus(record.id);
       await queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] });
       const hasExpired = Boolean(session?.expiresAt && dayjs(session.expiresAt).isBefore(dayjs()));
-      if (!session?.publicUrl || hasExpired) {
-        if (!session || hasExpired || session.status === 'expired' || session.status === 'revoked') {
-          openPublicUatActivationModal({ ...record, publicUatSession: session });
-          return;
-        }
+      if (hasExpired || session?.status === 'expired') {
+        message.warning('El enlace público está vencido. Cambia la fecha de caducidad o reabre la sesión antes de copiarlo.');
+        return;
+      }
+      if (!session?.publicUrl) {
         message.warning('Esta ejecución UAT aún no tiene un enlace público disponible.');
         return;
       }
@@ -2358,7 +2330,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const handlePrimaryPublicUatAction = async (record: TestRun) => {
     const sessionStatus = record.publicUatSession?.status;
 
-    if (sessionStatus === 'active' || sessionStatus === 'completed') {
+    if (sessionStatus === 'active' || sessionStatus === 'completed' || sessionStatus === 'expired') {
       await copyPublicUatLink(record);
       return;
     }
@@ -2420,16 +2392,23 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     setPublicUatStatusInfo(null);
   };
 
-  const handleClosePublicUatSession = async (record: TestRun) => {
-    try {
-      await revokePublicUatSession(record.id);
-      message.success('La sesión pública UAT fue cerrada correctamente.');
-    } catch (error) {
-      console.error('Error revoking public UAT session:', error);
-      message.error(
-        error instanceof Error ? error.message : 'No fue posible cerrar la sesión pública UAT.',
-      );
-    }
+  const handleClosePublicUatSession = (record: TestRun) => {
+    Modal.confirm({
+      title: 'Revocar acceso público',
+      content: 'El enlace público dejará de permitir el acceso. Esta acción no finaliza la ejecución ni elimina sus resultados o evidencias.',
+      okText: 'Revocar acceso público',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await revokePublicUatSession(record.id);
+          message.success('El acceso público UAT fue revocado correctamente.');
+        } catch (error) {
+          console.error('Error revoking public UAT session:', error);
+          message.error(error instanceof Error ? error.message : 'No fue posible revocar el acceso público UAT.');
+        }
+      },
+    });
   };
 
   const openCreateTestRunModal = () => {
@@ -4089,12 +4068,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               </Tooltip>
             ) : null}
             {record.testType === TestType.UAT ? (
-              <Tag
-                color={publicUatStatusColor(record.publicUatSession?.status)}
-                className="m-0 w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              >
-                {labelPublicUatSessionStatus(record.publicUatSession?.status)}
-              </Tag>
+              <div className="min-w-0 space-y-1 break-words text-xs text-slate-600" data-testid="uat-access-editing">
+                <div><span className="font-semibold">Acceso público:</span>{' '}{describePublicUatSession(record.publicUatSession, record.status).access}</div>
+                <div><span className="font-semibold">Edición del cliente:</span>{' '}{describePublicUatSession(record.publicUatSession, record.status).editing}</div>
+              </div>
             ) : null}
           </div>
         );
@@ -4228,7 +4205,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
       render: (_: any, record: TestRun) => {
         const hasCompletedOrActivePublicSession =
           record.publicUatSession?.status === 'active' ||
-          record.publicUatSession?.status === 'completed';
+          record.publicUatSession?.status === 'completed' || record.publicUatSession?.status === 'expired';
         const extraActions: MenuProps['items'] = [];
 
         if (record.testType === TestType.UAT) {
@@ -4243,11 +4220,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             onClick: () => void handlePrimaryPublicUatAction(record),
           });
 
+          if (canManagePublicUat && record.publicUatSession && record.publicUatSession.status !== 'draft') {
+            if (canReopenPublicUatSession(record.publicUatSession)) extraActions.push({ key: 'public-uat-reopen', icon: <ReloadOutlined aria-hidden="true" />, label: compactMenuLabel('Reabrir sesión UAT'), onClick: () => setPublicUatLifecycleTarget({ id: record.id, title: record.title, mode: 'reopen' }) });
+            extraActions.push({ key: 'public-uat-expiration', icon: <CalendarOutlined aria-hidden="true" />, label: compactMenuLabel('Cambiar fecha de caducidad'), onClick: () => setPublicUatLifecycleTarget({ id: record.id, title: record.title, mode: 'expiration' }) });
+          }
+
           extraActions.push({
             key: 'public-uat-status',
             icon: <EyeOutlined />,
             label: compactMenuLabel('Ver estado de sesión'),
-            disabled: !hasCompletedOrActivePublicSession,
+            disabled: !hasCompletedOrActivePublicSession && record.publicUatSession?.status !== 'revoked',
             onClick: () => void openPublicUatStatusModal(record),
           });
 
@@ -4255,7 +4237,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
             extraActions.push({
               key: 'public-uat-close',
               icon: <StopOutlined />,
-              label: compactMenuLabel('Cerrar sesión pública'),
+              label: compactMenuLabel('Revocar acceso público'),
               danger: true,
               onClick: () => void handleClosePublicUatSession(record),
             });
@@ -4337,7 +4319,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 ) : null}
                 {record.testType === TestType.UAT &&
                 record.publicUatSession?.status === 'active' ? (
-                  <Tooltip title="Cerrar sesión pública">
+                  <Tooltip title="Revocar acceso público">
                     <Button
                       icon={<StopOutlined />}
                       size="small"
@@ -5848,6 +5830,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         ]}
       />
 
+      {publicUatLifecycleTarget && <PublicUatLifecycleDialog key={publicUatLifecycleTarget.id + publicUatLifecycleTarget.mode} projectId={projectId} target={publicUatLifecycleTarget} onClose={() => setPublicUatLifecycleTarget(null)} />}
       <Modal
         title={<span className="text-lg font-bold text-slate-800">Generar enlace público UAT</span>}
         open={isPublicUatModalOpen}
@@ -5949,6 +5932,8 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         open={Boolean(publicUatStatusModalRun)}
         onCancel={closePublicUatStatusModal}
         footer={[
+          !isLoadingPublicUatStatus && canManagePublicUat && publicUatStatusModalRun && canReopenPublicUatSession(publicUatStatusInfo) ? <Button key="reopen" onClick={() => { setPublicUatLifecycleTarget({ id: publicUatStatusModalRun.id, title: publicUatStatusModalRun.title, mode: 'reopen' }); closePublicUatStatusModal(); }}>Reabrir sesión UAT</Button> : null,
+          !isLoadingPublicUatStatus && canManagePublicUat && publicUatStatusModalRun && publicUatStatusInfo && publicUatStatusInfo.status !== 'draft' ? <Button key="expiration" onClick={() => { setPublicUatLifecycleTarget({ id: publicUatStatusModalRun.id, title: publicUatStatusModalRun.title, mode: 'expiration' }); closePublicUatStatusModal(); }}>Cambiar fecha de caducidad</Button> : null,
           <Button key="close" onClick={closePublicUatStatusModal}>
             Cerrar
           </Button>,
@@ -5975,15 +5960,24 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         ) : publicUatStatusInfo ? (
           <div className="space-y-4 text-sm text-slate-600">
             <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <Tag
-                color={publicUatStatusColor(publicUatStatusInfo.status)}
-                className="rounded-full px-3 py-1"
-              >
-                {labelPublicUatSessionStatus(publicUatStatusInfo.status)}
-              </Tag>
+              <div className="space-y-2 break-words">
+                <div><span className="font-semibold text-slate-800">Ejecución:</span>{' '}{describePublicUatSession(publicUatStatusInfo, publicUatStatusModalRun?.status || ExecutionStatus.DRAFT).execution}</div>
+                <div><span className="font-semibold text-slate-800">Acceso público:</span>{' '}{describePublicUatSession(publicUatStatusInfo, publicUatStatusModalRun?.status || ExecutionStatus.DRAFT).access}</div>
+                <div><span className="font-semibold text-slate-800">Edición del cliente:</span>{' '}{describePublicUatSession(publicUatStatusInfo, publicUatStatusModalRun?.status || ExecutionStatus.DRAFT).editing}</div>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                Ampliar la caducidad recupera el acceso de un enlace vencido, pero no elimina el bloqueo por finalización ni la revocación.
+                {' '}Reabrir habilita la edición según los permisos configurados y devuelve la ejecución a En curso; si el enlace venció, requiere una fecha futura.
+              </p>
+              <div className="mt-3 space-y-1 break-words border-t border-slate-200 pt-3 text-xs">
+                <div className="font-semibold text-slate-700">Permisos configurados (no anulan los bloqueos):</div>
+                <div>Resultados: {publicUatStatusInfo.allowResultEditing !== false ? 'Permitido' : 'No permitido'}</div>
+                <div>Evidencias: {publicUatStatusInfo.allowEvidenceUpload !== false ? 'Permitido' : 'No permitido'}</div>
+                <div>Comentarios: {publicUatStatusInfo.allowCommentEditing !== false ? 'Permitido' : 'No permitido'}</div>
+              </div>
               <div className="mt-3 space-y-1">
                 <div>
-                  <span className="font-semibold text-slate-800">Ejecución:</span>{' '}
+                  <span className="font-semibold text-slate-800">Nombre de la ejecución:</span>{' '}
                   {publicUatStatusModalRun?.title}
                 </div>
                 <div>
@@ -5999,7 +5993,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   {formatPublicSessionDate(publicUatStatusInfo.activatedAt)}
                 </div>
                 <div>
-                  <span className="font-semibold text-slate-800">Expira:</span>{' '}
+                  <span className="font-semibold text-slate-800">Caducidad del acceso público:</span>{' '}
                   {formatPublicSessionDate(publicUatStatusInfo.expiresAt)}
                 </div>
                 <div>

@@ -1,6 +1,10 @@
+import { Http } from '../../../config/http';
+import { useWorkspaceAccess } from '../../workspace/hooks/useWorkspaceAccess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   activatePublicUatSession,
+  reopenPublicUatSession,
+  changePublicUatSessionExpiration,
   completePublicUatSession,
   getPublicUatSession,
   getPublicUatSessionStatus,
@@ -11,6 +15,22 @@ import type {
   ActivatePublicUatSessionInput,
   PublicUatResultUpdateInput,
 } from '../types/model';
+
+export function usePublicUatManagementAccess(projectId?: string) {
+  const { data: workspace } = useWorkspaceAccess();
+  const context = useQuery({
+    queryKey: ['public-uat-session', 'management-context', projectId],
+    queryFn: async () => {
+      const response = await Http.get<{ projects: Array<{ documentId: string; key: string; organization?: { documentId: string } }> }>('/api/me/project-contexts');
+      return response.data.projects.find(project => project.key === projectId || project.documentId === projectId) || null;
+    },
+    enabled: Boolean(projectId),
+    retry: false,
+  });
+  return Boolean(context.data?.organization?.documentId && workspace?.memberships.some(membership =>
+    membership.organization?.documentId === context.data?.organization?.documentId &&
+    ['owner', 'qa-lead'].includes(membership.role?.code || '')));
+}
 
 export function usePublicUatSessionStatus(testRunDocumentId?: string | null) {
   return useQuery({
@@ -54,7 +74,35 @@ export function usePublicUatSessionActions(projectId?: string) {
     },
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: ({ testRunDocumentId, expiresAt }: { testRunDocumentId: string; expiresAt?: string }) =>
+      reopenPublicUatSession(testRunDocumentId, expiresAt ? { expiresAt } : {}),
+    onSettled: async (_, __, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['public-uat-session', 'status', variables.testRunDocumentId] }),
+      ]);
+    },
+  });
+
+  const expirationMutation = useMutation({
+    mutationFn: ({ testRunDocumentId, expiresAt }: { testRunDocumentId: string; expiresAt: string }) =>
+      changePublicUatSessionExpiration(testRunDocumentId, expiresAt),
+    onSettled: async (_, __, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['test-runs', 'summary', projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['public-uat-session', 'status', variables.testRunDocumentId] }),
+      ]);
+    },
+  });
+
   return {
+    changeExpiration: expirationMutation.mutateAsync,
+    isChangingExpiration: expirationMutation.isPending,
+    reopen: reopenMutation.mutateAsync,
+    isReopening: reopenMutation.isPending,
     activate: activateMutation.mutateAsync,
     revoke: revokeMutation.mutateAsync,
     isActivating: activateMutation.isPending,

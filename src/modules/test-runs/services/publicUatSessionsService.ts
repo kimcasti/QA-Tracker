@@ -1,3 +1,4 @@
+import { effectivePublicUatSessionStatus } from '../utils/publicUatSessionLifecycle';
 import { Http, PublicHttp } from '../../../config/http';
 import type { PublicUatSessionSummary, TestRun, TestRunResult } from '../../../types';
 import { extractFirstImageSrc } from '../../../utils/evidenceRichText';
@@ -82,7 +83,7 @@ function mapPublicUatSessionSummary(
 
   return {
     documentId: dto.documentId,
-    status: dto.status,
+    status: effectivePublicUatSessionStatus(dto),
     expiresAt: dto.expiresAt || null,
     activatedAt: dto.activatedAt || null,
     completedAt: dto.completedAt || null,
@@ -168,6 +169,45 @@ export async function getPublicUatSessionStatus(testRunDocumentId: string) {
   );
 
   return mapPublicUatSessionSummary(response.data.data);
+}
+
+async function verifyPublicUatLifecycleWrite(
+  testRunDocumentId: string,
+  written: PublicSessionStatusDto,
+  expiresAt?: string,
+  reopened = false,
+) {
+  const current = await getPublicUatSessionStatus(testRunDocumentId);
+  if (!current || !written?.documentId || current.documentId !== written.documentId ||
+      current.publicUrl !== (written.publicUrl || null) ||
+      current.status !== effectivePublicUatSessionStatus(written) ||
+      current.completedAt !== (written.completedAt || null) ||
+      current.completionLocked !== (written.completionLocked ?? false) ||
+      (expiresAt && Date.parse(current.expiresAt || '') !== Date.parse(expiresAt)) ||
+      (reopened && (current.status !== 'active' || current.completionLocked || current.completedAt ||
+        (current.expiresAt && Date.parse(current.expiresAt) <= Date.now())))) {
+    throw new Error('No pudimos verificar el cambio de la sesión. Actualiza su estado antes de reintentar.');
+  }
+  return current;
+}
+
+export async function reopenPublicUatSession(
+  testRunDocumentId: string,
+  input: { expiresAt?: string } = {},
+) {
+  const response = await Http.put<ApiEnvelope<PublicSessionStatusDto>>(
+    `/api/public-uat-sessions/test-runs/${encodeURIComponent(testRunDocumentId)}/reopen`,
+    { data: input },
+  );
+  return verifyPublicUatLifecycleWrite(testRunDocumentId, response.data.data, input.expiresAt, true);
+}
+
+export async function changePublicUatSessionExpiration(testRunDocumentId: string, expiresAt: string) {
+  const response = await Http.put<ApiEnvelope<PublicSessionStatusDto>>(
+    `/api/public-uat-sessions/test-runs/${encodeURIComponent(testRunDocumentId)}/expiration`,
+    { data: { expiresAt } },
+  );
+  return verifyPublicUatLifecycleWrite(testRunDocumentId, response.data.data, expiresAt);
 }
 
 export async function revokePublicUatSession(testRunDocumentId: string) {

@@ -1,3 +1,4 @@
+import { effectivePublicUatSessionStatus } from '../utils/publicUatSessionLifecycle';
 import type { TestRun, TestRunResult } from '../../../types';
 import type { PublicUatSessionSummary } from '../../../types';
 import {
@@ -64,7 +65,7 @@ function mapPublicUatSession(document?: TestRunDto['publicUatSession']): PublicU
 
   return {
     documentId: document.documentId,
-    status: document.status,
+    status: effectivePublicUatSessionStatus(document),
     expiresAt: document.expiresAt || null,
     activatedAt: document.activatedAt || null,
     completedAt: document.completedAt || null,
