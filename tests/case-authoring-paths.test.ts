@@ -19,7 +19,7 @@ function declaration(file: string, name: string, context: Record<string, any>) {
   visit(ast);
   assert.ok(source, `${name} exists`);
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-  const scope = { ...types, ...mappers, ...policy, ...context } as Record<string, any>;
+  const scope = { functionalityDocumentId: undefined, submittingCase: { current: false }, scopedWriteLocked: false, ...types, ...mappers, ...policy, ...context } as Record<string, any>;
   if (name.startsWith('save') && text.includes('function automationToolFromApi') && !scope.automationToolFromApi) {
     scope.automationToolFromApi = declaration(file, 'automationToolFromApi', {});
   }

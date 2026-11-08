@@ -11,6 +11,7 @@ import {
   BarChartOutlined,
   ArrowLeftOutlined,
   InfoCircleOutlined,
+  LayoutOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
@@ -51,6 +52,7 @@ const TermsPage = lazy(() => import('./modules/legal/components/TermsPage'));
 const PrivacyPage = lazy(() => import('./modules/legal/components/PrivacyPage'));
 const AIPolicyPage = lazy(() => import('./modules/legal/components/AIPolicyPage'));
 const StoryMapPage = lazy(() => import('./modules/storymap/components/StoryMapPage'));
+const CanvasWorkspace = lazy(() => import('./modules/canvas/CanvasWorkspace'));
 const PersonalNotesPage = lazy(
   () => import('./modules/personal-notes/components/PersonalNotesPage'),
 );
@@ -67,6 +69,7 @@ type WorkspaceViewKey =
   | 'functionalities'
   | 'qa_planning'
   | 'storymap'
+  | 'canvas'
   | 'testing'
   | 'plans'
   | 'regression_cycles'
@@ -94,6 +97,7 @@ const WORKSPACE_VIEW_TO_PATH: Record<WorkspaceViewKey, string> = {
   functionalities: 'functionalities',
   qa_planning: 'qa-planning',
   storymap: 'story-map',
+  canvas: 'canvas',
   testing: 'testing',
   plans: 'plans',
   regression_cycles: 'regression-cycles',
@@ -110,6 +114,7 @@ const SCENE_TO_WORKSPACE_VIEW: Record<string, WorkspaceViewKey> = {
   'qa-planning': 'qa_planning',
   storymap: 'storymap',
   'story-map': 'storymap',
+  canvas: 'canvas',
   testing: 'testing',
   plans: 'plans',
   regression_cycles: 'regression_cycles',
@@ -189,6 +194,8 @@ function renderWorkspaceContent(view: WorkspaceViewKey, currentProject: Project)
       return <QaPlanningPage projectId={currentProject.id} />;
     case 'storymap':
       return <StoryMapPage projectId={currentProject.id} />;
+    case 'canvas':
+      return <CanvasWorkspace key={currentProject.id} projectId={currentProject.id} />;
     case 'testing':
       return <TestExecutionView projectId={currentProject.id} />;
     case 'plans':
@@ -443,6 +450,7 @@ function WorkspaceApp({
               ? { key: 'config', icon: <SettingOutlined />, label: t('nav.config') }
               : null,
             { key: 'about', icon: <InfoCircleOutlined />, label: t('nav.about') },
+            { key: 'canvas', icon: <LayoutOutlined />, label: 'Canvas' },
           ].filter(Boolean),
         },
       ].filter(Boolean),
@@ -703,7 +711,7 @@ function WorkspaceApp({
       return <Navigate to={routeForProjectWorkspace(routedProject.id, 'dashboard')} replace />;
     }
 
-    const isStoryMapView = workspaceView === 'storymap';
+    const isStoryMapView = workspaceView === 'storymap' || workspaceView === 'canvas';
 
     return (
       <>

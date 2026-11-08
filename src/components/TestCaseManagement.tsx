@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -65,6 +65,7 @@ import { useTestCaseTemplates } from '../modules/test-case-templates/hooks/useTe
 import { PlanBillingBanner } from '../modules/plans/components/PlanBillingBanner';
 import { startUpgradeRequestFlow } from '../modules/plans/services/billingService';
 import { useWorkspaceAccess } from '../modules/workspace/hooks/useWorkspaceAccess';
+import { canManageCanvas } from '../modules/canvas/hooks/canvasUiModel';
 import { hasMeaningfulEvidenceContent, normalizeEvidenceHtml } from '../utils/evidenceRichText';
 import { PlanUpgradeCard } from '../modules/plans/components/PlanUpgradeCard';
 import { UpgradeModal } from '../modules/plans/components/UpgradeModal';
@@ -243,9 +244,14 @@ function moveTestCase(testCases: TestCase[], fromIndex: number, toIndex: number)
 interface TestCaseManagementProps {
   projectId: string;
   functionalityId: string;
+  functionalityDocumentId?: string;
+  assertWriteActive?: () => void;
+  organizationDocumentId?: string;
   functionalityName: string;
   moduleName: string;
   onClose?: () => void;
+  initialCaseId?: string;
+  readOnly?: boolean;
   functionalityNavigation?: {
     position: number;
     total: number;
@@ -259,9 +265,14 @@ interface TestCaseManagementProps {
 const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   projectId,
   functionalityId,
+  functionalityDocumentId,
+  assertWriteActive,
+  organizationDocumentId,
   functionalityName,
   moduleName,
   onClose,
+  initialCaseId,
+  readOnly,
   functionalityNavigation,
 }) => {
   const { t } = useTranslation();
@@ -273,13 +284,22 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     error,
     refetch,
     save,
+    writePending,
+    writeBlocked,
+    reconcileWrites,
     reorder,
     saveManyWithSingleRefresh,
     savePastedCases,
     delete: deleteTestCase,
-  } = useTestCases(projectId, functionalityId);
+  } = useTestCases(projectId, functionalityId, functionalityDocumentId, assertWriteActive);
   const { data: templates = [] } = useTestCaseTemplates(projectId, moduleName);
-  const { isViewer, activeMembership, projectQuota } = useWorkspaceAccess();
+  const { isViewer: workspaceIsViewer, activeMembership, projectQuota, data: workspaceData, isError: workspaceIsError } = useWorkspaceAccess();
+  const isViewer = readOnly === true || (organizationDocumentId !== undefined
+    ? workspaceIsError || !canManageCanvas(organizationDocumentId, workspaceData?.memberships)
+    : workspaceIsViewer);
+  const submittingCase = useRef(false);
+  const scopedWriteLocked = Boolean(functionalityDocumentId && (writePending || writeBlocked));
+  const initialCaseOpened = useRef(false);
   const [isCaseFormVisible, setIsCaseFormVisible] = useState(false);
   const [isBulkPasteOpen, setIsBulkPasteOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -595,6 +615,19 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
     setIsCaseFormVisible(true);
   };
 
+  // The Canvas link resolves a persistence ID, never a title or a business-code alias.
+  // This component is keyed by project/functionality/case by the Canvas wrapper.
+  useEffect(() => {
+    if (!initialCaseId || initialCaseOpened.current || isViewer || isLoading || isError) return;
+    const target = testCases?.find(item =>
+      item.documentId === initialCaseId && item.projectId === projectId &&
+      item.functionalityId === functionalityId,
+    );
+    if (!target) return;
+    initialCaseOpened.current = true;
+    openCaseForm(target);
+  }, [initialCaseId, isViewer, isLoading, isError, testCases, projectId, functionalityId]);
+
   const handleCancel = () => {
     setIsCaseFormVisible(false);
     form.resetFields();
@@ -622,6 +655,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   };
 
   const onFinish = (values: any) => {
+    if (functionalityDocumentId && (submittingCase.current || scopedWriteLocked)) return;
     const formValues = form.getFieldsValue(true);
     const mergedValues = {
       ...formValues,
@@ -663,14 +697,17 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       sortOrder: editingTestCase?.sortOrder ?? nextSortOrder,
     };
 
+    if (functionalityDocumentId) submittingCase.current = true;
     save(newTestCase, {
       onSuccess: () => {
+        submittingCase.current = false;
         message.success(editingTestCase ? 'Caso de prueba actualizado' : 'Caso de prueba creado');
         setIsCaseFormVisible(false);
         form.resetFields();
         void refetch();
       },
       onError: () => {
+        submittingCase.current = false;
         message.error('Error al guardar el caso de prueba');
       },
     });
@@ -835,7 +872,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
       render: (_: unknown, record: TestCase) => (
         <Tooltip title={isViewer ? undefined : 'Arrastrar para ordenar'}>
           <span
-            draggable={!isViewer && !isReordering}
+            draggable={!isViewer && !functionalityDocumentId && !isReordering}
             aria-label="Arrastrar caso de prueba"
             className={`inline-flex h-7 w-7 items-center justify-center text-slate-400 ${
               isViewer || isReordering
@@ -921,7 +958,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                       icon: <ArrowUpOutlined />,
                       label: 'Mover arriba',
                       disabled:
-                        isReordering ||
+                        Boolean(functionalityDocumentId) || isReordering ||
                         visibleTestCases.findIndex(item => item.id === record.id) === 0,
                     },
                     {
@@ -929,12 +966,12 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                       icon: <ArrowDownOutlined />,
                       label: 'Mover abajo',
                       disabled:
-                        isReordering ||
+                        Boolean(functionalityDocumentId) || isReordering ||
                         visibleTestCases.findIndex(item => item.id === record.id) ===
                           visibleTestCases.length - 1,
                     },
                     { type: 'divider' },
-                    { key: 'delete', icon: <DeleteOutlined />, label: 'Eliminar', danger: true },
+                    { key: 'delete', icon: <DeleteOutlined />, label: 'Eliminar', disabled: Boolean(functionalityDocumentId), danger: true },
                   ],
                   onClick: ({ key }) => {
                     if (key === 'duplicate') handleDuplicate(record);
@@ -967,6 +1004,21 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
   ];
 
   return (
+    <>
+      {functionalityDocumentId && writeBlocked ? (
+        <Alert type="warning" showIcon message="Resultado del guardado incierto"
+          description="No vuelvas a enviar el caso. Recarga los casos para reconciliar el resultado; se descartará el formulario pendiente."
+          action={<Button loading={writePending} disabled={writePending} onClick={() => {
+            void reconcileWrites().then(() => {
+              submittingCase.current = false;
+              setIsCaseFormVisible(false);
+              setIsBulkPasteOpen(false);
+              setEditingTestCase(null);
+              form.resetFields();
+            }).catch(() => message.error('No pudimos recargar los casos. La edición sigue bloqueada.'));
+          }}>Recargar casos</Button>} />
+      ) : null}
+      <fieldset disabled={scopedWriteLocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <Card
       title={
         <div className="qa-test-case-management-header">
@@ -1014,7 +1066,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
                       type: 'group',
                       label: 'ORGANIZACIÓN',
                       children: [
-                        { key: 'reorder', label: 'Ordenar casos', icon: <MenuOutlined />, onClick: openReorderModal },
+                        { key: 'reorder', disabled: Boolean(functionalityDocumentId), label: 'Ordenar casos', icon: <MenuOutlined />, onClick: openReorderModal },
                         { key: 'export-text', label: 'Exportar casos en texto plano', icon: <DownloadOutlined />,
                           disabled: isLoading || isError || !visibleTestCases.length, onClick: exportCasesText },
                       ],
@@ -1847,7 +1899,7 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
               <Space>
                 <Button onClick={handleCancel}>Cancelar</Button>
                 {!isViewer ? (
-                  <Button type="primary" htmlType="submit">
+                  <Button type="primary" htmlType="submit" disabled={scopedWriteLocked} loading={Boolean(functionalityDocumentId && writePending)}>
                     {editingTestCase ? 'Actualizar' : 'Crear'}
                   </Button>
                 ) : null}
@@ -1857,6 +1909,8 @@ const TestCaseManagement: React.FC<TestCaseManagementProps> = ({
         </Suspense>
       ) : null}
     </Card>
+      </fieldset>
+    </>
   );
 };
 

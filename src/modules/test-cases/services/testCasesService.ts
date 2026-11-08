@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import {
   AutomationResultStatus,
   AutomationStatus,
@@ -28,16 +29,16 @@ import { manualCasesForFunctionalities } from '../utils/automationCandidates';
 import { saveBatch } from '../utils/saveBatch';
 import { normalizeCaseType, validatedCaseTool } from '../utils/caseAuthoring';
 
-export async function markManualCasesAsCandidates(projectId: string, functionalityIds: string[], caseIds: string[]) {
+export async function markManualCasesAsCandidates(projectId: string, functionalityIds: string[], caseIds: string[], functionalityDocumentId?: string, assertWriteActive?: () => void) {
   // Re-read before writing so a stale planning view does not reset existing automation.
   const selected = new Set(caseIds);
-  const cases = manualCasesForFunctionalities(await getTestCases(projectId), projectId, functionalityIds)
+  const cases = manualCasesForFunctionalities(await getTestCases(projectId, undefined, functionalityDocumentId), projectId, functionalityIds)
     .filter(item => selected.has(item.id));
   return saveBatch(cases, async item => {
     const id = item.documentId || item.id;
     if (!id) throw new Error('Caso sin identificador persistido.');
     // The update endpoint expects the complete case, not a partial status payload.
-    return saveTestCase({ ...item, automationStatus: AutomationStatus.CANDIDATE, isAutomated: false });
+    return saveTestCase({ ...item, automationStatus: AutomationStatus.CANDIDATE, isAutomated: false }, functionalityDocumentId, assertWriteActive);
   });
 }
 
@@ -196,16 +197,27 @@ function mapTestCase(document: TestCaseDto): TestCase {
   };
 }
 
-export async function getTestCases(projectId?: string, functionalityId?: string) {
+export async function getTestCases(projectId?: string, functionalityId?: string, functionalityDocumentId?: string) {
   const context = projectId ? await findProjectContext(projectId) : null;
+  if (functionalityDocumentId && !context) {
+    throw new Error('Project scope is not available in the workspace.');
+  }
   const documents = await listDocuments<TestCaseDto>('/api/test-cases', {
     'populate[project][fields][0]': 'key',
     'populate[functionality][fields][0]': 'code',
     ...(context ? { 'filters[project][documentId][$eq]': context.documentId } : {}),
-    ...(functionalityId ? { 'filters[functionality][code][$eq]': functionalityId } : {}),
+    ...(functionalityDocumentId
+      ? { 'filters[functionality][documentId][$eq]': functionalityDocumentId }
+      : functionalityId ? { 'filters[functionality][code][$eq]': functionalityId } : {}),
     'sort[0]': 'sortOrder:asc',
     'sort[1]': 'createdAt:asc',
   });
+
+  if (functionalityDocumentId && documents.some(document =>
+    document.project?.documentId !== context?.documentId ||
+    document.functionality?.documentId !== functionalityDocumentId)) {
+    throw new Error('Persisted case relations do not match the requested scope.');
+  }
 
   return documents.map((document, index) => {
     const mapped = mapTestCase(document);
@@ -219,19 +231,48 @@ export async function getTestCases(projectId?: string, functionalityId?: string)
   });
 }
 
-export async function saveTestCase(testCase: TestCase) {
-  const context = await findProjectContext(testCase.projectId);
+export async function saveTestCase(testCase: TestCase, functionalityDocumentId?: string, assertWriteActive?: () => void) {
+  // Canvas must not resolve through getFunctionalities: that legacy catalog can
+  // deduplicate distinct persisted parents sharing a business code.
+  const freshProjects = functionalityDocumentId
+    ? (await Http.get<{ projects: Array<{ key: string; documentId: string; organization?: { documentId: string } }> }>(
+        '/api/me/project-contexts',
+      )).data.projects
+    : undefined;
+  const freshProject = freshProjects?.find(item => item.key === testCase.projectId || item.documentId === testCase.projectId);
+  const context = functionalityDocumentId
+    ? freshProject?.organization?.documentId
+      ? { documentId: freshProject.documentId, organizationDocumentId: freshProject.organization.documentId }
+      : null
+    : await findProjectContext(testCase.projectId);
   if (!context) {
     throw new Error(`Project ${testCase.projectId} is not available in the workspace.`);
   }
 
-  const functionalities = await getFunctionalities(testCase.projectId);
-  const functionality = functionalities.find(item => item.id === testCase.functionalityId);
-  const documentId =
-    testCase.id.startsWith('TC-') || testCase.id.startsWith('TC-AI-') ? null : testCase.id;
-  const original = documentId ? await getDocument<TestCaseDto>('/api/test-cases', documentId) : undefined;
+  const functionality = functionalityDocumentId
+    ? await getDocument<{ documentId: string; code: string; project?: { documentId: string } }>(
+        '/api/functionalities', functionalityDocumentId, { 'populate[0]': 'project' },
+      )
+    : (await getFunctionalities(testCase.projectId)).find(item => item.id === testCase.functionalityId);
+  const documentId = testCase.documentId || (
+    testCase.id.startsWith('TC-') || testCase.id.startsWith('TC-AI-') ? null : testCase.id);
+  const original = documentId ? await getDocument<TestCaseDto>('/api/test-cases', documentId,
+    functionalityDocumentId ? { 'populate[0]': 'project', 'populate[1]': 'functionality' } : undefined) : undefined;
 
-  const saved = await upsertDocument<TestCaseDto>('/api/test-cases', documentId, {
+  if (functionalityDocumentId) {
+    if (!functionality || functionality.documentId !== functionalityDocumentId ||
+        !('project' in functionality) || functionality.project?.documentId !== context.documentId ||
+        !('code' in functionality) || functionality.code !== testCase.functionalityId) {
+      throw new Error('La funcionalidad no pertenece al scope del proyecto seleccionado.');
+    }
+    if (documentId && (!original || original.documentId !== documentId ||
+        original.project?.documentId !== context.documentId ||
+        original.functionality?.documentId !== functionalityDocumentId)) {
+      throw new Error('El caso persistido no pertenece al scope de proyecto y funcionalidad seleccionado.');
+    }
+  }
+
+  const payload = {
     title: testCase.title,
     description: testCase.description,
     preconditions: testCase.preconditions,
@@ -258,10 +299,37 @@ export async function saveTestCase(testCase: TestCase) {
         : 0,
     organization: relation(context.organizationDocumentId),
     project: relation(context.documentId),
-    functionality: relation(functionality?.documentId || functionality?.id),
-  });
+    functionality: relation(functionalityDocumentId || functionality?.documentId || (functionality && 'id' in functionality ? functionality.id : undefined)),
+  };
 
-  return mapTestCase(saved);
+  if (functionalityDocumentId) assertWriteActive?.();
+  let saved: TestCaseDto;
+  try {
+    saved = await upsertDocument<TestCaseDto>('/api/test-cases', documentId, payload);
+  } catch (error) {
+    const status = isAxiosError(error) ? error.response?.status : undefined;
+    if (functionalityDocumentId && (!status || status === 409 || status === 408 || status >= 500)) {
+      throw new Error('Resultado incierto al guardar el caso. Recarga para reconciliar antes de continuar.', { cause: error });
+    }
+    throw error;
+  }
+  if (!functionalityDocumentId) return mapTestCase(saved);
+  try {
+    if (!saved.documentId || (documentId && saved.documentId !== documentId)) throw new Error('Invalid saved case identity.');
+    const persisted = await getDocument<TestCaseDto>('/api/test-cases', saved.documentId, {
+      'populate[0]': 'project', 'populate[1]': 'functionality',
+    });
+    if (!persisted || persisted.documentId !== saved.documentId ||
+        persisted.project?.documentId !== context.documentId ||
+        persisted.functionality?.documentId !== functionalityDocumentId) {
+      throw new Error('Persisted case scope mismatch.');
+    }
+    assertWriteActive?.();
+    return mapTestCase(persisted);
+  } catch (error) {
+    // Even a 403 here follows a write: never classify it as a known rejection.
+    throw new Error('No se pudo verificar el caso guardado; resultado incierto. Recarga para reconciliar.', { cause: error });
+  }
 }
 
 export async function reorderTestCases(items: Array<{ documentId: string; sortOrder: number }>) {
