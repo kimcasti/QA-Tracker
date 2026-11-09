@@ -37,6 +37,17 @@ export function CanvasBoard(props: BoardProps) {
   const zoom = props.zoom && Number.isFinite(props.zoom) && props.zoom > 0 ? props.zoom : 1;
   const writable = canEdit && !busy;
   const worldRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const navigationToggleRef = useRef<HTMLButtonElement>(null);
+  const [navigation, setNavigation] = useState({ project: projectId, open: false, query: '', active: '' });
+  const activeModuleExists = !navigation.active || catalog.modules.some(module => module.documentId === navigation.active);
+  const navigationCurrent = navigation.project === projectId && activeModuleExists;
+  const navigationOpen = navigationCurrent && navigation.open;
+  const navigationQuery = navigationCurrent ? navigation.query : '';
+  const navigationActive = navigationCurrent ? navigation.active : '';
+  useEffect(() => {
+    if (!navigationCurrent) setNavigation({ project: projectId, open: false, query: '', active: '' });
+  }, [projectId, navigationCurrent]);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const id = useId();
   const latest = useRef(props);
@@ -181,7 +192,42 @@ export function CanvasBoard(props: BoardProps) {
     active.onDropTool?.(tool.kind, anchor, x, y, tool.projectId);
   };
 
-  return <div className="canvas-viewport" data-drop-active={dropTarget === 'surface' || undefined} onDragOver={dragOver} onDrop={dropTool} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }} role="region" aria-label="Mapa Canvas del proyecto" aria-busy={busy} tabIndex={0}>
+  const navigateToModule = (moduleId: string) => {
+    if (!catalog.modules.some(module => module.documentId === moduleId)) return;
+    const viewport = viewportRef.current;
+    const key = canvasKey('module', moduleId);
+    const card = Array.from(worldRef.current?.querySelectorAll<HTMLElement>('[data-node]') || []).find(node => node.dataset.node === key);
+    if (!viewport || !card) return;
+    const viewRect = viewport.getBoundingClientRect(), cardRect = card.getBoundingClientRect();
+    // DOM rects already include the current map zoom; scroll only the map, never the page.
+    viewport.scrollTo({
+      left: viewport.scrollLeft + cardRect.left - viewRect.left - viewport.clientLeft - Math.max(16, (viewport.clientWidth - cardRect.width) / 2),
+      top: viewport.scrollTop + cardRect.top - viewRect.top - viewport.clientTop - Math.max(16, (viewport.clientHeight - cardRect.height) / 2),
+      behavior: 'instant',
+    });
+    const mobile = window.matchMedia('(max-width: 700px)').matches;
+    setNavigation({ project: projectId, open: !mobile, query: navigationQuery, active: moduleId });
+    if (mobile) card.focus({ preventScroll: true });
+  };
+
+  return <>
+    <nav className="canvas-module-navigation" aria-label="Navegación por módulos" onKeyDown={event => {
+      if (event.key === 'Escape') {
+        event.preventDefault(); setNavigation(previous => ({ ...previous, open: false })); navigationToggleRef.current?.focus({ preventScroll: true });
+      }
+    }}>
+      <button ref={navigationToggleRef} type="button" className="canvas-module-navigation-toggle" aria-label="Módulos del Canvas" aria-expanded={navigationOpen} aria-controls={`${id}-modules`} onClick={() => setNavigation({ project: projectId, open: !navigationOpen, query: navigationQuery, active: navigationActive })}>
+        <span>Módulos</span><span aria-hidden="true">{navigationOpen ? '⌃' : '⌄'}</span>
+      </button>
+      {navigationOpen && <div id={`${id}-modules`} className="canvas-module-navigation-panel">
+        <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo…" value={navigationQuery} onChange={event => setNavigation(previous => ({ ...previous, query: event.target.value }))} />
+        <ul>{catalog.modules.filter(module => module.name.toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())).map(module => <li key={module.documentId}>
+          <button type="button" aria-label={`Ir al módulo ${module.name}`} aria-current={navigationActive === module.documentId ? 'location' : undefined} onClick={() => navigateToModule(module.documentId)}>{module.name}</button>
+        </li>)}</ul>
+        {!catalog.modules.some(module => module.name.toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())) && <p role="status">No hay módulos que coincidan.</p>}
+      </div>}
+    </nav>
+    <div ref={viewportRef} className="canvas-viewport" data-drop-active={dropTarget === 'surface' || undefined} onDragOver={dragOver} onDrop={dropTool} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }} role="region" aria-label="Mapa Canvas del proyecto" aria-busy={busy} tabIndex={0}>
     <div className="canvas-world-bounds" style={{ width: width * zoom, height: height * zoom }}>
     <div className="canvas-world" ref={worldRef} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={clearDrag} onLostPointerCapture={clearDrag} onKeyDown={event => { if (event.key === 'Escape') clearDrag(); }} style={{ width, height, transform: `scale(${zoom})` }}>
       <svg className="canvas-connectors" width={width} height={height} aria-hidden="true">
@@ -196,7 +242,7 @@ export function CanvasBoard(props: BoardProps) {
       {catalog.modules.map(module => {
         const key = canvasKey('module', module.documentId);
         const count = catalog.functionalities.filter(item => item.moduleDocumentId === module.documentId).length;
-        return <article className="canvas-node canvas-module" key={key} data-node={key} data-moving={preview?.project === projectId && preview.key === key || undefined} data-drop-active={dropTarget === key || undefined} data-color={color(key)} style={style(key)} aria-label={`Módulo ${module.name}`}>
+        return <article className="canvas-node canvas-module" key={key} data-node={key} tabIndex={-1} data-navigation-active={navigationActive === module.documentId || undefined} data-moving={preview?.project === projectId && preview.key === key || undefined} data-drop-active={dropTarget === key || undefined} data-color={color(key)} style={style(key)} aria-label={`Módulo ${module.name}`}>
           <header className="canvas-node-head" data-draggable={writable && !!props.onMove} title={writable ? 'Arrastra para mover; usa el menú de color y posición como alternativa.' : undefined}><div className="canvas-head-copy"><small>Módulo</small><h3>{module.name}</h3></div><div className="canvas-head-actions">{notesButton(key, module.name)}{colorButton(key, module.name)}</div></header>
           <div className="canvas-node-meta">{count} {count === 1 ? 'funcionalidad' : 'funcionalidades'}</div>
           {canEdit && <footer className="canvas-node-footer"><button type="button" className="canvas-add-button" disabled={busy} onClick={() => props.onCreateFunctionality?.(module.documentId)}>+ <span>Agregar funcionalidad</span></button>{action(`Editar módulo ${module.name}`, 'pencil', () => props.onEditModule?.(module.documentId))}</footer>}
@@ -224,5 +270,5 @@ export function CanvasBoard(props: BoardProps) {
       })}
     </div>
     </div>
-  </div>;
+  </div></>;
 }

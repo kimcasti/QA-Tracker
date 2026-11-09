@@ -1,4 +1,16 @@
 /* Board-only styles. CanvasWorkspace imports this stylesheet for browser rendering. */
+.canvas-module-navigation { position: absolute; top: 12px; right: 12px; z-index: 5; display: flex; flex-direction: column; width: 260px; max-width: calc(100% - 24px); max-height: calc(100% - 80px); color: #102a43; font: 13px var(--font-sans, 'Inter', 'Segoe UI', sans-serif); }
+.canvas-module-navigation *, .canvas-module-navigation *::before { box-sizing: border-box; }
+.canvas-module-navigation button, .canvas-module-navigation input { font: inherit; color: inherit; }
+.canvas-module-navigation-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-left: auto; min-height: 44px; padding: 8px 14px; border: 1px solid #b7cddc; border-radius: 9px; background: #fff; box-shadow: 0 3px 12px #102a4314; cursor: pointer; font-weight: 600 !important; }
+.canvas-module-navigation-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; margin-top: 6px; padding: 10px; border: 1px solid #b7cddc; border-radius: 10px; background: #fff; box-shadow: 0 5px 18px #102a4324; }
+.canvas-module-navigation input { display: block; width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid #9cb8cb; border-radius: 6px; background: #fff; }
+.canvas-module-navigation ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: min(240px, 30dvh); overflow: auto; overscroll-behavior: contain; }
+.canvas-module-navigation li button { display: block; width: 100%; min-height: 44px; border: 0; border-radius: 6px; padding: 10px; text-align: left; overflow-wrap: anywhere; background: #fff; cursor: pointer; }
+.canvas-module-navigation li button:hover, .canvas-module-navigation li button[aria-current] { background: #edf7fa; }
+.canvas-module-navigation p { margin: 10px 0 0; color: #526d82; }
+.canvas-module-navigation :is(button, input):focus-visible { outline: 3px solid #087e99; outline-offset: 2px; }
+.canvas-node[data-navigation-active="true"] { outline: 3px solid #087e99; outline-offset: 3px; box-shadow: 0 0 0 7px #fff, 0 5px 18px #102a4324; }
 .canvas-viewport {
   --canvas-ink: #102a43;
   --canvas-muted: #526d82;
