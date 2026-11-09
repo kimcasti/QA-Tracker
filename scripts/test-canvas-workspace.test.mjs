@@ -14,7 +14,7 @@ import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {ConfigProvider,App} from 'antd';import {MemoryRouter} from 'react-router-dom';
 import CanvasWorkspace from './src/modules/canvas/CanvasWorkspace';import './src/i18n/i18n';
 const root=createRoot(document.getElementById('root'));let count=0;let client;
-window.mount=(project='SYNTHETIC',viewer=false,reuse=false)=>{window.fixtureViewer=viewer;if(!reuse||!client)client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});window.canvasQueryClient=client;root.render(<QueryClientProvider key={++count} client={client}><MemoryRouter initialEntries={['/projects/'+project+'/canvas']}><ConfigProvider><App><CanvasWorkspace projectId={project}/></App></ConfigProvider></MemoryRouter></QueryClientProvider>);};
+window.mount=(project='SYNTHETIC',viewer=false,reuse=false)=>{window.fixtureViewer=viewer;if(!reuse||!client)client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});window.canvasQueryClient=client;root.render(<QueryClientProvider key={++count} client={client}><MemoryRouter initialEntries={['/projects/'+project+'/canvas']}><ConfigProvider><App><div style={{height:64}} aria-hidden="true"/><main className="qa-workspace-content p-4"><div className="qa-workspace-canvas w-full"><CanvasWorkspace projectId={project}/></div></main></App></ConfigProvider></MemoryRouter></QueryClientProvider>);};
 `},outdir:join(scratch,'workspace-bundle'),bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',logLevel:'silent',define:{'import.meta.env':JSON.stringify({VITE_API_URL:'https://canvas-ui.invalid',VITE_USE_SERVICE_AUTH:'false',DEV:false})},plugins:[{name:'synthetic-user-context',setup(b){b.onLoad({filter:/[\\/]hooks[\\/]useWorkspaceAccess\.ts$/},()=>({loader:'ts',contents:`export function useWorkspaceAccess(){return {isViewer:window.fixtureViewer,data:{memberships:[{organization:{documentId:'org-a'},role:{code:window.fixtureViewer?'viewer':'owner'}}]}}}`}));}}]});
 const cssFiles=bundle.outputFiles.filter(f=>f.path.endsWith('.css')).map(f=>f.text).join('\n');
 const js=bundle.outputFiles.find(f=>f.path.endsWith('.js')).text;
@@ -47,6 +47,24 @@ await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.
  result.unexpected.push(req.method()+' '+url.href);return route.abort();});
 await page.goto('https://canvas-ui.invalid/');await page.addStyleTag({content:css});await page.addScriptTag({content:js});
 const mount=async(viewer=false,projectKey='SYNTHETIC',reuse=false)=>{await page.evaluate(({viewer,projectKey,reuse})=>window.mount(projectKey,viewer,reuse),{viewer,projectKey,reuse});await expect(page.getByRole('heading',{name:'Canvas',exact:true})).toBeVisible();};
+reset();await mount();await expect(page.locator('[data-node="module:m1"]')).toBeVisible();
+const beforeViewportRows=JSON.stringify(rows), beforeViewportSnapshots=JSON.stringify(snapshots);
+result.viewportMeasurements=[];
+for(const [width,height] of [[2720,1800],[1360,900],[1700,1125],[900,640],[720,540]]){
+ await page.setViewportSize({width,height});
+ const viewport=page.getByRole('region',{name:'Mapa Canvas del proyecto',exact:true});
+ await expect.poll(async()=>viewport.evaluate(el=>{const rect=el.getBoundingClientRect();return innerHeight-rect.bottom;}),{message:'El lienzo debe terminar cerca del borde inferior, sin la franja vacía al ampliar el viewport CSS'}).toBeLessThanOrEqual(48);
+ const geometry=await viewport.evaluate(el=>{const r=el.getBoundingClientRect();return {width:innerWidth,height:innerHeight,top:r.top,bottom:r.bottom,canvasHeight:r.height,overflow:getComputedStyle(el).overflow};});
+ assert.ok(geometry.bottom<=height+1);assert.ok(geometry.canvasHeight>100);assert.equal(geometry.overflow,'auto');
+ await expect(page.locator('[data-node="module:m1"]')).toHaveCSS('width','300px');
+ await expect(page.getByRole('group',{name:'Zoom del Canvas',exact:true}).locator('output')).toHaveText('100%');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ result.viewportMeasurements.push(geometry);
+ if(width===2720)await page.screenshot({path:join(scratch,'canvas-full-height-expanded-viewport.png'),fullPage:true,animations:'disabled'});
+}
+assert.equal(JSON.stringify(rows),beforeViewportRows);assert.equal(JSON.stringify(snapshots),beforeViewportSnapshots);assert.equal(writes.length,0);
+await page.setViewportSize({width:1360,height:1000});
+result.passed.push('Canvas aprovecha la altura disponible en escritorio, ventanas reducidas y viewports CSS ampliados de zoom reducido, sin agrandar tarjetas ni escribir datos');
 reset();
 const orphanTitles=['Caso histórico sin funcionalidad','Caso sin relación disponible con un título extenso para comprobar la lectura en pantallas pequeñas <img src=x>'];
 rows['/api/test-cases'].push(...orphanTitles.map((title,index)=>({documentId:'unassigned-'+index,title,description:'Conservar sin cambios',testType:'functional',project,organization:{documentId:'org-a'},...(index===0?{functionality:null}:{})})));

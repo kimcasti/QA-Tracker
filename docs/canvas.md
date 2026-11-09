@@ -25,6 +25,8 @@ Las notas no tienen título editable: solo cuerpo enriquecido y una referencia o
 
 Arrastra el encabezado, usa «Ordenar Canvas» o ajusta X/Y desde el menú de color y posición. Los controles de zoom no cambian datos QA.
 
+En escritorio, el lienzo aprovecha la altura disponible de la ventana, también al reducir el zoom del navegador; no se agrandan las tarjetas ni se cambian sus posiciones. En ventanas bajas, el panel Elementos dispone de desplazamiento propio. La disposición móvil se mantiene independiente.
+
 La paleta fija usa encabezados suaves y cuerpos blancos. El color no representa estado, prioridad ni riesgo. Cada tarjeta conserva su color independiente; «Aplicar a sus funcionalidades» es la única propagación explícita de un módulo. «Color para nuevos elementos» no recolorea lo existente.
 
 ## Persistencia y permisos
