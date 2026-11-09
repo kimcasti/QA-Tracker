@@ -124,8 +124,6 @@ async function rawCatalog(context: Context) {
     }
   }
   for (const row of cases) {
-    const parent = functionalityIds.get(row.functionality?.documentId);
-    if (!parent || row.functionality.code !== parent.code) throw new Error('Canvas case has a foreign or missing functionality relation.');
     if (typeof row.title !== 'string' ||
         !['description', 'preconditions', 'testSteps', 'expectedResult', 'automationReference', 'automationOwner', 'lastAutomationRunAt']
           .every(field => row[field] == null || typeof row[field] === 'string') ||
@@ -136,6 +134,13 @@ async function rawCatalog(context: Context) {
         ![['automationStatus', statusApi], ['automationType', typeApi], ['automationTool', toolApi], ['lastAutomationStatus', resultApi]]
           .every(([field, map]) => row[field as string] == null || Object.values(map).includes(row[field as string]))) {
       throw new Error('Canvas case has invalid domain fields.');
+    }
+    // Missing historical links do not invalidate the rest of the project catalog.
+    // Validate domain fields first, including cases that cannot enter the exact editor.
+    if (row.functionality != null) {
+      const relation = caseFunctionality(row);
+      const parent = functionalityIds.get(relation.documentId);
+      if (!parent || relation.code !== parent.code) throw new Error('Canvas case has a foreign or missing functionality relation.');
     }
   }
   return { modules, functionalities, cases, sprints };
@@ -281,12 +286,21 @@ const resultApi: Record<AutomationResultStatus, string> = {
 function fromApi<T extends string>(map: Record<T, string>, value: unknown): T | undefined {
   return (Object.keys(map) as T[]).find(key => map[key] === value);
 }
+function caseFunctionality(row: Raw): { documentId: string; code: string } {
+  const parent = row.functionality;
+  if (!parent || typeof parent !== 'object' || Array.isArray(parent) ||
+      !validDocumentId(parent.documentId) || typeof parent.code !== 'string' || !parent.code) {
+    throw new Error('Canvas case has a foreign or missing functionality relation.');
+  }
+  return parent;
+}
 function mapCase(row: Raw, context: Context, index = 0): TestCase {
+  const parent = caseFunctionality(row);
   const automationStatus = deriveAutomationStatus({
     automationStatus: fromApi(statusApi, row.automationStatus), isAutomated: row.isAutomated,
   });
   return { documentId: row.documentId, id: row.documentId, projectId: context.key,
-    functionalityId: row.functionality.code, title: row.title, description: row.description ?? '',
+    functionalityId: parent.code, title: row.title, description: row.description ?? '',
     preconditions: row.preconditions ?? '', testSteps: row.testSteps ?? '', expectedResult: row.expectedResult ?? '',
     testType: testTypeFromApi(row.testType), priority: priorityFromApi(row.priority),
     automationStatus, isAutomated: isAutomatedCoverageStatus(automationStatus),
@@ -336,7 +350,7 @@ export async function createCanvasCases(projectDocumentId: string, functionality
   if (!parent || !Array.isArray(cases)) throw new Error('Canvas case parent does not belong to this project.');
   const ids = new Set<string>();
   const normalizedTitle = (title: string): string => title.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-  const titles = new Set(before.cases.filter(row => row.functionality.documentId === functionalityDocumentId)
+  const titles = new Set(before.cases.filter(row => row.functionality?.documentId === functionalityDocumentId)
     .map(row => normalizedTitle(row.title)));
   // Build and validate EVERY payload before issuing the first POST.
   const payloads = cases.map(item => {
@@ -359,7 +373,7 @@ export async function createCanvasCases(projectDocumentId: string, functionality
     const saved = await upsertDocument<Raw>('/api/test-cases', undefined, payload);
     try {
       const row = verifiedRecord((await rawCatalog(context)).cases, saved);
-      if (knownIds.has(row.documentId) || row.functionality.documentId !== functionalityDocumentId) {
+      if (knownIds.has(row.documentId) || row.functionality?.documentId !== functionalityDocumentId) {
         throw new Error('Canvas case readback has an unexpected document ID or parent.');
       }
       for (const [field, value] of Object.entries(payload)) {
@@ -383,11 +397,14 @@ export async function loadCanvas(projectId: string): Promise<CanvasData> {
     modules: raw.modules.map(mapModule),
     functionalities: raw.functionalities.map(mapFunctionality),
     sprints: raw.sprints.map(row => ({ documentId: row.documentId, name: row.name })),
-    cases: raw.cases.map((row, index) => {
+    unassignedCases: raw.cases.filter(row => row.functionality == null)
+      .map(row => ({ documentId: row.documentId, title: row.title })),
+    cases: raw.cases.filter(row => row.functionality != null).map((row, index) => {
+      const parent = caseFunctionality(row);
       const testCase = mapCase(row, context, index);
       return { documentId: row.documentId, title: row.title,
-        functionalityDocumentId: row.functionality.documentId,
-        functionalityCode: row.functionality.code, testCase };
+        functionalityDocumentId: parent.documentId,
+        functionalityCode: parent.code, testCase };
     }),
   };
   return { context: { documentId: context.documentId, organizationDocumentId: context.organizationDocumentId }, snapshot, catalog };

@@ -5,6 +5,7 @@
 Abre un proyecto y entra en **Más → Canvas**, después de Configuración y Acerca de. La ruta es `/projects/:projectKey/canvas`.
 
 - Las tarjetas muestran los módulos y funcionalidades ya registrados. Los casos empiezan colapsados; el contador permite desplegar sus títulos.
+- Los casos del proyecto sin funcionalidad disponible no impiden cargar el catálogo existente. Se incluyen en el total y se muestran aparte en **Casos sin funcionalidad**, como un listado de títulos de solo lectura. No se crean copias, no se inventan relaciones y no se reasignan ni eliminan automáticamente. Un padre presente pero ajeno, mal formado o incoherente sigue siendo un error de validación; no se convierte en un caso sin asignar.
 - El título o lápiz de un caso abre el **editor existente** con su identificador persistido y funcionalidad exacta. «Volver al Canvas» recarga sus datos.
 - **Elementos** permite pulsar o arrastrar Módulo, Funcionalidad, Nota y Casos de prueba. Por teclado/clic, los padres se eligen explícitamente. Arrastrar desde otro proyecto o sobre un destino incompatible no crea registros.
 - Crear o editar módulos y funcionalidades guarda registros reales. Solo el nombre se exige en el formulario de funcionalidad; Sprint, Fecha de entrega, Prioridad, Impacto, Probabilidad y Estado actual pueden quedar sin definir. Limpiar un opcional envía `null`; no se inventan valores.

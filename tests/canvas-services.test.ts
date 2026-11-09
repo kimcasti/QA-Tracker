@@ -105,6 +105,80 @@ test('load Canvas uses fresh exact scope, raw nullable metadata and document rel
   assert.ok(requests.filter(r => r.url === '/api/me/project-contexts').length > before);
 });
 
+test('existing Canvas catalogs load paginated unassigned cases without writes or input mutation', async () => {
+  const baseline = fixture();
+  const linked = (await baseline.s.loadCanvas('project-a')).catalog.cases;
+  const catalog = rows();
+  catalog['/api/functionalities'].push({ ...catalog['/api/functionalities'][0], documentId: 'func-b' });
+  catalog['/api/test-cases'].push(
+    { ...catalog['/api/test-cases'][0], documentId: 'unassigned-null', title: 'No parent', functionality: null },
+    { ...catalog['/api/test-cases'][0], documentId: 'case-b', title: 'Sibling case', functionality: { documentId: 'func-b', code: 'MOD-01' } },
+    { ...catalog['/api/test-cases'][0], documentId: 'unassigned-undefined', title: 'Absent parent', functionality: undefined },
+    { ...catalog['/api/test-cases'][0], documentId: 'unassigned-omitted', title: 'Omitted parent' },
+  );
+  delete catalog['/api/test-cases'][4].functionality;
+  const original = structuredClone(catalog);
+  const { s, requests } = fixture({ catalog });
+  const result = await s.loadCanvas('project-a');
+  assert.deepEqual(result.catalog.modules.map(row => row.documentId), ['module-a']);
+  assert.deepEqual(result.catalog.functionalities.map(row => row.documentId), ['func-a', 'func-b']);
+  assert.deepEqual(result.catalog.cases.map(row => row.documentId), ['case-a', 'case-b']);
+  assert.deepEqual(result.catalog.cases[0], linked[0], 'the linked case retains its complete mapped domain fields');
+  assert.equal(result.catalog.cases[1].functionalityDocumentId, 'func-b');
+  assert.deepEqual(result.catalog.unassignedCases, [
+    { documentId: 'unassigned-null', title: 'No parent' },
+    { documentId: 'unassigned-undefined', title: 'Absent parent' },
+    { documentId: 'unassigned-omitted', title: 'Omitted parent' },
+  ], 'unassigned DTOs expose identity/title only, without an invented parent or exact editor data');
+  assert.deepEqual(catalog, original);
+  assert.ok(requests.every(request => request.method === 'get'), 'loading never writes or repairs records');
+  assert.deepEqual(requests.filter(r => r.url === '/api/test-cases').map(r => r.params['pagination[page]']), [1, 2, 3]);
+});
+
+test('unassigned cases still require valid project provenance, identity and every domain field', async () => {
+  const invalidFields: Array<[string, unknown]> = [
+    ['project', null], ['project', { documentId: 'foreign', key: 'SYNTHETIC' }],
+    ['project', { ...project, key: 'FOREIGN' }], ['organization', { documentId: 'foreign' }],
+    ['documentId', '../case-a'], ['documentId', 5], ['title', {}],
+    ...['description', 'preconditions', 'testSteps', 'expectedResult', 'automationReference', 'automationOwner', 'lastAutomationRunAt']
+      .map(field => [field, {}] as [string, unknown]),
+    ['sortOrder', '1'], ['isAutomated', 'true'], ['testType', 'invented'], ['priority', 'invented'],
+    ...['automationStatus', 'automationType', 'automationTool', 'lastAutomationStatus']
+      .map(field => [field, 'invented'] as [string, unknown]),
+  ];
+  for (const functionality of [null, undefined]) {
+    for (const [field, value] of invalidFields) {
+      const catalog = rows();
+      catalog['/api/test-cases'].push({ ...catalog['/api/test-cases'][0], documentId: 'unassigned', functionality, [field]: value });
+      const original = structuredClone(catalog);
+      const f = fixture({ catalog });
+      await assert.rejects(f.s.loadCanvas('project-a'), /Canvas/, `${field} must not bypass validation without a parent`);
+      await assert.rejects(f.s.saveCanvasModule('project-a', { documentId: 'module-a', name: 'No write' }), /Canvas/);
+      assert.ok(f.requests.every(r => r.method === 'get'));
+      assert.deepEqual(catalog, original);
+    }
+    const catalog = rows();
+    catalog['/api/test-cases'].push({ ...catalog['/api/test-cases'][0], functionality });
+    const f = fixture({ catalog });
+    await assert.rejects(f.s.loadCanvas('project-a'), /Canvas/, 'duplicate IDs remain invalid across linked and unassigned rows');
+    assert.ok(f.requests.every(r => r.method === 'get'));
+  }
+});
+
+test('non-null malformed or foreign functionality relations never become unassigned cases', async () => {
+  for (const functionality of [false, 0, '', 'func-a', [], {}, { documentId: 'func-a' },
+    { documentId: '../func-a', code: 'MOD-01' }, { documentId: 5, code: 'MOD-01' },
+    { documentId: 'func-a', code: 5 }, { documentId: 'func-a', code: 'WRONG' },
+    { documentId: 'foreign-function', code: 'MOD-01' }]) {
+    const catalog = rows();
+    catalog['/api/test-cases'].push({ ...catalog['/api/test-cases'][0], documentId: 'invalid-parent', functionality });
+    const f = fixture({ catalog });
+    await assert.rejects(f.s.loadCanvas('project-a'), /Canvas.*functionality/);
+    await assert.rejects(f.s.saveCanvasModule('project-a', { documentId: 'module-a', name: 'No write' }), /Canvas/);
+    assert.ok(f.requests.every(r => r.method === 'get'));
+  }
+});
+
 test('catalog rejects foreign/missing project and cross-project same-code relations; failed reads stay visible', async () => {
   for (const mutate of [
     (c: Record<string, Row[]>) => { c['/api/project-modules'][0].project = { documentId: 'foreign', key: 'SYNTHETIC' }; },
@@ -112,7 +186,7 @@ test('catalog rejects foreign/missing project and cross-project same-code relati
     (c: Record<string, Row[]>) => { c['/api/functionalities'][0].module = { documentId: 'foreign-module' }; },
     (c: Record<string, Row[]>) => { c['/api/functionalities'][0].sprint = { documentId: 'foreign-sprint' }; },
     (c: Record<string, Row[]>) => { c['/api/test-cases'][0].functionality = { documentId: 'foreign-function', code: 'MOD-01' }; },
-    (c: Record<string, Row[]>) => { c['/api/test-cases'][0].functionality = null; },
+    (c: Record<string, Row[]>) => { c['/api/test-cases'][0].functionality = { documentId: 'func-a', code: 'WRONG' }; },
     (c: Record<string, Row[]>) => { c['/api/functionalities'][0].status = 'invented'; },
   ]) {
     const catalog = rows(); mutate(catalog);
@@ -203,6 +277,42 @@ test('Canvas functionality uses nullable creates and partial edits without touch
     const f = fixture();
     await assert.rejects(f.s.saveCanvasFunctionality('project-a', input as any), /Canvas/);
     assert.equal(f.requests.filter(r => r.method !== 'get').length, 0);
+  }
+});
+
+test('valid Canvas mutations preserve unassigned cases and never write their assignment', async () => {
+  for (const operation of ['module', 'functionality', 'case'] as const) {
+    const catalog = rows();
+    catalog['/api/test-cases'].push(
+      { ...catalog['/api/test-cases'][0], documentId: 'unassigned-null', title: 'New case', functionality: null },
+      { ...catalog['/api/test-cases'][0], documentId: 'unassigned-undefined', functionality: undefined },
+    );
+    const originalCases = structuredClone(catalog['/api/test-cases']);
+    const f = fixture({ catalog });
+    if (operation === 'module') {
+      await f.s.saveCanvasModule('project-a', { documentId: 'module-a', name: 'Renamed' });
+    } else if (operation === 'functionality') {
+      await f.s.saveCanvasFunctionality('project-a', { documentId: 'func-a', name: 'Renamed' });
+    } else {
+      const draft = { id: 'draft-new', projectId: 'SYNTHETIC', functionalityId: 'MOD-01', title: 'New case',
+        description: '', preconditions: '', testSteps: '', expectedResult: '', testType: 'Funcional', priority: 'Medio' } as any;
+      await assert.rejects(f.s.createCanvasCases('project-a', 'func-a', [{ ...draft, id: 'unassigned-null' }]), /Canvas.*persisted/i);
+      assert.ok(f.requests.every(r => r.method === 'get'), 'unassigned persisted IDs remain reserved');
+      const result = await f.s.createCanvasCases('project-a', 'func-a', [draft]);
+      assert.equal(result.confirmed.length, 1);
+      assert.deepEqual(result.pending, []);
+      assert.equal(result.confirmed[0].testCase.functionalityId, 'MOD-01');
+    }
+    assert.deepEqual(catalog['/api/test-cases'].slice(0, originalCases.length), originalCases);
+    const writes = f.requests.filter(r => r.method !== 'get');
+    assert.equal(writes.length, 1, `${operation} writes only its intended target`);
+    assert.equal(writes[0].url, operation === 'module' ? '/api/project-modules/module-a' :
+      operation === 'functionality' ? '/api/functionalities/func-a' : '/api/test-cases');
+    if (operation !== 'case') assert.deepEqual(writes[0].data, { data: { name: 'Renamed' } });
+    else assert.deepEqual(writes[0].data.data.functionality, { documentId: 'func-a' });
+    const refreshed = await f.s.loadCanvas('project-a');
+    assert.deepEqual(refreshed.catalog.unassignedCases, originalCases.slice(1).map(({ documentId, title }) => ({ documentId, title })));
+    assert.equal(refreshed.catalog.cases.length, operation === 'case' ? 2 : 1);
   }
 });
 

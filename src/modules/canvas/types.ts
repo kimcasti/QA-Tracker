@@ -38,6 +38,8 @@ export interface CanvasCatalog {
   modules: CanvasModule[];
   functionalities: CanvasFunctionality[];
   cases: CanvasTestCase[];
+  /** Historical project cases without a functionality; no exact editor target. */
+  unassignedCases?: Array<{ documentId: string; title: string }>;
   sprints: CanvasSprint[];
 }
 export interface CanvasData {
