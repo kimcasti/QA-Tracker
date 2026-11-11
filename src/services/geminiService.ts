@@ -109,7 +109,6 @@ type ProjectInsightInput = {
   purpose?: string;
   coreRequirements?: string[];
   businessRules?: string;
-  confirmedConclusions?: string[];
 };
 
 export type DeliveryUnitAiSummaryContext = {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Empty, Image, Modal, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Image, Modal, Skeleton, Space, Tag, Typography } from 'antd';
 import { generateWireframe, loadWireframes, safeStitchUrl, safeWireframeImage, type WireframeGallery } from '../../services/stitchService';
 
 const statusLabels = { generating: 'Generando', completed: 'Completado', partial: 'Resultado parcial', error: 'Error', uncertain: 'Resultado por verificar' };
@@ -11,6 +11,7 @@ export function ProjectWireframes(props: Props) {
 
 function ProjectWireframesContent({ projectId, hasBrief, canGenerate }: Props) {
   const [gallery, setGallery] = useState<WireframeGallery | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [locked, setLocked] = useState(false);
@@ -20,6 +21,7 @@ function ProjectWireframesContent({ projectId, hasBrief, canGenerate }: Props) {
   const requestId = useRef<string | null>(null);
   const inFlight = gallery?.versions.some(v => ['generating', 'uncertain', 'partial'].includes(v.status)) ?? false;
   const refresh = async (explicit = false) => {
+    setLoading(true);
     try {
       const next = await loadWireframes(projectId);
       if (!alive.current) return;
@@ -27,7 +29,9 @@ function ProjectWireframesContent({ projectId, hasBrief, canGenerate }: Props) {
       if (explicit) { setError(''); setLocked(false); }
     } catch {
       if (!alive.current) return;
-      setError('No pudimos verificar los wireframes. Actualiza antes de generar.'); setLocked(true);
+      setError('No pudimos cargar los diseños. Reintenta para continuar.'); setLocked(true);
+    } finally {
+      if (alive.current) setLoading(false);
     }
   };
   useEffect(() => {
@@ -41,7 +45,7 @@ function ProjectWireframesContent({ projectId, hasBrief, canGenerate }: Props) {
     return () => window.clearInterval(timer);
   }, [gallery?.versions, projectId]);
   const generate = async () => {
-    if (gate.current || !alive.current || !canGenerate || !hasBrief || locked || inFlight) return;
+    if (gate.current || !alive.current || !canGenerate || !hasBrief || loading || locked || inFlight) return;
     gate.current = true; setBusy(true);
     requestId.current ||= crypto.randomUUID();
     try {
@@ -62,16 +66,19 @@ function ProjectWireframesContent({ projectId, hasBrief, canGenerate }: Props) {
     <Space wrap style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
       <Typography.Title level={4} style={{ margin: 0 }}>Wireframes lo-fi</Typography.Title>
       <Space wrap>
-        <Button onClick={() => void refresh(true)} disabled={busy}>Actualizar wireframes</Button>
-        {canGenerate && <Button type="primary" disabled={!gallery?.configured || !hasBrief || busy || locked || inFlight} onClick={() => setConfirm(true)}>Generar flujo lo-fi</Button>}
+        {(Boolean(gallery?.versions.length) || error) && <Button onClick={() => void refresh(true)} disabled={busy || loading}>{!gallery && error ? 'Reintentar' : 'Actualizar wireframes'}</Button>}
+        {canGenerate && <Button type="primary" disabled={!gallery?.configured || !hasBrief || loading || busy || locked || inFlight} onClick={() => setConfirm(true)}>Generar flujo lo-fi</Button>}
       </Space>
     </Space>
     <Typography.Paragraph type="secondary">Una acción genera un flujo simple de principio a fin como una versión con varias pantallas lo-fi. Revisa el brief antes de enviarlo. Un flujo completo puede consumir más cuota de Stitch que una pantalla aislada.</Typography.Paragraph>
-    {!hasBrief && canGenerate && <Alert type="info" title="Genera primero el brief lo-fi del proyecto." style={{ marginBottom: 12 }} />}
+
     {gallery && !gallery.configured && canGenerate && <Alert type="warning" title="Stitch no está configurado en el servidor." style={{ marginBottom: 12 }} />}
     {gallery?.versions.some(v => v.status === 'partial' || v.status === 'uncertain') && <Alert type="warning" title="Hay un resultado por verificar. Revisa el proyecto en Stitch; generar otro flujo requiere conciliación manual." style={{ marginBottom: 12 }} />}
     {error && <Alert type="warning" title={error} style={{ marginBottom: 12 }} />}
-    {!gallery ? <Typography.Text>Cargando wireframes…</Typography.Text> : !gallery.versions.length ? <Empty description="Aún no hay wireframes generados." /> :
+    {!gallery ? (loading ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : null) : !gallery.versions.length ? <Empty description={<>
+      <Typography.Text strong>Dale forma a tu proyecto</Typography.Text>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>{hasBrief ? 'Tu brief está listo. Genera el flujo propuesto para comenzar a trabajar con diseño.' : 'Convierte la información de este proyecto en un flujo visual. Comienza generando el brief.'}</Typography.Paragraph>
+    </>} /> :
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16 }}>
         {gallery.versions.map((version, index) => <Card key={version.id} size="small" title={`Versión ${gallery.versions.length - index}`}>
           <Space wrap style={{ marginBottom: 12 }}><Tag>{statusLabels[version.status] || 'Resultado por verificar'}</Tag><Typography.Text type="secondary">{new Date(version.createdAt).toLocaleString('es')}</Typography.Text></Space>

@@ -2,7 +2,6 @@ import { ProjectExternalContactsDisclosure } from './about/ProjectExternalContac
 import { ProjectExternalContacts } from './about/ProjectExternalContacts';
 import VoiceTextArea from './VoiceTextArea';
 import { ProjectWireframes } from './about/ProjectWireframes';
-import { confirmedBriefConclusions } from '../utils/wireframeBriefReview';
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -778,8 +777,6 @@ export default function AboutView({ project }: AboutViewProps) {
   const [editingMeetingNote, setEditingMeetingNote] = useState<MeetingNote | null>(null);
   const [meetingSearchTerm, setMeetingSearchTerm] = useState('');
   const [meetingFilterDate, setMeetingFilterDate] = useState<string | null>(null);
-  const [confirmedConclusionsText, setConfirmedConclusionsText] = useState('');
-  useEffect(() => { setConfirmedConclusionsText(''); }, [project.id, project.aiProjectInsights]);
   const [activeAiAction, setActiveAiAction] = useState<'analysis' | 'brief' | null>(null);
   const [openAiDetail, setOpenAiDetail] = useState<'analysis' | 'brief' | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | undefined>(project.logo);
@@ -1140,8 +1137,8 @@ export default function AboutView({ project }: AboutViewProps) {
     try {
       const { generateProjectWireframeBrief } = await import('../services/geminiService');
       const aiWireframeBrief = await generateProjectWireframeBrief(
-        { ...buildProjectAiInput(), confirmedConclusions: confirmedBriefConclusions(confirmedConclusionsText) },
-        project.id,
+        buildProjectAiInput(),
+        project.documentId || project.id,
       );
       await saveProject({ ...project, aiWireframeBrief });
       message.success('Brief de wireframe generado con IA');
@@ -1736,8 +1733,7 @@ export default function AboutView({ project }: AboutViewProps) {
               >
                 <div className="mb-6">
                   <Text className="text-slate-400">
-                    Reutiliza el análisis del proyecto y el prompt listo para herramientas de
-                    wireframing.
+                    Genera el brief desde el objetivo, los requisitos y las normas del proyecto, con el análisis de IA como apoyo.
                   </Text>
                 </div>
 
@@ -1750,18 +1746,7 @@ export default function AboutView({ project }: AboutViewProps) {
                   </div>
                 ) : null}
 
-                {!isViewer && canUseAi && project.aiProjectInsights && (
-                  <div style={{ marginBottom: 24 }}>
-                    <label htmlFor="wireframe-confirmed-conclusions" style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>
-                      Conclusiones del análisis confirmadas por ti
-                    </label>
-                    <Input.TextArea id="wireframe-confirmed-conclusions" value={confirmedConclusionsText}
-                      onChange={event => setConfirmedConclusionsText(event.target.value)}
-                      disabled={activeAiAction !== null} maxLength={8000} autoSize={{ minRows: 3, maxRows: 8 }}
-                      placeholder="Escribe una conclusión revisada por línea. No copies supuestos como si fueran requisitos aprobados." />
-                    <Text type="secondary">Solo estos puntos se tratarán como confirmados al generar el brief. El resto del análisis seguirá como contexto no confirmado, supuestos o preguntas pendientes.</Text>
-                  </div>
-                )}
+
 
                 <Row gutter={[20, 20]}>
                   <Col xs={24} lg={12}>

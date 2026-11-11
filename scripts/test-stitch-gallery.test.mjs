@@ -40,6 +40,23 @@ await page.route('**/*',async route=>{
 });
 try {
  await page.goto('https://wireframe-fixture.invalid/'); await page.addScriptTag({content:script});
+ const historicalVersions=versions;
+ versions=[];
+ await page.evaluate(()=>window.mount());
+ await expect(page.getByText('Dale forma a tu proyecto',{exact:true})).toBeVisible();
+ await expect(page.getByRole('alert')).toHaveCount(0);
+ await expect(page.getByText('Cargando wireframes…',{exact:true})).toHaveCount(0);
+ assert.equal(writes.length,0);
+ failReads=true;
+ await page.evaluate(()=>window.mount());
+ await expect(page.getByText('No pudimos cargar los diseños. Reintenta para continuar.',{exact:true})).toBeVisible();
+ await expect(page.getByText('Cargando wireframes…',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Dale forma a tu proyecto',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Generar flujo lo-fi',exact:true})).toBeDisabled();
+ failReads=false;
+ await page.getByRole('button',{name:'Reintentar',exact:true}).click();
+ await expect(page.getByText('Dale forma a tu proyecto',{exact:true})).toBeVisible();
+ versions=historicalVersions;
  await page.evaluate(()=>window.mount());
  await expect(page.getByRole('img',{name:'Prestamos ficticios'})).toBeVisible();
  const link=page.getByRole('link',{name:'Abrir en Stitch'});
@@ -79,7 +96,7 @@ try {
  await expect(generate).toBeEnabled();
  failReads=true;
  await page.getByRole('button',{name:'Actualizar wireframes'}).click();
- await expect(page.getByText('No pudimos verificar los wireframes. Actualiza antes de generar.')).toBeVisible();
+ await expect(page.getByText('No pudimos cargar los diseños. Reintenta para continuar.')).toBeVisible();
  await expect(generate).toBeDisabled();
  await expect(page.getByRole('img',{name:'Prestamos ficticios'})).toBeVisible();
  failReads=false;
@@ -114,5 +131,5 @@ try {
  await page.screenshot({path:join(scratch,'stitch-gallery-mobile.png'),fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Cancelar',exact:true}).click();
  assert.deepEqual(errors,[]); assert.deepEqual(unexpected,[]);
- console.log(JSON.stringify({passed:true,cases:['legacy one-screen compatibility','multi-screen version and ordered steps','proposed brief journey','gallery and persisted readback','isolated Stitch link','cancel zero writes','double submit one request','viewer read-only','brief required','failed refresh retains images and blocks generation','unknown write blocks retry','partial result blocks generation with recovery explanation','unsafe links and remote images rejected','390px confirmation'],writes:writes.length,externalRequests:unexpected.length}));
+ console.log(JSON.stringify({passed:true,cases:['friendly empty state without warnings','initial read failure ends loading and retry recovers','legacy one-screen compatibility','multi-screen version and ordered steps','proposed brief journey','gallery and persisted readback','isolated Stitch link','cancel zero writes','double submit one request','viewer read-only','brief required','failed refresh retains images and blocks generation','unknown write blocks retry','partial result blocks generation with recovery explanation','unsafe links and remote images rejected','390px confirmation'],writes:writes.length,externalRequests:unexpected.length}));
 } finally {await browser.close();}
