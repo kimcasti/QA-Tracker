@@ -4770,7 +4770,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 className="rounded-lg px-6"
                 onClick={() => setExecutionResultFilter(TestResult.FAILED)}
               >
-                Solo fallidos
+                Test fallidos
               </Button>
               <Button
                 type={executionResultFilter === TestResult.NOT_EXECUTED ? 'primary' : 'default'}
@@ -4778,7 +4778,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                 className="rounded-lg px-6"
                 onClick={() => setExecutionResultFilter(TestResult.NOT_EXECUTED)}
               >
-                Solo pendientes
+                Test pendientes
               </Button>
               <Button
                 title="Limpiar búsqueda, resultado y automatización"
