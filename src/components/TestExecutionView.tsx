@@ -5255,10 +5255,10 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
           title={<span className="text-lg font-bold text-slate-800">Evidencia de Ejecución</span>}
           open={isEvidenceModalOpen}
           onCancel={restoreEvidenceChanges}
-          width={isFailureEvidenceRequired ? 1240 : 820}
+          width={1440}
           className="execution-evidence-modal"
           style={{ maxWidth: 'calc(100vw - 32px)' }}
-          styles={{ body: { maxHeight: '76vh', overflowY: 'auto', overflowX: 'hidden' } }}
+          styles={{ body: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } }}
           centered
           footer={[
             <Button key="close" onClick={restoreEvidenceChanges} className="rounded-lg">

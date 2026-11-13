@@ -450,6 +450,17 @@
   margin-inline-start: 0 !important;
 }
 
+.execution-evidence-modal .ant-modal-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 48px);
+}
+
+.execution-evidence-modal .ant-modal-header,
+.execution-evidence-modal .ant-modal-footer {
+  flex-shrink: 0;
+}
+
 .execution-evidence-modal .execution-evidence-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -490,7 +501,7 @@
 
   .execution-evidence-modal .execution-evidence-notes,
   .execution-evidence-modal .execution-evidence-bug {
-    max-height: 60vh;
+    max-height: calc(100dvh - 270px);
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 8px;

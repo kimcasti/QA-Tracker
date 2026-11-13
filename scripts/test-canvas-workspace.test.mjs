@@ -48,6 +48,26 @@ await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.
 await page.goto('https://canvas-ui.invalid/');await page.addStyleTag({content:css});await page.addScriptTag({content:js});
 const mount=async(viewer=false,projectKey='SYNTHETIC',reuse=false)=>{await page.evaluate(({viewer,projectKey,reuse})=>window.mount(projectKey,viewer,reuse),{viewer,projectKey,reuse});await expect(page.getByRole('heading',{name:'Canvas',exact:true})).toBeVisible();};
 reset();await mount();await expect(page.locator('[data-node="module:m1"]')).toBeVisible();
+const headerGeometry=await page.evaluate(()=>{const heading=document.querySelector('.canvas-screen-heading').getBoundingClientRect(),map=document.querySelector('.canvas-viewport').getBoundingClientRect();return {headingHeight:heading.height,mapTop:map.top,mapHeight:map.height};});
+const headerBaseline=join(scratch,'canvas-header-before.json');
+if(await page.locator('.canvas-screen > .canvas-summary').count())await writeFile(headerBaseline,JSON.stringify(headerGeometry));
+await expect(page.locator('.canvas-screen-heading .canvas-summary')).toHaveText('1 módulos · 1 funcionalidades · 1 casos de prueba',{timeout:3000});
+await expect(page.getByText('Explora lo que tienes. Construye lo que falta.',{exact:true})).toHaveCount(0);
+const titleBox=await page.getByRole('heading',{name:'Canvas',exact:true}).boundingBox(), summaryBox=await page.locator('.canvas-summary').boundingBox(), toolbarBox=await page.locator('.canvas-toolbar').boundingBox();
+assert.ok(summaryBox.x>titleBox.x+titleBox.width&&Math.abs(summaryBox.y+summaryBox.height/2-titleBox.y-titleBox.height/2)<3,'Contadores junto al título en escritorio');
+assert.ok(toolbarBox.x>summaryBox.x+summaryBox.width&&Math.abs(toolbarBox.y+toolbarBox.height/2-titleBox.y-titleBox.height/2)<3,'Acciones alineadas a la derecha');
+const oldHeader=JSON.parse(await readFile(headerBaseline,'utf8').catch(()=>JSON.stringify(headerGeometry)));
+if(oldHeader.mapTop!==headerGeometry.mapTop){assert.ok(headerGeometry.mapTop<=oldHeader.mapTop-40);assert.ok(headerGeometry.mapHeight>=oldHeader.mapHeight+40);}
+result.headerGeometry={before:oldHeader,after:headerGeometry};
+await page.screenshot({path:join(scratch,'canvas-header-desktop.png'),fullPage:true,animations:'disabled'});
+await page.setViewportSize({width:390,height:844});
+await expect(page.locator('.canvas-summary')).toBeVisible();
+for(const label of ['Recargar','Ordenar Canvas','+ Módulo'])await expect(page.getByRole('button',{name:label,exact:true})).toBeVisible();
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+const mobileSummary=await page.locator('.canvas-summary').boundingBox();assert.ok(mobileSummary.x>=0&&mobileSummary.x+mobileSummary.width<=390);
+await page.screenshot({path:join(scratch,'canvas-header-mobile.png'),fullPage:true,animations:'disabled'});
+await page.setViewportSize({width:1360,height:1000});
+assert.equal(writes.length,0);result.passed.push('Cabecera compacta sin lema, contadores dinámicos junto al título, acciones alineadas y móvil sin desbordamiento; más altura para el mapa sin escrituras');
 const beforeHelpRows=JSON.stringify(rows), beforeHelpSnapshots=JSON.stringify(snapshots);
 await expect(page.locator('.canvas-summary')).not.toContainText('Distribución y notas independientes por proyecto');
 const helpButton=page.getByRole('complementary',{name:'Elementos del Canvas'}).getByRole('button',{name:'Información del Canvas',exact:true});
