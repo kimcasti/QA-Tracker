@@ -1523,6 +1523,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
   const [executionResultFilter, setExecutionResultFilter] = useState<
     'all' | TestResult.FAILED | TestResult.NOT_EXECUTED
   >('all');
+  const [executionAutomationFilter, setExecutionAutomationFilter] = useState<
+    'all' | 'automated' | 'notAutomated'
+  >('all');
+
+  useEffect(() => {
+    setExecutionSearchText('');
+    setExecutionResultFilter('all');
+    setExecutionAutomationFilter('all');
+  }, [activeTestRun?.id]);
+
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [reorderDraft, setReorderDraft] = useState<TestRunResult[]>([]);
   const [draggedResultId, setDraggedResultId] = useState<string | null>(null);
@@ -4404,8 +4414,12 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         func?.module.toLowerCase().includes(searchLower) ||
         func?.name.toLowerCase().includes(searchLower);
       const matchesResult = executionResultFilter === 'all' || result.result === executionResultFilter;
+      const isAutomated = deriveAutomationStatus(testCase) === AutomationStatus.AUTOMATED;
+      const matchesAutomation =
+        executionAutomationFilter === 'all' ||
+        (executionAutomationFilter === 'automated' ? isAutomated : !isAutomated);
 
-      return matchesSearch && matchesResult;
+      return matchesSearch && matchesResult && matchesAutomation;
     });
 
     const orderedFilteredExecutionResults = [...filteredExecutionResults].sort(
@@ -4427,6 +4441,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
     executionResults,
     executionSearchText,
     executionResultFilter,
+    executionAutomationFilter,
     functionalityById,
     testCaseById,
   ]);
@@ -4723,27 +4738,58 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
               value={executionSearchText}
               onChange={e => setExecutionSearchText(e.target.value)}
             />
-            <Space size={12} wrap>
+            <Space size={12} wrap className="max-w-full">
+              <div className="flex min-w-0 flex-col gap-1">
+                <label htmlFor="execution-automation-filter" className="text-xs text-slate-500">
+                  Automatización
+                </label>
+                <Select
+                  id="execution-automation-filter"
+                  aria-label="Filtrar por automatización"
+                  value={executionAutomationFilter}
+                  onChange={setExecutionAutomationFilter}
+                  style={{ width: 190, maxWidth: '100%' }}
+                  options={[
+                    { label: 'Todos', value: 'all' },
+                    { label: 'Automatizados', value: 'automated' },
+                    { label: 'No automatizados', value: 'notAutomated' },
+                  ]}
+                />
+              </div>
               <Button
                 type={executionResultFilter === 'all' ? 'primary' : 'default'}
+                aria-pressed={executionResultFilter === 'all'}
                 className="rounded-lg px-6"
                 onClick={() => setExecutionResultFilter('all')}
               >
-                All
+                Todos
               </Button>
               <Button
                 type={executionResultFilter === TestResult.FAILED ? 'primary' : 'default'}
+                aria-pressed={executionResultFilter === TestResult.FAILED}
                 className="rounded-lg px-6"
                 onClick={() => setExecutionResultFilter(TestResult.FAILED)}
               >
-                Failed Only
+                Solo fallidos
               </Button>
               <Button
                 type={executionResultFilter === TestResult.NOT_EXECUTED ? 'primary' : 'default'}
+                aria-pressed={executionResultFilter === TestResult.NOT_EXECUTED}
                 className="rounded-lg px-6"
                 onClick={() => setExecutionResultFilter(TestResult.NOT_EXECUTED)}
               >
-                Pending Only
+                Solo pendientes
+              </Button>
+              <Button
+                title="Limpiar búsqueda, resultado y automatización"
+                disabled={!executionSearchText && executionResultFilter === 'all' && executionAutomationFilter === 'all'}
+                onClick={() => {
+                  setExecutionSearchText('');
+                  setExecutionResultFilter('all');
+                  setExecutionAutomationFilter('all');
+                }}
+              >
+                Limpiar filtros
               </Button>
             </Space>
           </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, Collapse, Empty, Modal, Progress, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
-import { CheckCircleFilled, CloseCircleFilled } from '@ant-design/icons';
+import { Alert, Button, Card, Collapse, Empty, Input, Modal, Progress, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { CheckCircleFilled, CloseCircleFilled, SearchOutlined } from '@ant-design/icons';
 import { AutomationJobResults } from './AutomationJobResults';
 import { useAutomationRunner } from '../hooks/useAutomationRunner';
 import { runnerReferenceProblem, runnerService, type AutomationEnvironment, type AutomationJob, type RunnerCase } from '../services/runnerService';
@@ -51,6 +51,9 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const [connectionKey, setConnectionKey] = useState<string>();
   const [environment, setEnvironment] = useState<AutomationEnvironment>('local');
   const [selected, setSelected] = useState<string[]>([]);
+  const [caseSearch, setCaseSearch] = useState('');
+  const [caseResultFilter, setCaseResultFilter] = useState<'all' | 'latestFailed'>('all');
+  const [casePage, setCasePage] = useState(1);
   const [refreshError, setRefreshError] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string>();
   const [section, setSection] = useState<string>();
@@ -60,6 +63,16 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const { inspection, enqueue } = useAutomationRunner(runId, open);
   const data = inspection.data;
   const jobs = [...(data?.jobs || [])].sort((a, b) => b.id - a.id);
+  const latestFinishedJob = jobs.find(job => job.state === 'completed' || job.state === 'interrupted');
+  const latestJobResults = useQuery({
+    queryKey: ['automation-job-results', runId, latestFinishedJob?.id],
+    queryFn: () => runnerService.details(runId, latestFinishedJob!.id),
+    enabled: open && caseResultFilter === 'latestFailed' && Boolean(latestFinishedJob),
+    staleTime: Infinity, retry: false,
+  });
+  const filteringLatest = caseResultFilter === 'latestFailed';
+  const latestResultsUnavailable = filteringLatest && Boolean(latestFinishedJob) &&
+    (latestJobResults.isPending || latestJobResults.isError);
   const totalJobs = data?.totalJobs ?? jobs.length;
   const activeJobKey = jobs.some(job => String(job.id) === selectedJobId) ? selectedJobId : jobs[0] && String(jobs[0].id);
   const hasExecutedTests = data?.jobs.some(job => job.state === 'completed' || job.state === 'interrupted');
@@ -74,9 +87,23 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
   const active = data?.jobs.find(job => ['pending', 'running'].includes(job.state));
   const problem = (item: RunnerCase) => runnerReferenceProblem(item.reference, runner, data?.duplicateReferences);
   const selectedCases = data?.cases.filter(item => selected.includes(item.caseId)) || [];
+  const search = caseSearch.trim().toLocaleLowerCase();
+  const failedReferences = new Set((latestJobResults.data?.outcomes || [])
+    .filter(outcome => outcome.status === 'failed').map(outcome => outcome.automationReference));
+  const latestFailedCases = new Map((latestJobResults.data?.cases || [])
+    .filter(item => failedReferences.has(item.reference)).map(item => [item.caseId, item.reference]));
+  const filteredCases = (data?.cases || []).filter(item =>
+    item.title.toLocaleLowerCase().includes(search) && (!filteringLatest ||
+      (!latestResultsUnavailable && latestFailedCases.get(item.caseId) === item.reference)));
+  const visibleCaseIds = new Set(filteredCases.map(item => item.caseId));
+  const hiddenSelectedCount = selected.filter(id => !visibleCaseIds.has(id)).length;
   const invalid = selectedCases.some(item => problem(item));
   const blocked = !data?.canRun || !runner?.online || runner.busy || Boolean(active) || !selected.length ||
-    selectedCases.length !== selected.length || invalid || !environmentAvailable || hasUnsavedChanges || inspection.isError;
+    selectedCases.length !== selected.length || invalid || !environmentAvailable || hasUnsavedChanges || inspection.isError || latestResultsUnavailable;
+
+  useEffect(() => {
+    setCaseSearch(''); setCaseResultFilter('all'); setCasePage(1);
+  }, [runId]);
 
   useEffect(() => {
     if (!open || !data || hasUnsavedChanges) return;
@@ -146,13 +173,34 @@ export function RunAutomationButton({ runId, hasUnsavedChanges, onResults }: Pro
             <span className="text-slate-800 font-bold">Casos automatizados</span>
             <span className="text-xs text-slate-400 font-normal whitespace-normal">Selecciona los casos que deseas ejecutar.</span>
           </div>}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <Input aria-label="Buscar por nombre del caso de prueba" placeholder="Buscar por nombre del caso de prueba"
+            allowClear prefix={<SearchOutlined aria-hidden="true" />} value={caseSearch}
+            style={{ flex: '1 1 240px', minWidth: 0 }}
+            onChange={event => { setCaseSearch(event.target.value); setCasePage(1); }} />
+          <Select aria-label="Filtrar casos automatizados" value={caseResultFilter}
+            style={{ width: 280, maxWidth: '100%' }}
+            onChange={value => { setCaseResultFilter(value); setCasePage(1); }}
+            options={[{ label: 'Todos los casos', value: 'all' },
+              { label: 'Fallidos de la última ejecución', value: 'latestFailed' }]} />
+        </div>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Mostrando {filteredCases.length} de {data?.cases.length || 0} casos · {selected.length} seleccionados
+          {hiddenSelectedCount > 0 ? ` (${hiddenSelectedCount} fuera del filtro)` : ''}
+        </Typography.Paragraph>
+        {filteringLatest && latestFinishedJob && latestJobResults.isError && <Alert type="error"
+          title="No se pudieron consultar los últimos casos fallidos."
+          action={<Button onClick={() => void latestJobResults.refetch()}>Reintentar</Button>} />}
         <Table<RunnerCase> rowKey="caseId" className="executive-table [&_thead_th]:whitespace-nowrap"
-          tableLayout="fixed" loading={inspection.isLoading} scroll={{ x: 1000 }}
-          dataSource={data?.cases || []} pagination={{ pageSize: 8 }}
-          rowSelection={{ selectedRowKeys: selected, onChange: keys => {
+          tableLayout="fixed" loading={inspection.isLoading || (filteringLatest && Boolean(latestFinishedJob) && latestJobResults.isPending)} scroll={{ x: 1000 }}
+          dataSource={filteredCases} pagination={{ pageSize: 8, current: casePage, onChange: setCasePage }}
+          rowSelection={{ preserveSelectedRowKeys: true, selectedRowKeys: selected, onChange: keys => {
             setSelected(keys.map(String)); requestId.current = crypto.randomUUID();
           }, getCheckboxProps: row => ({ disabled: Boolean(problem(row)) || Boolean(active) }) }}
-          locale={{ emptyText: 'Esta ejecución no contiene casos automatizados con Playwright.' }}
+          locale={{ emptyText: filteringLatest && !latestFinishedJob
+            ? 'No hay ejecuciones finalizadas o interrumpidas para consultar.'
+            : search || filteringLatest ? 'No hay casos que coincidan con los filtros.'
+              : 'Esta ejecución no contiene casos automatizados con Playwright.' }}
           columns={[
             { title: 'Caso', dataIndex: 'title', width: '32%', render: (title: string) => <Typography.Text strong>{title}</Typography.Text> },
             { title: 'Módulo', dataIndex: 'module', width: 150, render: (module: string) => <Tag bordered={false}>{module || 'Sin módulo'}</Tag> },
