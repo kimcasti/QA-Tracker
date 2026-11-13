@@ -4729,16 +4729,16 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
         </Row>
 
         <Card className="rounded-2xl shadow-sm border-slate-100 overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4 bg-white">
+          <div className="p-4 border-b border-slate-100 flex flex-wrap items-end gap-4 bg-white">
             <Input
               placeholder="Search by Module or Functionality..."
               prefix={<SearchOutlined className="text-slate-400" />}
               className="rounded-lg h-10 border-slate-200"
-              style={{ flex: '1 1 320px', minWidth: 0 }}
+              style={{ flex: '1 1 240px', minWidth: 0, maxWidth: 320 }}
               value={executionSearchText}
               onChange={e => setExecutionSearchText(e.target.value)}
             />
-            <Space size={12} wrap className="max-w-full">
+            <Space size={12} align="end" wrap className="max-w-full [&_.ant-btn]:h-10">
               <div className="flex min-w-0 flex-col gap-1">
                 <label htmlFor="execution-automation-filter" className="text-xs text-slate-500">
                   Automatización
@@ -4748,7 +4748,7 @@ export default function TestExecutionView({ projectId }: { projectId?: string })
                   aria-label="Filtrar por automatización"
                   value={executionAutomationFilter}
                   onChange={setExecutionAutomationFilter}
-                  style={{ width: 190, maxWidth: '100%' }}
+                  style={{ width: 190, maxWidth: '100%', height: 40 }}
                   options={[
                     { label: 'Todos', value: 'all' },
                     { label: 'Automatizados', value: 'automated' },

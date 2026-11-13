@@ -88,6 +88,12 @@ try {
   assert.match(originalSummary, /total tests/i);
   await expect(rows).toHaveCount(7);
   await expect(page.getByRole('combobox', { name: 'Filtrar por automatización' })).toBeVisible({ timeout: 3000 });
+  const searchBounds = await page.getByPlaceholder('Search by Module or Functionality...').locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," ant-input-affix-wrapper ")][1]').boundingBox();
+  const automationBounds = await page.getByRole('combobox', { name: 'Filtrar por automatización' }).locator('xpath=ancestor::div[contains(concat(" ",normalize-space(@class)," ")," ant-select ")][1]').boundingBox();
+  const resultBounds = await page.getByRole('button', { name: 'Solo fallidos', exact: true }).boundingBox();
+  assert.ok(searchBounds.width <= 320, 'search field stays compact on desktop');
+  assert.ok(Math.abs((searchBounds.y + searchBounds.height) - (automationBounds.y + automationBounds.height)) <= 2, 'search and automation selector align at the bottom');
+  assert.ok(Math.abs((searchBounds.y + searchBounds.height) - (resultBounds.y + resultBounds.height)) <= 2, 'search and result buttons align at the bottom');
   await choose('Automatizados'); await expect(rows).toHaveCount(3);
   assert.deepEqual(await ids(), ['auto-fail', 'auto-pass', 'auto-pending']);
   await page.getByRole('button', { name: 'Solo fallidos', exact: true }).click();
